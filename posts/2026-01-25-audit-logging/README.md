@@ -192,7 +192,11 @@ Build a secure audit logging service:
 // audit/audit-logger.ts
 // Secure audit logging implementation
 
-import crypto from 'crypto';
+import * as crypto from 'node:crypto';
+
+type AuditEventInput = Omit<AuditEvent, 'eventId' | 'timestamp' | 'integrity' | 'metadata'> & {
+  metadata?: Partial<Pick<AuditEvent['metadata'], 'correlationId' | 'requestId'>>;
+};
 
 interface AuditLoggerConfig {
   serviceName: string;
@@ -209,7 +213,7 @@ class AuditLogger {
     this.config = config;
   }
 
-  async log(event: Omit<AuditEvent, 'eventId' | 'timestamp' | 'integrity' | 'metadata'>): Promise<string> {
+  async log(event: AuditEventInput): Promise<string> {
     const eventId = this.generateEventId();
     const timestamp = new Date().toISOString();
 
@@ -251,10 +255,26 @@ class AuditLogger {
     const eventCopy = { ...event };
     eventCopy.integrity = { ...event.integrity, signature: '' };
 
-    const payload = JSON.stringify(eventCopy, Object.keys(eventCopy).sort());
+    const payload = this.canonicalStringify(eventCopy);
     const hmac = crypto.createHmac('sha256', this.config.signingKey);
     hmac.update(payload);
     return hmac.digest('hex');
+  }
+
+  private canonicalStringify(value: unknown): string {
+    if (value === null || typeof value !== 'object') {
+      return JSON.stringify(value);
+    }
+
+    if (Array.isArray(value)) {
+      return `[${value.map(item => this.canonicalStringify(item)).join(',')}]`;
+    }
+
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, entryValue]) => entryValue !== undefined)
+      .sort(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey));
+
+    return `{${entries.map(([key, entryValue]) => `${JSON.stringify(key)}:${this.canonicalStringify(entryValue)}`).join(',')}}`;
   }
 
   private hashEvent(event: AuditEvent): string {
@@ -265,9 +285,16 @@ class AuditLogger {
   // Verify event integrity
   verifyEvent(event: AuditEvent): boolean {
     const expectedSignature = this.signEvent(event);
+    const actual = Buffer.from(event.integrity.signature, 'hex');
+    const expected = Buffer.from(expectedSignature, 'hex');
+
+    if (actual.length !== expected.length) {
+      return false;
+    }
+
     return crypto.timingSafeEqual(
-      Buffer.from(event.integrity.signature),
-      Buffer.from(expectedSignature)
+      actual,
+      expected
     );
   }
 
@@ -380,7 +407,6 @@ interface AuditRouteConfig {
   resourceTypeExtractor?: (req: Request) => string;
   resourceIdExtractor?: (req: Request) => string;
   captureRequestBody?: boolean;
-  captureResponseBody?: boolean;
 }
 
 function createAuditMiddleware(config: AuditMiddlewareConfig) {
@@ -396,15 +422,6 @@ function createAuditMiddleware(config: AuditMiddlewareConfig) {
 
     const startTime = Date.now();
     const requestBody = routeConfig.captureRequestBody ? { ...req.body } : undefined;
-
-    // Capture response
-    const originalJson = res.json.bind(res);
-    let responseBody: unknown;
-
-    res.json = (body: unknown) => {
-      responseBody = routeConfig.captureResponseBody ? body : undefined;
-      return originalJson(body);
-    };
 
     res.on('finish', async () => {
       const duration = Date.now() - startTime;
@@ -491,6 +508,11 @@ Implement storage that prevents tampering:
 // audit/storage.ts
 // Tamper-proof audit storage implementations
 
+import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import * as crypto from 'node:crypto';
+import * as fs from 'node:fs';
+import { Pool } from 'pg';
+
 interface AuditStorage {
   write(event: AuditEvent): Promise<void>;
   read(eventId: string): Promise<AuditEvent | null>;
@@ -498,20 +520,38 @@ interface AuditStorage {
   verifyIntegrity(startEventId: string, endEventId: string): Promise<boolean>;
 }
 
+interface AuditVerifier {
+  verifyEvent(event: AuditEvent): boolean;
+}
+
+function matchesAuditFilters(event: AuditEvent, filters: AuditQueryFilters): boolean {
+  return (!filters.startTime || new Date(event.timestamp) >= filters.startTime) &&
+    (!filters.endTime || new Date(event.timestamp) <= filters.endTime) &&
+    (!filters.actorUserId || event.actor.userId === filters.actorUserId) &&
+    (!filters.eventTypes || filters.eventTypes.includes(event.eventType)) &&
+    (!filters.categories || filters.categories.includes(event.eventCategory)) &&
+    (!filters.targetResourceType || event.target?.resourceType === filters.targetResourceType) &&
+    (!filters.targetResourceId || event.target?.resourceId === filters.targetResourceId) &&
+    (!filters.sourceIpAddress || event.source.ipAddress === filters.sourceIpAddress) &&
+    (!filters.resultStatus || event.result.status === filters.resultStatus);
+}
+
 // Append-only file storage with hash chain
 class AppendOnlyFileStorage implements AuditStorage {
   private filePath: string;
   private hashChain: Map<string, string> = new Map();
+  private verifier: AuditVerifier;
 
-  constructor(filePath: string) {
+  constructor(filePath: string, verifier: AuditVerifier) {
     this.filePath = filePath;
+    this.verifier = verifier;
   }
 
   async write(event: AuditEvent): Promise<void> {
     // Format as newline-delimited JSON
     const line = JSON.stringify(event) + '\n';
 
-    // Append to file (atomic on most filesystems)
+    // Append to file. Use filesystem append-only permissions or WORM storage for real immutability.
     await fs.promises.appendFile(this.filePath, line, { flag: 'a' });
 
     // Update hash chain
@@ -521,6 +561,16 @@ class AppendOnlyFileStorage implements AuditStorage {
     this.hashChain.set(event.eventId, eventHash);
   }
 
+  async read(eventId: string): Promise<AuditEvent | null> {
+    const events = await this.readAll();
+    return events.find(event => event.eventId === eventId) || null;
+  }
+
+  async query(filters: AuditQueryFilters): Promise<AuditEvent[]> {
+    const events = await this.readAll();
+    return events.filter(event => matchesAuditFilters(event, filters));
+  }
+
   async verifyIntegrity(startEventId: string, endEventId: string): Promise<boolean> {
     const events = await this.readRange(startEventId, endEventId);
 
@@ -528,8 +578,7 @@ class AppendOnlyFileStorage implements AuditStorage {
 
     for (const event of events) {
       // Verify signature
-      const auditLogger = new AuditLogger({ /* config */ });
-      if (!auditLogger.verifyEvent(event)) {
+      if (!this.verifier.verifyEvent(event)) {
         console.error(`Invalid signature for event ${event.eventId}`);
         return false;
       }
@@ -547,30 +596,57 @@ class AppendOnlyFileStorage implements AuditStorage {
 
     return true;
   }
+
+  private async readAll(): Promise<AuditEvent[]> {
+    try {
+      const content = await fs.promises.readFile(this.filePath, 'utf8');
+      return content
+        .split('\n')
+        .filter(Boolean)
+        .map(line => JSON.parse(line) as AuditEvent);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        return [];
+      }
+      throw error;
+    }
+  }
+
+  private async readRange(startEventId: string, endEventId: string): Promise<AuditEvent[]> {
+    const events = await this.readAll();
+    const startIndex = events.findIndex(event => event.eventId === startEventId);
+    const endIndex = events.findIndex(event => event.eventId === endEventId);
+
+    if (startIndex === -1 || endIndex === -1 || endIndex < startIndex) {
+      return [];
+    }
+
+    return events.slice(startIndex, endIndex + 1);
+  }
 }
 
 // AWS S3 with Object Lock for immutability
-class S3ImmutableStorage implements AuditStorage {
-  private s3: AWS.S3;
+class S3ImmutableStorage {
+  private s3: S3Client;
   private bucket: string;
 
   constructor(bucket: string) {
-    this.s3 = new AWS.S3();
+    this.s3 = new S3Client({});
     this.bucket = bucket;
   }
 
   async write(event: AuditEvent): Promise<void> {
     const key = `audit/${event.timestamp.slice(0, 10)}/${event.eventId}.json`;
 
-    await this.s3.putObject({
+    await this.s3.send(new PutObjectCommand({
       Bucket: this.bucket,
       Key: key,
       Body: JSON.stringify(event),
       ContentType: 'application/json',
-      // Enable Object Lock for immutability
+      // The bucket must already have S3 Object Lock enabled.
       ObjectLockMode: 'COMPLIANCE',
       ObjectLockRetainUntilDate: this.calculateRetentionDate()
-    }).promise();
+    }));
   }
 
   private calculateRetentionDate(): Date {
@@ -582,7 +658,7 @@ class S3ImmutableStorage implements AuditStorage {
 }
 
 // Database storage with triggers to prevent modification
-class PostgresAuditStorage implements AuditStorage {
+class PostgresAuditStorage {
   private pool: Pool;
 
   async initialize(): Promise<void> {
@@ -627,7 +703,7 @@ class PostgresAuditStorage implements AuditStorage {
       CREATE OR REPLACE FUNCTION prevent_audit_delete()
       RETURNS TRIGGER AS $$
       BEGIN
-        IF NOT current_setting('audit.retention_cleanup', true)::boolean THEN
+        IF NOT COALESCE(current_setting('audit.retention_cleanup', true)::boolean, false) THEN
           RAISE EXCEPTION 'Audit records cannot be deleted';
         END IF;
         RETURN OLD;

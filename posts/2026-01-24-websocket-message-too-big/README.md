@@ -33,9 +33,9 @@ sequenceDiagram
 |-----------|---------------|---------------|
 | ws (Node.js) | 100 MB | maxPayload option |
 | Socket.io | 1 MB | maxHttpBufferSize |
-| Nginx | 1 MB | client_max_body_size |
-| Apache | No default | ProxyTimeout |
-| Cloudflare | 100 MB | Enterprise only |
+| Nginx | No WebSocket message limit | Configure the backend WebSocket server |
+| Apache | No WebSocket message limit | Configure the backend WebSocket server |
+| Cloudflare Workers / Durable Objects | 32 MiB received message limit | Platform limit |
 
 ## Server-Side Configuration
 
@@ -76,7 +76,7 @@ wss.on('connection', (ws) => {
 const { Server } = require('socket.io');
 
 const io = new Server(httpServer, {
-  // Maximum HTTP buffer size (affects initial handshake and polling fallback)
+  // Maximum size of a single Engine.IO message before closing the socket
   maxHttpBufferSize: 5 * 1024 * 1024, // 5 MB
 
   // Per-message options
@@ -125,16 +125,11 @@ app.listen(8080);
 ```nginx
 # nginx.conf
 
-# Configure message size limits for WebSocket proxy
+# Configure WebSocket proxying
 
 http {
-    # Maximum size of request body (affects WebSocket messages)
+    # Affects HTTP request bodies before an upgrade, not WebSocket frames
     client_max_body_size 10m;
-
-    # Buffer sizes for proxied content
-    proxy_buffer_size 16k;
-    proxy_buffers 4 32k;
-    proxy_busy_buffers_size 64k;
 
     server {
         listen 443 ssl;
@@ -147,11 +142,10 @@ http {
             proxy_set_header Upgrade $http_upgrade;
             proxy_set_header Connection "upgrade";
 
-            # Increase buffer sizes for large WebSocket messages
-            proxy_buffer_size 64k;
-            proxy_buffers 8 64k;
+            # Keep idle WebSocket tunnels open longer than the default 60s
+            proxy_read_timeout 3600s;
 
-            # Disable buffering for real-time WebSocket
+            # Disable response buffering for related HTTP responses
             proxy_buffering off;
         }
     }
@@ -162,20 +156,21 @@ http {
 
 ```haproxy
 # haproxy.cfg
-# Configure WebSocket message handling
+# Configure WebSocket tunnel handling
+
+defaults
+    mode http
+    timeout client 86400s
+    timeout connect 5s
+    timeout server 86400s
 
 frontend websocket_frontend
     bind *:443 ssl crt /etc/ssl/certs/cert.pem
 
-    # Increase maximum message size
-    tune.bufsize 65536
-
     default_backend websocket_backend
 
 backend websocket_backend
-    # Increase timeouts for WebSocket
-    timeout client 86400s
-    timeout server 86400s
+    # Keep idle WebSocket tunnels open
     timeout tunnel 86400s
 
     server ws1 10.0.0.1:8080 check
@@ -461,7 +456,7 @@ const wss = new WebSocket.Server({
 });
 
 wss.on('connection', (ws) => {
-  console.log('Client connected, compression:', ws._receiver._extensions);
+  console.log('Client connected');
 
   ws.on('message', (message, isBinary) => {
     console.log(`Received: ${message.length} bytes (binary: ${isBinary})`);
@@ -477,9 +472,9 @@ wss.on('connection', (ws) => {
 const socket = new WebSocket('wss://api.example.com/ws');
 
 socket.onopen = () => {
-  // Browser automatically uses compression if server supports it
+  // The browser may use compression if it and the server negotiate it
   const largeData = JSON.stringify({ items: generateLargeArray() });
-  socket.send(largeData); // Will be compressed automatically
+  socket.send(largeData);
 };
 ```
 
@@ -500,7 +495,7 @@ wss.on('connection', (ws) => {
   ws.on('message', (message, isBinary) => {
     if (isBinary) {
       // Parse binary data
-      const view = new DataView(message.buffer);
+      const view = new DataView(message.buffer, message.byteOffset, message.byteLength);
       const messageType = view.getUint8(0);
       const count = view.getUint32(1, true); // little-endian
 
@@ -558,8 +553,8 @@ socket.onopen = () => {
   view.setUint8(0, 1); // message type
   view.setUint32(1, items.length, true);
 
-  // Copy float array
-  new Float32Array(buffer, headerSize).set(items);
+  // Copy float array bytes after the 5-byte header
+  new Uint8Array(buffer, headerSize).set(new Uint8Array(items.buffer));
 
   // Binary is much smaller than JSON representation
   console.log('Binary size:', buffer.byteLength);

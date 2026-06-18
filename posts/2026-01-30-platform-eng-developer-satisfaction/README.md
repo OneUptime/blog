@@ -626,7 +626,7 @@ function buildDashboardMetrics(
       value: `${currentPeriod.ces}/7`,
       change: Math.round((currentPeriod.ces - previousPeriod.ces) * 10) / 10,
       trend: determineTrend(currentPeriod.ces, previousPeriod.ces),
-      // Higher CES (1-7) is better — higher agreement that the platform made it easy
+      // Higher CES (1-7) is better - higher agreement that the platform made it easy
       status: currentPeriod.ces >= 6 ? 'good' : currentPeriod.ces >= 4 ? 'warning' : 'critical',
     },
     {

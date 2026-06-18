@@ -30,7 +30,7 @@ flowchart TD
         C1[Server not running]
         C2[Wrong port]
         C3[Firewall blocking]
-        C4[Network unreachable]
+        C4[Firewall or proxy rejecting]
     end
 
     Error --> Causes
@@ -83,6 +83,11 @@ wss.on('connection', (ws, req) => {
 // Graceful shutdown
 process.on('SIGTERM', () => {
   console.log('Shutting down WebSocket server...');
+
+  wss.clients.forEach((client) => {
+    client.close(1001, 'Server shutting down');
+  });
+
   wss.close(() => {
     console.log('Server closed');
     process.exit(0);
@@ -130,16 +135,16 @@ Python example with correct binding.
 
 ```python
 import asyncio
-import websockets
+from websockets.asyncio.server import serve
 
-async def handler(websocket, path):
+async def handler(websocket):
     async for message in websocket:
         print(f"Received: {message}")
         await websocket.send(f"Echo: {message}")
 
 async def main():
     # Bind to all interfaces
-    async with websockets.serve(
+    async with serve(
         handler,
         "0.0.0.0",  # Accept connections from any IP
         8080
@@ -246,7 +251,7 @@ FROM node:18-alpine
 
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 COPY . .
 
 # Expose the WebSocket port
@@ -257,8 +262,7 @@ CMD ["node", "server.js"]
 ```
 
 ```yaml
-# docker-compose.yml
-version: '3.8'
+# compose.yaml
 services:
   websocket-server:
     build: .
@@ -370,9 +374,12 @@ class WebSocketClient {
         return;
       }
 
+      let settled = false;
+
       this.ws.onopen = () => {
         console.log('WebSocket connected');
         this.reconnectAttempts = 0;
+        settled = true;
         resolve(this.ws);
       };
 
@@ -387,6 +394,11 @@ class WebSocketClient {
         if (event.code === 1006) {
           console.log('Connection refused or server unreachable');
           this.attemptReconnect();
+        }
+
+        if (!settled) {
+          settled = true;
+          reject(new Error(`WebSocket closed before opening: ${event.code}`));
         }
       };
     });
@@ -494,7 +506,7 @@ fi
 
 # HTTP upgrade test
 echo -e "\n5. HTTP Upgrade Request:"
-curl -sI -m 5 \
+curl -si -N -m 5 --http1.1 \
     -H "Connection: Upgrade" \
     -H "Upgrade: websocket" \
     -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \

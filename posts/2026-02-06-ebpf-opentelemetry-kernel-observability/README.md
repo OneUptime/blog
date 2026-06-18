@@ -50,8 +50,53 @@ First, deploy the eBPF agent as a DaemonSet in your Kubernetes cluster:
 ```yaml
 # ebpf-agent-daemonset.yaml
 
-# This deploys an eBPF-based OpenTelemetry agent on every node
-# It automatically discovers and instruments all running services
+# This deploys OpenTelemetry eBPF Instrumentation (OBI) on every node
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: obi
+  namespace: monitoring
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: obi
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "nodes", "services"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: obi
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: obi
+subjects:
+  - kind: ServiceAccount
+    name: obi
+    namespace: monitoring
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-ebpf-agent-config
+  namespace: monitoring
+data:
+  obi-config.yml: |
+    discovery:
+      instrument:
+        - k8s_namespace: '*'
+    otel_metrics_export:
+      endpoint: http://otel-collector.monitoring:4318
+    otel_traces_export:
+      endpoint: http://otel-collector.monitoring:4318
+    attributes:
+      kubernetes:
+        enable: true
+---
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -67,51 +112,52 @@ spec:
         app: otel-ebpf-agent
     spec:
       hostPID: true
-      hostNetwork: true
+      serviceAccountName: obi
       containers:
-        - name: ebpf-agent
-          image: ghcr.io/open-telemetry/opentelemetry-ebpf-instrumentation:latest
+        - name: obi
+          image: otel/ebpf-instrument:main
+          imagePullPolicy: IfNotPresent
           securityContext:
             # eBPF programs need elevated privileges to attach to kernel hooks
             privileged: true
+            readOnlyRootFilesystem: true
             capabilities:
               add:
-                - SYS_ADMIN
+                - BPF
+                - PERFMON
                 - SYS_PTRACE
-                - NET_ADMIN
+                - NET_RAW
           env:
-            # Tell the agent where to send telemetry data
-            - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: "http://otel-collector.monitoring:4317"
-            # Automatically detect and instrument HTTP and gRPC services
-            - name: OTEL_EBPF_PROTOCOLS
-              value: "http,grpc,sql"
-            # Set the sampling rate to reduce overhead on busy nodes
-            - name: OTEL_EBPF_SAMPLE_RATE
-              value: "50"
+            # Tell OBI where to find the configuration file
+            - name: OTEL_EBPF_CONFIG_PATH
+              value: "/config/obi-config.yml"
+            - name: OTEL_EBPF_KUBE_METADATA_ENABLE
+              value: "true"
           volumeMounts:
-            # Mount debugfs for eBPF tracepoint access
-            - name: debugfs
-              mountPath: /sys/kernel/debug
-            # Mount the cgroup filesystem for process tracking
+            - name: obi-config
+              mountPath: /config
+            - name: var-run-obi
+              mountPath: /var/run/obi
             - name: cgroup
               mountPath: /sys/fs/cgroup
       volumes:
-        - name: debugfs
-          hostPath:
-            path: /sys/kernel/debug
+        - name: obi-config
+          configMap:
+            name: otel-ebpf-agent-config
+        - name: var-run-obi
+          emptyDir: {}
         - name: cgroup
           hostPath:
             path: /sys/fs/cgroup
 ```
 
-This DaemonSet attaches eBPF programs to kernel tracepoints on every node. It watches for TCP connections, HTTP request/response patterns, and SQL wire protocol messages. When it detects these, it creates OpenTelemetry spans and sends them to your collector.
+This DaemonSet attaches eBPF programs on every node. It watches for TCP connections, HTTP request/response patterns, and supported database wire protocol messages. When it detects these, it creates OpenTelemetry telemetry and sends it to your collector.
 
 ---
 
 ## Writing Custom eBPF Programs for OpenTelemetry
 
-For deeper kernel-level observability, you can write custom eBPF programs that capture specific system events and export them as OpenTelemetry metrics. Here is an example using `bpftrace` syntax to track TCP retransmissions and export them as OTLP metrics:
+For deeper kernel-level observability, you can write custom eBPF programs that capture specific system events and export them as OpenTelemetry metrics. Here is an example using BCC's Python bindings to track TCP retransmissions and export them as OTLP metrics:
 
 ```python
 #!/usr/bin/env python3
@@ -153,7 +199,7 @@ int trace_retransmit(struct pt_regs *ctx, struct sock *sk) {
     event.saddr = sk->__sk_common.skc_rcv_saddr;
     event.daddr = sk->__sk_common.skc_daddr;
     event.sport = sk->__sk_common.skc_num;
-    event.dport = sk->__sk_common.skc_dport;
+    event.dport = ntohs(sk->__sk_common.skc_dport);
     event.state = sk->__sk_common.skc_state;
 
     retransmit_events.perf_submit(ctx, &event, sizeof(event));
@@ -203,7 +249,7 @@ This program attaches to the `tcp_retransmit_skb` kernel function and fires ever
 
 ## Tracking DNS Resolution with eBPF
 
-DNS resolution is a common source of mysterious latency in microservices. Application-level instrumentation often misses it because DNS happens in the standard library before your HTTP client even connects. eBPF can capture every DNS lookup at the kernel level:
+DNS resolution is a common source of mysterious latency in microservices. Application-level instrumentation often misses it because DNS happens in the standard library before your HTTP client even connects. A BCC uprobe can measure DNS lookups made through libc's `getaddrinfo`:
 
 ```python
 # dns_latency_otel.py
@@ -215,7 +261,7 @@ from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 
-# eBPF program that hooks into getaddrinfo to measure DNS resolution time
+# eBPF program that hooks into libc getaddrinfo to measure DNS resolution time
 bpf_program = """
 #include <uapi/linux/ptrace.h>
 
@@ -268,7 +314,7 @@ meter = metrics.get_meter("ebpf.dns")
 # Bucket boundaries are chosen to highlight slow DNS lookups
 dns_histogram = meter.create_histogram(
     name="dns.resolution.duration",
-    description="Time spent resolving DNS names at the kernel level",
+    description="Time spent resolving DNS names through getaddrinfo",
     unit="ms",
 )
 
@@ -313,7 +359,7 @@ sequenceDiagram
     Note over Collector: Correlate: 400ms was TCP retransmit
 ```
 
-The Collector can enrich eBPF-generated spans with resource attributes like pod name, namespace, and node name by looking up the source PID in the Kubernetes API. This is how the eBPF agent automatically discovers which service is running in which pod.
+The eBPF agent can enrich generated spans with resource attributes like pod name, namespace, and node name by combining process information with Kubernetes metadata. This is how the eBPF agent automatically discovers which service is running in which pod.
 
 ---
 

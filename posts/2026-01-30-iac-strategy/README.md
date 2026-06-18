@@ -152,12 +152,12 @@ Each module should include these files for consistency.
 ```hcl
 # variables.tf - Define all inputs with descriptions and validation
 variable "environment" {
-  description = "Environment name (dev, staging, production)"
+  description = "Environment name (dev, staging, production, test)"
   type        = string
 
   validation {
-    condition     = contains(["dev", "staging", "production"], var.environment)
-    error_message = "Environment must be dev, staging, or production."
+    condition     = contains(["dev", "staging", "production", "test"], var.environment)
+    error_message = "Environment must be dev, staging, production, or test."
   }
 }
 
@@ -198,11 +198,11 @@ Never store state locally. Use a remote backend with locking.
 # backend.tf - Configure remote state storage with locking
 terraform {
   backend "s3" {
-    bucket         = "mycompany-terraform-state"
-    key            = "environments/production/terraform.tfstate"
-    region         = "us-east-1"
-    encrypt        = true
-    dynamodb_table = "terraform-state-lock"
+    bucket       = "mycompany-terraform-state"
+    key          = "environments/production/terraform.tfstate"
+    region       = "us-east-1"
+    encrypt      = true
+    use_lockfile = true
   }
 }
 ```
@@ -375,7 +375,7 @@ on:
       - main
 
 env:
-  TF_VERSION: '1.6.0'
+  TF_VERSION: '1.10.0'
   AWS_REGION: 'us-east-1'
 
 jobs:
@@ -385,7 +385,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
@@ -406,12 +406,17 @@ jobs:
 
       # Run tflint for best practices
       - name: TFLint
-        uses: terraform-linters/setup-tflint@v4
+        uses: terraform-linters/setup-tflint@v6
       - run: tflint --recursive
 
-      # Security scanning with tfsec
+      # Security scanning with Trivy
       - name: Security Scan
-        uses: aquasecurity/tfsec-action@v1.0.0
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          scanners: 'misconfig,secret'
+          exit-code: '1'
 
   plan:
     needs: validate
@@ -423,7 +428,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
@@ -490,7 +495,7 @@ Never commit secrets to version control. Use these patterns instead.
 variable "database_password" {
   description = "Database admin password"
   type        = string
-  sensitive   = true  # Prevents value from appearing in logs
+  sensitive   = true  # Redacts the value from Terraform CLI output; still protect state
 }
 
 # Reference secrets from a secrets manager
@@ -512,14 +517,14 @@ Define policies that prevent insecure configurations.
 # policy/security.rego - Deny public S3 buckets
 package terraform.security
 
-deny[msg] {
+deny contains msg if {
     resource := input.resource_changes[_]
     resource.type == "aws_s3_bucket"
     resource.change.after.acl == "public-read"
     msg := sprintf("S3 bucket %v cannot be public", [resource.address])
 }
 
-deny[msg] {
+deny contains msg if {
     resource := input.resource_changes[_]
     resource.type == "aws_security_group_rule"
     resource.change.after.cidr_blocks[_] == "0.0.0.0/0"
@@ -685,7 +690,7 @@ We will use Terraform as our primary IaC tool.
 
 Create runbooks for common operations.
 
-```markdown
+````markdown
 # Runbook: Adding a New Environment
 
 ## Prerequisites
@@ -698,7 +703,7 @@ Create runbooks for common operations.
 1. Create environment directory:
    ```bash
    cp -r environments/template environments/new-env
-   ```bash
+   ```
 
 2. Update backend configuration in `backend.tf`
 
@@ -709,13 +714,13 @@ Create runbooks for common operations.
    terraform init
    terraform plan
    terraform apply
-   ```bash
+   ```
 
 ## Validation
 - Verify resources in AWS Console
 - Run smoke tests
 - Update monitoring dashboards
-```text
+````
 
 ## Step 9: Implement Drift Detection
 
@@ -743,21 +748,28 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
 
       - name: Terraform Plan
         id: plan
         working-directory: environments/${{ matrix.environment }}
         run: |
+          set +e
           terraform init
           terraform plan -detailed-exitcode -out=tfplan 2>&1 | tee plan.txt
-        continue-on-error: true
+          exitcode=${PIPESTATUS[0]}
+          echo "exitcode=$exitcode" >> "$GITHUB_OUTPUT"
+          if [ "$exitcode" -eq 1 ]; then
+            exit 1
+          fi
 
       # Alert if drift detected (exit code 2 means changes needed)
       - name: Alert on Drift
-        if: steps.plan.outputs.exitcode == 2
-        uses: slackapi/slack-github-action@v1
+        if: steps.plan.outputs.exitcode == '2'
+        uses: slackapi/slack-github-action@v3.0.3
         with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
           payload: |
             {
               "text": "Infrastructure drift detected in ${{ matrix.environment }}",
@@ -771,8 +783,6 @@ jobs:
                 }
               ]
             }
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
 ```
 
 ## Step 10: Measure and Iterate

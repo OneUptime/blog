@@ -28,19 +28,19 @@ flowchart LR
 
 ## Setting Up Redis TimeSeries
 
-Redis TimeSeries requires the RedisTimeSeries module. Using Docker is the easiest way to get started.
+Redis TimeSeries is available in Redis Stack and is included in Redis 8 and later. Using Docker is the easiest way to get started.
 
 ```bash
-# Run Redis with TimeSeries module
+# Run Redis Stack with TimeSeries support
 
-docker run -d --name redis-ts -p 6379:6379 redislabs/redistimeseries:latest
+docker run -d --name redis-ts -p 6379:6379 redis/redis-stack-server:latest
 
 # Or with persistence
 docker run -d --name redis-ts \
   -p 6379:6379 \
   -v redis-ts-data:/data \
-  redislabs/redistimeseries:latest \
-  --appendonly yes
+  -e REDIS_ARGS="--appendonly yes" \
+  redis/redis-stack-server:latest
 ```
 
 ## Creating Time Series and Adding Data
@@ -266,7 +266,7 @@ def query_by_labels(metric, filters, from_time, to_time, aggregation='avg', buck
 
     filters is a list like ['type=web', 'env=production']
     """
-    args = ['TS.MRANGE', from_time, to_time]
+    args = ['TS.MRANGE', from_time, to_time, 'WITHLABELS']
 
     # Add aggregation
     args.extend(['AGGREGATION', aggregation, bucket_size])
@@ -282,7 +282,7 @@ def query_by_labels(metric, filters, from_time, to_time, aggregation='avg', buck
     parsed = []
     for series in result:
         key = series[0]
-        labels = dict(zip(series[1][::2], series[1][1::2]))
+        labels = dict(series[1])
         data = [(int(ts), float(val)) for ts, val in series[2]]
         parsed.append({
             'key': key,
@@ -322,7 +322,7 @@ from collections import defaultdict
 class MetricsCollector:
     """
     Collect and store application metrics using Redis TimeSeries.
-    Supports counters, gauges, and histograms.
+    Supports counters, gauges, and timing values.
     """
 
     def __init__(self, redis_client, app_name, retention_hours=24):
@@ -372,9 +372,8 @@ class MetricsCollector:
         labels['type'] = 'counter'
         key = self._ensure_series(name, labels)
 
-        # For counters, we add the increment value
-        # Use TS.INCRBY for atomic increments
-        self.r.execute_command('TS.ADD', key, '*', value)
+        # For counters, add the increment value and sum duplicate timestamps
+        self.r.execute_command('TS.ADD', key, '*', value, 'ON_DUPLICATE', 'SUM')
 
     def timing(self, name, duration_ms, labels=None):
         """

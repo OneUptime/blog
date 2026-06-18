@@ -62,7 +62,7 @@ const WebSocket = require('ws');
 // BAD: Not checking connection state before sending
 function badBroadcast(clients, message) {
     clients.forEach(client => {
-        // This will throw if client is not OPEN
+        // This can throw or fail asynchronously if the client is not OPEN
         client.send(message);
     });
 }
@@ -96,7 +96,7 @@ function safeBroadcast(clients, message) {
 
 ### Buffer Overflow and Backpressure
 
-When clients cannot receive messages fast enough, the send buffer fills up. This creates backpressure that can block your server or cause message loss.
+When clients cannot receive messages fast enough, queued data grows in the send buffer. This creates backpressure that can increase memory usage, delay delivery, or cause message loss.
 
 ```javascript
 // buffer-overflow-handling.js
@@ -518,7 +518,7 @@ class RobustBroadcaster extends EventEmitter {
         const maxAttempts = options.retryAttempts ?? this.config.retryAttempts;
 
         for (let attempt = 0; attempt <= maxAttempts; attempt++) {
-            const result = this.trySend(client, data);
+            const result = await this.trySend(client, data);
 
             if (result.success) {
                 if (attempt > 0) {
@@ -528,7 +528,7 @@ class RobustBroadcaster extends EventEmitter {
             }
 
             // Check if error is retryable
-            if (!this.isRetryableError(result.error)) {
+            if (!this.isRetryableError(result)) {
                 return result;
             }
 
@@ -545,7 +545,7 @@ class RobustBroadcaster extends EventEmitter {
     }
 
     // Attempt to send message
-    trySend(client, data) {
+    async trySend(client, data) {
         const ws = client.ws;
 
         // Check connection state
@@ -576,41 +576,63 @@ class RobustBroadcaster extends EventEmitter {
             };
         }
 
-        try {
-            ws.send(data, (err) => {
-                if (err) {
-                    client.consecutiveFailures++;
-                    console.error(`Send callback error for ${client.id}:`, err.message);
-                } else {
-                    client.consecutiveFailures = 0;
-                }
-            });
-
-            return { success: true };
-        } catch (err) {
-            client.consecutiveFailures++;
-
-            return {
-                success: false,
-                error: err.message,
-                code: 'SEND_EXCEPTION'
+        return await new Promise((resolve) => {
+            let settled = false;
+            const finish = (result) => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timeout);
+                resolve(result);
             };
-        }
+
+            const timeout = setTimeout(() => {
+                client.consecutiveFailures++;
+                finish({
+                    success: false,
+                    error: 'Send timed out',
+                    code: 'SEND_TIMEOUT'
+                });
+            }, this.config.messageTimeout);
+
+            try {
+                ws.send(data, (err) => {
+                    if (err) {
+                        client.consecutiveFailures++;
+                        finish({
+                            success: false,
+                            error: err.message,
+                            code: 'SEND_CALLBACK_ERROR'
+                        });
+                    } else {
+                        client.consecutiveFailures = 0;
+                        finish({ success: true });
+                    }
+                });
+            } catch (err) {
+                client.consecutiveFailures++;
+
+                finish({
+                    success: false,
+                    error: err.message,
+                    code: 'SEND_EXCEPTION'
+                });
+            }
+        });
     }
 
-    isRetryableError(error) {
+    isRetryableError(result) {
         // Buffer full is not retryable immediately
-        if (error.code === 'BUFFER_FULL') {
+        if (result.code === 'BUFFER_FULL') {
             return false;
         }
 
         // Invalid state is not retryable
-        if (error.code === 'INVALID_STATE') {
+        if (result.code === 'INVALID_STATE') {
             return false;
         }
 
         // Unhealthy clients are not retryable
-        if (error.code === 'UNHEALTHY') {
+        if (result.code === 'UNHEALTHY') {
             return false;
         }
 
@@ -977,7 +999,7 @@ For critical messages, implement a message queue that retries failed deliveries.
 
 ```javascript
 // message-queue.js
-// Queued message delivery with persistence
+// Queued message delivery
 
 class MessageQueue {
     constructor(broadcaster, options = {}) {
@@ -1063,8 +1085,17 @@ class MessageQueue {
                     this.removeFromQueue(message.id);
                 } else {
                     // Retry for failed recipients
+                    const failedIds = new Set(results.errors.map(e => e.clientId));
+                    const originalFilter = message.options.filter;
+
                     message.status = 'pending';
-                    message.options.onlyFailed = results.errors.map(e => e.clientId);
+                    message.options = {
+                        ...message.options,
+                        filter: (client) => {
+                            return failedIds.has(client.id) &&
+                                   (!originalFilter || originalFilter(client));
+                        }
+                    };
                 }
             } else {
                 // Complete failure

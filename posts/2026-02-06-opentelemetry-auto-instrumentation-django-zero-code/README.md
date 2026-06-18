@@ -6,19 +6,20 @@ Tags: OpenTelemetry, Django, Python, Auto-Instrumentation, Zero-Code
 
 Description: Learn how to instrument your Django application with OpenTelemetry using automatic instrumentation that requires zero code changes to your existing application.
 
-OpenTelemetry provides automatic instrumentation for Django applications that captures traces, metrics, and logs without requiring you to modify your existing codebase. This approach is perfect for adding observability to legacy applications or when you want to get started quickly without investing time in manual instrumentation.
+OpenTelemetry provides automatic instrumentation for Django applications that captures request traces and HTTP server metrics without requiring you to modify your existing codebase. Additional instrumentation packages can also capture database, cache, outbound HTTP, and logging telemetry. This approach is perfect for adding observability to legacy applications or when you want to get started quickly without investing time in manual instrumentation.
 
 ## Why Auto-Instrumentation Matters
 
-Auto-instrumentation hooks into Django's request/response cycle and automatically creates spans for HTTP requests, database queries, template rendering, and cache operations. You get comprehensive observability data without writing a single line of instrumentation code in your application logic.
+Auto-instrumentation hooks into Django's request/response cycle and automatically creates spans for incoming HTTP requests. When the matching instrumentation packages are installed, it can also create spans for database queries, cache operations, and outbound HTTP calls. You get comprehensive observability data without writing a single line of instrumentation code in your application logic.
 
 The Django auto-instrumentation library captures:
 
 - HTTP request spans with method, path, status code, and duration
-- Database query spans with SQL statements and execution time
-- Template rendering operations
-- Cache operations (Redis, Memcached)
-- Middleware execution timing
+- HTTP server request duration and active request metrics
+- Optional request and response header attributes
+- Optional request object attributes
+- Database query spans when database-specific instrumentation is installed
+- Cache operation spans when Redis or Memcached client instrumentation is installed
 - Automatic context propagation across service boundaries
 
 ## Installation and Dependencies
@@ -53,7 +54,7 @@ export OTEL_EXPORTER_OTLP_ENDPOINT="https://your-collector:4318"
 export OTEL_EXPORTER_OTLP_HEADERS="x-api-key=your-api-key"
 export OTEL_EXPORTER_OTLP_PROTOCOL="http/protobuf"
 
-# Trace configuration
+# Signal exporter configuration
 export OTEL_TRACES_EXPORTER="otlp"
 export OTEL_METRICS_EXPORTER="otlp"
 export OTEL_LOGS_EXPORTER="otlp"
@@ -66,7 +67,7 @@ If you're using OneUptime as your observability backend, configure the endpoint 
 
 ```bash
 export OTEL_EXPORTER_OTLP_ENDPOINT="https://oneuptime.com/otlp"
-export OTEL_EXPORTER_OTLP_HEADERS="x-oneuptime-service-token=your-service-token"
+export OTEL_EXPORTER_OTLP_HEADERS="x-oneuptime-token=your-service-token"
 ```
 
 ## Running Your Django Application with Auto-Instrumentation
@@ -161,15 +162,14 @@ You can selectively disable certain instrumentations using environment variables
 # Disable specific instrumentations
 export OTEL_PYTHON_DISABLED_INSTRUMENTATIONS="requests,urllib3"
 
-# Only instrument specific libraries
-export OTEL_PYTHON_DJANGO_INSTRUMENT="True"
-export OTEL_PYTHON_PSYCOPG2_INSTRUMENT="True"
+# Django instrumentation is enabled by default; set this to False to disable it
+export OTEL_PYTHON_DJANGO_INSTRUMENT="False"
 ```
 
 You can also exclude specific URLs from tracing to reduce noise from health checks and static files:
 
 ```bash
-export OTEL_PYTHON_DJANGO_EXCLUDED_URLS="/health,/readiness,/static/*,/media/*"
+export OTEL_PYTHON_DJANGO_EXCLUDED_URLS="/health,/readiness,/static/.*,/media/.*"
 ```
 
 ## Trace Visualization Flow
@@ -189,10 +189,10 @@ graph TB
     I --> J[Close DB Span]
     J --> K[Continue View Logic]
     G -->|No| K
-    K --> L{Template Rendering?}
-    L -->|Yes| M[Create Template Span]
-    M --> N[Render Template]
-    N --> O[Close Template Span]
+    K --> L{Cache or outbound call?}
+    L -->|Yes| M[Create Client Span]
+    M --> N[Execute Operation]
+    N --> O[Close Client Span]
     O --> P[Return Response]
     L -->|No| P
     P --> Q[Close Root Span]
@@ -201,10 +201,9 @@ graph TB
 
 ## Verifying Auto-Instrumentation Works
 
-After starting your Django application with auto-instrumentation, you should see initialization logs indicating which instrumentations were loaded:
+After starting your Django application with auto-instrumentation, debug output can help confirm which instrumentations were loaded:
 
 ```text
-Starting OpenTelemetry automatic instrumentation...
 Instrumenting django
 Instrumenting psycopg2
 Instrumenting redis
@@ -215,17 +214,16 @@ Make a few requests to your application and check your observability backend. Yo
 
 - HTTP requests (span name: `HTTP GET /api/users/`)
 - Database queries (span name: `SELECT FROM auth_user`)
-- Template rendering (span name: `django.template`)
 - Cache operations (span name: `redis.GET`)
 
 ## Performance Considerations
 
-Auto-instrumentation adds minimal overhead to your application. The instrumentation hooks are highly optimized and typically add less than 1ms of latency per request.
+Auto-instrumentation adds overhead to your application, so benchmark it in your own environment before rolling it out broadly.
 
 However, be aware of these factors:
 
 - Exporting traces over network adds latency. Use batching and asynchronous export.
-- Capturing SQL query parameters can expose sensitive data. Disable with `OTEL_PYTHON_DJANGO_INSTRUMENT_SQL_QUERY_PARAMS=False`
+- Capturing SQL statements can expose sensitive data. Review the database instrumentation you use and sanitize or disable sensitive query text where appropriate.
 - High-traffic applications should use sampling to reduce data volume
 
 Configure sampling to only trace a percentage of requests:
@@ -243,7 +241,7 @@ If traces aren't appearing in your backend, check these common issues:
 **Problem: No traces exported**
 - Verify `OTEL_EXPORTER_OTLP_ENDPOINT` is reachable
 - Check firewall rules and network connectivity
-- Enable debug logging with `OTEL_LOG_LEVEL=debug`
+- Enable debug logging with `OTEL_PYTHON_LOG_LEVEL=debug`
 
 **Problem: Instrumentation not loading**
 - Ensure `opentelemetry-bootstrap -a install` was run
@@ -266,13 +264,14 @@ While auto-instrumentation works without code changes, you can add optional conf
 ```python
 # settings.py
 
-# Add OpenTelemetry middleware for enhanced context propagation
+# OpenTelemetry middleware is inserted by auto-instrumentation; keep your normal Django middleware here
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     # ... other middleware
 ]
 
-# Configure logging to capture logs with trace context
+# Configure standard Django logging. To inject trace context into log records,
+# also set OTEL_PYTHON_LOG_CORRELATION=true.
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,

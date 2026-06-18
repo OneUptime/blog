@@ -457,7 +457,7 @@ data:
     -----END CERTIFICATE-----
 ```
 
-The repository secret itself only needs the standard fields. If the Git server also requires mTLS client authentication, add `tlsClientCertData` and `tlsClientCertKey` — these hold the client certificate ArgoCD presents to the server, not the server's CA.
+The repository secret itself only needs the standard fields. If the Git server also requires mTLS client authentication, add `tlsClientCertData` and `tlsClientCertKey` - these hold the client certificate ArgoCD presents to the server, not the server's CA.
 
 ```yaml
 # argocd-self-hosted-repo.yaml

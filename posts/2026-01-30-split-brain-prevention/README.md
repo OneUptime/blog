@@ -686,7 +686,7 @@ flowchart TB
 
 ### etcd Witness Node Configuration
 
-Note: etcd does not have a dedicated witness/arbiter member type. All voting members in etcd replicate the full keyspace. The pattern below deploys a third voting member (joined first as a learner, then promoted) sized smaller than the main data nodes — it still stores all data, but its purpose in the topology is primarily to break ties for quorum.
+Note: etcd does not have a dedicated witness/arbiter member type. All voting members in etcd replicate the full keyspace. The pattern below deploys a third voting member (joined first as a learner, then promoted) sized smaller than the main data nodes - it still stores all data, but its purpose in the topology is primarily to break ties for quorum.
 
 ```yaml
 # etcd-witness-statefulset.yaml

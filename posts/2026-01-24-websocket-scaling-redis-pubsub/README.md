@@ -353,6 +353,11 @@ class PresenceManager {
         redisSubscriber.on('message', (channel, message) => {
             if (channel === 'presence:updates') {
                 this.handlePresenceUpdate(JSON.parse(message));
+                return;
+            }
+
+            if (channel.startsWith('user:')) {
+                this.handleTargetedMessage(channel, JSON.parse(message));
             }
         });
     }
@@ -465,6 +470,19 @@ class PresenceManager {
         });
     }
 
+    handleTargetedMessage(channel, data) {
+        // Deliver a user-specific message published by another server
+        if (data.serverId === SERVER_ID) {
+            return;
+        }
+
+        const userId = channel.replace('user:', '');
+        const localWs = this.localUsers.get(userId);
+        if (localWs && localWs.readyState === WebSocket.OPEN) {
+            localWs.send(JSON.stringify(data.payload));
+        }
+    }
+
     // Send message to specific user (wherever they are)
     async sendToUser(userId, payload) {
         // Check if user is local
@@ -520,6 +538,7 @@ wss.on('connection', async function(ws) {
 
     ws.on('close', async function() {
         if (ws.userId) {
+            redisSubscriber.unsubscribe(`user:${ws.userId}`);
             await presenceManager.userDisconnected(ws.userId);
         }
     });
@@ -562,7 +581,9 @@ class OrderedMessageBroker {
 
     async startConsuming(streamName, callback) {
         const stream = `stream:${streamName}`;
-        const groupName = `ws-servers`;
+        // Use one consumer group per server so every server receives every message.
+        // A shared group would load-balance messages across servers instead.
+        const groupName = `ws-server-${SERVER_ID}`;
         const consumerName = SERVER_ID;
 
         // Create consumer group if it does not exist
@@ -718,7 +739,7 @@ flowchart TB
         WS3[Server 3]
     end
 
-    subgraph RedisCluster["Redis Cluster"]
+    subgraph RedisSentinel["Redis Sentinel Deployment"]
         RM[Redis Master]
         RS1[Redis Replica 1]
         RS2[Redis Replica 2]
@@ -1047,4 +1068,4 @@ Scaling WebSocket applications with Redis Pub/Sub involves:
 6. Performance optimization through batching and pipelining
 7. Comprehensive metrics for monitoring
 
-Redis Pub/Sub provides a reliable and performant foundation for scaling WebSocket applications. Choose the right patterns based on your requirements: simple Pub/Sub for basic broadcasting, Streams for ordering guarantees, and proper HA configuration for production deployments.
+Redis Pub/Sub provides a low-latency and performant foundation for scaling WebSocket applications, but it uses at-most-once delivery and does not persist messages for disconnected subscribers. Choose the right patterns based on your requirements: simple Pub/Sub for basic broadcasting, Streams for ordering and persistence, and proper HA configuration for production deployments.

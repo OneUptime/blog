@@ -229,7 +229,7 @@ Step-up MFA requires additional authentication when accessing high-value secrets
 # This policy grants access to sensitive paths and requires MFA via the
 # legacy Step-Up Enterprise MFA `mfa_methods` field (Vault Enterprise).
 # For Vault Community Edition, enforce MFA via `identity/mfa/login-enforcement`
-# instead — ACL policies have no path-level MFA field in CE.
+# instead - ACL policies have no path-level MFA field in CE.
 
 path "secret/data/production/*" {
     capabilities = ["read", "list"]
@@ -386,7 +386,7 @@ vault write sys/mfa/method/totp/my-totp/admin-generate \
 # Step 4: Provide QR code to user securely
 
 # Step 5: Review audit log entries for the recovery event
-# (Read directly from the configured audit log file — Vault has no `audit log` subcommand)
+# (Read directly from the configured audit log file - Vault has no `audit log` subcommand)
 jq 'select(.request.path | contains("mfa"))' /var/log/vault/audit.log
 ```
 
@@ -422,7 +422,7 @@ Allow users to manage their own MFA enrollment.
 # self-service-mfa.hcl
 # Allow users to manage their own MFA enrollment.
 # The user-facing `generate` endpoint uses the calling token's entity
-# automatically — no entity_id parameter is needed.
+# automatically - no entity_id parameter is needed.
 
 path "sys/mfa/method/totp/my-totp/generate" {
     capabilities = ["update"]
@@ -457,7 +457,7 @@ if [ -z "$ENTITY_ID" ]; then
 fi
 
 # Generate TOTP enrollment for the calling token's entity.
-# The user `generate` endpoint takes no entity_id — it always uses
+# The user `generate` endpoint takes no entity_id - it always uses
 # the entity of the calling token.
 RESULT=$(vault write -format=json -force sys/mfa/method/totp/my-totp/generate)
 

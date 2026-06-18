@@ -50,13 +50,16 @@ import os
 import time
 import threading
 from queue import Queue, Full
-from opentelemetry import trace, metrics
+from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import SimpleSpanProcessor
-from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.trace.export import (
+    SimpleSpanProcessor,
+    SpanExporter,
+    SpanExportResult,
+)
 from opentelemetry.sdk.resources import Resource
 
-class LightweightSpanExporter:
+class LightweightSpanExporter(SpanExporter):
     """
     Custom exporter that buffers spans and exports on schedule
     to minimize network usage and handle connectivity loss.
@@ -86,6 +89,7 @@ class LightweightSpanExporter:
                     self.queue.put_nowait(span_data)
                 except:
                     pass
+        return SpanExportResult.SUCCESS
 
     def _span_to_dict(self, span):
         """
@@ -124,7 +128,7 @@ class LightweightSpanExporter:
 
     def _send_spans(self, spans):
         """
-        Send spans to the collector endpoint.
+        Send spans to the gateway bridge endpoint.
         """
         import json
         import urllib.request
@@ -145,6 +149,14 @@ class LightweightSpanExporter:
                 except Full:
                     break  # Queue full, drop remaining
 
+    def shutdown(self):
+        self._running = False
+        self._flush()
+
+    def force_flush(self, timeout_millis=30000):
+        self._flush()
+        return True
+
 
 def configure_iot_telemetry():
     """
@@ -159,7 +171,7 @@ def configure_iot_telemetry():
 
     # Configure tracing with lightweight exporter
     exporter = LightweightSpanExporter(
-        endpoint=os.getenv("COLLECTOR_ENDPOINT", "http://gateway:4318/v1/traces"),
+        endpoint=os.getenv("IOT_BRIDGE_ENDPOINT", "http://gateway:8080/traces"),
         max_queue_size=50,      # Small queue to save memory
         export_interval=300     # Export every 5 minutes
     )
@@ -179,6 +191,7 @@ For extremely constrained devices running MicroPython:
 # micropython_telemetry.py
 import ujson
 import urequests
+import ubinascii
 import machine
 import time
 
@@ -229,7 +242,7 @@ class MicroTelemetry:
 
     def flush(self):
         """
-        Send buffered data to collector.
+        Send buffered data to a bridge that converts it to OTLP.
         Call this periodically or when connectivity is available.
         """
         if not self.buffer:
@@ -242,9 +255,10 @@ class MicroTelemetry:
                 data=payload,
                 headers={'Content-Type': 'application/json'}
             )
+            status_code = response.status_code
             response.close()
 
-            if response.status_code == 200:
+            if 200 <= status_code < 300:
                 self.buffer = []
                 return True
             return False
@@ -255,7 +269,7 @@ class MicroTelemetry:
 
 # Example usage
 telemetry = MicroTelemetry(
-    device_id=machine.unique_id().hex(),
+    device_id=ubinascii.hexlify(machine.unique_id()).decode(),
     collector_url="http://192.168.1.100:8080/telemetry"
 )
 
@@ -273,22 +287,16 @@ if wifi_connected():
 
 ## Gateway Collector for IoT
 
-Deploy a gateway collector that receives data from IoT devices and forwards to your backend.
+Deploy a gateway collector that receives OTLP data from IoT devices or local protocol bridges and forwards to your backend. Devices that send compact custom JSON, MQTT, or CoAP payloads need a small bridge service or custom receiver to translate those payloads to OTLP before they enter the Collector.
 
 ```yaml
 # iot-gateway-collector.yaml
 receivers:
-  # Custom HTTP receiver for lightweight IoT payloads
+  # OTLP/HTTP receiver for SDKs and local protocol bridges
   otlp:
     protocols:
       http:
         endpoint: 0.0.0.0:4318
-
-  # Simple HTTP endpoint for MicroPython devices
-  # that cannot use full OTLP protocol
-  httpreceiver:
-    endpoint: 0.0.0.0:8080
-    path: /telemetry
 
 processors:
   # Memory limiter for gateway
@@ -311,16 +319,10 @@ processors:
         value: ${GATEWAY_LOCATION}
         action: upsert
 
-  # Transform minimal format to OTLP
-  transform:
-    metric_statements:
-      - context: datapoint
-        statements:
-          - set(attributes["device.type"], "iot")
-
 exporters:
-  otlphttp:
+  otlp_http:
     endpoint: "https://oneuptime.com/otlp"
+    encoding: json
     headers:
       "x-oneuptime-token": "${ONEUPTIME_TOKEN}"
     compression: gzip
@@ -338,11 +340,11 @@ service:
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, batch, resource]
-      exporters: [otlphttp]
+      exporters: [otlp_http, file]
     traces:
       receivers: [otlp]
       processors: [memory_limiter, batch, resource]
-      exporters: [otlphttp]
+      exporters: [otlp_http, file]
 ```
 
 ## Power-Efficient Telemetry
@@ -353,6 +355,8 @@ For battery-powered devices, minimize wake cycles and network usage.
 # power_efficient_telemetry.py
 import machine
 import time
+import ujson
+import urequests
 
 class PowerEfficientTelemetry:
     """
@@ -411,8 +415,8 @@ class PowerEfficientTelemetry:
         # Connect to network (expensive operation)
         if self._connect_network():
             try:
-                self._send_data(aggregated)
-                self._clear_records()
+                if self._send_data(aggregated):
+                    self._clear_records()
             finally:
                 self._disconnect_network()
 
@@ -454,6 +458,44 @@ class PowerEfficientTelemetry:
         except:
             return 0
 
+    def _read_records(self):
+        records = []
+        try:
+            with open(self.data_file, 'r') as f:
+                for line in f:
+                    timestamp, name, value = line.strip().split(',', 2)
+                    records.append((float(timestamp), name, float(value)))
+        except:
+            pass
+        return records
+
+    def _clear_records(self):
+        with open(self.data_file, 'w') as f:
+            f.write('')
+
+    def _connect_network(self):
+        connect = self.config.get('connect_network')
+        return connect() if connect else True
+
+    def _disconnect_network(self):
+        disconnect = self.config.get('disconnect_network')
+        if disconnect:
+            disconnect()
+
+    def _send_data(self, aggregated):
+        endpoint = self.config.get('endpoint')
+        if not endpoint:
+            return False
+
+        response = urequests.post(
+            endpoint,
+            data=ujson.dumps({'metrics': aggregated}),
+            headers={'Content-Type': 'application/json'}
+        )
+        status_code = response.status_code
+        response.close()
+        return 200 <= status_code < 300
+
     def _get_battery_level(self):
         # Read from ADC connected to battery voltage divider
         adc = machine.ADC(0)
@@ -473,11 +515,11 @@ For constrained networks, use efficient protocols:
 ```yaml
 # mqtt-bridge-collector.yaml
 receivers:
-  # Receive telemetry from IoT devices via MQTT
-  mqtt:
-    broker: "mqtt://broker:1883"
-    topic: "devices/+/telemetry"
-    qos: 1
+  # Receive OTLP data from an MQTT-to-OTLP bridge
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
 
 processors:
   batch:
@@ -485,16 +527,17 @@ processors:
     timeout: 60s
 
 exporters:
-  otlphttp:
+  otlp_http:
     endpoint: "https://oneuptime.com/otlp"
+    encoding: json
     compression: gzip
 
 service:
   pipelines:
     metrics:
-      receivers: [mqtt]
+      receivers: [otlp]
       processors: [batch]
-      exporters: [otlphttp]
+      exporters: [otlp_http]
 ```
 
 ### CoAP for Constrained Devices
@@ -503,6 +546,7 @@ service:
 # coap_telemetry.py
 import aiocoap
 import asyncio
+import time
 
 class CoapTelemetry:
     """

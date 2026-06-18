@@ -82,14 +82,27 @@ class WebSocketDiagnostics {
         return new Promise((resolve) => {
             this.timings.wsStart = performance.now();
 
+            let ws;
+            let settled = false;
+
+            const finish = () => {
+                if (!settled) {
+                    settled = true;
+                    resolve();
+                }
+            };
+
             const timeout = setTimeout(() => {
                 this.timings.wsTimeout = true;
                 this.timings.wsError = 'Connection timeout after 30 seconds';
-                resolve();
+                if (ws) {
+                    ws.close(4000, 'Connection timeout');
+                }
+                finish();
             }, 30000);
 
             try {
-                const ws = new WebSocket(this.url);
+                ws = new WebSocket(this.url);
 
                 ws.onopen = () => {
                     clearTimeout(timeout);
@@ -106,28 +119,30 @@ class WebSocketDiagnostics {
                         this.timings.wsRoundTrip = performance.now() - pingStart;
                         console.log(`Message round-trip: ${this.timings.wsRoundTrip.toFixed(0)}ms`);
                         ws.close();
-                        resolve();
+                        finish();
                     };
                 };
 
                 ws.onerror = (error) => {
                     clearTimeout(timeout);
-                    this.timings.wsError = 'Connection error';
-                    this.timings.wsErrorTime = performance.now() - this.timings.wsStart;
-                    resolve();
+                    if (!settled) {
+                        this.timings.wsError = 'Connection error';
+                        this.timings.wsErrorTime = performance.now() - this.timings.wsStart;
+                    }
+                    finish();
                 };
 
                 ws.onclose = (event) => {
                     clearTimeout(timeout);
-                    if (!this.timings.wsConnected) {
+                    if (!settled && !this.timings.wsConnected) {
                         this.timings.wsError = `Connection closed: ${event.code} ${event.reason}`;
                     }
-                    resolve();
+                    finish();
                 };
             } catch (error) {
                 clearTimeout(timeout);
                 this.timings.wsError = error.message;
-                resolve();
+                finish();
             }
         });
     }
@@ -206,17 +221,26 @@ class TimeoutSafeWebSocket {
         this.pendingRequests = new Map();
         this.requestId = 0;
 
+        this.resetOpenPromise();
         this.connect();
+    }
+
+    resetOpenPromise() {
+        this.openPromise = new Promise((resolve) => {
+            this.resolveOpen = resolve;
+        });
     }
 
     connect() {
         return new Promise((resolve, reject) => {
             console.log(`Connecting to ${this.url} (attempt ${this.retryCount + 1})`);
+            this.connectionTimedOut = false;
 
             // Set connection timeout
             const connectionTimer = setTimeout(() => {
                 if (this.socket) {
-                    this.socket.close();
+                    this.connectionTimedOut = true;
+                    this.socket.close(4000, 'Connection timeout');
                 }
                 this.handleConnectionTimeout();
             }, this.connectionTimeout);
@@ -227,8 +251,10 @@ class TimeoutSafeWebSocket {
                 this.socket.onopen = () => {
                     clearTimeout(connectionTimer);
                     console.log('Connection established');
+                    this.connectionTimedOut = false;
                     this.retryCount = 0;
                     this.startHeartbeat();
+                    this.resolveOpen();
                     resolve();
                 };
 
@@ -261,6 +287,7 @@ class TimeoutSafeWebSocket {
 
     handleClose(event) {
         console.log(`Connection closed: ${event.code}`);
+        this.resetOpenPromise();
 
         // Reject all pending requests
         this.pendingRequests.forEach((request, id) => {
@@ -270,7 +297,7 @@ class TimeoutSafeWebSocket {
         this.pendingRequests.clear();
 
         // Attempt reconnect for abnormal closures
-        if (event.code !== 1000) {
+        if (event.code !== 1000 && !this.connectionTimedOut) {
             this.scheduleRetry();
         }
     }
@@ -303,9 +330,20 @@ class TimeoutSafeWebSocket {
     }
 
     // Send with timeout
-    sendWithTimeout(data, timeout = this.messageTimeout) {
+    async sendWithTimeout(data, timeout = this.messageTimeout) {
+        if (!this.socket || this.socket.readyState === WebSocket.CONNECTING) {
+            await Promise.race([
+                this.openPromise,
+                new Promise((resolve, reject) => {
+                    setTimeout(function() {
+                        reject(new Error('Socket not open'));
+                    }, this.connectionTimeout);
+                })
+            ]);
+        }
+
         return new Promise((resolve, reject) => {
-            if (this.socket.readyState !== WebSocket.OPEN) {
+            if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
                 reject(new Error('Socket not open'));
                 return;
             }
@@ -375,47 +413,51 @@ const server = http.createServer();
 
 // Set HTTP server timeouts
 server.timeout = 120000; // 2 minutes
-server.keepAliveTimeout = 65000; // Slightly higher than typical LB timeout
+server.keepAliveTimeout = 65000; // Higher than the default 60-second ALB idle timeout
 
 const wss = new WebSocket.Server({
-    server: server,
+    noServer: true,
     // Client tracking for cleanup
-    clientTracking: true,
-    // Verify client on connection
-    verifyClient: function(info, callback) {
-        // Add custom verification with timeout
-        const verifyTimeout = setTimeout(function() {
-            callback(false, 408, 'Verification timeout');
-        }, 5000);
-
-        // Your verification logic
-        verifyClientAsync(info)
-            .then(function() {
-                clearTimeout(verifyTimeout);
-                callback(true);
-            })
-            .catch(function(error) {
-                clearTimeout(verifyTimeout);
-                callback(false, 401, error.message);
-            });
-    }
+    clientTracking: true
 });
 
 // Handle upgrade with timeout
 server.on('upgrade', function(request, socket, head) {
     // Set socket timeout during upgrade
     socket.setTimeout(10000); // 10 seconds for upgrade
+    let settled = false;
+
+    function rejectUpgrade(statusCode, message) {
+        if (settled) {
+            return;
+        }
+
+        settled = true;
+        socket.write(`HTTP/1.1 ${statusCode} ${message}\r\n\r\n`);
+        socket.destroy();
+    }
 
     socket.on('timeout', function() {
         console.log('Upgrade timeout');
-        socket.destroy();
+        rejectUpgrade(408, 'Request Timeout');
     });
 
-    wss.handleUpgrade(request, socket, head, function(ws) {
-        // Clear upgrade timeout after successful connection
-        socket.setTimeout(0);
-        wss.emit('connection', ws, request);
-    });
+    // Your verification logic
+    verifyClientAsync({ req: request })
+        .then(function() {
+            if (settled) {
+                return;
+            }
+
+            settled = true;
+            socket.setTimeout(0);
+            wss.handleUpgrade(request, socket, head, function(ws) {
+                wss.emit('connection', ws, request);
+            });
+        })
+        .catch(function(error) {
+            rejectUpgrade(401, error.message || 'Unauthorized');
+        });
 });
 
 wss.on('connection', function(ws, request) {
@@ -473,8 +515,9 @@ wss.on('close', function() {
 });
 
 async function processMessageWithTimeout(ws, message, timeout) {
+    let timeoutId;
     const timeoutPromise = new Promise(function(resolve, reject) {
-        setTimeout(function() {
+        timeoutId = setTimeout(function() {
             reject(new Error('Processing timeout'));
         }, timeout);
     });
@@ -484,12 +527,14 @@ async function processMessageWithTimeout(ws, message, timeout) {
             handleMessage(message),
             timeoutPromise
         ]);
+        clearTimeout(timeoutId);
 
         ws.send(JSON.stringify({
             id: message.id,
             result: result
         }));
     } catch (error) {
+        clearTimeout(timeoutId);
         ws.send(JSON.stringify({
             id: message.id,
             error: error.message
@@ -526,7 +571,8 @@ upstream websocket_servers {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name api.example.com;
 
     # SSL configuration
@@ -568,6 +614,21 @@ server {
 # AWS Application Load Balancer - CloudFormation example
 
 Resources:
+  WebSocketLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: websocket-alb
+      Type: application
+      Scheme: internet-facing
+      Subnets:
+        - !Ref SubnetA
+        - !Ref SubnetB
+      SecurityGroups:
+        - !Ref LoadBalancerSecurityGroup
+      LoadBalancerAttributes:
+        - Key: idle_timeout.timeout_seconds
+          Value: "300"
+
   WebSocketTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
@@ -582,7 +643,7 @@ Resources:
       HealthCheckIntervalSeconds: 30
       HealthyThresholdCount: 2
       UnhealthyThresholdCount: 3
-      # IMPORTANT: Stickiness for WebSocket
+      # Stickiness helps reconnects and related HTTP requests return to the same target
       TargetGroupAttributes:
         - Key: stickiness.enabled
           Value: "true"
@@ -597,9 +658,11 @@ Resources:
   WebSocketListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
     Properties:
-      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      LoadBalancerArn: !Ref WebSocketLoadBalancer
       Port: 443
       Protocol: HTTPS
+      Certificates:
+        - CertificateArn: !Ref CertificateArn
       DefaultActions:
         - Type: forward
           TargetGroupArn: !Ref WebSocketTargetGroup
@@ -679,9 +742,8 @@ class NetworkAwareWebSocket {
             if (this.state === 'connecting') {
                 console.log('Connection timeout');
                 if (this.socket) {
-                    this.socket.close();
+                    this.socket.close(4000, 'Connection timeout');
                 }
-                this.handleDisconnect();
             }
         }, this.options.connectionTimeout || 10000);
 
@@ -892,13 +954,16 @@ async function analyzeConnectionTiming(url) {
         tlsEnd: 0
     };
 
-    // Use Resource Timing API if available
+    // Use Resource Timing API if available. Browser support for WebSocket
+    // resource entries varies, so also measure total connection time manually.
+    const startTime = performance.now();
+
     if (window.PerformanceObserver) {
         const observer = new PerformanceObserver(function(list) {
             const entries = list.getEntries();
             entries.forEach(function(entry) {
-                if (entry.initiatorType === 'websocket') {
-                    console.log('WebSocket Timing:', {
+                if (entry.name === url) {
+                    console.log('Resource Timing:', {
                         dns: entry.domainLookupEnd - entry.domainLookupStart,
                         tcp: entry.connectEnd - entry.connectStart,
                         tls: entry.secureConnectionStart > 0
@@ -918,6 +983,7 @@ async function analyzeConnectionTiming(url) {
 
     return new Promise(function(resolve) {
         ws.onopen = function() {
+            console.log(`WebSocket connection time: ${(performance.now() - startTime).toFixed(0)}ms`);
             ws.close();
             resolve('Connection successful');
         };

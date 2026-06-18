@@ -33,37 +33,45 @@ dist:
   name: otelcol-edge
   # Output directory for the built binary
   output_path: ./dist
-  # Use the core module as the base
-  module: github.com/open-telemetry/opentelemetry-collector
+  # Go module name for the generated distribution
+  module: example.com/otelcol-edge
 
 receivers:
   # OTLP receiver for ingesting traces, metrics, and logs
-  - gomod: go.opentelemetry.io/collector/receiver/otlpreceiver v0.96.0
+  - gomod: go.opentelemetry.io/collector/receiver/otlpreceiver v0.153.0
 
 processors:
   # Batch processor to reduce network calls
-  - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.96.0
+  - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.153.0
   # Memory limiter to prevent OOM on constrained devices
-  - gomod: go.opentelemetry.io/collector/processor/memorylimiterprocessor v0.96.0
+  - gomod: go.opentelemetry.io/collector/processor/memorylimiterprocessor v0.153.0
 
 exporters:
   # OTLP exporter to send data to a central collector or backend
-  - gomod: go.opentelemetry.io/collector/exporter/otlpexporter v0.96.0
-  # File exporter as a fallback when network is unavailable
-  - gomod: go.opentelemetry.io/collector/exporter/fileexporter v0.96.0
+  - gomod: go.opentelemetry.io/collector/exporter/otlpexporter v0.153.0
+
+extensions:
+  # File storage enables a persistent sending queue for network outages
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/storage/filestorage v0.153.0
+
+providers:
+  # Include standard config providers so the collector can read config files and environment values
+  - gomod: go.opentelemetry.io/collector/confmap/provider/envprovider v1.48.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/fileprovider v1.48.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/yamlprovider v1.48.0
 ```
 
 Build the binary with the collector builder:
 
 ```bash
 # Install the OpenTelemetry Collector Builder
-go install go.opentelemetry.io/collector/cmd/builder@latest
+go install go.opentelemetry.io/collector/cmd/builder@v0.153.0
 
 # Build the custom collector from the manifest
 builder --config=builder-config.yaml
 ```
 
-This produces a binary that is typically under 30 MB and uses around 15 to 20 MB of RAM at idle. That is a significant reduction compared to the full distribution.
+This produces a binary that is significantly smaller than the full distribution because it only includes the components you selected. Measure the final binary size and idle memory on your target device, especially if you add more exporters, receivers, or extensions.
 
 ## Configuring the Collector for Minimal Resource Usage
 
@@ -72,6 +80,10 @@ With the custom binary built, the next step is writing a collector configuration
 ```yaml
 # otelcol-edge-config.yaml
 # Collector configuration tuned for edge devices with limited resources
+
+extensions:
+  file_storage:
+    directory: /var/lib/otelcol-edge/storage
 
 receivers:
   otlp:
@@ -87,9 +99,9 @@ processors:
   memory_limiter:
     # Check memory usage every 5 seconds
     check_interval: 5s
-    # Start dropping data at 80 MB to prevent OOM kills
+    # Hard memory limit is 80 MB
     limit_mib: 80
-    # Begin throttling at 60 MB as a soft warning threshold
+    # Start refusing data at 60 MB: limit_mib - spike_limit_mib
     spike_limit_mib: 20
 
   batch:
@@ -113,20 +125,17 @@ exporters:
       initial_interval: 10s
       # Cap retry backoff at 5 minutes
       max_interval: 300s
+      # Keep retrying queued data until the queue fills or disk storage fails
+      max_elapsed_time: 0
     sending_queue:
       enabled: true
+      # Store the queue on disk so it survives collector restarts
+      storage: file_storage
       # Small queue to limit memory usage
       queue_size: 50
 
-  file:
-    # Fallback: write telemetry to local file when network is down
-    path: /var/otel/buffer.json
-    rotation:
-      # Rotate files at 10 MB to prevent disk fill
-      max_megabytes: 10
-      max_backups: 3
-
 service:
+  extensions: [file_storage]
   pipelines:
     traces:
       receivers: [otlp]
@@ -153,7 +162,7 @@ For edge scenarios, tail-based sampling at the device level is too memory-intens
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.sampling import TraceIdRatioBased
-from opentelemetry.sdk.trace.export import BatchSpanExporter
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 
 # Sample only 10% of traces to reduce data volume
@@ -162,14 +171,14 @@ sampler = TraceIdRatioBased(0.1)
 
 provider = TracerProvider(sampler=sampler)
 
-# Configure the batch exporter with conservative settings
+# Configure the batch span processor with conservative settings
 exporter = OTLPSpanExporter(
     endpoint="localhost:4317",
     insecure=True,
 )
 
 # Use small batch sizes and longer delays for edge devices
-span_processor = BatchSpanExporter(
+span_processor = BatchSpanProcessor(
     exporter,
     max_queue_size=256,        # Keep queue small
     max_export_batch_size=32,  # Small batches
@@ -200,31 +209,7 @@ The gateway collector runs the full OpenTelemetry distribution with tail-based s
 
 Edge devices frequently lose connectivity. Your telemetry pipeline needs to handle this gracefully without losing data or crashing the collector.
 
-The file exporter serves as a local buffer. When the primary OTLP exporter fails to reach the gateway, data gets written to disk. You can then set up a simple cron job or watchdog process to replay the buffered data once connectivity returns:
-
-```bash
-#!/bin/bash
-# replay-buffer.sh
-# Replays buffered telemetry data when network connectivity returns
-
-BUFFER_FILE="/var/otel/buffer.json"
-GATEWAY="gateway-collector.example.com:4317"
-
-# Check if the gateway is reachable
-if nc -z -w 5 gateway-collector.example.com 4317 2>/dev/null; then
-    if [ -f "$BUFFER_FILE" ] && [ -s "$BUFFER_FILE" ]; then
-        echo "Network available. Replaying buffered telemetry..."
-        # Use the collector's file receiver or a custom script to replay
-        curl -X POST "http://localhost:4318/v1/traces" \
-            -H "Content-Type: application/json" \
-            -d @"$BUFFER_FILE"
-        # Clear the buffer after successful replay
-        truncate -s 0 "$BUFFER_FILE"
-    fi
-fi
-```
-
-This approach ensures you do not lose telemetry data during network outages while keeping the collector itself simple and stateless.
+The OTLP exporter's sending queue handles short outages in memory. For longer outages or collector restarts, configure the queue with the `file_storage` extension as shown above. The collector writes queued export requests to a local write-ahead log and resumes sending them when the gateway becomes reachable again. Size the storage directory carefully, because data can still be dropped if the queue fills, the disk runs out of space, or the outage lasts longer than your retry policy allows.
 
 ## Monitoring the Collector Itself
 
@@ -236,14 +221,19 @@ service:
   telemetry:
     logs:
       # Reduce log verbosity on edge devices
-      level: warn
+      level: WARN
     metrics:
       # Expose collector internal metrics on a local port
-      address: 127.0.0.1:8888
       level: basic
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 127.0.0.1
+                port: 8888
 ```
 
-Setting the log level to `warn` instead of the default `info` reduces disk I/O and log volume. The `basic` metrics level exposes only essential counters like accepted and dropped spans, which is enough to detect problems without adding overhead.
+Setting the log level to `WARN` instead of the default `INFO` reduces disk I/O and log volume. The `basic` metrics level exposes only essential counters like accepted and dropped spans, which is enough to detect problems without adding overhead.
 
 Resource Limits with systemd
 

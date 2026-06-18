@@ -51,8 +51,8 @@ First, create a new .NET project with the required packages.
 ```bash
 dotnet new webapi -n FileProcessingService
 cd FileProcessingService
-dotnet add package Azure.Storage.Blobs
-dotnet add package Microsoft.Extensions.Hosting
+dotnet package add Azure.Storage.Blobs
+dotnet package add Microsoft.Extensions.Hosting
 ```
 
 ## File Upload API
@@ -86,7 +86,6 @@ public class FileController : ControllerBase
     // Stream upload directly to storage without buffering in memory
     [HttpPost("upload")]
     [RequestSizeLimit(500_000_000)] // 500 MB limit
-    [DisableRequestSizeLimit]
     public async Task<IActionResult> Upload()
     {
         // Check content type for multipart form data
@@ -194,9 +193,11 @@ public class AzureBlobStorageService : IFileStorageService
 
     public async Task UploadStreamAsync(string path, Stream content)
     {
+        await _container.CreateIfNotExistsAsync();
+
         var blob = _container.GetBlobClient(path);
 
-        // Upload with progress tracking for large files
+        // Upload with transfer options for large files
         var options = new BlobUploadOptions
         {
             TransferOptions = new Azure.Storage.StorageTransferOptions
@@ -227,11 +228,13 @@ public class AzureBlobStorageService : IFileStorageService
 
 ## Background Worker Service
 
-The worker service processes files from the queue. It runs as a hosted service and can scale horizontally by running multiple instances.
+The worker service processes files from the queue. It runs as a hosted service and can scale horizontally by running multiple instances when backed by a shared persistent queue.
 
 ```csharp
 // Services/FileProcessingWorker.cs
+using System.Text.Json;
 using System.Threading.Channels;
+using System.Xml;
 
 public class FileProcessingWorker : BackgroundService
 {
@@ -382,17 +385,13 @@ public class FileProcessingWorker : BackgroundService
         Stream stream,
         FileProcessingJob job)
     {
-        // Stream JSON parsing for large files
-        var document = await JsonDocument.ParseAsync(stream);
+        // Stream JSON array parsing for large files
         var elementCount = 0;
 
-        if (document.RootElement.ValueKind == JsonValueKind.Array)
+        await foreach (var element in JsonSerializer.DeserializeAsyncEnumerable<JsonElement>(stream))
         {
-            foreach (var element in document.RootElement.EnumerateArray())
-            {
-                // Process each element
-                elementCount++;
-            }
+            // Process each element
+            elementCount++;
         }
 
         return new ProcessingResult { RowsProcessed = elementCount };
@@ -436,6 +435,7 @@ A simple in-memory queue works for development, but production systems need a pe
 
 ```csharp
 // Services/JobQueue.cs
+using System.Collections.Concurrent;
 using System.Threading.Channels;
 
 public interface IJobQueue

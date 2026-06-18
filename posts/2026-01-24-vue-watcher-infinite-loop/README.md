@@ -36,7 +36,7 @@ flowchart TD
     E --> B
     D -->|Yes| F[Stop - No Change]
     C -->|No| G[Complete - No Loop]
-    E -->|Max Iterations| H[Vue Warning: Infinite Loop]
+    E -->|Max Updates| H[Vue Warning: Maximum Recursive Updates]
 ```
 
 ---
@@ -88,7 +88,7 @@ watch(inputValue, (newValue) => {
 
 ## Cause 2: Object Mutation with Deep Watch
 
-Deep watching objects while mutating them causes loops.
+Deep watching objects while mutating the watched object can cause loops.
 
 ```javascript
 // BAD: Mutating watched object
@@ -109,7 +109,7 @@ watch(
 )
 ```
 
-### Solution: Use Immutable Updates
+### Solution: Track Related State Separately
 
 ```javascript
 // GOOD: Track visits separately
@@ -156,7 +156,7 @@ watch(
 
 ## Cause 3: Circular Watcher Dependencies
 
-Multiple watchers triggering each other create loops.
+Multiple watchers triggering each other can create loops when each update produces a new value.
 
 ```mermaid
 flowchart LR
@@ -171,18 +171,18 @@ flowchart LR
 // BAD: Circular watcher dependencies
 import { ref, watch } from 'vue'
 
-const celsius = ref(0)
-const fahrenheit = ref(32)
+const stateA = ref(0)
+const stateB = ref(0)
 
-// Watcher A: celsius changes -> update fahrenheit
-watch(celsius, (c) => {
-  fahrenheit.value = (c * 9/5) + 32
+// Watcher A: stateA changes -> update stateB
+watch(stateA, (value) => {
+  stateB.value = value + 1
 })
 
-// Watcher B: fahrenheit changes -> update celsius
+// Watcher B: stateB changes -> update stateA
 // This creates a loop!
-watch(fahrenheit, (f) => {
-  celsius.value = (f - 32) * 5/9
+watch(stateB, (value) => {
+  stateA.value = value + 1
 })
 ```
 
@@ -192,18 +192,18 @@ watch(fahrenheit, (f) => {
 // GOOD: Use writable computed property
 import { ref, computed } from 'vue'
 
-const celsius = ref(0)
+const stateA = ref(0)
 
-const fahrenheit = computed({
+const stateB = computed({
   get() {
-    return (celsius.value * 9/5) + 32
+    return stateA.value + 1
   },
-  set(f) {
-    celsius.value = (f - 32) * 5/9
+  set(value) {
+    stateA.value = value - 1
   }
 })
 
-// Now both can be used as v-model without loops
+// stateA is the single source of truth
 ```
 
 ### Solution: Use Flags to Break Cycle
@@ -212,23 +212,23 @@ const fahrenheit = computed({
 // GOOD: Use flag to prevent circular updates
 import { ref, watch } from 'vue'
 
-const celsius = ref(0)
-const fahrenheit = ref(32)
+const stateA = ref(0)
+const stateB = ref(0)
 let isUpdating = false
 
-watch(celsius, (c) => {
+watch(stateA, (value) => {
   if (isUpdating) return
   isUpdating = true
-  fahrenheit.value = (c * 9/5) + 32
+  stateB.value = value + 1
   isUpdating = false
-})
+}, { flush: 'sync' })
 
-watch(fahrenheit, (f) => {
+watch(stateB, (value) => {
   if (isUpdating) return
   isUpdating = true
-  celsius.value = (f - 32) * 5/9
+  stateA.value = value + 1
   isUpdating = false
-})
+}, { flush: 'sync' })
 ```
 
 ---
@@ -309,11 +309,9 @@ const data = ref(null)
 
 watch(
   data,
-  async (newData) => {
-    if (!newData) {
-      // This triggers immediately and loops!
-      data.value = await fetchData()
-    }
+  async () => {
+    // This triggers immediately, then keeps assigning new values
+    data.value = await fetchData()
   },
   { immediate: true }
 )
@@ -387,7 +385,7 @@ watch(
     // Inspect call stack
   },
   {
-    // Label for DevTools
+    // Debug watcher dependency tracking
     onTrack(e) {
       console.log('Tracking:', e)
     },
@@ -486,18 +484,18 @@ watch(searchQuery, (query) => {
 ### Pattern 3: One-Time Watch
 
 ```javascript
-import { ref, watchEffect } from 'vue'
+import { ref, watch } from 'vue'
 
 const data = ref(null)
 
-// Watch that automatically stops
-const stop = watchEffect(() => {
-  if (data.value) {
-    console.log('Data loaded:', data.value)
-    // Stop watching after first load
-    stop()
-  }
-})
+// Watch that automatically stops after the first change
+watch(
+  data,
+  (newData) => {
+    console.log('Data loaded:', newData)
+  },
+  { once: true }
+)
 ```
 
 ### Pattern 4: Flush Timing
@@ -510,7 +508,7 @@ const value = ref(0)
 // Pre-flush: runs before DOM updates
 watch(value, handler, { flush: 'pre' })
 
-// Post-flush: runs after DOM updates (default)
+// Post-flush: runs after DOM updates
 watch(value, handler, { flush: 'post' })
 
 // Sync: runs immediately (use with caution)

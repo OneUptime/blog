@@ -338,7 +338,7 @@ Unlike many controllers, ArgoCD does not use an external relational database. Al
 - **Repository, cluster, and SSO credentials** live in Secrets.
 - **Redis** is used only as a cache; losing Redis is recoverable because state is rebuilt from Kubernetes.
 
-For HA, this means etcd reliability and your Kubernetes backup strategy (for example Velero of the `argocd` namespace plus CRDs) are what protect ArgoCD state — there is no separate database tier to provision or replicate.
+For HA, this means etcd reliability and your Kubernetes backup strategy (for example Velero of the `argocd` namespace plus CRDs) are what protect ArgoCD state - there is no separate database tier to provision or replicate.
 
 ## Network Policies for Security
 

@@ -503,7 +503,7 @@ WHERE NOT blocked_locks.granted;
 ### MySQL: View Current Locks
 
 ```sql
--- InnoDB lock waits (MySQL 5.7 and earlier — removed in MySQL 8.0)
+-- InnoDB lock waits (MySQL 5.7 and earlier - removed in MySQL 8.0)
 SELECT * FROM information_schema.INNODB_LOCK_WAITS;
 
 -- MySQL 8.0+: use performance_schema instead

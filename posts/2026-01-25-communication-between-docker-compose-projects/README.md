@@ -48,8 +48,6 @@ docker network ls | grep shared-network
 
 ```yaml
 # project-a/docker-compose.yml
-version: '3.8'
-
 services:
   api:
     build: ./api
@@ -73,8 +71,6 @@ networks:
 
 ```yaml
 # project-b/docker-compose.yml
-version: '3.8'
-
 services:
   database:
     image: postgres:15
@@ -117,8 +113,6 @@ Instead of creating a new network, one project can join the network created by a
 
 ```yaml
 # project-a/docker-compose.yml
-version: '3.8'
-
 services:
   api:
     build: ./api
@@ -137,8 +131,6 @@ services:
 
 ```yaml
 # project-b/docker-compose.yml
-version: '3.8'
-
 services:
   worker:
     build: ./worker
@@ -163,8 +155,6 @@ For simpler setups, expose services on host ports and connect via `host.docker.i
 
 ```yaml
 # project-a/docker-compose.yml - Database project
-version: '3.8'
-
 services:
   database:
     image: postgres:15
@@ -176,8 +166,6 @@ services:
 
 ```yaml
 # project-b/docker-compose.yml - Application project
-version: '3.8'
-
 services:
   api:
     build: ./api
@@ -201,8 +189,6 @@ Give services meaningful names that work across networks:
 
 ```yaml
 # project-a/docker-compose.yml
-version: '3.8'
-
 services:
   postgres:
     image: postgres:15
@@ -223,8 +209,6 @@ networks:
 
 ```yaml
 # project-b/docker-compose.yml
-version: '3.8'
-
 services:
   app:
     build: .
@@ -247,8 +231,6 @@ Here is a realistic setup with three projects: shared infrastructure, backend AP
 
 ```yaml
 # infrastructure/docker-compose.yml
-version: '3.8'
-
 services:
   postgres:
     image: postgres:15
@@ -274,6 +256,7 @@ services:
 networks:
   infra-network:
     name: shared-infra  # Explicit name for clarity
+    external: true
 
 volumes:
   postgres_data:
@@ -284,8 +267,6 @@ volumes:
 
 ```yaml
 # backend/docker-compose.yml
-version: '3.8'
-
 services:
   api:
     build: .
@@ -312,15 +293,13 @@ networks:
   shared-infra:
     external: true
   backend-internal:
-    # Internal network for backend services only
+    # Project-specific network for backend services only
 ```
 
 ### Frontend Project
 
 ```yaml
 # frontend/docker-compose.yml
-version: '3.8'
-
 services:
   web:
     build: .
@@ -378,11 +357,11 @@ docker network ls
 # Inspect a network to see connected containers
 docker network inspect shared-infra
 
-# Test DNS resolution from a container
-docker exec api ping -c 3 database
+# Test DNS resolution from a service container
+docker compose exec api ping -c 3 database
 
 # Test TCP connectivity
-docker exec api nc -zv database 5432
+docker compose exec api nc -zv database 5432
 ```
 
 ### Verify Service Names
@@ -392,7 +371,7 @@ docker exec api nc -zv database 5432
 docker network inspect shared-infra --format='{{range .Containers}}{{.Name}} {{end}}'
 
 # Check what networks a container is connected to
-docker inspect api --format='{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}'
+docker inspect "$(docker compose ps -q api)" --format='{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}'
 ```
 
 ### Common Issues

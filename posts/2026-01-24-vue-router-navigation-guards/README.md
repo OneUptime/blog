@@ -20,16 +20,21 @@ Vue Router provides three levels of navigation guards:
 
 ```mermaid
 flowchart TD
-    A[Navigation Triggered] --> B[Global beforeEach]
-    B --> C[Per-Route beforeEnter]
-    C --> D[Component beforeRouteEnter]
-    D --> E[Resolve Guards]
-    E --> F[Global afterEach]
-    F --> G[Navigation Confirmed]
+    A[Navigation Triggered] --> B[Component beforeRouteLeave]
+    B --> C[Global beforeEach]
+    C --> D[Component beforeRouteUpdate]
+    D --> E[Per-Route beforeEnter]
+    E --> F[Component beforeRouteEnter]
+    F --> G[Global beforeResolve]
+    G --> H[Navigation Confirmed]
+    H --> I[Global afterEach]
 
-    B -.->|Can Cancel| H[Navigation Aborted]
-    C -.->|Can Cancel| H
-    D -.->|Can Cancel| H
+    B -.->|Can Cancel| J[Navigation Aborted]
+    C -.->|Can Cancel| J
+    D -.->|Can Cancel| J
+    E -.->|Can Cancel| J
+    F -.->|Can Cancel| J
+    G -.->|Can Cancel| J
 ```
 
 ---
@@ -413,15 +418,19 @@ sequenceDiagram
     C-->>R: Allow
     R->>G: beforeEach
     G-->>R: Allow
+    R->>C: beforeRouteUpdate (reused)
+    C-->>R: Allow
     R->>RG: beforeEnter
     RG-->>R: Allow
+    R->>C: Resolve async route components
     R->>C: beforeRouteEnter (new)
     C-->>R: Allow
     R->>G: beforeResolve
     G-->>R: Confirmed
-    R->>R: Update URL
+    R->>R: Navigation confirmed
     R->>G: afterEach
-    R->>C: Render Component
+    R->>C: DOM updates triggered
+    R->>C: beforeRouteEnter next callbacks
 ```
 
 ---
@@ -557,9 +566,10 @@ export function createProgressGuard(router) {
 ```javascript
 // composables/useNavigationConfirm.js
 import { ref } from 'vue'
-import { onBeforeRouteLeave } from 'vue-router'
+import { onBeforeRouteLeave, useRouter } from 'vue-router'
 
 export function useNavigationConfirm(shouldConfirm) {
+  const router = useRouter()
   const showModal = ref(false)
   const pendingNavigation = ref(null)
 
@@ -577,6 +587,7 @@ export function useNavigationConfirm(shouldConfirm) {
       // Temporarily disable confirmation
       shouldConfirm.value = false
       router.push(pendingNavigation.value)
+      pendingNavigation.value = null
     }
   }
 

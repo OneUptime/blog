@@ -57,7 +57,7 @@ graph TB
 
 Before configuring IRSA:
 
-- EKS cluster (v1.21+)
+- A supported EKS cluster version
 - AWS CLI configured with appropriate permissions
 - eksctl or Terraform for infrastructure management
 - kubectl configured for your cluster
@@ -74,7 +74,7 @@ Create an EKS cluster with IRSA enabled or enable it on existing clusters:
 eksctl create cluster \
   --name production \
   --region us-east-1 \
-  --version 1.28 \
+  --version 1.34 \
   --with-oidc
 
 # Enable IRSA on existing cluster
@@ -99,7 +99,7 @@ Using Terraform:
 resource "aws_eks_cluster" "production" {
   name     = "production"
   role_arn = aws_iam_role.cluster.arn
-  version  = "1.28"
+  version  = "1.34"
 
   vpc_config {
     subnet_ids = var.subnet_ids
@@ -140,6 +140,8 @@ Create an IAM role with the appropriate trust policy:
 locals {
   oidc_provider_url = replace(aws_eks_cluster.production.identity[0].oidc[0].issuer, "https://", "")
 }
+
+data "aws_caller_identity" "current" {}
 
 # IAM role for the application
 resource "aws_iam_role" "app_role" {
@@ -184,13 +186,16 @@ resource "aws_iam_role_policy" "s3_access" {
         Action = [
           "s3:GetObject",
           "s3:PutObject",
-          "s3:DeleteObject",
+          "s3:DeleteObject"
+        ]
+        Resource = "arn:aws:s3:::my-app-bucket/*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
           "s3:ListBucket"
         ]
-        Resource = [
-          "arn:aws:s3:::my-app-bucket",
-          "arn:aws:s3:::my-app-bucket/*"
-        ]
+        Resource = "arn:aws:s3:::my-app-bucket"
       }
     ]
   })
@@ -446,18 +451,17 @@ objects = s3_cross_account.list_objects_v2(Bucket='shared-data-bucket')
 EKS Pod Identity is a newer, simpler alternative to IRSA:
 
 ```bash
+# Install Pod Identity agent addon
+aws eks create-addon \
+  --cluster-name production \
+  --addon-name eks-pod-identity-agent
+
 # Create Pod Identity association
 aws eks create-pod-identity-association \
   --cluster-name production \
   --namespace production \
   --service-account my-app \
-  --role-arn arn:aws:iam::123456789012:role/eks-app-role
-
-# Install Pod Identity agent addon
-aws eks create-addon \
-  --cluster-name production \
-  --addon-name eks-pod-identity-agent \
-  --addon-version v1.0.0-eksbuild.1
+  --role-arn arn:aws:iam::123456789012:role/eks-pod-identity-role
 ```
 
 Using Terraform:
@@ -470,14 +474,6 @@ Using Terraform:
 resource "aws_eks_addon" "pod_identity" {
   cluster_name = aws_eks_cluster.production.name
   addon_name   = "eks-pod-identity-agent"
-}
-
-# Create Pod Identity association
-resource "aws_eks_pod_identity_association" "app" {
-  cluster_name    = aws_eks_cluster.production.name
-  namespace       = "production"
-  service_account = "my-app"
-  role_arn        = aws_iam_role.app_role.arn
 }
 
 # Role for Pod Identity (simpler trust policy)
@@ -499,6 +495,14 @@ resource "aws_iam_role" "pod_identity_role" {
       }
     ]
   })
+}
+
+# Create Pod Identity association
+resource "aws_eks_pod_identity_association" "app" {
+  cluster_name    = aws_eks_cluster.production.name
+  namespace       = "production"
+  service_account = "my-app"
+  role_arn        = aws_iam_role.pod_identity_role.arn
 }
 ```
 
@@ -527,9 +531,6 @@ spec:
     spec:
       serviceAccountName: secure-app
 
-      # Don't mount default service account token
-      automountServiceAccountToken: false
-
       containers:
       - name: app
         image: my-app:1.0
@@ -547,21 +548,6 @@ spec:
           capabilities:
             drop:
             - ALL
-
-        # Mount IRSA token explicitly
-        volumeMounts:
-        - name: aws-token
-          mountPath: /var/run/secrets/eks.amazonaws.com/serviceaccount
-          readOnly: true
-
-      volumes:
-      - name: aws-token
-        projected:
-          sources:
-          - serviceAccountToken:
-              path: token
-              expirationSeconds: 3600
-              audience: sts.amazonaws.com
 ```
 
 Restrict role assumption with conditions:
@@ -625,21 +611,29 @@ resource "aws_cloudtrail" "irsa" {
   }
 }
 
+resource "aws_cloudwatch_log_metric_filter" "irsa_access_denied" {
+  name           = "irsa-access-denied"
+  log_group_name = aws_cloudwatch_log_group.irsa_audit.name
+  pattern        = "{ ($.eventSource = \"sts.amazonaws.com\") && (($.eventName = \"AssumeRoleWithWebIdentity\") || ($.eventName = \"AssumeRole\")) && ($.errorCode = \"AccessDenied\") }"
+
+  metric_transformation {
+    name      = "IRSAAssumeRoleAccessDenied"
+    namespace = "EKS/IRSA"
+    value     = "1"
+  }
+}
+
 # CloudWatch alarm for suspicious activity
 resource "aws_cloudwatch_metric_alarm" "irsa_errors" {
   alarm_name          = "irsa-assume-role-errors"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 2
-  metric_name         = "CallCount"
-  namespace           = "AWS/STS"
+  metric_name         = "IRSAAssumeRoleAccessDenied"
+  namespace           = "EKS/IRSA"
   period              = 300
   statistic           = "Sum"
   threshold           = 10
   alarm_description   = "High rate of STS AssumeRole errors"
-
-  dimensions = {
-    ErrorCode = "AccessDenied"
-  }
 }
 ```
 

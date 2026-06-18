@@ -52,11 +52,11 @@ Before implementing admission controllers:
 Kubernetes includes several built-in admission controllers. Ensure critical ones are enabled:
 
 ```bash
-# Check enabled admission controllers
+# Confirm the admissionregistration API is available
 
-kubectl api-versions
+kubectl api-versions | grep admissionregistration.k8s.io
 
-# Verify specific controllers via API server flags
+# On self-managed control planes, verify specific controllers via API server flags
 kubectl get pod -n kube-system -l component=kube-apiserver -o yaml | \
   grep enable-admission-plugins
 ```
@@ -92,15 +92,14 @@ constraintViolationsLimit: 20
 # Webhook configuration
 validatingWebhookTimeoutSeconds: 3
 mutatingWebhookTimeoutSeconds: 3
-webhookFailurePolicy: Fail
+validatingWebhookFailurePolicy: Fail
+mutatingWebhookFailurePolicy: Fail
 
-# Exempt certain namespaces from policies
-exemptNamespaces:
-  - kube-system
-  - gatekeeper-system
-
-# Resource limits
+# Resource limits and namespace exemptions
 controllerManager:
+  exemptNamespaces:
+    - kube-system
+    - gatekeeper-system
   resources:
     requests:
       cpu: 100m
@@ -210,6 +209,9 @@ spec:
     spec:
       names:
         kind: K8sPSPPrivilegedContainer
+      validation:
+        openAPIV3Schema:
+          type: object
   targets:
   - target: admission.k8s.gatekeeper.sh
     rego: |
@@ -253,6 +255,9 @@ spec:
     spec:
       names:
         kind: K8sPSPHostNamespace
+      validation:
+        openAPIV3Schema:
+          type: object
   targets:
   - target: admission.k8s.gatekeeper.sh
     rego: |
@@ -297,24 +302,23 @@ Kyverno provides Kubernetes-native policy management:
 # kyverno-values.yaml
 # Helm values for Kyverno
 
-replicaCount: 3
-
-# Webhook configuration
-webhookTimeoutSeconds: 10
-webhookFailurePolicy: Fail
-
-# Resource limits
-resources:
-  requests:
-    cpu: 100m
-    memory: 256Mi
-  limits:
-    cpu: 500m
-    memory: 384Mi
+admissionController:
+  replicas: 3
+  container:
+    extraArgs:
+      webhookTimeout: 10
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 384Mi
 
 # Background controller for existing resources
 backgroundController:
   enabled: true
+  replicas: 3
   resources:
     requests:
       cpu: 100m
@@ -323,10 +327,12 @@ backgroundController:
 # Cleanup controller
 cleanupController:
   enabled: true
+  replicas: 3
 
 # Reports controller
 reportsController:
   enabled: true
+  replicas: 3
 ```
 
 Deploy Kyverno:
@@ -363,7 +369,6 @@ metadata:
     policies.kyverno.io/category: Security
     policies.kyverno.io/severity: medium
 spec:
-  validationFailureAction: Enforce
   background: true
   rules:
   - name: validate-readonly-root
@@ -378,11 +383,17 @@ spec:
           namespaces:
           - kube-system
     validate:
+      failureAction: Enforce
       message: "Root filesystem must be read-only"
       pattern:
         spec:
           containers:
-          - securityContext:
+          - name: "*"
+            securityContext:
+              readOnlyRootFilesystem: true
+          =(initContainers):
+          - name: "*"
+            securityContext:
               readOnlyRootFilesystem: true
 
 ---
@@ -396,7 +407,6 @@ metadata:
     policies.kyverno.io/category: Best Practices
     policies.kyverno.io/severity: medium
 spec:
-  validationFailureAction: Enforce
   background: true
   rules:
   - name: validate-image-tag
@@ -406,13 +416,16 @@ spec:
           kinds:
           - Pod
     validate:
+      failureAction: Enforce
       message: "Using 'latest' tag is not allowed. Use a specific version tag."
       pattern:
         spec:
           containers:
-          - image: "!*:latest"
-          initContainers:
-          - image: "!*:latest"
+          - name: "*"
+            image: "!*:latest"
+          =(initContainers):
+          - name: "*"
+            image: "!*:latest"
 
 ---
 # require-resource-limits.yaml
@@ -425,7 +438,6 @@ metadata:
     policies.kyverno.io/category: Best Practices
     policies.kyverno.io/severity: medium
 spec:
-  validationFailureAction: Enforce
   background: true
   rules:
   - name: validate-resources
@@ -435,11 +447,22 @@ spec:
           kinds:
           - Pod
     validate:
+      failureAction: Enforce
       message: "CPU and memory limits are required"
       pattern:
         spec:
           containers:
-          - resources:
+          - name: "*"
+            resources:
+              limits:
+                memory: "?*"
+                cpu: "?*"
+              requests:
+                memory: "?*"
+                cpu: "?*"
+          =(initContainers):
+          - name: "*"
+            resources:
               limits:
                 memory: "?*"
                 cpu: "?*"
@@ -511,11 +534,10 @@ spec:
             matchLabels:
               logging: enabled
     mutate:
-      patchesJson6902: |-
-        - op: add
-          path: /spec/containers/-
-          value:
-            name: fluentbit
+      patchStrategicMerge:
+        spec:
+          containers:
+          - name: fluentbit
             image: fluent/fluent-bit:2.1
             resources:
               requests:
@@ -527,10 +549,8 @@ spec:
             volumeMounts:
             - name: varlog
               mountPath: /var/log
-        - op: add
-          path: /spec/volumes/-
-          value:
-            name: varlog
+          volumes:
+          - name: varlog
             emptyDir: {}
 ```
 
@@ -596,7 +616,7 @@ func validateHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func validate(request *admissionv1.AdmissionRequest) *admissionv1.AdmissionResponse {
-    // Only process Pod creations
+    // Only process Pods
     if request.Kind.Kind != "Pod" {
         return &admissionv1.AdmissionResponse{Allowed: true}
     }
@@ -650,8 +670,26 @@ func validate(request *admissionv1.AdmissionRequest) *admissionv1.AdmissionRespo
 }
 
 func mutateHandler(w http.ResponseWriter, r *http.Request) {
-    // Implementation similar to validate but returns patches
-    // See full implementation in repository
+    body, err := io.ReadAll(r.Body)
+    if err != nil {
+        http.Error(w, "Failed to read body", http.StatusBadRequest)
+        return
+    }
+
+    var admissionReview admissionv1.AdmissionReview
+    if err := json.Unmarshal(body, &admissionReview); err != nil {
+        http.Error(w, "Failed to parse admission review", http.StatusBadRequest)
+        return
+    }
+
+    admissionReview.Response = &admissionv1.AdmissionResponse{
+        UID:     admissionReview.Request.UID,
+        Allowed: true,
+    }
+
+    respBytes, _ := json.Marshal(admissionReview)
+    w.Header().Set("Content-Type", "application/json")
+    w.Write(respBytes)
 }
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {
@@ -778,7 +816,7 @@ spec:
 
     - alert: KyvernoBlockedRequests
       expr: |
-        sum(rate(kyverno_admission_requests_total{action="block"}[5m])) > 5
+        sum(rate(kyverno_admission_requests_total{request_allowed="false"}[5m])) > 5
       for: 5m
       labels:
         severity: info

@@ -39,14 +39,14 @@ test-unit:
   image: node:${NODE_VERSION}
   script:
     # Install dependencies with clean install for CI
-    - npm ci
+    - npm ci --cache .npm --prefer-offline
     # Run the test suite
     - npm test
-  # Cache node_modules between pipeline runs
+  # Cache npm's download cache between pipeline runs
   cache:
     key: ${CI_COMMIT_REF_SLUG}
     paths:
-      - node_modules/
+      - .npm/
 ```
 
 This configuration creates a test job that runs in a Node.js container. The `npm ci` command ensures a clean install from package-lock.json, which is faster and more reliable than `npm install` in CI environments.
@@ -71,9 +71,9 @@ variables:
   cache:
     key: ${CI_COMMIT_REF_SLUG}
     paths:
-      - node_modules/
+      - .npm/
   before_script:
-    - npm ci
+    - npm ci --cache .npm --prefer-offline
 
 # Unit tests job
 test-unit:
@@ -216,6 +216,7 @@ build-app:
   needs:
     - test-unit
     - test-integration
+    - test-e2e
 ```
 
 All three test jobs execute simultaneously, then the build job runs after they complete. This can cut your pipeline time significantly.
@@ -229,13 +230,8 @@ deploy-production:
   stage: deploy
   script:
     # These variables are set in GitLab UI under Settings > CI/CD > Variables
-    - echo "Deploying with key ${DEPLOY_KEY}"
-    - aws configure set aws_access_key_id ${AWS_ACCESS_KEY_ID}
-    - aws configure set aws_secret_access_key ${AWS_SECRET_ACCESS_KEY}
+    # The AWS CLI reads AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY from the environment
     - aws s3 sync dist/ s3://${S3_BUCKET}/
-  # Mask sensitive output
-  variables:
-    GIT_STRATEGY: none
 ```
 
 Set variables in your GitLab project under Settings, then CI/CD, then Variables. Mark sensitive values as masked and protected for additional security.
@@ -253,7 +249,7 @@ cache:
     files:
       - package-lock.json
   paths:
-    - node_modules/
+    - .npm/
 ```
 
 Second, use the `needs` keyword to create a directed acyclic graph (DAG) that allows jobs to start as soon as their dependencies finish, rather than waiting for the entire previous stage.

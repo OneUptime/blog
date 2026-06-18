@@ -65,18 +65,12 @@ G1GC is the best choice for most applications. It balances latency and throughpu
 # G1GC with tuned parameters
 java \
   -XX:+UseG1GC \
-  # Target max pause time (default 200ms)
   -XX:MaxGCPauseMillis=100 \
-  # Heap region size (auto-calculated, but can override)
   -XX:G1HeapRegionSize=16m \
-  # When to start concurrent marking (default 45%)
   -XX:InitiatingHeapOccupancyPercent=35 \
-  # Reserve space to prevent promotion failure
   -XX:G1ReservePercent=15 \
-  # Max GC threads
   -XX:ParallelGCThreads=8 \
   -XX:ConcGCThreads=2 \
-  # Heap settings
   -Xms4g -Xmx4g \
   -jar app.jar
 ```
@@ -89,15 +83,11 @@ ZGC targets sub-millisecond pauses regardless of heap size.
 # ZGC configuration
 java \
   -XX:+UseZGC \
-  # Enable generational ZGC (Java 21+, recommended)
   -XX:+ZGenerational \
-  # Concurrent GC threads (default: 25% of CPUs)
   -XX:ConcGCThreads=4 \
-  # Uncommit unused memory
   -XX:+ZUncommit \
   -XX:ZUncommitDelay=300 \
-  # Heap settings - ZGC handles large heaps well
-  -Xms8g -Xmx8g \
+  -Xms2g -Xmx8g \
   -jar app.jar
 ```
 
@@ -119,7 +109,7 @@ java \
 ### Java GC Tuning Example
 
 ```java
-// GCTuningExample.java
+// GCMonitor.java
 import java.lang.management.GarbageCollectorMXBean;
 import java.lang.management.ManagementFactory;
 import java.lang.management.MemoryPoolMXBean;
@@ -335,10 +325,10 @@ V8 uses a generational garbage collector with incremental marking.
 ### V8 GC Flags
 
 ```bash
-# Increase old space size (default ~1.5GB)
+# Set old space size in MiB
 node --max-old-space-size=4096 app.js
 
-# Increase new space size (for high allocation rate)
+# Set semi-space size in MiB (for high allocation rate)
 node --max-semi-space-size=128 app.js
 
 # Expose GC function (for manual triggering in tests)
@@ -442,7 +432,7 @@ function processBad(items) {
 function processGood(items) {
   const handler = (item) => processItem(item);
   items.forEach(item => {
-    setTimeout(handler.bind(null, item), 100);
+    setTimeout(handler, 100, item);
   });
 }
 

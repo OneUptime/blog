@@ -10,7 +10,7 @@ Description: Learn how to set up observability for IoT edge devices using OpenTe
 
 IoT edge devices operate in a fundamentally different environment than cloud services. They run on constrained hardware with limited CPU, memory, and storage. They connect over unreliable networks that drop packets and go offline for hours. They are deployed in locations where you cannot SSH in to check what went wrong. And yet, you still need to know when a device is misbehaving, what firmware version it is running, how its sensors are performing, and whether its data pipeline is delivering telemetry to the cloud.
 
-OpenTelemetry was designed primarily for cloud-native applications, but its architecture is flexible enough to work at the edge. This guide covers how to deploy lightweight OpenTelemetry components on edge devices, buffer telemetry during network outages, and aggregate device data through a collector hierarchy that scales to thousands of devices.
+OpenTelemetry was designed primarily for cloud-native applications, but its architecture is flexible enough to work at the edge. This guide covers how to deploy lightweight OpenTelemetry components on edge devices, buffer telemetry during network outages, and route device data through a collector hierarchy that scales to thousands of devices.
 
 ## The Edge Observability Architecture
 
@@ -62,35 +62,43 @@ dist:
   description: Minimal OTel agent for IoT edge devices
   output_path: ./build/edge-agent
   # Target ARM architecture for typical IoT hardware
-  otelcol_version: 0.96.0
+  otelcol_version: 0.153.0
 
 receivers:
   # Host metrics for device health monitoring
-  - gomod: go.opentelemetry.io/collector/receiver/otlpreceiver v0.96.0
-  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/hostmetricsreceiver v0.96.0
+  - gomod: go.opentelemetry.io/collector/receiver/otlpreceiver v0.153.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/hostmetricsreceiver v0.153.0
 
 processors:
-  - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.96.0
-  - gomod: go.opentelemetry.io/collector/processor/memorylimiterprocessor v0.96.0
+  - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.153.0
+  - gomod: go.opentelemetry.io/collector/processor/memorylimiterprocessor v0.153.0
+  - gomod: go.opentelemetry.io/collector/processor/resourceprocessor v0.153.0
 
 exporters:
-  - gomod: go.opentelemetry.io/collector/exporter/otlphttpexporter v0.96.0
+  - gomod: go.opentelemetry.io/collector/exporter/otlphttpexporter v0.153.0
 
 extensions:
-  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/filestorage v0.96.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/storage/filestorage v0.153.0
+
+providers:
+  - gomod: go.opentelemetry.io/collector/confmap/provider/envprovider v1.59.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/fileprovider v1.59.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/yamlprovider v1.59.0
 ```
 
 Build the agent for your target architecture:
 
 ```bash
 # Install the OpenTelemetry Collector builder
-go install go.opentelemetry.io/collector/cmd/builder@v0.96.0
+curl --proto '=https' --tlsv1.2 -fL -o ocb \
+  https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/cmd%2Fbuilder%2Fv0.153.0/ocb_0.153.0_linux_amd64
+chmod +x ocb
 
 # Build for ARM (common IoT architecture like Raspberry Pi)
-GOOS=linux GOARCH=arm GOARM=7 builder --config=edge-agent-builder.yaml
+GOOS=linux GOARCH=arm GOARM=7 ./ocb --config=edge-agent-builder.yaml
 
 # Build for ARM64 (newer IoT gateways and industrial devices)
-GOOS=linux GOARCH=arm64 builder --config=edge-agent-builder.yaml
+GOOS=linux GOARCH=arm64 ./ocb --config=edge-agent-builder.yaml
 
 # The resulting binary is typically 30-50MB, much smaller than the full contrib collector
 ls -lh ./build/edge-agent/otel-edge-agent
@@ -157,16 +165,16 @@ processors:
   resource:
     attributes:
       - key: device.id
-        value: "${DEVICE_ID}"
+        value: "${env:DEVICE_ID}"
         action: upsert
       - key: device.type
-        value: "${DEVICE_TYPE}"
+        value: "${env:DEVICE_TYPE}"
         action: upsert
       - key: device.firmware_version
-        value: "${FIRMWARE_VERSION}"
+        value: "${env:FIRMWARE_VERSION}"
         action: upsert
       - key: device.location
-        value: "${DEVICE_LOCATION}"
+        value: "${env:DEVICE_LOCATION}"
         action: upsert
       - key: deployment.environment
         value: "production"
@@ -184,6 +192,10 @@ exporters:
       initial_interval: 10s
       max_interval: 300s
       max_elapsed_time: 3600s
+    sending_queue:
+      enabled: true
+      storage: file_storage
+      queue_size: 1000
 
 extensions:
   # File-based storage for buffering during network outages
@@ -347,15 +359,15 @@ def collect_sensor_data(sensor_id: str, sensor_type: str):
             raise
 ```
 
-Notice the conservative batch settings in the SDK configuration. A `max_queue_size` of 256 and `max_export_batch_size` of 32 keep memory usage low on the device. The 30-second export interval reduces CPU wake-ups, which matters for battery-powered devices.
+Notice the conservative batch settings in the SDK configuration. A `max_queue_size` of 256 and `max_export_batch_size` of 32 keep memory usage low on the device. The 30-second span export delay and 60-second metric export interval reduce CPU wake-ups, which matters for battery-powered devices.
 
 ## Configuring the Regional Gateway
 
-The regional gateway sits between edge devices and the cloud. It handles aggregation, enrichment, and filtering for a group of devices:
+The regional gateway sits between edge devices and the cloud. It handles batching, enrichment, and filtering for a group of devices:
 
 ```yaml
 # regional-gateway-config.yaml
-# Regional collector that aggregates telemetry from edge devices
+# Regional collector that batches telemetry from edge devices
 
 receivers:
   otlp:
@@ -374,6 +386,7 @@ processors:
 
   # Enrich device telemetry with fleet metadata from a lookup table
   transform/enrich:
+    error_mode: ignore
     trace_statements:
       - context: resource
         statements:
@@ -382,16 +395,29 @@ processors:
             where attributes["device.type"] == "temperature-sensor"
           - set(attributes["fleet.name"], "outdoor-weather-stations")
             where attributes["device.type"] == "weather-station"
+    metric_statements:
+      - context: resource
+        statements:
+          - set(attributes["fleet.name"], "factory-floor-sensors")
+            where attributes["device.type"] == "temperature-sensor"
+          - set(attributes["fleet.name"], "outdoor-weather-stations")
+            where attributes["device.type"] == "weather-station"
+    log_statements:
+      - context: resource
+        statements:
+          - set(attributes["fleet.name"], "factory-floor-sensors")
+            where attributes["device.type"] == "temperature-sensor"
+          - set(attributes["fleet.name"], "outdoor-weather-stations")
+            where attributes["device.type"] == "weather-station"
 
   # Filter out noisy telemetry that is not useful at the cloud level
   filter/noise:
-    metrics:
-      metric:
-        # Drop high-frequency metrics that are only useful for local debugging
-        - 'name == "system.cpu.utilization" and resource.attributes["device.type"] == "temperature-sensor"'
+    error_mode: ignore
+    metric_conditions:
+      # Drop high-frequency metrics that are only useful for local debugging
+      - 'metric.name == "system.cpu.utilization" and resource.attributes["device.type"] == "temperature-sensor"'
 
-  # Aggregate device metrics to reduce data volume sent to cloud
-  # Instead of per-second readings from 1000 devices, send per-minute summaries
+  # Batch telemetry to reduce export request overhead
   batch:
     timeout: 60s
     send_batch_size: 2000
@@ -430,7 +456,7 @@ service:
       exporters: [otlp]
 ```
 
-The gateway reduces data volume in two ways. The filter processor drops metrics that are only useful for local debugging, and the batch processor aggregates data over longer windows to reduce the number of export requests to the cloud.
+The gateway reduces data volume and network overhead in two ways. The filter processor drops metrics that are only useful for local debugging, and the batch processor combines telemetry into larger export requests before sending it to the cloud.
 
 ## Fleet-Level Monitoring
 
@@ -528,6 +554,6 @@ Because the `device.firmware_version` attribute is attached to every piece of te
 
 ## Conclusion
 
-Setting up observability for IoT edge devices with OpenTelemetry requires adapting cloud-native patterns to the constraints of edge computing. Use a custom-built minimal collector binary to keep resource usage low on devices. Configure persistent file-backed buffering to handle network outages gracefully. Deploy a regional gateway layer to aggregate, enrich, and filter telemetry before it reaches the cloud. And attach device identity attributes at the edge so you can build fleet-level dashboards, detect offline devices, and monitor firmware rollouts.
+Setting up observability for IoT edge devices with OpenTelemetry requires adapting cloud-native patterns to the constraints of edge computing. Use a custom-built minimal collector binary to keep resource usage low on devices. Configure persistent file-backed buffering to handle network outages gracefully. Deploy a regional gateway layer to batch, enrich, and filter telemetry before it reaches the cloud. And attach device identity attributes at the edge so you can build fleet-level dashboards, detect offline devices, and monitor firmware rollouts.
 
 The three-tier architecture of edge agent, regional gateway, and central collector scales from a handful of prototypes to thousands of production devices. Start with the basic device health metrics (CPU, memory, disk, network), then progressively add application-level instrumentation as you understand which signals matter most for your specific IoT use case.

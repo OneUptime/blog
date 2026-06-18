@@ -666,7 +666,7 @@ Route::post('/api/send-verification', [AuthController::class, 'sendVerification'
 
 ## Terminable Middleware
 
-Terminable middleware runs after the response has been sent to the browser. You don't need to implement any interface — just define a `terminate` method on your middleware:
+Terminable middleware runs after the response has been sent to the browser. You don't need to implement any interface - just define a `terminate` method on your middleware:
 
 ```php
 <?php

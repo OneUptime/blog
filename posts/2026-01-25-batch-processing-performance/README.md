@@ -51,6 +51,7 @@ flowchart LR
 # batch_insert.py
 
 import psycopg2
+from psycopg2 import sql
 from psycopg2.extras import execute_values, execute_batch
 from typing import List, Dict, Any
 import time
@@ -68,9 +69,11 @@ class BatchInserter:
 
         with self.conn.cursor() as cur:
             for record in records:
-                columns = ', '.join(record.keys())
-                placeholders = ', '.join(['%s'] * len(record))
-                query = f"INSERT INTO {table} ({columns}) VALUES ({placeholders})"
+                query = sql.SQL("INSERT INTO {} ({}) VALUES ({})").format(
+                    sql.Identifier(table),
+                    sql.SQL(', ').join(map(sql.Identifier, record.keys())),
+                    sql.SQL(', ').join(sql.Placeholder() * len(record))
+                )
                 cur.execute(query, list(record.values()))
             self.conn.commit()
 
@@ -84,9 +87,11 @@ class BatchInserter:
         if not records:
             return 0
 
-        columns = ', '.join(records[0].keys())
-        placeholders = ', '.join(['%s'] * len(records[0]))
-        query = f"INSERT INTO {table} ({columns}) VALUES ({placeholders})"
+        query = sql.SQL("INSERT INTO {} ({}) VALUES ({})").format(
+            sql.Identifier(table),
+            sql.SQL(', ').join(map(sql.Identifier, records[0].keys())),
+            sql.SQL(', ').join(sql.Placeholder() * len(records[0]))
+        )
 
         with self.conn.cursor() as cur:
             execute_batch(
@@ -107,8 +112,11 @@ class BatchInserter:
         if not records:
             return 0
 
-        columns = ', '.join(records[0].keys())
-        query = f"INSERT INTO {table} ({columns}) VALUES %s"
+        columns = list(records[0].keys())
+        query = sql.SQL("INSERT INTO {} ({}) VALUES %s").format(
+            sql.Identifier(table),
+            sql.SQL(', ').join(map(sql.Identifier, columns))
+        )
 
         with self.conn.cursor() as cur:
             execute_values(
@@ -128,18 +136,23 @@ class BatchInserter:
         if not records:
             return 0
 
+        import csv
         import io
         columns = list(records[0].keys())
 
         # Create in-memory file
         buffer = io.StringIO()
+        writer = csv.writer(buffer)
         for record in records:
-            line = '\t'.join(str(record[col]) for col in columns)
-            buffer.write(line + '\n')
+            writer.writerow([record[col] for col in columns])
         buffer.seek(0)
 
         with self.conn.cursor() as cur:
-            cur.copy_from(buffer, table, columns=columns, sep='\t')
+            query = sql.SQL("COPY {} ({}) FROM STDIN WITH (FORMAT CSV)").format(
+                sql.Identifier(table),
+                sql.SQL(', ').join(map(sql.Identifier, columns))
+            )
+            cur.copy_expert(query.as_string(cur), buffer)
             self.conn.commit()
 
         return time.perf_counter() - start
@@ -161,6 +174,9 @@ records = [{"name": f"User {i}", "email": f"user{i}@example.com"}
 
 ```python
 # batch_upsert.py
+from typing import List, Dict
+
+from psycopg2 import sql
 from psycopg2.extras import execute_values
 
 def batch_upsert(conn, table: str, records: List[Dict],
@@ -173,27 +189,28 @@ def batch_upsert(conn, table: str, records: List[Dict],
         return 0
 
     columns = list(records[0].keys())
-    columns_str = ', '.join(columns)
+    update_assignments = [
+        sql.SQL("{} = EXCLUDED.{}").format(sql.Identifier(col), sql.Identifier(col))
+        for col in update_columns
+    ]
 
-    # Build ON CONFLICT clause
-    conflict_str = ', '.join(conflict_columns)
-    update_str = ', '.join(
-        f"{col} = EXCLUDED.{col}" for col in update_columns
-    )
-
-    query = f"""
-        INSERT INTO {table} ({columns_str})
+    query = sql.SQL("""
+        INSERT INTO {} ({})
         VALUES %s
-        ON CONFLICT ({conflict_str})
-        DO UPDATE SET {update_str}
-    """
+        ON CONFLICT ({})
+        DO UPDATE SET {}
+    """).format(
+        sql.Identifier(table),
+        sql.SQL(', ').join(map(sql.Identifier, columns)),
+        sql.SQL(', ').join(map(sql.Identifier, conflict_columns)),
+        sql.SQL(', ').join(update_assignments)
+    )
 
     with conn.cursor() as cur:
         execute_values(cur, query, [tuple(r.values()) for r in records])
-        affected = cur.rowcount
         conn.commit()
 
-    return affected
+    return len(records)
 
 
 # Usage
@@ -247,24 +264,34 @@ class BatchKafkaProducer:
             print(f"Delivery failed: {err}")
         self.pending_count -= 1
 
+    def _produce(self, topic: str, value: bytes, key: bytes):
+        """Produce a message and wait if the local queue is full"""
+        while True:
+            try:
+                self.producer.produce(
+                    topic,
+                    value=value,
+                    key=key,
+                    callback=self._delivery_callback
+                )
+                self.pending_count += 1
+                break
+            except BufferError:
+                self.producer.poll(1)
+
     def send(self, topic: str, messages: List[Dict]):
         """Send messages in batches"""
         for i, msg in enumerate(messages):
             # Serialize message
             value = json.dumps(msg).encode('utf-8')
-            key = msg.get('id', str(i)).encode('utf-8')
+            key = str(msg.get('id', i)).encode('utf-8')
 
-            self.producer.produce(
-                topic,
-                value=value,
-                key=key,
-                callback=self._delivery_callback
-            )
-            self.pending_count += 1
+            self._produce(topic, value, key)
 
             # Flush periodically to prevent memory buildup
             if self.pending_count >= self.batch_size:
-                self.producer.poll(0)  # Trigger callbacks
+                while self.pending_count >= self.batch_size:
+                    self.producer.poll(0.1)  # Trigger delivery callbacks
 
         # Final flush
         self.producer.flush()
@@ -281,13 +308,12 @@ class BatchKafkaProducer:
         # Send each batch
         for key, batch in batches.items():
             for msg in batch:
-                self.producer.produce(
+                self._produce(
                     topic,
                     value=json.dumps(msg).encode('utf-8'),
-                    key=key.encode('utf-8'),
-                    callback=self._delivery_callback
+                    key=str(key).encode('utf-8')
                 )
-            # Flush after each key batch for ordering
+            # Flush after each key batch if callers need delivery before the next key
             self.producer.flush()
 
 
@@ -550,7 +576,7 @@ print(f"Processed {result['total_processed']} records in {result['batch_count']}
 ```python
 # batch_with_backpressure.py
 import asyncio
-from typing import List, Callable, Any, TypeVar
+from typing import List, Callable, Awaitable, Any, TypeVar
 from dataclasses import dataclass
 import time
 
@@ -571,7 +597,7 @@ class BatchProcessor:
     """
 
     def __init__(self, config: BatchConfig,
-                 processor: Callable[[List[T]], Any]):
+                 processor: Callable[[List[T]], Awaitable[Any]]):
         self.config = config
         self.processor = processor
         self.queue: asyncio.Queue = asyncio.Queue(maxsize=config.max_queue_size)
@@ -653,18 +679,21 @@ async def process_events(events: List[Dict]):
     print(f"Processing batch of {len(events)} events")
     await db.batch_insert("events", events)
 
-processor = BatchProcessor(
-    config=BatchConfig(batch_size=100, max_wait_ms=50),
-    processor=process_events
-)
+async def main():
+    processor = BatchProcessor(
+        config=BatchConfig(batch_size=100, max_wait_ms=50),
+        processor=process_events
+    )
 
-await processor.start()
+    await processor.start()
 
-# Add events (will be batched automatically)
-for event in incoming_events:
-    await processor.add(event)
+    # Add events (will be batched automatically)
+    for event in incoming_events:
+        await processor.add(event)
 
-await processor.stop()
+    await processor.stop()
+
+asyncio.run(main())
 ```
 
 ---
@@ -676,6 +705,7 @@ await processor.stop()
 from prometheus_client import Counter, Histogram, Gauge
 import time
 from functools import wraps
+from typing import List, Dict
 
 # Metrics
 batch_size_histogram = Histogram(

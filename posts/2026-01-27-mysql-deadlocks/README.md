@@ -10,7 +10,7 @@ Description: Learn how to identify, debug, and prevent MySQL deadlocks including
 
 > Deadlocks are not bugs to eliminate - they are concurrency conditions to manage. Design your application to detect, retry, and minimize them.
 
-Deadlocks happen when two or more transactions each hold locks the other needs, creating a circular wait that cannot resolve on its own. MySQL's InnoDB engine detects these situations automatically and rolls back one transaction to break the cycle. Understanding why deadlocks occur and how to handle them is essential for building reliable database-backed applications.
+Deadlocks happen when two or more transactions each hold locks the other needs, creating a circular wait that cannot resolve on its own. MySQL's InnoDB engine detects these situations automatically by default and rolls back one transaction to break the cycle. Understanding why deadlocks occur and how to handle them is essential for building reliable database-backed applications.
 
 ## What Causes Deadlocks
 
@@ -31,7 +31,7 @@ InnoDB maintains a wait-for graph that tracks which transactions are waiting for
 2. Rolls back the victim completely.
 3. Returns error code 1213 (ER_LOCK_DEADLOCK) to the application.
 
-This detection happens in real-time - deadlocks are resolved within milliseconds. The key insight is that deadlocks are expected behavior, not catastrophic failures.
+This detection happens as transactions wait for locks, so deadlocks are usually resolved quickly. The key insight is that deadlocks are expected behavior, not catastrophic failures.
 
 ## Reading SHOW ENGINE INNODB STATUS
 
@@ -133,25 +133,24 @@ UPDATE accounts SET balance = balance + 50 WHERE id = 1;   -- Waits for row 1
 
 ### Scenario 2: Gap Lock Conflicts
 
-Gap locks in REPEATABLE READ isolation can cause unexpected deadlocks:
+Range scans in REPEATABLE READ isolation can take next-key locks, which combine index-record locks with gap locks and can cause unexpected blocking or deadlocks:
 
 ```sql
 -- Transaction A
 BEGIN;
 SELECT * FROM orders WHERE order_date = '2026-01-27' FOR UPDATE;
--- Locks gap before and after matching rows
+-- Locks matching index records and adjacent gaps
 
 -- Transaction B
 BEGIN;
 INSERT INTO orders (order_date, amount) VALUES ('2026-01-27', 100);
--- Waits for gap lock
+-- Waits if the insert falls into a locked gap
 
--- Transaction A
-INSERT INTO orders (order_date, amount) VALUES ('2026-01-27', 200);
--- DEADLOCK - both inserting into locked gap
+-- If another transaction holds locks that Transaction A later needs,
+-- the gap wait can become part of a larger deadlock cycle
 ```
 
-### Scenario 3: Secondary Index Lock Escalation
+### Scenario 3: Secondary Index Locks
 
 Updates that modify indexed columns acquire locks on multiple indexes:
 
@@ -166,7 +165,8 @@ BEGIN;
 UPDATE products SET category_id = 3 WHERE id = 200;
 -- Locks its primary key and category_id index entries
 
--- If the secondary index pages overlap, deadlock can occur
+-- If transactions update overlapping rows or index entries in different orders,
+-- deadlock can occur
 ```
 
 ## Prevention Strategies
@@ -264,6 +264,7 @@ def execute_with_retry(connection, operation, max_retries=3):
     last_error = None
 
     for attempt in range(max_retries):
+        cursor = None
         try:
             cursor = connection.cursor()
             result = operation(cursor)
@@ -289,7 +290,8 @@ def execute_with_retry(connection, operation, max_retries=3):
                 raise
 
         finally:
-            cursor.close()
+            if cursor is not None:
+                cursor.close()
 
     # All retries exhausted
     raise Exception(f"Operation failed after {max_retries} deadlock retries") from last_error
@@ -342,18 +344,20 @@ EXPLAIN SELECT * FROM orders WHERE customer_id = 42 FOR UPDATE;
 -- type: ref (good - using index)
 ```
 
-Covering indexes can further reduce lock contention by avoiding primary key lookups:
+Covering indexes can further reduce read overhead by avoiding primary key lookups for non-locking reads:
 
 ```sql
 -- Covering index includes all needed columns
 CREATE INDEX idx_orders_customer_status
 ON orders(customer_id, status, created_at);
 
--- Query uses only index, no primary key lock needed for reads
+-- Query can be satisfied from the secondary index for a non-locking read
 SELECT customer_id, status, created_at
 FROM orders
 WHERE customer_id = 42;
 ```
+
+For locking reads such as `SELECT ... FOR UPDATE`, InnoDB still locks the rows and associated index entries it scans, so do not rely on a covering index alone to avoid row locks.
 
 ## Monitoring Deadlocks in Production
 
@@ -366,6 +370,11 @@ WHERE EVENT_NAME LIKE '%lock%';
 
 -- Monitor InnoDB lock metrics
 SHOW GLOBAL STATUS LIKE 'Innodb_row_lock%';
+
+-- Monitor deadlock count
+SELECT NAME, COUNT
+FROM INFORMATION_SCHEMA.INNODB_METRICS
+WHERE NAME = 'lock_deadlocks';
 ```
 
 Key metrics to track:
@@ -374,26 +383,25 @@ Key metrics to track:
 | --- | --- | --- |
 | Innodb_row_lock_waits | Total row lock waits | Trend increase |
 | Innodb_row_lock_time_avg | Average wait time (ms) | Above 100ms |
-| Innodb_deadlocks | Total deadlock count | Rate above 1/min |
+| lock_deadlocks | Total deadlock count in INNODB_METRICS | Rate above 1/min |
 
-For deeper visibility, enable the performance schema instrumentation:
+For deeper visibility, query the current Performance Schema row lock waits:
 
 ```sql
--- Enable lock instrumentation
-UPDATE performance_schema.setup_instruments
-SET ENABLED = 'YES'
-WHERE NAME LIKE '%lock%';
-
--- View current lock waits
 SELECT
-    waiting.THREAD_ID AS waiting_thread,
-    waiting.EVENT_NAME AS waiting_for,
-    blocking.THREAD_ID AS blocking_thread,
-    blocking.EVENT_NAME AS blocking_event
-FROM performance_schema.events_waits_current waiting
-JOIN performance_schema.events_waits_current blocking
-    ON waiting.OBJECT_INSTANCE_BEGIN = blocking.OBJECT_INSTANCE_BEGIN
-WHERE waiting.THREAD_ID != blocking.THREAD_ID;
+    waiting.ENGINE_TRANSACTION_ID AS waiting_transaction,
+    waiting.OBJECT_SCHEMA,
+    waiting.OBJECT_NAME,
+    waiting.INDEX_NAME,
+    waiting.LOCK_TYPE,
+    waiting.LOCK_MODE AS waiting_lock_mode,
+    blocking.ENGINE_TRANSACTION_ID AS blocking_transaction,
+    blocking.LOCK_MODE AS blocking_lock_mode
+FROM performance_schema.data_lock_waits waits
+JOIN performance_schema.data_locks waiting
+    ON waits.REQUESTING_ENGINE_LOCK_ID = waiting.ENGINE_LOCK_ID
+JOIN performance_schema.data_locks blocking
+    ON waits.BLOCKING_ENGINE_LOCK_ID = blocking.ENGINE_LOCK_ID;
 ```
 
 ## Best Practices Summary

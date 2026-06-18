@@ -32,6 +32,7 @@ Technical guide / implementation tutorial
 - The OpenTelemetry attribute conversion skipped falsy values such as empty strings, zero integers, and `false`. Updated the conversion to check for `undefined` and added support for double and boolean values.
 - The aggregation example used `serviceName:spanName` as a map key, which breaks when either value contains a colon. Updated it to use a JSON-encoded tuple key and parse it when ranking candidates.
 - The visualization function accepted an unused `result` parameter. Removed it to avoid issues under stricter TypeScript compiler settings.
+- The critical-span dashboard query divided a 24-hour `critical_spans` count by all rows in `critical_path_analysis`. Updated the denominator to use the same 24-hour time window so the percentage is calculated over the same period.
 
 ## Review Notes
 The implementation is now internally consistent as a practical example, but production-grade critical path analysis may need explicit dependency metadata or event-level/self-time modeling for nested spans, async queues, links, retries, and partial overlap cases that cannot be inferred reliably from parent IDs and timestamps alone.

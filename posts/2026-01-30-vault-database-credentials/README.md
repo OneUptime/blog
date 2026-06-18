@@ -245,7 +245,7 @@ vault lease renew database/creds/myapp-readonly/abc123def456
 vault lease renew -increment=30m database/creds/myapp-readonly/abc123def456
 ```
 
-If you need a different TTL for a workload, define a separate role with its own `default_ttl` and `max_ttl` rather than overriding per-request — the database credentials endpoint takes its TTL from the role configuration.
+If you need a different TTL for a workload, define a separate role with its own `default_ttl` and `max_ttl` rather than overriding per-request - the database credentials endpoint takes its TTL from the role configuration.
 
 ### Revoke Credentials Immediately
 

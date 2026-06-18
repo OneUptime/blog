@@ -37,11 +37,6 @@ Here is the core structure:
 ```go
 package main
 
-import (
-    "context"
-    "sync"
-)
-
 // Record represents a single data record in the pipeline
 type Record struct {
     ID   int64
@@ -138,6 +133,9 @@ func (p *Pipeline) Run(
     transform func(Record) (TransformedRecord, error),
     loader DataLoader,
 ) error {
+    ctx, cancel := context.WithCancel(ctx)
+    defer cancel()
+
     // Buffered channels create backpressure points
     // Size them based on memory constraints and latency requirements
     extracted := make(chan Record, p.batchSize)
@@ -152,6 +150,9 @@ func (p *Pipeline) Run(
         defer wg.Done()
         defer close(extracted)
         extractErr = source.Extract(ctx, extracted)
+        if extractErr != nil {
+            cancel()
+        }
     }()
 
     // Stage 2: Transform (parallel workers)
@@ -166,6 +167,9 @@ func (p *Pipeline) Run(
     go func() {
         defer wg.Done()
         loadErr = loader.Load(ctx, transformed)
+        if loadErr != nil {
+            cancel()
+        }
     }()
 
     wg.Wait()
@@ -275,7 +279,7 @@ Batch sizes depend on your destination. For PostgreSQL bulk inserts, 1000-5000 r
 
 ## Putting It All Together
 
-Here is a complete example that reads from a database, transforms records, and writes to another table:
+Here is an example that reads from a database, transforms records, and writes to another table:
 
 ```go
 func main() {

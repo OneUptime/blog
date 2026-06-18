@@ -429,9 +429,9 @@ Example response:
 }
 ```
 
-## Using Built-in Health Check Packages
+## Using Community Health Check Packages
 
-ASP.NET Core has NuGet packages for common dependencies:
+The AspNetCore.Diagnostics.HealthChecks project provides NuGet packages for common dependencies:
 
 ```bash
 dotnet add package AspNetCore.HealthChecks.SqlServer
@@ -489,7 +489,13 @@ metadata:
   name: my-api
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: my-api
   template:
+    metadata:
+      labels:
+        app: my-api
     spec:
       containers:
         - name: api
@@ -569,16 +575,21 @@ Run health checks only under certain conditions:
 
 ```csharp
 // Program.cs
-builder.Services.AddHealthChecks()
+var healthChecks = builder.Services.AddHealthChecks()
     .AddCheck<DatabaseHealthCheck>(
         name: "database",
         failureStatus: HealthStatus.Unhealthy,
-        tags: new[] { "ready" })
+        tags: new[] { "ready" });
 
-    // Only run in production
-    .AddCheck<ExternalApiHealthCheck>(
+// Only run in production
+if (builder.Environment.IsProduction())
+{
+    healthChecks.AddCheck<ExternalApiHealthCheck>(
         name: "external-api",
-        tags: new[] { "ready" })
+        tags: new[] { "ready" });
+}
+
+healthChecks
     .AddCheck<DebugHealthCheck>(
         name: "debug",
         tags: new[] { "debug" });
@@ -612,7 +623,7 @@ public class CircuitBreakerAwareHealthCheck : IHealthCheck
         HealthCheckContext context,
         CancellationToken cancellationToken = default)
     {
-        var state = _circuitBreaker.GetState();
+        var state = _circuitBreaker.CircuitState;
 
         return Task.FromResult(state switch
         {

@@ -79,6 +79,7 @@ The Edge runtime cannot use the standard OpenTelemetry Node SDK. Instead, you ne
 ```bash
 npm install @opentelemetry/api \
   @opentelemetry/sdk-trace-web \
+  @opentelemetry/sdk-trace-base \
   @opentelemetry/exporter-trace-otlp-http \
   @opentelemetry/resources \
   @opentelemetry/semantic-conventions
@@ -90,8 +91,8 @@ Create an Edge-compatible tracer provider:
 // lib/otel-edge.ts
 import { WebTracerProvider } from '@opentelemetry/sdk-trace-web';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { Resource } from '@opentelemetry/resources';
-import { SEMRESATTRS_SERVICE_NAME } from '@opentelemetry/semantic-conventions';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import { ATTR_SERVICE_NAME } from '@opentelemetry/semantic-conventions';
 import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
 
 let provider: WebTracerProvider | null = null;
@@ -102,13 +103,8 @@ export function getEdgeTracerProvider() {
   }
 
   // Create a resource that identifies this service
-  const resource = new Resource({
-    [SEMRESATTRS_SERVICE_NAME]: 'nextjs-edge',
-  });
-
-  // Initialize the web tracer provider
-  provider = new WebTracerProvider({
-    resource,
+  const resource = resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: 'nextjs-edge',
   });
 
   // Configure OTLP exporter for edge runtime
@@ -116,8 +112,14 @@ export function getEdgeTracerProvider() {
     url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4318/v1/traces',
   });
 
-  // Use batch processor to reduce export overhead
-  provider.addSpanProcessor(new BatchSpanProcessor(exporter));
+  // Initialize the web tracer provider
+  provider = new WebTracerProvider({
+    resource,
+    // Use batch processor to reduce export overhead
+    spanProcessors: [new BatchSpanProcessor(exporter)],
+  });
+
+  provider.register();
 
   return provider;
 }
@@ -146,7 +148,6 @@ export async function GET() {
 
 export const runtime = 'edge';
 
-import { trace } from '@opentelemetry/api';
 import { getEdgeTracerProvider } from '@/lib/otel-edge';
 
 export async function GET() {
@@ -154,13 +155,16 @@ export async function GET() {
   const tracer = getEdgeTracerProvider().getTracer('edge-route');
 
   return await tracer.startActiveSpan('edge-get-request', async (span) => {
-    span.setAttribute('runtime', 'edge');
+    try {
+      span.setAttribute('runtime', 'edge');
 
-    const data = await fetch('https://api.example.com/data');
-    const result = await data.json();
+      const data = await fetch('https://api.example.com/data');
+      const result = await data.json();
 
-    span.end();
-    return Response.json(result);
+      return Response.json(result);
+    } finally {
+      span.end();
+    }
   });
 }
 ```
@@ -177,7 +181,7 @@ In Node runtime, automatic instrumentation captures HTTP requests, database quer
 
 export async function GET() {
   // This fetch is automatically traced
-  const response = await fetch('https://api.example.com/products');
+  await fetch('https://api.example.com/products');
 
   // This database query is automatically traced
   const products = await db.product.findMany();
@@ -192,23 +196,30 @@ In Edge runtime, you must manually create spans for operations you want to trace
 // app/api/products-edge/route.ts
 export const runtime = 'edge';
 
-import { trace } from '@opentelemetry/api';
 import { getEdgeTracerProvider } from '@/lib/otel-edge';
 
 export async function GET() {
   const tracer = getEdgeTracerProvider().getTracer('products');
 
   return await tracer.startActiveSpan('get-products', async (span) => {
-    // Manually instrument fetch
-    const fetchSpan = tracer.startSpan('fetch-external-api');
-    const response = await fetch('https://api.example.com/products');
-    const data = await response.json();
-    fetchSpan.end();
+    try {
+      // Manually instrument fetch
+      const fetchSpan = tracer.startSpan('fetch-external-api');
+      let data;
 
-    span.setAttribute('product.count', data.length);
-    span.end();
+      try {
+        const response = await fetch('https://api.example.com/products');
+        data = await response.json();
+      } finally {
+        fetchSpan.end();
+      }
 
-    return Response.json(data);
+      span.setAttribute('product.count', data.length);
+
+      return Response.json(data);
+    } finally {
+      span.end();
+    }
   });
 }
 ```
@@ -221,35 +232,41 @@ When requests move between Edge and Node runtimes, maintain trace context to kee
 
 ```typescript
 // middleware.ts (Edge runtime)
-export const runtime = 'edge';
-
-import { trace, context, propagation } from '@opentelemetry/api';
+import { context, propagation } from '@opentelemetry/api';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getEdgeTracerProvider } from '@/lib/otel-edge';
 
 export function middleware(request: NextRequest) {
   const tracer = getEdgeTracerProvider().getTracer('middleware');
-  const span = tracer.startSpan('edge-middleware');
 
   // Extract incoming trace context
   const incomingContext = propagation.extract(context.active(), request.headers);
 
   // Process request within the extracted context
   return context.with(incomingContext, () => {
-    span.setAttribute('http.url', request.url);
+    return tracer.startActiveSpan('edge-middleware', (span) => {
+      try {
+        span.setAttribute('url.full', request.url);
 
-    // Inject trace context into response headers
-    const response = NextResponse.next();
-    const headers: Record<string, string> = {};
+        // Inject trace context into request headers for the next handler
+        const requestHeaders = new Headers(request.headers);
+        const traceHeaders: Record<string, string> = {};
 
-    propagation.inject(context.active(), headers);
-    Object.entries(headers).forEach(([key, value]) => {
-      response.headers.set(key, value);
+        propagation.inject(context.active(), traceHeaders);
+        Object.entries(traceHeaders).forEach(([key, value]) => {
+          requestHeaders.set(key, value);
+        });
+
+        return NextResponse.next({
+          request: {
+            headers: requestHeaders,
+          },
+        });
+      } finally {
+        span.end();
+      }
     });
-
-    span.end();
-    return response;
   });
 }
 ```
@@ -262,7 +279,8 @@ Create helper functions that work in both runtimes:
 
 ```typescript
 // lib/tracing.ts
-import { trace, Span, SpanStatusCode } from '@opentelemetry/api';
+import { trace, SpanStatusCode } from '@opentelemetry/api';
+import type { Span } from '@opentelemetry/api';
 
 export async function traceAsync<T>(
   tracerName: string,
@@ -300,7 +318,7 @@ export async function traceAsync<T>(
 Use this helper in both runtime contexts:
 
 ```typescript
-// Works in Node runtime
+// app/api/data/route.ts
 export async function GET() {
   return traceAsync('api', 'get-data', async (span) => {
     const data = await fetchData();
@@ -308,8 +326,10 @@ export async function GET() {
     return Response.json(data);
   });
 }
+```
 
-// Also works in Edge runtime
+```typescript
+// app/api/data-edge/route.ts
 export const runtime = 'edge';
 
 export async function GET() {
@@ -326,14 +346,14 @@ export async function GET() {
 Edge runtime trades functionality for performance. Understanding the trade-offs helps you choose the right runtime:
 
 **Edge Runtime:**
-- Sub-millisecond cold start times
+- Short cold start times
 - Global distribution for low latency
 - Limited to manual instrumentation
 - No automatic middleware/database tracing
 - Ideal for: Authentication, redirects, header manipulation
 
 **Node Runtime:**
-- Hundreds of milliseconds cold start
+- Generally higher cold start overhead than Edge runtime
 - Regional deployment
 - Full auto-instrumentation
 - Complete OpenTelemetry SDK features
@@ -355,11 +375,12 @@ graph LR
 
 ## Middleware Considerations
 
-Middleware always runs in Edge runtime by default. This affects instrumentation:
+Middleware runs in the Edge runtime by default. In current Next.js versions, middleware can opt into the Node.js runtime with `config.runtime`, but Edge-compatible tracing is still required for default middleware:
 
 ```typescript
 // middleware.ts
-import { trace } from '@opentelemetry/api';
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
 import { getEdgeTracerProvider } from '@/lib/otel-edge';
 
 // Middleware runs in Edge runtime, no export statement needed
@@ -368,17 +389,18 @@ export function middleware(request: NextRequest) {
   const tracer = getEdgeTracerProvider().getTracer('middleware');
 
   return tracer.startActiveSpan('middleware', (span) => {
-    span.setAttribute('path', request.nextUrl.pathname);
+    try {
+      span.setAttribute('path', request.nextUrl.pathname);
 
-    const response = NextResponse.next();
-
-    span.end();
-    return response;
+      return NextResponse.next();
+    } finally {
+      span.end();
+    }
   });
 }
 ```
 
-You cannot use Node.js-specific OpenTelemetry packages in middleware, even if your routes use Node runtime.
+Do not use Node.js-specific OpenTelemetry packages in Edge middleware, even if your routes use the Node runtime.
 
 ## Debugging Runtime Issues
 
@@ -420,19 +442,24 @@ Most production applications use both runtimes strategically:
 // Fast authentication check in Edge runtime
 export const runtime = 'edge';
 
+import { getEdgeTracerProvider } from '@/lib/otel-edge';
+
 export async function POST(request: Request) {
   const tracer = getEdgeTracerProvider().getTracer('auth');
 
   return await tracer.startActiveSpan('authenticate', async (span) => {
-    const { token } = await request.json();
+    try {
+      const { token } = await request.json();
 
-    // Quick token validation
-    const isValid = await validateToken(token);
+      // Quick token validation
+      const isValid = await validateToken(token);
 
-    span.setAttribute('auth.valid', isValid);
-    span.end();
+      span.setAttribute('auth.valid', isValid);
 
-    return Response.json({ valid: isValid });
+      return Response.json({ valid: isValid });
+    } finally {
+      span.end();
+    }
   });
 }
 ```
@@ -468,15 +495,11 @@ export async function register() {
   const isDevelopment = process.env.NODE_ENV === 'development';
 
   if (runtime === 'nodejs') {
-    await initializeNodeRuntime({
-      // More verbose instrumentation in development
-      instrumentations: isDevelopment ? 'all' : 'essential',
-    });
+    // More verbose instrumentation in development
+    await initializeNodeRuntime(isDevelopment ? 'all' : 'essential');
   } else if (runtime === 'edge') {
-    await initializeEdgeRuntime({
-      // Enable debug logging in development
-      debug: isDevelopment,
-    });
+    // Enable debug logging in development
+    await initializeEdgeRuntime({ debug: isDevelopment });
   }
 }
 ```
@@ -500,7 +523,8 @@ import { trace } from '@opentelemetry/api';
 
 export async function GET() {
   const tracer = trace.getTracer('test'); // No provider initialized!
-  // Spans created but not exported
+  const span = tracer.startSpan('test-span'); // Span created but not exported
+  span.end();
 }
 ```
 
@@ -527,8 +551,9 @@ import { WebTracerProvider } from '@opentelemetry/sdk-trace-web';
 describe('Tracing', () => {
   it('should create spans in Edge runtime', () => {
     const exporter = new InMemorySpanExporter();
-    const provider = new WebTracerProvider();
-    provider.addSpanProcessor(new SimpleSpanProcessor(exporter));
+    const provider = new WebTracerProvider({
+      spanProcessors: [new SimpleSpanProcessor(exporter)],
+    });
 
     const tracer = provider.getTracer('test');
     const span = tracer.startSpan('test-span');

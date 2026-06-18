@@ -96,7 +96,7 @@ For .NET, remove the AppDynamics profiler environment variables and NuGet packag
 ```bash
 # Remove these environment variables from your deployment
 # CORECLR_ENABLE_PROFILING=1
-# CORECLR_PROFILER={57e1aa68-2229-41aa-9f73-2e0a5d1b7e0c}
+# CORECLR_PROFILER={57e1aa68-2229-41aa-9931-a6e93bbc64d8}
 # CORECLR_PROFILER_PATH=/opt/appdynamics/libappdprofiler.so
 
 # Remove the AppDynamics NuGet package
@@ -168,48 +168,47 @@ Configure OpenTelemetry in your `Program.cs`. This replaces the AppDynamics agen
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 using OpenTelemetry.Metrics;
+using OpenTelemetry.Exporter;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Configure resource attributes
 // service.name replaces AppDynamics tier name
 // service.namespace replaces AppDynamics application name
-var resourceBuilder = ResourceBuilder
-    .CreateDefault()
-    .AddService("my-dotnet-service", serviceVersion: "1.0.0")
-    .AddAttributes(new Dictionary<string, object>
-    {
-        ["service.namespace"] = "MyApplication",           // was: appd application name
-        ["deployment.environment"] = "production"
-    });
-
 builder.Services.AddOpenTelemetry()
+    .ConfigureResource(resource => resource
+        .AddService("my-dotnet-service", serviceVersion: "1.0.0")
+        .AddAttributes(new Dictionary<string, object>
+        {
+            ["service.namespace"] = "MyApplication",           // was: appd application name
+            ["deployment.environment"] = "production"
+        }))
     .WithTracing(tracing =>
     {
         tracing
-            .SetResourceBuilder(resourceBuilder)
             .AddAspNetCoreInstrumentation()    // replaces AppDynamics BT detection
             .AddHttpClientInstrumentation()     // replaces AppDynamics exit calls
             .AddSqlClientInstrumentation(opt =>
             {
-                opt.SetDbStatementForText = true;  // capture SQL like AppDynamics snapshots
                 opt.RecordException = true;
             })
             .AddOtlpExporter(options =>
             {
-                options.Endpoint = new Uri("https://oneuptime.com/otlp");
+                options.Endpoint = new Uri("https://oneuptime.com/otlp/v1/traces");
+                options.Protocol = OtlpExportProtocol.HttpProtobuf;
                 options.Headers = "x-oneuptime-token=your-token-here";
             });
     })
     .WithMetrics(metrics =>
     {
         metrics
-            .SetResourceBuilder(resourceBuilder)
             .AddAspNetCoreInstrumentation()
             .AddHttpClientInstrumentation()
+            .AddSqlClientInstrumentation()
             .AddOtlpExporter(options =>
             {
-                options.Endpoint = new Uri("https://oneuptime.com/otlp");
+                options.Endpoint = new Uri("https://oneuptime.com/otlp/v1/metrics");
+                options.Protocol = OtlpExportProtocol.HttpProtobuf;
                 options.Headers = "x-oneuptime-token=your-token-here";
             });
     });
@@ -295,9 +294,11 @@ processors:
         action: upsert
 
 exporters:
-  otlp:
+  otlphttp:
     endpoint: https://oneuptime.com/otlp
+    encoding: json
     headers:
+      Content-Type: application/json
       x-oneuptime-token: your-token-here
 
 service:
@@ -305,11 +306,11 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch, resource]
-      exporters: [otlp]
+      exporters: [otlphttp]
     metrics:
       receivers: [otlp, hostmetrics]
       processors: [batch, resource]
-      exporters: [otlp]
+      exporters: [otlphttp]
 ```
 
 ---
@@ -328,6 +329,8 @@ If you used AppDynamics custom metrics or information points, convert them to Op
 
 // AFTER: OpenTelemetry custom metrics in Java
 import io.opentelemetry.api.GlobalOpenTelemetry;
+import io.opentelemetry.api.common.AttributeKey;
+import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.metrics.LongCounter;
 import io.opentelemetry.api.metrics.DoubleHistogram;
 import io.opentelemetry.api.metrics.Meter;

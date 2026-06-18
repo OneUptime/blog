@@ -15,8 +15,6 @@ The data flow works like this: your application sends OTLP data to the Collector
 ## The Docker Compose File
 
 ```yaml
-version: "3.8"
-
 services:
   # OpenTelemetry Collector - central telemetry router
   otel-collector:
@@ -134,8 +132,8 @@ exporters:
       insecure: true
 
   # Send logs to Loki
-  loki:
-    endpoint: http://loki:3100/loki/api/v1/push
+  otlphttp/loki:
+    endpoint: http://loki:3100/otlp
 
   # Expose metrics for Prometheus to scrape
   prometheus:
@@ -151,7 +149,7 @@ service:
     logs:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [loki]
+      exporters: [otlphttp/loki]
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, batch]
@@ -191,6 +189,9 @@ auth_enabled: false
 
 server:
   http_listen_port: 3100
+
+limits_config:
+  allow_structured_metadata: true
 
 common:
   path_prefix: /loki

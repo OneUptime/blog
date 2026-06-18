@@ -371,10 +371,10 @@ resource "google_container_cluster" "main" {
 
 # Node pool
 resource "google_container_node_pool" "main" {
-  name       = "main-pool"
-  location   = var.region
-  cluster    = google_container_cluster.main.name
-  node_count = 1  # Per zone
+  name               = "main-pool"
+  location           = var.region
+  cluster            = google_container_cluster.main.name
+  initial_node_count = 1  # Per zone
 
   autoscaling {
     min_node_count = 1

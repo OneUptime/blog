@@ -130,7 +130,7 @@ spec:
   selector:
     app: redis-cluster
 ---
-# Client service for external access
+# Client service for in-cluster access
 apiVersion: v1
 kind: Service
 metadata:
@@ -378,15 +378,13 @@ redis:
     maxmemory 2gb
     maxmemory-policy volatile-lru
     appendonly yes
-
-# Resource allocation
-resources:
-  requests:
-    memory: 512Mi
-    cpu: 200m
-  limits:
-    memory: 2Gi
-    cpu: 1000m
+  resources:
+    requests:
+      memory: 512Mi
+      cpu: 200m
+    limits:
+      memory: 2Gi
+      cpu: 1000m
 
 # Persistence settings
 persistence:
@@ -422,8 +420,10 @@ helm install redis-cluster bitnami/redis-cluster \
 Here is how to connect to Redis Cluster from your applications:
 
 ```python
-# Python example using redis-py-cluster
-from rediscluster import RedisCluster
+# Python example using redis-py
+from redis.backoff import ExponentialBackoff
+from redis.cluster import ClusterNode, RedisCluster
+from redis.retry import Retry
 
 def create_cluster_client():
     """
@@ -431,17 +431,17 @@ def create_cluster_client():
     """
     # Use the headless service for discovery
     startup_nodes = [
-        {"host": "redis-cluster-0.redis-cluster.redis-cluster.svc.cluster.local", "port": 6379},
-        {"host": "redis-cluster-1.redis-cluster.redis-cluster.svc.cluster.local", "port": 6379},
-        {"host": "redis-cluster-2.redis-cluster.redis-cluster.svc.cluster.local", "port": 6379},
+        ClusterNode("redis-cluster-0.redis-cluster.redis-cluster.svc.cluster.local", 6379),
+        ClusterNode("redis-cluster-1.redis-cluster.redis-cluster.svc.cluster.local", 6379),
+        ClusterNode("redis-cluster-2.redis-cluster.redis-cluster.svc.cluster.local", 6379),
     ]
 
     client = RedisCluster(
         startup_nodes=startup_nodes,
         decode_responses=True,
-        skip_full_coverage_check=True,
+        require_full_coverage=False,
         # Retry configuration for resilience
-        cluster_error_retry_attempts=3,
+        retry=Retry(ExponentialBackoff(), 3),
     )
 
     return client
@@ -490,18 +490,21 @@ To add more nodes to the cluster:
 kubectl scale statefulset redis-cluster -n redis-cluster --replicas=9
 
 # Wait for new pods
-kubectl wait --for=condition=Ready pod/redis-cluster-6 \
+kubectl wait --for=condition=Ready pod/redis-cluster-6 pod/redis-cluster-7 pod/redis-cluster-8 \
   -n redis-cluster --timeout=120s
 
 # Add new nodes to the cluster
-NEW_NODE_IP=$(kubectl get pod redis-cluster-6 -n redis-cluster \
-  -o jsonpath='{.status.podIP}')
 EXISTING_NODE_IP=$(kubectl get pod redis-cluster-0 -n redis-cluster \
   -o jsonpath='{.status.podIP}')
 
-# Add as master
-kubectl exec -it redis-cluster-0 -n redis-cluster -- \
-  redis-cli --cluster add-node ${NEW_NODE_IP}:6379 ${EXISTING_NODE_IP}:6379
+# Add the new pods as masters
+for i in 6 7 8; do
+  NEW_NODE_IP=$(kubectl get pod redis-cluster-$i -n redis-cluster \
+    -o jsonpath='{.status.podIP}')
+
+  kubectl exec -it redis-cluster-0 -n redis-cluster -- \
+    redis-cli --cluster add-node ${NEW_NODE_IP}:6379 ${EXISTING_NODE_IP}:6379
+done
 
 # Rebalance slots
 kubectl exec -it redis-cluster-0 -n redis-cluster -- \
@@ -536,7 +539,7 @@ spec:
                 - |
                   # Trigger BGSAVE on all masters
                   for i in 0 1 2; do
-                    redis-cli -h redis-cluster-$i.redis-cluster BGSAVE
+                    redis-cli -c -h redis-cluster-$i.redis-cluster.redis-cluster.svc.cluster.local BGSAVE
                   done
 
                   # Wait for saves to complete

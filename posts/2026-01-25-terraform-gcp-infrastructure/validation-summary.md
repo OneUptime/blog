@@ -33,17 +33,22 @@ Tutorial / Guide
 - Terraform Google provider `google_storage_bucket` resource documentation: https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/storage_bucket
 - Google Cloud VPC subnets documentation: https://docs.cloud.google.com/vpc/docs/subnets
 - Google Cloud firewall network tags documentation: https://docs.cloud.google.com/vpc/docs/add-remove-network-tags
+- Google Cloud Private Google Access documentation: https://docs.cloud.google.com/vpc/docs/configure-private-google-access
+- Google Cloud Load Balancing firewall rules documentation: https://docs.cloud.google.com/load-balancing/docs/firewall-rules
 - Google Cloud SQL private services access documentation: https://docs.cloud.google.com/sql/docs/mysql/configure-private-services-access
 - Google Cloud SQL private IP documentation: https://docs.cloud.google.com/sql/docs/mysql/private-ip
-- Google Cloud GKE private cluster networking documentation: https://docs.cloud.google.com/kubernetes-engine/docs/how-to/legacy/network-isolation
+- Google Cloud GKE private cluster networking documentation: https://docs.cloud.google.com/kubernetes-engine/docs/how-to/latest/network-isolation
 - Google Cloud Storage Terraform lifecycle sample: https://cloud.google.com/storage/docs/samples/storage-create-lifecycle-setting-tf
 
 ## Issues Found
-- The provider configuration used the older `~> 5.0` Google provider constraint. Updated both provider constraints to `~> 7.0` so the examples target the current major version of the official provider.
-- The configuration included a `google-beta` provider block without declaring `google-beta` in `required_providers`. Added an explicit `hashicorp/google-beta` requirement with a matching version constraint.
-- The post described and diagrammed Cloud SQL as if it lived inside the private subnet. Updated the diagram to show Cloud SQL on a Private Service Access range, which matches how private IP Cloud SQL connectivity works.
-- The Compute Engine instance did not include the `allow-ssh` network tag used by the SSH firewall rule. Added the tag so the rule applies to the example VM.
-- The post described the GKE example as "production-ready" even though it intentionally keeps some settings broad for tutorial use, such as an all-ranges master authorized network example. Changed that wording to "private GKE cluster" while preserving the existing production caution comments.
+- The provider configuration in the submitted post used the older `~> 5.0` Google provider constraint. The README on disk already targeted the current major version with `~> 7.0`.
+- The submitted post included a `google-beta` provider block without declaring `google-beta` in `required_providers`. The README on disk already had an explicit `hashicorp/google-beta` requirement with a matching version constraint.
+- The submitted post described and diagrammed Cloud SQL as if it lived inside the private subnet. The README on disk already showed Cloud SQL on a Private Service Access range, which matches how private IP Cloud SQL connectivity works.
+- The submitted Compute Engine instance did not include the `allow-ssh` network tag used by the SSH firewall rule. The README on disk already included the tag so the rule applies to the example VM.
+- The submitted post described the GKE example as "production-ready" even though it intentionally keeps some settings broad for tutorial use, such as an all-ranges master authorized network example. The README on disk already changed that wording to "private GKE cluster" while preserving the existing production caution comments.
+- The GKE node pool example set `node_count` together with an `autoscaling` block. The Google provider documentation says `node_count` should not be used alongside autoscaling because it represents the current node count per instance group and can conflict with autoscaler-managed size. Changed it to `initial_node_count = 1`, which preserves the intended initial per-zone size while allowing autoscaling to manage the node pool afterward.
 
 ## Review Notes
-The Terraform resource arguments, nested blocks, and values were checked against current official provider documentation and Google Cloud docs. The examples still assume prerequisite Google Cloud APIs are enabled and that sensitive values such as `db_password` are supplied securely outside the snippets.
+- Terraform is not installed in the review environment, so I could not run `terraform validate`; validation was performed against official Terraform provider and Google Cloud documentation.
+- The examples intentionally keep some permissive defaults for tutorial readability, such as SSH from `0.0.0.0/0` and master authorized networks set to `0.0.0.0/0`, with comments warning readers to restrict them in production.
+- The Cloud SQL instance uses `deletion_protection = true`, which is appropriate for safety but means `terraform destroy` will require changing that setting first.

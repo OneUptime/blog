@@ -316,15 +316,24 @@ export function decodeMessage(buffer: Buffer): Message {
   }
 }
 
+function ensureAvailable(buffer: Buffer, offset: number, length: number): void {
+  if (buffer.length < offset + length) {
+    throw new Error('Malformed message: buffer too short');
+  }
+}
+
 function decodeGetRequest(buffer: Buffer): Message {
   let offset = 1;
 
+  ensureAvailable(buffer, offset, 4);
   const requestId = buffer.readUInt32BE(offset);
   offset += 4;
 
+  ensureAvailable(buffer, offset, 2);
   const keyLength = buffer.readUInt16BE(offset);
   offset += 2;
 
+  ensureAvailable(buffer, offset, keyLength);
   const key = buffer.subarray(offset, offset + keyLength).toString('utf-8');
 
   return {
@@ -337,15 +346,19 @@ function decodeGetRequest(buffer: Buffer): Message {
 function decodeGetResponse(buffer: Buffer): Message {
   let offset = 1;
 
+  ensureAvailable(buffer, offset, 4);
   const requestId = buffer.readUInt32BE(offset);
   offset += 4;
 
+  ensureAvailable(buffer, offset, 1);
   const status = buffer.readUInt8(offset) as StatusCode;
   offset += 1;
 
+  ensureAvailable(buffer, offset, 4);
   const valueLength = buffer.readUInt32BE(offset);
   offset += 4;
 
+  ensureAvailable(buffer, offset, valueLength);
   const value = valueLength > 0
     ? buffer.subarray(offset, offset + valueLength)
     : undefined;
@@ -361,21 +374,27 @@ function decodeGetResponse(buffer: Buffer): Message {
 function decodeSetRequest(buffer: Buffer): Message {
   let offset = 1;
 
+  ensureAvailable(buffer, offset, 4);
   const requestId = buffer.readUInt32BE(offset);
   offset += 4;
 
+  ensureAvailable(buffer, offset, 2);
   const keyLength = buffer.readUInt16BE(offset);
   offset += 2;
 
+  ensureAvailable(buffer, offset, keyLength);
   const key = buffer.subarray(offset, offset + keyLength).toString('utf-8');
   offset += keyLength;
 
+  ensureAvailable(buffer, offset, 4);
   const ttlSeconds = buffer.readUInt32BE(offset);
   offset += 4;
 
+  ensureAvailable(buffer, offset, 4);
   const valueLength = buffer.readUInt32BE(offset);
   offset += 4;
 
+  ensureAvailable(buffer, offset, valueLength);
   const value = buffer.subarray(offset, offset + valueLength);
 
   return {
@@ -388,6 +407,8 @@ function decodeSetRequest(buffer: Buffer): Message {
 }
 
 function decodeSetResponse(buffer: Buffer): Message {
+  ensureAvailable(buffer, 1, 5);
+
   return {
     type: MessageType.SET_RESPONSE,
     requestId: buffer.readUInt32BE(1),

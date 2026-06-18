@@ -54,7 +54,12 @@ Let's start with a basic HTTP client that we will enhance with middleware:
 
 ```rust
 use reqwest::Client;
+use std::future::Future;
+use std::pin::Pin;
+use std::task::{Context, Poll};
 use std::time::Duration;
+use tower::{BoxError, Service};
+use http::{Request, Response};
 
 // Create a basic client with some sensible defaults
 fn create_base_client() -> Client {
@@ -63,6 +68,50 @@ fn create_base_client() -> Client {
         .pool_max_idle_per_host(10)
         .build()
         .expect("Failed to create HTTP client")
+}
+```
+
+`reqwest::Client` does not implement Tower's `Service` trait directly, so we need a small adapter that turns an `http::Request<Vec<u8>>` into a `reqwest::Request`. Using a cloneable request body like `Vec<u8>` also lets Tower's retry middleware clone the request when it needs another attempt.
+
+```rust
+#[derive(Clone)]
+pub struct ReqwestService {
+    client: Client,
+}
+
+impl ReqwestService {
+    pub fn new(client: Client) -> Self {
+        Self { client }
+    }
+}
+
+impl Service<Request<Vec<u8>>> for ReqwestService {
+    type Response = Response<reqwest::Body>;
+    type Error = BoxError;
+    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
+
+    fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn call(&mut self, request: Request<Vec<u8>>) -> Self::Future {
+        let client = self.client.clone();
+
+        Box::pin(async move {
+            let request = reqwest::Request::try_from(request)?;
+            let response = client.execute(request).await?;
+            let status = response.status();
+            let headers = response.headers().clone();
+            let bytes = response.bytes().await?;
+
+            let mut builder = Response::builder().status(status);
+            for (name, value) in headers.iter() {
+                builder = builder.header(name, value);
+            }
+
+            Ok(builder.body(reqwest::Body::from(bytes))?)
+        })
+    }
 }
 ```
 
@@ -123,7 +172,8 @@ where
         );
 
         let start = std::time::Instant::now();
-        let mut inner = self.inner.clone();
+        let clone = self.inner.clone();
+        let mut inner = std::mem::replace(&mut self.inner, clone);
 
         Box::pin(async move {
             let result = inner.call(request).await;
@@ -213,7 +263,8 @@ where
             self.header_value.clone(),
         );
 
-        let mut inner = self.inner.clone();
+        let clone = self.inner.clone();
+        let mut inner = std::mem::replace(&mut self.inner, clone);
         Box::pin(async move { inner.call(request).await })
     }
 }
@@ -228,15 +279,15 @@ use tower::retry::{Policy, Retry};
 
 #[derive(Clone)]
 pub struct RetryPolicy {
-    max_attempts: usize,
-    current_attempt: usize,
+    max_retries: usize,
+    retry_count: usize,
 }
 
 impl RetryPolicy {
-    pub fn new(max_attempts: usize) -> Self {
+    pub fn new(max_retries: usize) -> Self {
         Self {
-            max_attempts,
-            current_attempt: 0,
+            max_retries,
+            retry_count: 0,
         }
     }
 }
@@ -250,11 +301,11 @@ impl<Req: Clone, Res, E> Policy<Req, Res, E> for RetryPolicy {
             return None;
         }
 
-        if self.current_attempt < self.max_attempts {
-            self.current_attempt += 1;
+        if self.retry_count < self.max_retries {
+            self.retry_count += 1;
             tracing::warn!(
-                attempt = self.current_attempt,
-                max_attempts = self.max_attempts,
+                retry = self.retry_count,
+                max_retries = self.max_retries,
                 "Retrying request"
             );
             Some(std::future::ready(()))
@@ -276,34 +327,37 @@ Now we bring everything together. Tower's `ServiceBuilder` makes composing middl
 ```rust
 use tower::ServiceBuilder;
 use tower::timeout::TimeoutLayer;
+use tower::BoxError;
 
 pub fn build_client_with_middleware<Svc>(
     base_service: Svc,
     api_token: &str,
 ) -> impl Service<
-    Request<reqwest::Body>,
+    Request<Vec<u8>>,
     Response = Response<reqwest::Body>,
-    Error = Svc::Error,
+    Error = BoxError,
 >
 where
-    Svc: Service<Request<reqwest::Body>, Response = Response<reqwest::Body>> + Clone + Send + 'static,
-    Svc::Future: Send,
-    Svc::Error: Send + Sync,
+    Svc: Service<Request<Vec<u8>>, Response = Response<reqwest::Body>> + Clone + Send + 'static,
+    Svc::Future: Send + 'static,
+    Svc::Error: Into<BoxError>,
 {
+    let token = api_token.to_owned();
+
     ServiceBuilder::new()
         // Outermost layer - timeout for the entire request including retries
         .layer(TimeoutLayer::new(Duration::from_secs(60)))
+        // Retry layer wraps each attempt
+        .layer_fn(|s| Retry::new(RetryPolicy::new(3), s))
         // Logging captures timing for each attempt
         .layer_fn(|s| LoggingMiddleware::new(s, "api-client"))
-        // Retry layer wraps the auth and inner service
-        .layer_fn(|s| Retry::new(RetryPolicy::new(3), s))
         // Auth is closest to the actual request
-        .layer_fn(|s| AuthMiddleware::bearer(s, api_token))
+        .layer_fn(move |s| AuthMiddleware::bearer(s, &token))
         .service(base_service)
 }
 ```
 
-The order matters here. Layers are applied from bottom to top, so the request flows through timeout first, then logging, then retry, and finally auth before hitting your base service.
+The order matters here. Layers are applied from bottom to top, so the request flows through timeout first, then retry, then logging, and finally auth before hitting your base service.
 
 ## Putting It All Together
 
@@ -311,9 +365,10 @@ Here's a complete example showing how to use the middleware stack:
 
 ```rust
 use tracing_subscriber;
+use tower::{BoxError, ServiceExt};
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<(), BoxError> {
     // Initialize logging
     tracing_subscriber::fmt::init();
 
@@ -323,17 +378,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create the base reqwest client
     let client = create_base_client();
+    let base_service = ReqwestService::new(client);
+    let mut service = build_client_with_middleware(base_service, &api_token);
 
     // Build a request
     let request = Request::builder()
         .method("GET")
         .uri("https://api.example.com/users")
-        .body(reqwest::Body::default())?;
+        .body(Vec::new())?;
 
     // The middleware stack handles auth, logging, retries, and timeouts
     // You just focus on what you want to request
 
     tracing::info!("Making API request with full middleware stack");
+    let response = service.ready().await?.call(request).await?;
+    tracing::info!(status = %response.status(), "Received response");
 
     Ok(())
 }

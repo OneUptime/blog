@@ -279,7 +279,7 @@ const mixed: [number, number, string] = [1, 2, "three"];
 ## Generic Type Constraints
 
 ```typescript
-// ERROR: Type 'T' is not assignable to type 'string'
+// ERROR: Property 'length' does not exist on type 'T'
 function getLength<T>(item: T): number {
     return item.length;  // Error - T might not have length
 }
@@ -344,15 +344,17 @@ interface Dog extends Animal {
     breed: string;
 }
 
-// ERROR: Type '(animal: Animal) => void' is not assignable to type '(dog: Dog) => void'
-type DogHandler = (dog: Dog) => void;
+// ERROR: Type '(dog: Dog) => void' is not assignable to type '(animal: Animal) => void'
+type AnimalHandler = (animal: Animal) => void;
 
-const handleAnimal: DogHandler = (animal: Animal) => {
-    // This is actually safe - handler accepts broader type
-    console.log(animal.name);
+const handleDogOnly: AnimalHandler = (dog: Dog) => {
+    // This is unsafe - the handler requires a Dog-specific property
+    console.log(dog.breed);
 };
 
 // SOLUTION: Use the correct parameter type
+type DogHandler = (dog: Dog) => void;
+
 const handleDog: DogHandler = (dog: Dog) => {
     console.log(dog.name, dog.breed);
 };
@@ -366,7 +368,7 @@ When you know more about a type than TypeScript can infer, use type assertions c
 
 ```typescript
 // CAUTION: Type assertions bypass type checking
-const data = JSON.parse('{"id": 1}');
+const data: unknown = JSON.parse('{"id": 1}');
 
 // ERROR: Property 'id' does not exist on type 'unknown'
 console.log(data.id);

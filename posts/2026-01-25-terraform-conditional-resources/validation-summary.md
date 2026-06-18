@@ -9,8 +9,7 @@ Tutorial / Guide
 ## Technologies Covered
 - Terraform configuration language
 - Terraform `count` and `for_each` meta-arguments
-- Terraform conditional expressions, locals, `try()`, and `one()`
-- Terraform dynamic block behavior
+- Terraform conditional expressions, locals, `coalesce()`, `try()`, and `one()`
 - AWS Terraform provider resources for EC2, NAT Gateway, EIP, RDS, S3, CloudFront, WAFv2, ALB, and security groups
 
 ## Sources Consulted
@@ -20,6 +19,7 @@ Tutorial / Guide
 - Terraform dynamic blocks documentation: https://developer.hashicorp.com/terraform/language/expressions/dynamic-blocks
 - Terraform `one()` function documentation: https://developer.hashicorp.com/terraform/language/functions/one
 - Terraform `try()` function documentation: https://developer.hashicorp.com/terraform/language/functions/try
+- Terraform `coalesce()` function documentation: https://developer.hashicorp.com/terraform/language/functions/coalesce
 - AWS provider `aws_cloudfront_distribution` resource documentation: https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudfront_distribution
 - AWS provider `aws_eip` resource documentation: https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/eip
 - AWS provider `aws_db_instance` resource documentation: https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/db_instance

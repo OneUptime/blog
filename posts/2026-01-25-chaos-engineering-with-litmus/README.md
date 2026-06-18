@@ -64,18 +64,19 @@ kubectl get svc -n litmus
 
 ## Installing Chaos Experiments
 
-Litmus provides experiment packs called ChaosHubs. Install the generic experiments:
+Litmus provides experiment packs called ChaosHubs. Install the Kubernetes chaos experiments in the namespace where you will create the ChaosEngine:
 
 ```bash
-# Apply the Litmus CRDs and experiments
-kubectl apply -f https://hub.litmuschaos.io/api/chaos/3.0.0?file=charts/generic/experiments.yaml -n litmus
+# Install the Kubernetes chaos experiments
+helm install kubernetes-chaos litmuschaos/kubernetes-chaos \
+  --namespace default
 ```
 
 List available experiments:
 
 ```bash
 # View installed chaos experiments
-kubectl get chaosexperiments -n litmus
+kubectl get chaosexperiments -n default
 ```
 
 ## Your First Chaos Experiment: Pod Delete
@@ -139,6 +140,9 @@ rules:
   - apiGroups: ["apps"]
     resources: ["deployments", "replicasets", "statefulsets", "daemonsets"]
     verbs: ["list", "get", "patch", "update"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["create", "list", "get", "delete", "deletecollection"]
   - apiGroups: ["litmuschaos.io"]
     resources: ["chaosengines", "chaosexperiments", "chaosresults"]
     verbs: ["create", "list", "get", "patch", "update", "delete"]
@@ -310,7 +314,7 @@ spec:
             # Duration
             - name: TOTAL_CHAOS_DURATION
               value: '60'
-            # Path to fill
+            # Ephemeral storage to fill in MiB
             - name: EPHEMERAL_STORAGE_MEBIBYTES
               value: '500'
 ```
@@ -373,13 +377,30 @@ spec:
       inputs:
         parameters:
           - name: experiment
-      container:
-        image: litmuschaos/litmus-checker:latest
-        args:
-          - -file=/tmp/chaosengine.yaml
-        volumeMounts:
-          - name: chaos-config
-            mountPath: /tmp
+      resource:
+        action: create
+        manifest: |
+          apiVersion: litmuschaos.io/v1alpha1
+          kind: ChaosEngine
+          metadata:
+            generateName: "{{inputs.parameters.experiment}}-"
+            namespace: default
+          spec:
+            appinfo:
+              appns: 'default'
+              applabel: 'app=api-server'
+              appkind: 'deployment'
+            engineState: 'active'
+            chaosServiceAccount: litmus-admin
+            experiments:
+              - name: "{{inputs.parameters.experiment}}"
+                spec:
+                  components:
+                    env:
+                      - name: TOTAL_CHAOS_DURATION
+                        value: '60'
+                      - name: PODS_AFFECTED_PERC
+                        value: '50'
 ```
 
 ## Monitoring Chaos Experiments
@@ -425,17 +446,26 @@ jobs:
       - name: Configure kubeconfig
         run: |
           echo "${{ secrets.KUBECONFIG }}" > kubeconfig
-          export KUBECONFIG=kubeconfig
+          echo "KUBECONFIG=$PWD/kubeconfig" >> "$GITHUB_ENV"
 
       - name: Run chaos experiment
         run: |
           kubectl apply -f chaos-experiments/pod-delete.yaml
-          # Wait for experiment to complete
-          kubectl wait --for=condition=complete chaosengine/pod-chaos --timeout=300s
+          # Wait for the ChaosResult to be created
+          for i in {1..30}; do
+            kubectl get chaosresult pod-chaos-pod-delete && break
+            sleep 10
+          done
 
       - name: Check results
         run: |
-          RESULT=$(kubectl get chaosresult pod-chaos-pod-delete -o jsonpath='{.status.experimentStatus.verdict}')
+          for i in {1..30}; do
+            RESULT=$(kubectl get chaosresult pod-chaos-pod-delete -o jsonpath='{.status.experimentStatus.verdict}')
+            if [ "$RESULT" = "Pass" ] || [ "$RESULT" = "Fail" ]; then
+              break
+            fi
+            sleep 10
+          done
           if [ "$RESULT" != "Pass" ]; then
             echo "Chaos experiment failed"
             exit 1

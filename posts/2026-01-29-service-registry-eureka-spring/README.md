@@ -80,7 +80,7 @@ Create a new Spring Boot project for the Eureka server:
         <dependency>
             <groupId>org.springframework.cloud</groupId>
             <artifactId>spring-cloud-dependencies</artifactId>
-            <version>2023.0.0</version>
+            <version>2025.0.2</version>
             <type>pom</type>
             <scope>import</scope>
         </dependency>
@@ -163,6 +163,12 @@ Add the Eureka client dependency to your microservices:
     <dependency>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-web</artifactId>
+    </dependency>
+
+    <!-- Spring WebFlux for WebClient -->
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-webflux</artifactId>
     </dependency>
 
     <!-- Eureka Client -->
@@ -376,7 +382,6 @@ server:
 spring:
   application:
     name: eureka-server
-  profiles: eureka1
 
 eureka:
   instance:
@@ -403,7 +408,6 @@ server:
 spring:
   application:
     name: eureka-server
-  profiles: eureka2
 
 eureka:
   instance:
@@ -468,7 +472,7 @@ public class CustomHealthIndicator implements HealthIndicator {
 
         // Check cache connectivity (degraded, not down)
         if (!cache.isConnected()) {
-            return Health.status("DEGRADED")
+            return Health.up()
                 .withDetail("cache", "Not connected")
                 .withDetail("database", "Connected")
                 .build();
@@ -486,6 +490,9 @@ Configure Eureka to use the health endpoint:
 
 ```yaml
 eureka:
+  client:
+    healthcheck:
+      enabled: true
   instance:
     health-check-url-path: /actuator/health
     status-page-url-path: /actuator/info
@@ -575,6 +582,14 @@ public class ServiceDiscoveryExample {
 
 Implement fallbacks when services are unavailable:
 
+```xml
+<!-- Add a Spring Cloud Circuit Breaker implementation -->
+<dependency>
+    <groupId>org.springframework.cloud</groupId>
+    <artifactId>spring-cloud-starter-circuitbreaker-resilience4j</artifactId>
+</dependency>
+```
+
 ```java
 // ResilientUserClient.java
 // Client with fallback handling
@@ -642,6 +657,14 @@ Access the Eureka dashboard at `http://localhost:8761` to see:
 ### Metrics Endpoint
 
 Add Micrometer for Eureka metrics:
+
+```xml
+<!-- Prometheus registry for /actuator/prometheus -->
+<dependency>
+    <groupId>io.micrometer</groupId>
+    <artifactId>micrometer-registry-prometheus</artifactId>
+</dependency>
+```
 
 ```yaml
 management:

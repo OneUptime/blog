@@ -10,7 +10,7 @@ In electronic trading, the time it takes for a market data tick to travel from t
 
 ## Why Feed Latency Monitoring Matters
 
-Market data feeds from exchanges like NYSE, NASDAQ, or CME deliver price updates, order book snapshots, and trade confirmations. Your trading platform consumes these feeds, normalizes the data, and makes it available to trading algorithms. At each stage of this pipeline, latency accumulates. Without proper instrumentation, you cannot tell where delays originate or whether they are network-related, processing-related, or caused by queuing.
+Market data feeds from exchanges like NYSE, NASDAQ, or CME deliver price updates, order book snapshots, and trade reports. Your trading platform consumes these feeds, normalizes the data, and makes it available to trading algorithms. At each stage of this pipeline, latency accumulates. Without proper instrumentation, you cannot tell where delays originate or whether they are network-related, processing-related, or caused by queuing.
 
 ## Setting Up the OpenTelemetry SDK
 
@@ -18,9 +18,10 @@ First, configure the OpenTelemetry SDK in your market data handler service. We w
 
 ```python
 from opentelemetry import trace, metrics
+from opentelemetry.metrics import Observation
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.metrics import MeterProvider
-from opentelemetry.sdk.trace.export import BatchSpanExporter
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
@@ -29,7 +30,7 @@ from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExp
 
 trace_provider = TracerProvider()
 trace_provider.add_span_processor(
-    BatchSpanExporter(OTLPSpanExporter(endpoint="http://otel-collector:4317"))
+    BatchSpanProcessor(OTLPSpanExporter(endpoint="http://otel-collector:4317"))
 )
 trace.set_tracer_provider(trace_provider)
 
@@ -55,7 +56,7 @@ import time
 # Create a histogram to track end-to-end feed latency in microseconds
 feed_latency_histogram = meter.create_histogram(
     name="market_data.feed_latency_us",
-    description="Latency from exchange timestamp to platform receipt in microseconds",
+    description="Latency from exchange timestamp to platform processing completion in microseconds",
     unit="us"
 )
 
@@ -66,20 +67,31 @@ tick_counter = meter.create_counter(
 )
 
 # Gauge for tracking the current lag (useful for dashboards)
+current_lag_us = 0.0
+
+def get_current_lag():
+    return current_lag_us
+
+def observe_current_lag(options):
+    return [Observation(get_current_lag())]
+
 lag_gauge = meter.create_observable_gauge(
     name="market_data.current_lag_us",
     description="Current observed lag for the most recent tick",
-    callbacks=[lambda options: get_current_lag()]
+    callbacks=[observe_current_lag]
 )
 
 def process_market_data_tick(tick):
     """Process a single market data tick from the exchange feed."""
+    global current_lag_us
+
     # The exchange provides its own timestamp in the tick payload
     exchange_timestamp_ns = tick.exchange_timestamp_nanos
-    receive_timestamp_ns = time.time_ns()
+    processed_timestamp_ns = time.time_ns()
 
     # Calculate raw network + processing latency
-    latency_us = (receive_timestamp_ns - exchange_timestamp_ns) / 1000
+    latency_us = (processed_timestamp_ns - exchange_timestamp_ns) / 1000
+    current_lag_us = latency_us
 
     # Record the latency with relevant attributes
     feed_latency_histogram.record(
@@ -156,7 +168,7 @@ ntp_offset_gauge = meter.create_observable_gauge(
     name="system.ntp_offset_ms",
     description="NTP clock offset relative to time source",
     callbacks=[lambda options: [
-        metrics.Observation(get_ntp_offset_ms())
+        Observation(get_ntp_offset_ms())
     ]]
 )
 ```

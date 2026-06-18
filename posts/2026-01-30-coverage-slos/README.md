@@ -83,6 +83,26 @@ class WatermarkTracker:
         self.gaps = []
 
     def record_event(self, sequence_number, event_data):
+        # Check if a late event fills part of a previously detected gap
+        updated_gaps = []
+        for gap in self.gaps:
+            if gap["start"] <= sequence_number <= gap["end"]:
+                if gap["start"] < sequence_number:
+                    updated_gaps.append({
+                        "start": gap["start"],
+                        "end": sequence_number - 1,
+                        "detected_at": gap["detected_at"]
+                    })
+                if sequence_number < gap["end"]:
+                    updated_gaps.append({
+                        "start": sequence_number + 1,
+                        "end": gap["end"],
+                        "detected_at": gap["detected_at"]
+                    })
+            else:
+                updated_gaps.append(gap)
+        self.gaps = updated_gaps
+
         # Check if we skipped any sequence numbers
         if sequence_number > self.expected_sequence:
             # Record the gap for later reconciliation
@@ -100,6 +120,8 @@ class WatermarkTracker:
     def calculate_coverage(self, window_start, window_end):
         # Count total expected events in window
         total_expected = window_end - window_start + 1
+        if total_expected <= 0:
+            return 100.0
 
         # Sum up all gaps within the window
         total_gaps = sum(
@@ -244,11 +266,17 @@ class IndexCoverageSLO:
 
         # Count products in search index
         indexed_count = search_index.count(
-            filter={"indexed": True}
+            filter={
+                "indexed": True,
+                "source_updated_at": {"$lt": cutoff_time}
+            }
         )
 
         # Calculate and evaluate against target
-        coverage = (indexed_count / expected_count) * 100 if expected_count > 0 else 100
+        coverage = min(
+            (indexed_count / expected_count) * 100,
+            100.0
+        ) if expected_count > 0 else 100.0
 
         return {
             "coverage_sli": coverage,
@@ -256,7 +284,7 @@ class IndexCoverageSLO:
             "is_meeting_slo": coverage >= self.target,
             "expected_items": expected_count,
             "indexed_items": indexed_count,
-            "gap": expected_count - indexed_count
+            "gap": max(expected_count - indexed_count, 0)
         }
 ```
 
@@ -358,7 +386,7 @@ class CoverageErrorBudget:
         consumed = max(0, 100 - avg_coverage)
 
         # Remaining budget
-        remaining = total_budget - consumed
+        remaining = max(total_budget - consumed, 0)
         remaining_percentage = (remaining / total_budget) * 100 if total_budget > 0 else 0
 
         return {
@@ -411,10 +439,13 @@ class CoverageBurnRateMonitor:
             start_coverage = window_measurements[0]["coverage"]
             end_coverage = window_measurements[-1]["coverage"]
             coverage_drop = start_coverage - end_coverage
+            if coverage_drop <= 0:
+                continue
 
             # Calculate expected drop rate based on error budget
             # If we have 0.5% budget over 30 days, normal hourly drop is tiny
-            budget_per_minute = (100 - self.error_budget.slo_target) / (30 * 24 * 60)
+            window_minutes = self.error_budget.window.total_seconds() / 60
+            budget_per_minute = (100 - self.error_budget.slo_target) / window_minutes
             expected_drop = budget_per_minute * threshold["window_minutes"]
 
             # Burn rate is actual drop vs expected drop
@@ -434,7 +465,7 @@ class CoverageBurnRateMonitor:
 
 ## Practical Implementation Example
 
-Here is a complete example that ties everything together:
+Here is an example that ties the helpers above together:
 
 ```python
 # Complete coverage SLO implementation for a product indexing system
@@ -480,11 +511,14 @@ class ProductIndexCoverageSLO:
         # Step 2: Count indexed items
         indexed = self.search_index.count(
             query={"match_all": {}},
-            filter={"term": {"is_active": True}}
+            filter={
+                "term": {"is_active": True},
+                "range": {"source_updated_at": {"lt": cutoff}}
+            }
         )
 
         # Step 3: Calculate coverage SLI
-        coverage_sli = (indexed / expected * 100) if expected > 0 else 100.0
+        coverage_sli = min((indexed / expected * 100), 100.0) if expected > 0 else 100.0
 
         # Step 4: Record measurement for error budget tracking
         self.error_budget.record_measurement(timestamp, coverage_sli)
@@ -501,7 +535,7 @@ class ProductIndexCoverageSLO:
         self.metrics.gauge("coverage.sli", coverage_sli)
         self.metrics.gauge("coverage.expected_items", expected)
         self.metrics.gauge("coverage.indexed_items", indexed)
-        self.metrics.gauge("coverage.gap", expected - indexed)
+        self.metrics.gauge("coverage.gap", max(expected - indexed, 0))
         self.metrics.gauge("coverage.error_budget_remaining",
                           budget_status["budget_health"])
 

@@ -16,7 +16,7 @@ In microservices, the bulkhead pattern isolates components so that a failure in 
 
 ## Why You Need Bulkheads in Microservices
 
-Consider a typical scenario: your payment service calls three downstream services - inventory, fraud detection, and shipping. All three share a common HTTP client with a connection pool of 100 connections. If the fraud detection service starts responding slowly, it holds onto connections longer than expected. Soon, all 100 connections are waiting on fraud detection, and now inventory and shipping requests start failing too - even though those services are perfectly healthy.
+Consider a typical scenario: your payment service calls three downstream services - inventory, fraud detection, and shipping. All three share a common worker pool, semaphore, or other resource budget of 100 concurrent operations. If the fraud detection service starts responding slowly, it holds onto those shared slots longer than expected. Soon, all 100 slots are waiting on fraud detection, and now inventory and shipping requests start failing too - even though those services are perfectly healthy.
 
 This is exactly what bulkheads prevent. By giving each downstream dependency its own isolated pool of resources, you contain failures where they originate.
 
@@ -74,12 +74,11 @@ This implementation provides a clean API. You create a bulkhead with a maximum n
 Here's how you would use bulkheads to protect calls to different downstream services:
 
 ```go
-package main
+package bulkhead
 
 import (
     "context"
     "fmt"
-    "log"
     "net/http"
     "time"
 )
@@ -90,10 +89,21 @@ type PaymentService struct {
     fraudBulkhead         *Bulkhead
     shippingBulkhead      *Bulkhead
 
-    // Separate HTTP clients per dependency
+    // Separate HTTP clients and transports per dependency
     inventoryClient *http.Client
     fraudClient     *http.Client
     shippingClient  *http.Client
+}
+
+func newHTTPClient(timeout time.Duration, maxConnsPerHost int) *http.Client {
+    return &http.Client{
+        Timeout: timeout,
+        Transport: &http.Transport{
+            MaxConnsPerHost:     maxConnsPerHost,
+            MaxIdleConnsPerHost: maxConnsPerHost,
+            IdleConnTimeout:     90 * time.Second,
+        },
+    }
 }
 
 func NewPaymentService() *PaymentService {
@@ -105,10 +115,10 @@ func NewPaymentService() *PaymentService {
         // Shipping: medium traffic
         shippingBulkhead: New(30, 150*time.Millisecond),
 
-        // Each client has its own connection pool
-        inventoryClient: &http.Client{Timeout: 2 * time.Second},
-        fraudClient:     &http.Client{Timeout: 5 * time.Second},
-        shippingClient:  &http.Client{Timeout: 3 * time.Second},
+        // Each client has its own transport and connection pool
+        inventoryClient: newHTTPClient(2*time.Second, 50),
+        fraudClient:     newHTTPClient(5*time.Second, 20),
+        shippingClient:  newHTTPClient(3*time.Second, 30),
     }
 }
 
@@ -116,9 +126,17 @@ func (s *PaymentService) CheckInventory(ctx context.Context, itemID string) (boo
     var available bool
 
     err := s.inventoryBulkhead.Execute(ctx, func() error {
-        resp, err := s.inventoryClient.Get(
+        req, err := http.NewRequestWithContext(
+            ctx,
+            http.MethodGet,
             fmt.Sprintf("http://inventory-service/items/%s/availability", itemID),
+            nil,
         )
+        if err != nil {
+            return err
+        }
+
+        resp, err := s.inventoryClient.Do(req)
         if err != nil {
             return err
         }
@@ -135,7 +153,7 @@ func (s *PaymentService) CheckInventory(ctx context.Context, itemID string) (boo
 }
 ```
 
-Notice how each downstream service has both its own bulkhead and its own HTTP client. This double isolation is intentional. The bulkhead limits how many goroutines can be waiting on that service, while separate HTTP clients ensure connection pools do not interfere with each other.
+Notice how each downstream service has both its own bulkhead and its own HTTP client with a dedicated transport. This double isolation is intentional. The bulkhead limits how many goroutines can be waiting on that service, while separate transports ensure connection pools do not interfere with each other.
 
 ## Adding Metrics for Observability
 
@@ -280,16 +298,29 @@ func (s *PaymentService) CheckFraud(ctx context.Context, txn Transaction) (bool,
 
     // Then apply the bulkhead
     err := s.fraudBulkhead.Execute(ctx, func() error {
-        resp, err := s.fraudClient.Post(
+        req, err := http.NewRequestWithContext(
+            ctx,
+            http.MethodPost,
             "http://fraud-service/check",
-            "application/json",
             txn.ToJSON(),
         )
         if err != nil {
             s.fraudCircuitBreaker.RecordFailure()
             return err
         }
+        req.Header.Set("Content-Type", "application/json")
+
+        resp, err := s.fraudClient.Do(req)
+        if err != nil {
+            s.fraudCircuitBreaker.RecordFailure()
+            return err
+        }
         defer resp.Body.Close()
+
+        if resp.StatusCode >= http.StatusInternalServerError {
+            s.fraudCircuitBreaker.RecordFailure()
+            return fmt.Errorf("fraud service returned status %d", resp.StatusCode)
+        }
 
         s.fraudCircuitBreaker.RecordSuccess()
         isFraudulent = resp.StatusCode == http.StatusOK

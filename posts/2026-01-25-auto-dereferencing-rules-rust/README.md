@@ -29,17 +29,17 @@ fn main() {
 }
 ```
 
-The compiler automatically inserts `*` operations to find the method.
+The compiler automatically applies dereference and borrow adjustments to find the method.
 
 ## Method Resolution Algorithm
 
 When you call `receiver.method()`, Rust tries these steps in order:
 
-1. Try `T::method(receiver)` directly
-2. Try `<&T>::method(receiver)` by taking a reference
-3. Try `<&mut T>::method(receiver)` by taking a mutable reference
-4. If `T` implements `Deref<Target=U>`, try the same steps on `U`
-5. Repeat until method found or types exhausted
+1. Build candidate receiver types by repeatedly dereferencing the receiver type
+2. After each candidate type `T`, also consider `&T` and `&mut T`
+3. For each candidate in order, look for inherent methods on that type
+4. Then look for visible trait methods implemented by that type
+5. Stop when a single method is found, or report an error if no method or multiple matching methods are found
 
 ```rust
 struct Container {
@@ -257,7 +257,7 @@ fn main() {
     // Comparing references (pointer equality)
     println!("Same address: {}", std::ptr::eq(ra, rb));
 
-    // Comparing values (auto-deref works for PartialEq)
+    // Comparing values (PartialEq for references compares referenced values)
     println!("Same value: {}", ra == rb);  // true
 
     // 3. Pattern matching
@@ -266,7 +266,7 @@ fn main() {
         &val => println!("Value: {}", val),  // Destructure reference
     }
 
-    // Or use ref keyword
+    // Or dereference first
     match *reference {
         val => println!("Value: {}", val),   // Deref then match
     }
@@ -306,8 +306,8 @@ fn main() {
     // Nested Box example
     let nested: Box<Box<Box<i32>>> = Box::new(Box::new(Box::new(42)));
 
-    // Auto-deref finds the i32 methods
-    println!("Value: {}", nested);  // Display works through deref
+    // Box implements Display when the inner type implements Display
+    println!("Value: {}", nested);
 }
 ```
 
@@ -315,6 +315,8 @@ fn main() {
 
 ```rust
 fn main() {
+    use std::ops::Deref;
+
     // Pitfall 1: Forgetting that deref returns a reference
     let s = String::from("hello");
     let r = &s;
@@ -323,10 +325,12 @@ fn main() {
     fn takes_str(_: &str) {}
     takes_str(r);  // &String -> &str
 
-    // But this needs explicit conversion
-    // let slice: &str = r;  // Error without type annotation context
-    let slice: &str = &*r;   // Explicit: deref String, then reference
-    let slice: &str = r.as_str();  // Better: use explicit method
+    // Without an expected target type, this stays a &String
+    let _inferred = r;
+
+    // With an expected target type, deref coercion can produce &str
+    let _slice: &str = r;
+    let _slice_from_method: &str = r.as_str();  // Better: use explicit method
 
     // Pitfall 2: Method resolution ambiguity
     struct Outer;

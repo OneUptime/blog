@@ -91,6 +91,9 @@ class RoomManager {
     const wsRooms = this.connectionRooms.get(ws);
     if (wsRooms) {
       wsRooms.delete(roomName);
+      if (wsRooms.size === 0) {
+        this.connectionRooms.delete(ws);
+      }
     }
 
     console.log(`Connection left room: ${roomName}`);
@@ -203,9 +206,6 @@ function handleMessage(ws, message) {
       break;
     case 'broadcast':
       handleBroadcast(ws, message);
-      break;
-    case 'direct':
-      handleDirect(ws, message);
       break;
     default:
       ws.send(JSON.stringify({ error: 'Unknown message type' }));
@@ -325,7 +325,7 @@ class HierarchicalRoomManager {
   }
 
   // Broadcast to rooms matching a pattern
-  // e.g., broadcast to "chat:*" reaches "chat:general", "chat:support"
+  // e.g., broadcasting to "chat:general" reaches subscribers to "chat:*"
   broadcast(targetRoom, message, excludeWs = null) {
     const data = JSON.stringify(message);
     const sent = new Set();
@@ -417,6 +417,14 @@ class PrivateRoomManager {
 
     // Check capacity
     const room = this.rooms.get(roomName);
+    if (room.has(ws)) {
+      return {
+        success: true,
+        room: roomName,
+        members: room.size
+      };
+    }
+
     if (room.size >= metadata.maxMembers) {
       return { error: 'Room is full' };
     }
@@ -629,6 +637,10 @@ class RedisRoomManager {
   }
 
   async join(ws, roomName) {
+    if (this.connectionRooms.get(ws)?.has(roomName)) {
+      return;
+    }
+
     // Add to local room
     if (!this.localRooms.has(roomName)) {
       this.localRooms.set(roomName, new Set());
@@ -650,23 +662,35 @@ class RedisRoomManager {
 
   async leave(ws, roomName) {
     const room = this.localRooms.get(roomName);
-    if (room) {
-      room.delete(ws);
-
-      // Update Redis counts
-      await this.publisher.hincrby(`room:${roomName}:counts`, this.serverId, -1);
-
-      if (room.size === 0) {
-        this.localRooms.delete(roomName);
-        await this.subscriber.unsubscribe(`room:${roomName}`);
-        await this.publisher.srem(`room:${roomName}:servers`, this.serverId);
-        await this.publisher.hdel(`room:${roomName}:counts`, this.serverId);
+    if (!room || !room.has(ws)) {
+      const wsRooms = this.connectionRooms.get(ws);
+      if (wsRooms) {
+        wsRooms.delete(roomName);
+        if (wsRooms.size === 0) {
+          this.connectionRooms.delete(ws);
+        }
       }
+      return;
+    }
+
+    room.delete(ws);
+
+    // Update Redis counts
+    await this.publisher.hincrby(`room:${roomName}:counts`, this.serverId, -1);
+
+    if (room.size === 0) {
+      this.localRooms.delete(roomName);
+      await this.subscriber.unsubscribe(`room:${roomName}`);
+      await this.publisher.srem(`room:${roomName}:servers`, this.serverId);
+      await this.publisher.hdel(`room:${roomName}:counts`, this.serverId);
     }
 
     const wsRooms = this.connectionRooms.get(ws);
     if (wsRooms) {
       wsRooms.delete(roomName);
+      if (wsRooms.size === 0) {
+        this.connectionRooms.delete(ws);
+      }
     }
   }
 

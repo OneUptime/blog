@@ -258,6 +258,8 @@ Define props with appropriate defaults to prevent undefined access:
 </template>
 
 <script setup>
+import { computed } from 'vue'
+
 // Define props with comprehensive defaults
 const props = defineProps({
   config: {
@@ -270,7 +272,7 @@ const props = defineProps({
     }),
     // Optional: validate structure
     validator(value) {
-      return value.title && typeof value.title === 'string'
+      return typeof value.title === 'string' && value.title.length > 0
     }
   },
 
@@ -331,7 +333,7 @@ const user = ref(null)
 
 // Wrong: no guard for undefined
 // watch(userId, async (id) => {
-//   const response = await fetch(`/api/users/${id}`)  // Error if id is null
+//   const response = await fetch(`/api/users/${id}`)  // Unwanted request if id is null
 // })
 
 // Correct: guard clause in watcher
@@ -445,6 +447,8 @@ function updateUser(updates: Partial<User>) {
 
 ```vue
 <script setup>
+import { ref } from 'vue'
+
 const user = ref(null)
 
 // Wrong: no null check
@@ -476,6 +480,8 @@ const handleSubmit = () => {
 
 <!-- ChildComponent.vue -->
 <script setup>
+import { computed } from 'vue'
+
 const props = defineProps({
   config: {
     type: Object,

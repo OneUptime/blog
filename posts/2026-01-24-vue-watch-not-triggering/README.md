@@ -225,7 +225,7 @@ watch(state, (newState, oldState) => {
 ```vue
 <!-- Solution: Clone for old value comparison -->
 <script setup>
-import { reactive, watch, toRaw } from 'vue'
+import { reactive, watch } from 'vue'
 
 const state = reactive({
   count: 0,
@@ -451,29 +451,34 @@ watch(
 
 ---
 
-## Issue 8: Object Property Added After Setup
+## Issue 8: Object Property Added to Original Object
 
-Vue cannot detect property additions on reactive objects (rare edge case).
+Vue 3 reactive objects are proxies. Add properties through the reactive proxy, not the original raw object.
 
 ```vue
 <script setup>
-import { reactive, watch, set } from 'vue'
+import { reactive, watch } from 'vue'
 
-const config = reactive({
+const rawConfig = {
   theme: 'dark'
-})
+}
+
+const config = reactive(rawConfig)
 
 watch(
   () => config.newProperty,  // Property doesn't exist yet
   (val) => {
-    console.log('newProperty:', val)  // Never triggers
+    console.log('newProperty:', val)
   }
 )
 
-// Adding new property - watch won't detect
-config.newProperty = 'value'  // No trigger
+// WRONG - mutating the original object bypasses Vue's proxy
+rawConfig.newProperty = 'value'  // No trigger
 
-// Solution: Initialize all properties upfront
+// CORRECT - mutate the reactive proxy
+config.newProperty = 'value'  // Triggers
+
+// You can also initialize optional properties upfront for clarity
 const configFixed = reactive({
   theme: 'dark',
   newProperty: null  // Initialize with null

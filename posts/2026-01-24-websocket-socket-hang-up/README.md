@@ -50,9 +50,9 @@ flowchart TD
 // BAD: Unhandled error crashes the entire server
 const WebSocket = require('ws');
 
-const wss = new WebSocket.Server({ port: 8080 });
+const badWss = new WebSocket.Server({ port: 8080 });
 
-wss.on('connection', (ws) => {
+badWss.on('connection', (ws) => {
     ws.on('message', (data) => {
         // If JSON.parse fails, uncaught exception crashes server
         // All clients get "socket hang up"
@@ -60,20 +60,26 @@ wss.on('connection', (ws) => {
         processMessage(message);
     });
 });
+```
 
+```javascript
 // GOOD: Proper error handling prevents crashes
 const WebSocket = require('ws');
 
 const wss = new WebSocket.Server({ port: 8080 });
 
-// Global error handlers to prevent crashes
+// Last-resort error handlers: log, start graceful shutdown, and let a process manager restart
 process.on('uncaughtException', (error) => {
     console.error('Uncaught exception:', error);
-    // Log but don't exit - let connections continue
+    process.exitCode = 1;
+    wss.clients.forEach((client) => {
+        client.close(1011, 'Server error');
+    });
 });
 
 process.on('unhandledRejection', (reason, promise) => {
     console.error('Unhandled rejection:', reason);
+    process.exitCode = 1;
 });
 
 wss.on('connection', (ws) => {
@@ -121,7 +127,7 @@ const v8 = require('v8');
 
 const wss = new WebSocket.Server({
     port: 8080,
-    // Limit max connections to prevent resource exhaustion
+    // Limit max message size to prevent resource exhaustion
     maxPayload: 1024 * 1024, // 1MB max message
     clientTracking: true
 });
@@ -192,9 +198,9 @@ const http = require('http');
 // Create HTTP server with proper timeouts
 const server = http.createServer();
 
-// These timeouts affect WebSocket connections
-server.timeout = 0; // Disable HTTP timeout for WebSocket
-server.keepAliveTimeout = 0; // Disable keep-alive timeout
+// These timeouts affect the HTTP handshake and the underlying upgraded socket
+server.timeout = 0; // Disable socket inactivity timeout for upgraded connections
+server.keepAliveTimeout = 0; // Disable HTTP keep-alive timeout before upgrade
 server.headersTimeout = 60000; // 60 seconds for headers
 
 const wss = new WebSocket.Server({ server });
@@ -268,9 +274,9 @@ location /ws {
     proxy_set_header Connection "upgrade";
 
     # Critical: Long timeouts for WebSocket
-    proxy_connect_timeout 7d;
-    proxy_send_timeout 7d;
-    proxy_read_timeout 7d;
+    proxy_connect_timeout 60s;
+    proxy_send_timeout 1h;
+    proxy_read_timeout 1h;
 }
 ```
 
@@ -296,6 +302,14 @@ wss.on('connection', (ws) => {
 
     ws.on('pong', () => {
         ws.isAlive = true;
+    });
+
+    // Browser clients cannot send protocol-level ping frames, so support
+    // application-level heartbeat messages as well.
+    ws.on('message', (data) => {
+        if (data.toString() === 'ping' && ws.readyState === WebSocket.OPEN) {
+            ws.send('pong');
+        }
     });
 
     ws.on('close', () => {
@@ -492,9 +506,6 @@ if __name__ == "__main__":
 const WebSocket = require('ws');
 const http = require('http');
 
-// Enable detailed debugging
-process.env.DEBUG = 'ws';
-
 const server = http.createServer();
 const wss = new WebSocket.Server({ server });
 
@@ -538,7 +549,7 @@ wss.on('connection', (ws, req) => {
         }
 
         console.log(`[${connectionId}] Connection closed: ${closeType}, ` +
-                    `reason: "${reason}", duration: ${duration}s`);
+                    `reason: "${reason.toString()}", duration: ${duration}s`);
         console.log(`Stats: active=${stats.activeConnections}, ` +
                     `hangups=${stats.socketHangUps}, normal=${stats.normalCloses}`);
     });
@@ -603,7 +614,7 @@ echo | openssl s_client -connect $SERVER:$PORT 2>/dev/null | head -5
 # Test 3: WebSocket upgrade
 echo ""
 echo "3. Testing WebSocket upgrade..."
-curl -sI \
+curl --http1.1 -i -N --max-time 5 \
     -H "Connection: Upgrade" \
     -H "Upgrade: websocket" \
     -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \

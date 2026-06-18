@@ -179,7 +179,7 @@ def check_velero_backups():
                         backup_type='velero'
                     ).set(completion_time.timestamp())
 
-                elif status.get('phase') == 'Failed':
+                elif status.get('phase') in ('Failed', 'PartiallyFailed'):
                     backup_errors.labels(
                         backup_name=name,
                         backup_type='velero',
@@ -289,13 +289,13 @@ route:
   receiver: 'slack-warnings'
 
   routes:
-    - match:
-        severity: critical
+    - matchers:
+        - severity="critical"
       receiver: 'pagerduty-critical'
       continue: true
 
-    - match:
-        severity: critical
+    - matchers:
+        - severity="critical"
       receiver: 'slack-critical'
 
 receivers:
@@ -314,7 +314,7 @@ receivers:
 
   - name: 'pagerduty-critical'
     pagerduty_configs:
-      - service_key: 'your-pagerduty-service-key'
+      - routing_key: 'your-pagerduty-routing-key'
         severity: critical
         description: '{{ .GroupLabels.alertname }}'
 ```
@@ -594,6 +594,7 @@ aws cloudwatch put-metric-alarm \
     --alarm-name "AWSBackupFailures" \
     --metric-name "NumberOfBackupJobsFailed" \
     --namespace "AWS/Backup" \
+    --dimensions Name=BackupVaultName,Value=Default \
     --statistic Sum \
     --period 3600 \
     --evaluation-periods 1 \

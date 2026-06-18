@@ -83,8 +83,7 @@ src/
 │   ├── redis.js           # Cache settings
 │   └── app.js             # Application settings
 ├── middleware/
-│   ├── authentication.js  # JWT/session validation
-│   ├── authorization.js   # Role-based access control
+│   ├── authentication.js  # JWT/session validation and role-based access control
 │   ├── errorHandler.js    # Centralized error handling
 │   ├── requestLogger.js   # Request/response logging
 │   ├── rateLimiter.js     # Rate limiting logic
@@ -704,47 +703,85 @@ Repositories abstract database operations:
 // Database access layer for users
 // Abstracts SQL/ORM queries from business logic
 
-const { db } = require('../models');
+const { pool } = require('../config/database');
 
 const userRepository = {
 
   // Find user by ID
   async findById(id) {
-    return db.query(
-      'SELECT * FROM users WHERE id = $1',
+    return pool.query(
+      `SELECT
+         id,
+         email,
+         password_hash AS "passwordHash",
+         name,
+         role,
+         created_at AS "createdAt",
+         updated_at AS "updatedAt",
+         last_login_at AS "lastLoginAt"
+       FROM users
+       WHERE id = $1`,
       [id]
     ).then(result => result.rows[0] || null);
   },
 
   // Find user by email
   async findByEmail(email) {
-    return db.query(
-      'SELECT * FROM users WHERE email = $1',
+    return pool.query(
+      `SELECT
+         id,
+         email,
+         password_hash AS "passwordHash",
+         name,
+         role,
+         created_at AS "createdAt",
+         updated_at AS "updatedAt",
+         last_login_at AS "lastLoginAt"
+       FROM users
+       WHERE email = $1`,
       [email.toLowerCase()]
     ).then(result => result.rows[0] || null);
   },
 
   // Find multiple users with pagination
   async findMany({ offset, limit }) {
-    return db.query(
-      'SELECT * FROM users ORDER BY created_at DESC LIMIT $1 OFFSET $2',
+    return pool.query(
+      `SELECT
+         id,
+         email,
+         name,
+         role,
+         created_at AS "createdAt",
+         updated_at AS "updatedAt",
+         last_login_at AS "lastLoginAt"
+       FROM users
+       ORDER BY created_at DESC
+       LIMIT $1 OFFSET $2`,
       [limit, offset]
     ).then(result => result.rows);
   },
 
   // Count total users
   async count() {
-    return db.query(
+    return pool.query(
       'SELECT COUNT(*) FROM users'
     ).then(result => parseInt(result.rows[0].count, 10));
   },
 
   // Create new user
   async create({ email, passwordHash, name, role }) {
-    return db.query(
+    return pool.query(
       `INSERT INTO users (email, password_hash, name, role, created_at, updated_at)
        VALUES ($1, $2, $3, $4, NOW(), NOW())
-       RETURNING *`,
+       RETURNING
+         id,
+         email,
+         password_hash AS "passwordHash",
+         name,
+         role,
+         created_at AS "createdAt",
+         updated_at AS "updatedAt",
+         last_login_at AS "lastLoginAt"`,
       [email.toLowerCase(), passwordHash, name, role]
     ).then(result => result.rows[0]);
   },
@@ -765,15 +802,25 @@ const userRepository = {
     fields.push(`updated_at = NOW()`);
     values.push(id);
 
-    return db.query(
-      `UPDATE users SET ${fields.join(', ')} WHERE id = $${paramIndex} RETURNING *`,
+    return pool.query(
+      `UPDATE users SET ${fields.join(', ')}
+       WHERE id = $${paramIndex}
+       RETURNING
+         id,
+         email,
+         password_hash AS "passwordHash",
+         name,
+         role,
+         created_at AS "createdAt",
+         updated_at AS "updatedAt",
+         last_login_at AS "lastLoginAt"`,
       values
     ).then(result => result.rows[0]);
   },
 
   // Update last login timestamp
   async updateLastLogin(id) {
-    return db.query(
+    return pool.query(
       'UPDATE users SET last_login_at = NOW() WHERE id = $1',
       [id]
     );
@@ -781,7 +828,7 @@ const userRepository = {
 
   // Delete user by ID
   async delete(id) {
-    return db.query(
+    return pool.query(
       'DELETE FROM users WHERE id = $1',
       [id]
     );
@@ -838,7 +885,7 @@ const authenticate = (req, res, next) => {
 };
 
 // Check if user has required role
-// Can accept single role or array of roles
+// Can accept one or more roles
 const authorize = (...allowedRoles) => {
   return (req, res, next) => {
     if (!req.user) {

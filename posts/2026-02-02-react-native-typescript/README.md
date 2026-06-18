@@ -59,7 +59,7 @@ For existing JavaScript projects, you can incrementally adopt TypeScript. Instal
 
 ```bash
 # Install TypeScript and React type definitions
-# (React Native ships its own types since 0.71 — no @types/react-native needed)
+# (React Native ships its own types since 0.71 - no @types/react-native needed)
 npm install --save-dev typescript @types/react
 
 # Create TypeScript configuration file
@@ -110,7 +110,7 @@ Configure tsconfig.json with settings optimized for React Native development. Th
 
 ### Functional Components with Props
 
-Define explicit interfaces for component props. The FC (FunctionComponent) type is optional and adds typed `displayName` and `defaultProps` support. Note: implicit `children` typing was removed from `React.FC` in `@types/react` 18 — use `PropsWithChildren` when your component accepts children.
+Define explicit interfaces for component props. The FC (FunctionComponent) type is optional and adds typed `displayName` and `defaultProps` support. Note: implicit `children` typing was removed from `React.FC` in `@types/react` 18 - use `PropsWithChildren` when your component accepts children.
 
 ```typescript
 // components/UserCard.tsx

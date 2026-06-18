@@ -391,16 +391,16 @@ server {
 
 error_log /var/log/nginx/websocket_error.log debug;
 
+# Access log format with detailed timing
+log_format websocket '$remote_addr - $remote_user [$time_local] '
+                     '"$request" $status $body_bytes_sent '
+                     '"$http_referer" "$http_user_agent" '
+                     'rt=$request_time uct="$upstream_connect_time" '
+                     'uht="$upstream_header_time" urt="$upstream_response_time"';
+
 server {
     listen 443 ssl;
     server_name ws.example.com;
-
-    # Access log with detailed timing
-    log_format websocket '$remote_addr - $remote_user [$time_local] '
-                         '"$request" $status $body_bytes_sent '
-                         '"$http_referer" "$http_user_agent" '
-                         'rt=$request_time uct="$upstream_connect_time" '
-                         'uht="$upstream_header_time" urt="$upstream_response_time"';
 
     access_log /var/log/nginx/websocket_access.log websocket;
 
@@ -595,7 +595,7 @@ sudo nginx -s reload
 curl -v \
   -H "Upgrade: websocket" \
   -H "Connection: Upgrade" \
-  -H "Sec-WebSocket-Key: dGVzdGtleQ==" \
+  -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
   -H "Sec-WebSocket-Version: 13" \
   https://ws.example.com/ws
 

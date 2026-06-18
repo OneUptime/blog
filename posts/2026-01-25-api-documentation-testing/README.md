@@ -220,13 +220,12 @@ components:
           type: object
 ```
 
-## Response Validation with openapi-backend
+## Response Validation with Ajv
 
 Validate API responses against the OpenAPI spec in Node.js:
 
 ```typescript
 // api-doc-test.ts
-import OpenAPIBackend from 'openapi-backend';
 import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
 import axios from 'axios';
@@ -260,13 +259,10 @@ function validateResponse(
 ): ValidationResult {
     // Find the operation in the spec
     let operation: any = null;
-    let foundPath: string = '';
-
-    for (const [path, methods] of Object.entries(spec.paths)) {
-        for (const [method, op] of Object.entries(methods as any)) {
+    for (const methods of Object.values(spec.paths)) {
+        for (const op of Object.values(methods as any)) {
             if ((op as any).operationId === operationId) {
                 operation = op;
-                foundPath = path;
                 break;
             }
         }
@@ -392,7 +388,7 @@ import schemathesis
 from hypothesis import settings, Phase
 
 # Load OpenAPI specification
-schema = schemathesis.from_path("./openapi.yaml", base_url="http://localhost:3000/v1")
+schema = schemathesis.openapi.from_path("./openapi.yaml")
 
 # Generate tests for all endpoints
 @schema.parametrize()
@@ -402,8 +398,7 @@ def test_api_matches_documentation(case):
     Schemathesis automatically generates test cases based on
     the OpenAPI specification and validates responses.
     """
-    response = case.call()
-    case.validate_response(response)
+    case.call_and_validate(base_url="http://localhost:3000/v1")
 ```
 
 Run with pytest:
@@ -419,7 +414,7 @@ Validate incoming requests match documented schemas:
 ```typescript
 // middleware/openapi-validator.ts
 import { OpenAPIV3 } from 'openapi-types';
-import Ajv, { ValidateFunction } from 'ajv';
+import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
 import { Request, Response, NextFunction } from 'express';
 
@@ -429,14 +424,12 @@ interface ValidatorMiddleware {
 }
 
 export function createOpenAPIValidator(spec: OpenAPIV3.Document): ValidatorMiddleware {
-    const ajv = new Ajv({ allErrors: true, coerceTypes: true });
+    const ajv = new Ajv({ allErrors: true, coerceTypes: true, strict: false });
     addFormats(ajv);
 
-    // Compile all schemas
-    const validators = new Map<string, ValidateFunction>();
-
+    // Register component schemas so $ref values compile correctly.
     for (const [name, schema] of Object.entries(spec.components?.schemas || {})) {
-        validators.set(name, ajv.compile(schema as any));
+        ajv.addSchema(schema as any, `#/components/schemas/${name}`);
     }
 
     // Build operation lookup
@@ -493,12 +486,27 @@ export function createOpenAPIValidator(spec: OpenAPIV3.Document): ValidatorMiddl
                 (p: any) => p.in === 'query'
             ) || [];
 
-            for (const param of queryParams) {
-                const p = param as OpenAPIV3.ParameterObject;
-                if (p.required && !req.query[p.name]) {
+            if (queryParams.length > 0) {
+                const querySchema = {
+                    type: 'object',
+                    properties: Object.fromEntries(
+                        queryParams.map((param: any) => [
+                            param.name,
+                            (param as OpenAPIV3.ParameterObject).schema || {},
+                        ])
+                    ),
+                    required: queryParams
+                        .filter((param: any) => param.required)
+                        .map((param: any) => param.name),
+                    additionalProperties: true,
+                };
+                const validate = ajv.compile(querySchema);
+
+                if (!validate(req.query)) {
                     return res.status(400).json({
-                        code: 'MISSING_PARAMETER',
-                        message: `Required query parameter '${p.name}' is missing`,
+                        code: 'INVALID_PARAMETERS',
+                        message: 'Query parameters do not match schema',
+                        details: validate.errors,
                     });
                 }
             }

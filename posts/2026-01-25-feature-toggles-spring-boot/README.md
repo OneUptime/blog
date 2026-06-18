@@ -174,6 +174,9 @@ public class FeatureToggle {
     public void setDescription(String description) { this.description = description; }
     public int getRolloutPercentage() { return rolloutPercentage; }
     public void setRolloutPercentage(int rolloutPercentage) {
+        if (rolloutPercentage < 0 || rolloutPercentage > 100) {
+            throw new IllegalArgumentException("Rollout percentage must be between 0 and 100");
+        }
         this.rolloutPercentage = rolloutPercentage;
     }
 }
@@ -187,6 +190,21 @@ import com.example.entity.FeatureToggle;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface FeatureToggleRepository extends JpaRepository<FeatureToggle, String> {
+}
+```
+
+Enable Spring's caching annotations before using `@Cacheable` and `@CacheEvict`:
+
+```java
+// CacheConfig.java
+package com.example.config;
+
+import org.springframework.cache.annotation.EnableCaching;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration
+@EnableCaching
+public class CacheConfig {
 }
 ```
 
@@ -226,8 +244,8 @@ public class FeatureToggleService {
                     return false;
                 }
                 // Use consistent hashing so the same user always gets the same result
-                int userHash = Math.abs(userId.hashCode() % 100);
-                return userHash < toggle.getRolloutPercentage();
+                int userBucket = Math.floorMod(userId.hashCode(), 100);
+                return userBucket < toggle.getRolloutPercentage();
             })
             .orElse(false);
     }
@@ -271,6 +289,17 @@ public @interface FeatureEnabled {
         THROW_EXCEPTION,
         RETURN_NULL,
         RETURN_EMPTY
+    }
+}
+```
+
+```java
+// FeatureDisabledException.java
+package com.example.exception;
+
+public class FeatureDisabledException extends RuntimeException {
+    public FeatureDisabledException(String featureName) {
+        super("Feature is disabled: " + featureName);
     }
 }
 ```

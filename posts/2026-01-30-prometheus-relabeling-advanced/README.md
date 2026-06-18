@@ -532,7 +532,7 @@ relabel_configs:
 
 ### Prefer Specific Regex Patterns
 
-All matching in Prometheus relabeling goes through the regex engine (RE2). The regex is also implicitly fully anchored, so `'production'` and `'^production$'` are equivalent — both match only the exact string `production`. Explicit anchors are redundant but harmless.
+All matching in Prometheus relabeling goes through the regex engine (RE2). The regex is also implicitly fully anchored, so `'production'` and `'^production$'` are equivalent - both match only the exact string `production`. Explicit anchors are redundant but harmless.
 
 ```yaml
 # Equivalent: both match only "production" exactly

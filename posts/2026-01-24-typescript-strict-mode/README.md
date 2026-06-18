@@ -8,7 +8,7 @@ Description: Learn how to enable and configure TypeScript strict mode options fo
 
 ---
 
-TypeScript strict mode enables a set of compiler options that catch more potential errors at compile time. This guide covers all strict mode options and how to adopt them incrementally.
+TypeScript strict mode enables a set of compiler options that catch more potential errors at compile time. This guide covers the main strict mode options and how to adopt them incrementally.
 
 ## What is Strict Mode?
 
@@ -24,13 +24,14 @@ flowchart TD
     A --> G[noImplicitThis]
     A --> H[useUnknownInCatchVariables]
     A --> I[alwaysStrict]
+    A --> J[strictBuiltinIteratorReturn]
 ```
 
 ## Basic Strict Mode Configuration
 
 Enable strict mode in your `tsconfig.json`.
 
-```json
+```jsonc
 {
   "compilerOptions": {
     // Enable all strict type checking options
@@ -115,14 +116,16 @@ interface BaseEvent {
   timestamp: number;
 }
 
-interface MouseEvent extends BaseEvent {
+interface CustomMouseEvent extends BaseEvent {
   x: number;
   y: number;
 }
 
 // Without strictFunctionTypes (dangerous)
 let baseHandler: Handler<BaseEvent>;
-let mouseHandler: Handler<MouseEvent> = (e) => console.log(e.x, e.y);
+let mouseHandler: Handler<CustomMouseEvent> = (e) => {
+  console.log(e.x.toFixed(), e.y.toFixed());
+};
 
 // This assignment would be allowed but is unsafe
 baseHandler = mouseHandler;  // Allowed without strict
@@ -131,11 +134,11 @@ baseHandler({ timestamp: 123 });  // Runtime error: no x, y
 
 ```typescript
 // With strictFunctionTypes (safe)
-// ERROR: Type 'Handler<MouseEvent>' is not assignable to 'Handler<BaseEvent>'
+// ERROR: Type 'Handler<CustomMouseEvent>' is not assignable to 'Handler<BaseEvent>'
 
 // Fix: Use proper type hierarchy
 let baseHandler: Handler<BaseEvent> = (e) => console.log(e.timestamp);
-let mouseHandler: Handler<MouseEvent> = (e) => console.log(e.x, e.y);
+let mouseHandler: Handler<CustomMouseEvent> = (e) => console.log(e.x, e.y);
 
 // Only assign compatible handlers
 function handleBase(e: BaseEvent) {
@@ -219,13 +222,16 @@ Raises an error when `this` has an implicit `any` type.
 
 ```typescript
 // Without noImplicitThis (dangerous)
-const calculator = {
-  value: 0,
-  add: function(n) {
-    this.value += n;  // 'this' is implicitly 'any'
-    return this;
+class Rectangle {
+  width = 10;
+  height = 20;
+
+  getAreaFunction() {
+    return function() {
+      return this.width * this.height;  // 'this' is implicitly 'any'
+    };
   }
-};
+}
 ```
 
 ```typescript
@@ -321,7 +327,7 @@ flowchart LR
 
 If enabling all strict options at once is too disruptive, adopt them incrementally.
 
-```json
+```jsonc
 {
   "compilerOptions": {
     // Start with these less disruptive options
@@ -339,6 +345,7 @@ If enabling all strict options at once is too disruptive, adopt them incremental
     "noImplicitThis": true,
     "strictPropertyInitialization": true,
     "useUnknownInCatchVariables": true,
+    "strictBuiltinIteratorReturn": true,
     "alwaysStrict": true
 
     // After all phases, replace with:
@@ -461,7 +468,7 @@ class ApiService {
 
 These options are not part of `strict` but complement it well.
 
-```json
+```jsonc
 {
   "compilerOptions": {
     "strict": true,
@@ -533,6 +540,7 @@ flowchart TD
         F[noImplicitThis]
         G[useUnknownInCatchVariables]
         H[alwaysStrict]
+        O[strictBuiltinIteratorReturn]
     end
 
     subgraph Recommended["Recommended Additions"]

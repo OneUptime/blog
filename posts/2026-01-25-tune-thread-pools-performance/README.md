@@ -498,9 +498,14 @@ class WorkerPool {
 
   addWorker() {
     const worker = new Worker(this.workerScript);
+    worker.currentReject = null;
 
     worker.on('error', (err) => {
       console.error('Worker error:', err);
+      if (worker.currentReject) {
+        worker.currentReject(err);
+        worker.currentReject = null;
+      }
       // Remove failed worker and create new one
       const index = this.workers.indexOf(worker);
       if (index !== -1) {
@@ -511,10 +516,18 @@ class WorkerPool {
         this.freeWorkers.splice(freeIndex, 1);
       }
       this.addWorker();
+      this.processNextTask();
     });
 
     this.workers.push(worker);
     this.freeWorkers.push(worker);
+  }
+
+  processNextTask() {
+    if (this.taskQueue.length > 0 && this.freeWorkers.length > 0) {
+      const { task, resolve, reject } = this.taskQueue.shift();
+      this.runTask(task, resolve, reject);
+    }
   }
 
   async runTask(task, resolve, reject) {
@@ -525,8 +538,10 @@ class WorkerPool {
     }
 
     const worker = this.freeWorkers.pop();
+    worker.currentReject = reject;
 
     worker.once('message', (result) => {
+      worker.currentReject = null;
       if (result.error) {
         reject(new Error(result.error));
       } else {
@@ -537,10 +552,7 @@ class WorkerPool {
       this.freeWorkers.push(worker);
 
       // Process next task if any
-      if (this.taskQueue.length > 0) {
-        const { task: nextTask, resolve: nextResolve, reject: nextReject } = this.taskQueue.shift();
-        this.runTask(nextTask, nextResolve, nextReject);
-      }
+      this.processNextTask();
     });
 
     worker.postMessage(task);

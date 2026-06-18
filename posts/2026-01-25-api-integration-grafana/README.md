@@ -19,13 +19,15 @@ Common use cases include:
 - Building custom tools that interact with Grafana
 - Migrating between Grafana instances
 
+The examples below use Grafana's legacy `/api` endpoints. Starting in Grafana 13, these endpoints are deprecated in favor of the newer `/apis` structure, but they remain available while Grafana migrates existing APIs.
+
 ## Authentication
 
 Before making API calls, you need to authenticate. Grafana supports several methods.
 
-### API Keys
+### Legacy API Keys
 
-Create an API key in Grafana: Configuration > API Keys > Add API key.
+API keys are deprecated. If you still have existing API keys, migrate them to service account tokens.
 
 ```bash
 # Using an API key
@@ -40,8 +42,8 @@ API keys can have different roles (Viewer, Editor, Admin) limiting what actions 
 
 Service accounts are the modern replacement for API keys, offering better security and audit trails.
 
-1. Go to Administration > Service accounts
-2. Create a service account with appropriate permissions
+1. Go to Administration
+2. Click Users and access > Service accounts > Add service account
 3. Generate a token for the service account
 
 ```bash
@@ -80,7 +82,7 @@ Response structure:
     "id": 1,
     "uid": "abc123",
     "title": "My Dashboard",
-    "panels": [...],
+    "panels": [],
     "version": 5
   },
   "meta": {
@@ -127,7 +129,7 @@ The request body:
     ],
     "schemaVersion": 38
   },
-  "folderUid": "general",
+  "folderUid": "",
   "overwrite": false
 }
 ```
@@ -148,6 +150,7 @@ curl -H "Authorization: Bearer $GRAFANA_TOKEN" \
 # Restore a version
 curl -X POST \
      -H "Authorization: Bearer $GRAFANA_TOKEN" \
+     -H "Content-Type: application/json" \
      https://grafana.example.com/api/dashboards/uid/abc123/restore \
      -d '{"version": 3}'
 ```
@@ -172,6 +175,7 @@ curl -X POST \
      https://grafana.example.com/api/datasources \
      -d '{
        "name": "Prometheus Prod",
+       "uid": "prometheus-prod",
        "type": "prometheus",
        "url": "http://prometheus.monitoring:9090",
        "access": "proxy",
@@ -190,9 +194,10 @@ curl -X POST \
 curl -X PUT \
      -H "Authorization: Bearer $GRAFANA_TOKEN" \
      -H "Content-Type: application/json" \
-     https://grafana.example.com/api/datasources/1 \
+     https://grafana.example.com/api/datasources/uid/prometheus-prod \
      -d '{
        "name": "Prometheus Prod",
+       "uid": "prometheus-prod",
        "type": "prometheus",
        "url": "http://prometheus-new.monitoring:9090",
        "access": "proxy"
@@ -219,27 +224,44 @@ curl -X POST \
      https://grafana.example.com/api/v1/provisioning/alert-rules \
      -d '{
        "title": "High Error Rate",
+       "ruleGroup": "API Alerts",
+       "folderUID": "alerting",
+       "orgId": 1,
+       "uid": "",
        "condition": "B",
        "data": [
          {
            "refId": "A",
+           "queryType": "",
            "relativeTimeRange": {"from": 600, "to": 0},
            "datasourceUid": "prometheus",
            "model": {
              "expr": "rate(http_requests_total{status=~\"5..\"}[5m])",
              "intervalMs": 1000,
-             "maxDataPoints": 43200
+             "maxDataPoints": 43200,
+             "refId": "A"
            }
          },
          {
            "refId": "B",
+           "queryType": "",
            "relativeTimeRange": {"from": 0, "to": 0},
            "datasourceUid": "-100",
            "model": {
-             "type": "threshold",
              "conditions": [
-               {"evaluator": {"type": "gt", "params": [0.1]}}
-             ]
+               {
+                 "evaluator": {"type": "gt", "params": [0.1]},
+                 "operator": {"type": "and"},
+                 "query": {"params": ["A"]},
+                 "reducer": {"type": "last", "params": []},
+                 "type": "query"
+               }
+             ],
+             "datasource": {"type": "__expr__", "uid": "-100"},
+             "intervalMs": 1000,
+             "maxDataPoints": 43200,
+             "refId": "B",
+             "type": "classic_conditions"
            }
          }
        ],
@@ -251,8 +273,7 @@ curl -X POST \
        },
        "labels": {
          "severity": "critical"
-       },
-       "folderUID": "alerting"
+       }
      }'
 ```
 
@@ -307,7 +328,7 @@ class GrafanaClient:
     def save_dashboard(
         self,
         dashboard: Dict[str, Any],
-        folder_uid: str = 'general',
+        folder_uid: str = '',
         overwrite: bool = False
     ) -> Dict[str, Any]:
         """Create or update a dashboard."""
@@ -410,7 +431,7 @@ terraform {
   required_providers {
     grafana = {
       source  = "grafana/grafana"
-      version = "~> 2.0"
+      version = ">= 4.0.0"
     }
   }
 }

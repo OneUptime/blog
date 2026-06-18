@@ -277,10 +277,8 @@ function sendEmail(to: EmailFormat, subject: string) {
 sendEmail("user@example.com", "Hello"); // Valid
 // sendEmail("invalid-email", "Hello"); // Error
 
-// Semantic version pattern
-type Digit = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9";
-type SemVerNumber = `${Digit}` | `${Digit}${Digit}`;
-type SemVer = `${SemVerNumber}.${SemVerNumber}.${SemVerNumber}`;
+// Semantic version shape (simplified)
+type SemVer = `${number}.${number}.${number}`;
 
 function checkVersion(version: SemVer) {
     console.log(`Checking version ${version}`);
@@ -288,18 +286,19 @@ function checkVersion(version: SemVer) {
 
 checkVersion("1.0.0"); // Valid
 checkVersion("12.34.56"); // Valid
-// checkVersion("1.0"); // Error: not a valid SemVer
+// checkVersion("1.0"); // Error: not a valid version shape
 
-// Hex color pattern
+// 3-digit hex color pattern
+type Digit = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9";
 type HexDigit = Digit | "a" | "b" | "c" | "d" | "e" | "f" | "A" | "B" | "C" | "D" | "E" | "F";
-type HexColor = `#${HexDigit}${HexDigit}${HexDigit}${HexDigit}${HexDigit}${HexDigit}`;
+type HexColor = `#${HexDigit}${HexDigit}${HexDigit}`;
 
 function setBackgroundColor(color: HexColor) {
     document.body.style.backgroundColor = color;
 }
 
-setBackgroundColor("#ff5500"); // Valid
-// setBackgroundColor("#gggggg"); // Error: 'g' is not a valid hex digit
+setBackgroundColor("#f50"); // Valid
+// setBackgroundColor("#ggg"); // Error: 'g' is not a valid hex digit
 ```
 
 ## Real-World Example: Type-Safe i18n

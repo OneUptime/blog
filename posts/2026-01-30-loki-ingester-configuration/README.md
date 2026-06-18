@@ -104,10 +104,10 @@ ingester:
   # Timeout for flushing a single chunk
   flush_op_timeout: 10m
 
-  # Maximum size of a chunk before forcing a flush (compressed)
+  # Target uncompressed size of each chunk block
   chunk_block_size: 262144  # 256KB
 
-  # Target size for uncompressed chunk data
+  # Target compressed chunk size
   chunk_target_size: 1572864  # 1.5MB
 
   # Maximum time a chunk can stay in memory without being flushed
@@ -119,16 +119,16 @@ ingester:
   # How long to retain chunks in memory after flushing for queries
   chunk_retain_period: 0s
 
-  # Maximum number of streams an ingester can hold
-  max_transfer_retries: 0
+  # Maximum number of stream errors returned on failed pushes
+  max_returned_stream_errors: 10
 ```
 
 ### Configuration Parameters Explained
 
 | Parameter | Description | Recommended Value |
 |-----------|-------------|-------------------|
-| `chunk_block_size` | Target compressed size per chunk block | 256KB - 512KB |
-| `chunk_target_size` | Target uncompressed chunk size | 1MB - 2MB |
+| `chunk_block_size` | Target uncompressed size per chunk block | 256KB - 512KB |
+| `chunk_target_size` | Target compressed chunk size | 1MB - 2MB |
 | `chunk_idle_period` | Time before idle chunks are flushed | 15m - 1h |
 | `max_chunk_age` | Maximum chunk lifetime in memory | 1h - 4h |
 | `concurrent_flushes` | Parallel flush operations | 16 - 64 |
@@ -151,7 +151,7 @@ ingester:
 | Encoding | Compression Ratio | Encode Speed | Decode Speed | CPU Usage | Best For |
 |----------|-------------------|--------------|--------------|-----------|----------|
 | gzip | High (4-6x) | Slow | Medium | High | Cold storage, archival |
-| snappy | Medium (2-3x) | Very Fast | Very Fast | Low | Default, balanced workloads |
+| snappy | Medium (2-3x) | Very Fast | Very Fast | Low | Balanced workloads |
 | lz4 | Medium (2-3x) | Very Fast | Very Fast | Low | High throughput |
 | zstd | High (4-5x) | Fast | Fast | Medium | Better compression with good speed |
 | none | None (1x) | N/A | N/A | None | Testing, very low latency |
@@ -185,11 +185,11 @@ ingester:
   chunk_encoding: snappy
 
   # Configure chunk sizing for optimal compression
-  chunk_block_size: 262144      # 256KB compressed target
-  chunk_target_size: 1572864    # 1.5MB uncompressed target
+  chunk_block_size: 262144      # 256KB uncompressed block target
+  chunk_target_size: 1572864    # 1.5MB compressed chunk target
 
-  # Enable sync writes for durability (impacts performance)
-  sync_period: 0s               # 0 = sync on every write, adjust based on durability needs
+  # Synchronize chunk rollovers across ingesters
+  sync_period: 1h
 ```
 
 ## Write-Ahead Log (WAL) Configuration
@@ -240,7 +240,7 @@ ingester:
     # Flush WAL on shutdown for clean recovery
     flush_on_shutdown: true
 
-    # Replay timeout for WAL recovery
+    # Memory ceiling used during WAL replay
     replay_memory_ceiling: 4GB
 ```
 
@@ -339,10 +339,10 @@ stateDiagram-v2
 ```yaml
 ingester:
   # Chunk building parameters
-  # Target uncompressed size before flush consideration
+  # Target compressed chunk size
   chunk_target_size: 1572864  # 1.5MB
 
-  # Maximum compressed block size
+  # Target uncompressed block size
   chunk_block_size: 262144    # 256KB
 
   # Time-based flush triggers
@@ -365,12 +365,6 @@ ingester:
   # Keep chunks in memory after flushing for faster queries
   chunk_retain_period: 15m
 
-  # Query settings
-  # Maximum concurrent queries per ingester
-  max_concurrent: 16
-
-  # Query timeout
-  query_timeout: 5m
 ```
 
 ### Chunk Sizing Impact
@@ -430,8 +424,8 @@ ingester:
 
   # Chunk building configuration
   chunk_encoding: snappy           # Balanced compression
-  chunk_block_size: 262144         # 256KB compressed target
-  chunk_target_size: 1572864       # 1.5MB uncompressed target
+  chunk_block_size: 262144         # 256KB uncompressed block target
+  chunk_target_size: 1572864       # 1.5MB compressed chunk target
   chunk_idle_period: 30m           # Flush idle chunks
   max_chunk_age: 2h                # Maximum chunk lifetime
   chunk_retain_period: 15m         # Keep in memory after flush
@@ -454,10 +448,9 @@ ingester:
 
 # Storage configuration
 storage_config:
-  boltdb_shipper:
-    active_index_directory: /var/loki/index
-    cache_location: /var/loki/cache
-    shared_store: s3
+  tsdb_shipper:
+    active_index_directory: /var/loki/tsdb-index
+    cache_location: /var/loki/tsdb-cache
 
   aws:
     s3: s3://us-east-1/loki-chunks
@@ -470,9 +463,9 @@ storage_config:
 schema_config:
   configs:
     - from: 2024-01-01
-      store: boltdb-shipper
+      store: tsdb
       object_store: s3
-      schema: v12
+      schema: v13
       index:
         prefix: loki_index_
         period: 24h
@@ -492,7 +485,6 @@ limits_config:
 # Compactor configuration
 compactor:
   working_directory: /var/loki/compactor
-  shared_store: s3
   compaction_interval: 10m
 ```
 
@@ -509,17 +501,17 @@ loki_ingester_memory_chunks
 # Chunks flushed per second
 rate(loki_ingester_chunks_flushed_total[5m])
 
-# Flush failures
-rate(loki_ingester_chunks_flush_failures_total[5m])
+# Flush queue length
+loki_ingester_flush_queue_length
 
-# WAL disk usage
-loki_ingester_wal_disk_bytes
+# WAL bytes written
+loki_ingester_wal_logged_bytes_total
 
 # Streams per ingester
 loki_ingester_memory_streams
 
-# Chunk encoding duration
-histogram_quantile(0.99, rate(loki_ingester_chunk_encode_duration_seconds_bucket[5m]))
+# Chunk utilization
+loki_ingester_chunk_utilization
 ```
 
 ### Alerting Rules
@@ -529,13 +521,13 @@ histogram_quantile(0.99, rate(loki_ingester_chunk_encode_duration_seconds_bucket
 groups:
   - name: loki-ingester
     rules:
-      - alert: LokiIngesterFlushFailures
-        expr: rate(loki_ingester_chunks_flush_failures_total[5m]) > 0
-        for: 5m
+      - alert: LokiIngesterFlushBacklog
+        expr: loki_ingester_flush_queue_length > 0
+        for: 15m
         labels:
           severity: critical
         annotations:
-          summary: Loki ingester flush failures detected
+          summary: Loki ingester flush queue is backing up
 
       - alert: LokiIngesterWALCorruption
         expr: increase(loki_ingester_wal_corruptions_total[1h]) > 0
@@ -586,7 +578,7 @@ spec:
     spec:
       containers:
         - name: ingester
-          image: grafana/loki:2.9.0
+          image: grafana/loki:3.7.2
           args:
             - -config.file=/etc/loki/config.yaml
             - -target=ingester

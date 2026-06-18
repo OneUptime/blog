@@ -21,6 +21,7 @@ dotnet add package OpenTelemetry.Extensions.Hosting
 dotnet add package OpenTelemetry.Instrumentation.AspNetCore
 dotnet add package OpenTelemetry.Instrumentation.Http
 dotnet add package OpenTelemetry.Instrumentation.SqlClient
+dotnet add package OpenTelemetry.Instrumentation.Runtime
 dotnet add package OpenTelemetry.Exporter.OpenTelemetryProtocol
 dotnet add package OpenTelemetry.Exporter.Console
 ```
@@ -86,6 +87,7 @@ builder.Services.AddOpenTelemetry()
     {
         metrics
             .SetResourceBuilder(resourceBuilder)
+            .AddMeter("OrderService")
             .AddAspNetCoreInstrumentation()
             .AddHttpClientInstrumentation()
             .AddRuntimeInstrumentation()
@@ -171,7 +173,7 @@ public class OrderService
         {
             // Record the exception on the span
             activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
-            activity?.RecordException(ex);
+            activity?.AddException(ex);
             throw;
         }
     }
@@ -256,6 +258,7 @@ builder.Services.AddOpenTelemetry()
             .AddSource("OrderService")
             .AddSource("PaymentService")
             .AddSource("InventoryService")
+            .AddSource("ExternalServiceClient")
             // ... rest of configuration
     });
 ```

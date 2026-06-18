@@ -176,7 +176,7 @@ Once verified, update the Service selector:
 ```bash
 # Switch traffic to green
 kubectl patch service myapp -n production \
-  -p '{"spec":{"selector":{"version":"green"}}}'
+  -p '{"spec":{"selector":{"app":"myapp","version":"green"}}}'
 
 # Verify endpoints changed
 kubectl get endpoints myapp -n production
@@ -191,7 +191,7 @@ If something goes wrong, switch back immediately:
 ```bash
 # Instant rollback to blue
 kubectl patch service myapp -n production \
-  -p '{"spec":{"selector":{"version":"blue"}}}'
+  -p '{"spec":{"selector":{"app":"myapp","version":"blue"}}}'
 ```
 
 ### Step 7: Cleanup Old Version
@@ -205,7 +205,7 @@ kubectl delete deployment myapp-blue -n production
 
 ## Method 2: Ingress-Based Blue-Green
 
-For external traffic, use Ingress annotations to control routing.
+For external traffic, use separate Services and update the Ingress backend to control routing.
 
 ### Using nginx Ingress Controller
 
@@ -216,8 +216,6 @@ kind: Ingress
 metadata:
   name: myapp
   namespace: production
-  annotations:
-    nginx.ingress.kubernetes.io/canary: "false"
 spec:
   ingressClassName: nginx
   rules:
@@ -350,10 +348,10 @@ kubectl exec -n $NAMESPACE $POD -- curl -s localhost:8080/health
 # Switch traffic
 echo "Switching traffic to $NEW_VERSION..."
 kubectl patch service $APP_NAME -n $NAMESPACE \
-    -p "{\"spec\":{\"selector\":{\"version\":\"$NEW_VERSION\"}}}"
+    -p "{\"spec\":{\"selector\":{\"app\":\"$APP_NAME\",\"version\":\"$NEW_VERSION\"}}}"
 
 echo "Deployment complete. Traffic now routed to $NEW_VERSION"
-echo "To rollback, run: kubectl patch service $APP_NAME -n $NAMESPACE -p '{\"spec\":{\"selector\":{\"version\":\"$CURRENT_VERSION\"}}}'"
+echo "To rollback, run: kubectl patch service $APP_NAME -n $NAMESPACE -p '{\"spec\":{\"selector\":{\"app\":\"$APP_NAME\",\"version\":\"$CURRENT_VERSION\"}}}'"
 ```
 
 Usage:
@@ -439,7 +437,7 @@ fi
 
 ### Use Pod Disruption Budgets
 
-Protect both deployments during cluster maintenance:
+Protect your application pods during cluster maintenance:
 
 ```yaml
 apiVersion: policy/v1

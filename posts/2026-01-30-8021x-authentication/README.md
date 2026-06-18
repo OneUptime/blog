@@ -90,9 +90,9 @@ The main configuration files are located in `/etc/freeradius/3.0/`:
 /etc/freeradius/3.0/
     radiusd.conf       # Main configuration
     clients.conf       # Network devices (authenticators)
-    users              # Local user database
     mods-available/    # Available modules
     mods-enabled/      # Enabled modules
+    mods-config/files/authorize  # Local user database
     sites-available/   # Virtual server configurations
     sites-enabled/     # Enabled virtual servers
 ```
@@ -128,7 +128,7 @@ client office-switches {
 
 ### Configure Local Users
 
-Edit `/etc/freeradius/3.0/users` for testing (use LDAP/AD for production):
+Edit `/etc/freeradius/3.0/mods-config/files/authorize` for testing (use LDAP/AD for production):
 
 ```bash
 # Basic user with password
@@ -164,7 +164,7 @@ radtest john password123 localhost 0 testing123
 
 ## Integrating with Active Directory
 
-For enterprise environments, integrate FreeRADIUS with Active Directory:
+For enterprise environments, integrate FreeRADIUS with Active Directory for directory lookup and group-based authorization. For PEAP/MSCHAPv2 password validation, join the RADIUS server to AD and configure the `mschap` module to use `ntlm_auth`; LDAP binds are suitable for PAP-style methods such as EAP-TTLS/PAP.
 
 ```mermaid
 flowchart TB
@@ -185,14 +185,14 @@ flowchart TB
 
     C1 & C2 & C3 --> SW
     SW -->|RADIUS| FR
-    FR -->|LDAP/Kerberos| AD
+    FR -->|LDAP lookup / ntlm_auth| AD
 ```
 
 ### Install Required Modules
 
 ```bash
-# Install LDAP and Kerberos modules
-sudo apt install freeradius-ldap freeradius-krb5 -y
+# Install LDAP and winbind support for AD integration
+sudo apt install freeradius-ldap samba winbind krb5-user -y
 
 # Enable the LDAP module
 sudo ln -s /etc/freeradius/3.0/mods-available/ldap /etc/freeradius/3.0/mods-enabled/ldap
@@ -231,7 +231,7 @@ ldap {
 }
 ```
 
-### Configure Virtual Server for AD Authentication
+### Configure Virtual Server for AD Authorization
 
 Edit `/etc/freeradius/3.0/sites-available/default`:
 
@@ -239,13 +239,8 @@ Edit `/etc/freeradius/3.0/sites-available/default`:
 authorize {
     preprocess
 
-    # Check if user exists in AD
+    # Look up the user and cache group membership from AD
     ldap
-    if (ok || updated) {
-        update control {
-            Auth-Type := ldap
-        }
-    }
 
     # Fall back to local users file
     files
@@ -254,25 +249,19 @@ authorize {
     logintime
 }
 
-authenticate {
-    Auth-Type LDAP {
-        ldap
-    }
-}
-
 post-auth {
     # Log successful authentications
     exec
 
     # Apply VLAN based on AD group membership
-    if (&LDAP-Group == "CN=IT-Staff,OU=Groups,DC=example,DC=com") {
+    if (LDAP-Group == "CN=IT-Staff,OU=Groups,DC=example,DC=com") {
         update reply {
             Tunnel-Type := VLAN
             Tunnel-Medium-Type := IEEE-802
             Tunnel-Private-Group-ID := "10"
         }
     }
-    elsif (&LDAP-Group == "CN=Employees,OU=Groups,DC=example,DC=com") {
+    elsif (LDAP-Group == "CN=Employees,OU=Groups,DC=example,DC=com") {
         update reply {
             Tunnel-Type := VLAN
             Tunnel-Medium-Type := IEEE-802
@@ -398,20 +387,44 @@ $interfaceName = "Ethernet"
 # Create 802.1X profile XML
 $profileXml = @"
 <?xml version="1.0"?>
-<LANProfile xmlns="http://www.microsoft.com/networking/LAN/profile/v1">
+<LANProfile xmlns="https://www.microsoft.com/networking/LAN/profile/v1">
     <MSM>
         <security>
             <OneXEnforced>true</OneXEnforced>
             <OneXEnabled>true</OneXEnabled>
-            <OneX xmlns="http://www.microsoft.com/networking/OneX/v1">
+            <OneX xmlns="https://www.microsoft.com/networking/OneX/v1">
                 <EAPConfig>
-                    <EapHostConfig xmlns="http://www.microsoft.com/provisioning/EapHostConfig">
+                    <EapHostConfig xmlns="https://www.microsoft.com/provisioning/EapHostConfig"
+                                   xmlns:eapCommon="https://www.microsoft.com/provisioning/EapCommon"
+                                   xmlns:baseEap="https://www.microsoft.com/provisioning/BaseEapMethodConfig">
                         <EapMethod>
-                            <Type xmlns="http://www.microsoft.com/provisioning/EapCommon">25</Type>
-                            <VendorId xmlns="http://www.microsoft.com/provisioning/EapCommon">0</VendorId>
-                            <VendorType xmlns="http://www.microsoft.com/provisioning/EapCommon">0</VendorType>
-                            <AuthorId xmlns="http://www.microsoft.com/provisioning/EapCommon">0</AuthorId>
+                            <eapCommon:Type>25</eapCommon:Type>
+                            <eapCommon:AuthorId>0</eapCommon:AuthorId>
                         </EapMethod>
+                        <Config xmlns:baseEap="https://www.microsoft.com/provisioning/BaseEapConnectionPropertiesV1"
+                                xmlns:msPeap="https://www.microsoft.com/provisioning/MsPeapConnectionPropertiesV1"
+                                xmlns:msChapV2="https://www.microsoft.com/provisioning/MsChapV2ConnectionPropertiesV1">
+                            <baseEap:Eap>
+                                <baseEap:Type>25</baseEap:Type>
+                                <msPeap:EapType>
+                                    <msPeap:ServerValidation>
+                                        <msPeap:DisableUserPromptForServerValidation>false</msPeap:DisableUserPromptForServerValidation>
+                                        <msPeap:TrustedRootCA />
+                                    </msPeap:ServerValidation>
+                                    <msPeap:FastReconnect>true</msPeap:FastReconnect>
+                                    <msPeap:InnerEapOptional>0</msPeap:InnerEapOptional>
+                                    <baseEap:Eap>
+                                        <baseEap:Type>26</baseEap:Type>
+                                        <msChapV2:EapType>
+                                            <msChapV2:UseWinLogonCredentials>false</msChapV2:UseWinLogonCredentials>
+                                        </msChapV2:EapType>
+                                    </baseEap:Eap>
+                                    <msPeap:EnableQuarantineChecks>false</msPeap:EnableQuarantineChecks>
+                                    <msPeap:RequireCryptoBinding>false</msPeap:RequireCryptoBinding>
+                                    <msPeap:PeapExtensions />
+                                </msPeap:EapType>
+                            </baseEap:Eap>
+                        </Config>
                     </EapHostConfig>
                 </EAPConfig>
             </OneX>
@@ -427,14 +440,11 @@ netsh lan add profile filename="C:\temp\dot1x-profile.xml" interface="$interface
 
 ### macOS Supplicant Configuration
 
-Create a configuration profile or use the command line:
+Create a configuration profile or use MDM:
 
 ```bash
-# Create 802.1X configuration
-sudo /usr/libexec/8021xd
-
-# Configure via System Preferences or MDM
-# Network > Advanced > 802.1X
+# Configure via System Settings or MDM
+# Network > Details > 802.1X
 ```
 
 For enterprise deployment, use Apple Configurator or MDM with this profile:
@@ -444,6 +454,16 @@ For enterprise deployment, use Apple Configurator or MDM with this profile:
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+    <key>PayloadType</key>
+    <string>Configuration</string>
+    <key>PayloadIdentifier</key>
+    <string>com.example.8021x.profile</string>
+    <key>PayloadUUID</key>
+    <string>aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee</string>
+    <key>PayloadVersion</key>
+    <integer>1</integer>
+    <key>PayloadDisplayName</key>
+    <string>Ethernet 802.1X</string>
     <key>PayloadContent</key>
     <array>
         <dict>
@@ -457,11 +477,15 @@ For enterprise deployment, use Apple Configurator or MDM with this profile:
                 <array>
                     <string>radius.example.com</string>
                 </array>
-                <key>TTLSInnerAuthentication</key>
-                <string>MSCHAPv2</string>
             </dict>
             <key>PayloadType</key>
             <string>com.apple.firstactiveethernet.managed</string>
+            <key>PayloadIdentifier</key>
+            <string>com.example.ethernet.8021x</string>
+            <key>PayloadUUID</key>
+            <string>11111111-2222-3333-4444-555555555555</string>
+            <key>PayloadVersion</key>
+            <integer>1</integer>
             <key>SetupModes</key>
             <array>
                 <string>System</string>
@@ -626,7 +650,7 @@ flowchart LR
 ### FreeRADIUS VLAN Assignment
 
 ```bash
-# In /etc/freeradius/3.0/users
+# In /etc/freeradius/3.0/mods-config/files/authorize
 
 # IT Staff - VLAN 10
 it-user Cleartext-Password := "password"
@@ -721,7 +745,7 @@ interface GigabitEthernet0/1
 
 ### FreeRADIUS MAB Configuration
 
-Add MAC addresses to `/etc/freeradius/3.0/users`:
+Add MAC addresses to `/etc/freeradius/3.0/mods-config/files/authorize`:
 
 ```bash
 # Format: lowercase MAC with hyphens or colons
@@ -769,13 +793,32 @@ sql {
     password = "radiuspassword"
     radius_db = "radius"
 
-    # Custom query for MAB
+    # Custom query for MAB check items
     authorize_check_query = "\
-        SELECT mac_address as UserName, \
-               mac_address as Cleartext-Password \
+        SELECT id, mac_address AS username, \
+               'Cleartext-Password' AS attribute, \
+               mac_address AS value, ':=' AS op \
         FROM radcheck_mac \
-        WHERE LOWER(REPLACE(mac_address, ':', '-')) = LOWER('%{User-Name}') \
+        WHERE LOWER(REPLACE(mac_address, ':', '-')) = LOWER(REPLACE('%{SQL-User-Name}', ':', '-')) \
         LIMIT 1"
+
+    # Custom query for MAB reply attributes
+    authorize_reply_query = "\
+        SELECT id, mac_address AS username, \
+               'Tunnel-Private-Group-ID' AS attribute, \
+               CAST(vlan_id AS CHAR) AS value, ':=' AS op \
+        FROM radcheck_mac \
+        WHERE LOWER(REPLACE(mac_address, ':', '-')) = LOWER(REPLACE('%{SQL-User-Name}', ':', '-')) \
+        UNION ALL \
+        SELECT id, mac_address AS username, \
+               'Tunnel-Type' AS attribute, 'VLAN' AS value, ':=' AS op \
+        FROM radcheck_mac \
+        WHERE LOWER(REPLACE(mac_address, ':', '-')) = LOWER(REPLACE('%{SQL-User-Name}', ':', '-')) \
+        UNION ALL \
+        SELECT id, mac_address AS username, \
+               'Tunnel-Medium-Type' AS attribute, 'IEEE-802' AS value, ':=' AS op \
+        FROM radcheck_mac \
+        WHERE LOWER(REPLACE(mac_address, ':', '-')) = LOWER(REPLACE('%{SQL-User-Name}', ':', '-'))"
 }
 ```
 
@@ -919,7 +962,8 @@ radius-server deadtime 15
 
 ```sql
 -- On primary MySQL server
-GRANT REPLICATION SLAVE ON *.* TO 'repl'@'192.168.1.101' IDENTIFIED BY 'replpassword';
+CREATE USER 'repl'@'192.168.1.101' IDENTIFIED BY 'replpassword';
+GRANT REPLICATION SLAVE ON *.* TO 'repl'@'192.168.1.101';
 
 -- Configure replication for radius database
 -- Ensures both RADIUS servers have consistent user data

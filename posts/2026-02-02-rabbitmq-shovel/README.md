@@ -268,7 +268,7 @@ ssl_options.versions.1 = tlsv1.3
 ssl_options.versions.2 = tlsv1.2
 ```
 
-Shovel client TLS settings are not configured globally in `rabbitmq.conf`. They are specified per shovel — either via TLS query parameters on the `amqps://` URI, or via `ssl_options` inside the shovel definition in `advanced.config`. For example, append client certificate paths to the destination URI:
+Shovel client TLS settings are not configured globally in `rabbitmq.conf`. They are specified per shovel - either via TLS query parameters on the `amqps://` URI, or via `ssl_options` inside the shovel definition in `advanced.config`. For example, append client certificate paths to the destination URI:
 
 ```text
 amqps://shovel_user:secure_password@dc2-rabbit-1.example.com:5671/orders_vhost?cacertfile=/etc/rabbitmq/ssl/ca/ca_cert.pem&certfile=/etc/rabbitmq/ssl/client/shovel_cert.pem&keyfile=/etc/rabbitmq/ssl/client/shovel_key.pem&verify=verify_peer&server_name_indication=dc2-rabbit-1.example.com

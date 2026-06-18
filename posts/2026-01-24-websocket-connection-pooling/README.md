@@ -99,7 +99,7 @@ class WebSocketPool {
         }
 
         // Create new connection if under limit
-        if (this.connections.size < this.maxConnections) {
+        if (this.getTotalConnectionCount() < this.maxConnections) {
             const conn = await this.createConnection(clientId);
             return conn;
         }
@@ -230,7 +230,11 @@ class WebSocketPool {
     }
 
     generateId() {
-        return `conn_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        return `conn_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
+    }
+
+    getTotalConnectionCount() {
+        return this.connections.size + this.availableConnections.length;
     }
 
     getStats() {
@@ -253,13 +257,13 @@ module.exports = WebSocketPool;
 const WebSocket = require('ws');
 const http = require('http');
 const cluster = require('cluster');
-const os = require('os');
+const { availableParallelism } = require('os');
 
 class WebSocketServerPool {
     constructor(options = {}) {
         this.port = options.port || 8080;
         this.maxConnectionsPerWorker = options.maxConnectionsPerWorker || 10000;
-        this.workerCount = options.workers || os.cpus().length;
+        this.workerCount = options.workers || availableParallelism();
         this.healthCheckInterval = options.healthCheckInterval || 30000;
 
         this.workers = new Map();
@@ -267,7 +271,7 @@ class WebSocketServerPool {
     }
 
     start() {
-        if (cluster.isMaster) {
+        if (cluster.isPrimary) {
             this.startMaster();
         } else {
             this.startWorker();
@@ -303,10 +307,6 @@ class WebSocketServerPool {
         const worker = cluster.fork();
         this.workers.set(worker.id, worker);
         this.connectionCount.set(worker.id, 0);
-
-        worker.on('message', (message) => {
-            this.handleWorkerMessage(worker, message);
-        });
     }
 
     handleWorkerMessage(worker, message) {
@@ -368,14 +368,14 @@ class WebSocketServerPool {
                 pool.removeConnection(clientId);
             });
 
-            ws.on('message', (message) => {
-                pool.handleMessage(clientId, message);
+            ws.on('message', (message, isBinary) => {
+                pool.handleMessage(clientId, message, isBinary);
             });
         });
 
         // Report stats to master
         setInterval(() => {
-            process.send({
+            process.send?.({
                 type: 'connection_count',
                 count: pool.getConnectionCount()
             });
@@ -430,14 +430,19 @@ class WorkerConnectionPool {
         this.connections.delete(clientId);
     }
 
-    handleMessage(clientId, message) {
+    handleMessage(clientId, message, isBinary = false) {
         const conn = this.connections.get(clientId);
         if (!conn) return;
 
         conn.lastActivity = Date.now();
 
+        if (isBinary) {
+            conn.socket.close(1003, 'Unsupported binary message');
+            return;
+        }
+
         try {
-            const data = JSON.parse(message);
+            const data = JSON.parse(message.toString());
             this.routeMessage(clientId, data);
         } catch (e) {
             // Handle non-JSON messages
@@ -614,18 +619,20 @@ class ClientConnectionPool {
         return new Promise((resolve, reject) => {
             const timeout = setTimeout(() => {
                 const queue = this.pendingRequests.get(host);
-                const index = queue.findIndex(r => r.resolve === resolve);
+                const index = queue.indexOf(request);
                 if (index !== -1) queue.splice(index, 1);
                 reject(new Error('Pool exhausted'));
             }, this.connectionTimeout);
 
-            this.pendingRequests.get(host).push({
+            const request = {
                 resolve: (conn) => {
                     clearTimeout(timeout);
                     resolve(conn);
                 },
                 reject
-            });
+            };
+
+            this.pendingRequests.get(host).push(request);
         });
     }
 
@@ -879,12 +886,6 @@ class PriorityConnectionPool {
 
                 this.connections.delete(clientId);
                 connections.delete(clientId);
-
-                // Re-queue preempted client
-                this.waitingQueues[lowerPriority].push({
-                    clientId,
-                    timestamp: Date.now()
-                });
 
                 return true;
             }

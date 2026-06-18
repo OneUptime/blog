@@ -862,7 +862,7 @@ data:
       Short Revision: {{.app.status.sync.revision | trunc 7}}
       Uppercase Name: {{.app.metadata.name | upper}}
 
-      {{/* Timestamps are RFC3339 strings — display as-is */}}
+      {{/* Timestamps are RFC3339 strings - display as-is */}}
       Started: {{.app.status.operationState.startedAt}}
 
       {{/* Default values (Sprig) */}}

@@ -318,8 +318,11 @@ You can use WebSocket subprotocols to pass authentication information during the
 ```javascript
 // Client-side: Using subprotocol for auth
 const token = 'your-jwt-token';
-// Pass token as a subprotocol (base64 encoded to be safe)
-const encodedToken = btoa(token);
+// Pass token as a subprotocol (base64url encoded to keep it header-safe)
+const encodedToken = btoa(token)
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
 const socket = new WebSocket('wss://api.example.com/ws', ['auth-' + encodedToken]);
 
 socket.onopen = function() {
@@ -329,45 +332,57 @@ socket.onopen = function() {
 
 ```javascript
 // Server-side: Extracting auth from subprotocol
+const http = require('http');
 const WebSocket = require('ws');
 const jwt = require('jsonwebtoken');
 
 const wss = new WebSocket.Server({
-    port: 8080,
-    verifyClient: function(info, callback) {
-        // Extract protocols from the upgrade request
-        const protocols = info.req.headers['sec-websocket-protocol'];
+    noServer: true,
+    // Do not echo the auth token back as the selected subprotocol
+    handleProtocols: () => false
+});
 
-        if (!protocols) {
-            callback(false, 401, 'No authentication provided');
-            return;
-        }
+const server = http.createServer();
 
-        // Find the auth protocol
-        const protocolList = protocols.split(',').map(p => p.trim());
-        const authProtocol = protocolList.find(p => p.startsWith('auth-'));
+server.on('upgrade', function(request, socket, head) {
+    // Extract protocols from the upgrade request
+    const protocols = request.headers['sec-websocket-protocol'];
 
-        if (!authProtocol) {
-            callback(false, 401, 'No auth protocol found');
-            return;
-        }
-
-        // Extract and decode the token
-        const encodedToken = authProtocol.substring(5); // Remove 'auth-' prefix
-        const token = Buffer.from(encodedToken, 'base64').toString();
-
-        jwt.verify(token, process.env.JWT_SECRET, function(err, decoded) {
-            if (err) {
-                callback(false, 401, 'Invalid token');
-                return;
-            }
-
-            // Store decoded info for later use
-            info.req.userId = decoded.userId;
-            info.req.userRole = decoded.role;
-            callback(true);
-        });
+    if (!protocols) {
+        socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+        socket.destroy();
+        return;
     }
+
+    // Find the auth protocol
+    const protocolList = protocols.split(',').map(p => p.trim());
+    const authProtocol = protocolList.find(p => p.startsWith('auth-'));
+
+    if (!authProtocol) {
+        socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+        socket.destroy();
+        return;
+    }
+
+    // Extract and decode the token
+    const encodedToken = authProtocol.substring(5); // Remove 'auth-' prefix
+    const token = Buffer.from(encodedToken, 'base64url').toString('utf8');
+
+    jwt.verify(token, process.env.JWT_SECRET, function(err, decoded) {
+        if (err) {
+            socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+            socket.destroy();
+            return;
+        }
+
+        // Store decoded info for later use
+        request.userId = decoded.userId;
+        request.userRole = decoded.role;
+
+        wss.handleUpgrade(request, socket, head, function(ws) {
+            wss.emit('connection', ws, request);
+        });
+    });
 });
 
 wss.on('connection', function(ws, request) {
@@ -375,6 +390,8 @@ wss.on('connection', function(ws, request) {
     ws.userRole = request.userRole;
     console.log(`User ${ws.userId} connected`);
 });
+
+server.listen(8080);
 ```
 
 ## Token Refresh Handling
@@ -412,7 +429,12 @@ class WebSocketWithTokenRefresh {
 
     getTokenExpiry(token) {
         // Decode JWT to get expiry (without verification)
-        const payload = JSON.parse(atob(token.split('.')[1]));
+        const base64Url = token.split('.')[1];
+        const base64 = base64Url
+            .replace(/-/g, '+')
+            .replace(/_/g, '/')
+            .padEnd(Math.ceil(base64Url.length / 4) * 4, '=');
+        const payload = JSON.parse(atob(base64));
         return payload.exp * 1000; // Convert to milliseconds
     }
 
@@ -489,11 +511,12 @@ flowchart TB
 
 ```javascript
 // Server-side: Complete security implementation
+const http = require('http');
 const WebSocket = require('ws');
 const jwt = require('jsonwebtoken');
-const rateLimit = require('./rateLimit');
 
 const wss = new WebSocket.Server({ noServer: true });
+const server = http.createServer();
 
 // Connection tracking for rate limiting
 const connectionCounts = new Map();
@@ -602,6 +625,8 @@ async function checkTokenRevocation(tokenId) {
     // Return true if token is revoked
     return false;
 }
+
+server.listen(8080);
 ```
 
 ## Summary

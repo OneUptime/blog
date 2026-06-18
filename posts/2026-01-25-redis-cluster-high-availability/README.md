@@ -85,49 +85,43 @@ version: '3.8'
 services:
   redis-node-1:
     image: redis:7-alpine
-    command: redis-server --port 6379 --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes
-    ports:
-      - "7000:6379"
+    network_mode: host
+    command: redis-server --port 7000 --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes
     volumes:
       - redis-node-1-data:/data
 
   redis-node-2:
     image: redis:7-alpine
-    command: redis-server --port 6379 --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes
-    ports:
-      - "7001:6379"
+    network_mode: host
+    command: redis-server --port 7001 --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes
     volumes:
       - redis-node-2-data:/data
 
   redis-node-3:
     image: redis:7-alpine
-    command: redis-server --port 6379 --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes
-    ports:
-      - "7002:6379"
+    network_mode: host
+    command: redis-server --port 7002 --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes
     volumes:
       - redis-node-3-data:/data
 
   redis-node-4:
     image: redis:7-alpine
-    command: redis-server --port 6379 --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes
-    ports:
-      - "7003:6379"
+    network_mode: host
+    command: redis-server --port 7003 --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes
     volumes:
       - redis-node-4-data:/data
 
   redis-node-5:
     image: redis:7-alpine
-    command: redis-server --port 6379 --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes
-    ports:
-      - "7004:6379"
+    network_mode: host
+    command: redis-server --port 7004 --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes
     volumes:
       - redis-node-5-data:/data
 
   redis-node-6:
     image: redis:7-alpine
-    command: redis-server --port 6379 --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes
-    ports:
-      - "7005:6379"
+    network_mode: host
+    command: redis-server --port 7005 --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes
     volumes:
       - redis-node-6-data:/data
 
@@ -143,22 +137,20 @@ volumes:
 ## Python Client Connection
 
 ```python
-from redis.cluster import RedisCluster
-from redis.exceptions import RedisClusterException
+from redis.cluster import ClusterNode, RedisCluster
 
 def get_cluster_connection():
     """Connect to Redis Cluster"""
     # Provide at least one node; client discovers others
     nodes = [
-        {'host': 'localhost', 'port': 7000},
-        {'host': 'localhost', 'port': 7001},
-        {'host': 'localhost', 'port': 7002},
+        ClusterNode('localhost', 7000),
+        ClusterNode('localhost', 7001),
+        ClusterNode('localhost', 7002),
     ]
 
     rc = RedisCluster(
         startup_nodes=nodes,
-        decode_responses=True,
-        skip_full_coverage_check=True
+        decode_responses=True
     )
 
     return rc
@@ -187,7 +179,7 @@ Keys with the same hash tag go to the same slot:
 ```python
 from redis.cluster import RedisCluster
 
-rc = RedisCluster(startup_nodes=[{'host': 'localhost', 'port': 7000}])
+rc = RedisCluster(host='localhost', port=7000)
 
 # Without hash tags, these keys might be on different nodes
 # Multi-key operations would fail
@@ -203,25 +195,27 @@ values = rc.mget('{user:1}:name', '{user:1}:email')
 print(values)  # ['Alice', 'alice@example.com']
 
 # Transactions work with hash tags
-pipe = rc.pipeline()
+pipe = rc.pipeline(transaction=True)
 pipe.set('{order:100}:status', 'pending')
 pipe.set('{order:100}:total', '99.99')
 pipe.incr('{order:100}:items')
 pipe.execute()
 
 # Calculate which slot a key maps to
-slot = rc.cluster_keyslot('user:1')
+slot = rc.keyslot('user:1')
 print(f"Key 'user:1' maps to slot {slot}")
 
-slot_tagged = rc.cluster_keyslot('{user:1}:name')
+slot_tagged = rc.keyslot('{user:1}:name')
 print(f"Key '{{user:1}}:name' maps to slot {slot_tagged}")
 ```
 
 ## Handling Failover
 
 ```python
-from redis.cluster import RedisCluster
+from redis.backoff import ExponentialBackoff
+from redis.cluster import ClusterNode, RedisCluster
 from redis.exceptions import ClusterDownError, ConnectionError
+from redis.retry import Retry
 import time
 
 class ResilientClusterClient:
@@ -241,8 +235,7 @@ class ResilientClusterClient:
                 client = RedisCluster(
                     startup_nodes=self.nodes,
                     decode_responses=True,
-                    skip_full_coverage_check=True,
-                    cluster_error_retry_attempts=3
+                    retry=Retry(ExponentialBackoff(), 3)
                 )
                 # Verify connection
                 client.ping()
@@ -286,9 +279,9 @@ class ResilientClusterClient:
 
 # Usage
 client = ResilientClusterClient([
-    {'host': 'redis-1', 'port': 6379},
-    {'host': 'redis-2', 'port': 6379},
-    {'host': 'redis-3', 'port': 6379},
+    ClusterNode('redis-1', 6379),
+    ClusterNode('redis-2', 6379),
+    ClusterNode('redis-3', 6379),
 ])
 
 # Operations automatically handle failover
@@ -301,7 +294,7 @@ value = client.execute('get', 'key')
 ```python
 from redis.cluster import RedisCluster
 
-rc = RedisCluster(startup_nodes=[{'host': 'localhost', 'port': 7000}])
+rc = RedisCluster(host='localhost', port=7000)
 
 def check_cluster_health():
     """Check cluster status and node health"""
@@ -311,33 +304,20 @@ def check_cluster_health():
     print(f"Known nodes: {info['cluster_known_nodes']}")
     print(f"Cluster size: {info['cluster_size']}")
 
-    # Check each node
-    nodes = rc.cluster_nodes()
-    for node_id, node_info in nodes.items():
-        flags = node_info.get('flags', '')
-        print(f"\nNode: {node_info['host']}:{node_info['port']}")
-        print(f"  Flags: {flags}")
-        print(f"  Slots: {node_info.get('slots', [])}")
-
-        # Check if node is healthy
-        if 'fail' in flags:
-            print("  WARNING: Node marked as failed!")
-        if 'master' in flags and not node_info.get('slots'):
-            print("  WARNING: Master with no slots!")
+    # Check each node known to the client
+    for node in rc.get_nodes():
+        print(f"\nNode: {node.host}:{node.port}")
+        print(f"  Role: {node.server_type}")
+        print(f"  Connected: {node.redis_connection is not None}")
 
 def get_slot_distribution():
     """Show how slots are distributed across masters"""
-    nodes = rc.cluster_nodes()
+    slots = rc.cluster_slots()
 
     masters = {}
-    for node_id, info in nodes.items():
-        if 'master' in info.get('flags', ''):
-            slots = info.get('slots', [])
-            slot_count = sum(
-                (s[1] - s[0] + 1) if isinstance(s, list) else 1
-                for s in slots
-            )
-            masters[f"{info['host']}:{info['port']}"] = slot_count
+    for (start, end), slot_info in slots.items():
+        host, port = slot_info['primary']
+        masters[f"{host}:{port}"] = masters.get(f"{host}:{port}", 0) + end - start + 1
 
     print("\nSlot distribution:")
     for master, count in sorted(masters.items()):

@@ -22,6 +22,23 @@ Build effective queries for different use cases:
 // search/query-builder.ts
 // Log search query builder
 
+type LogFilterOperator = 'eq' | 'ne' | 'gt' | 'gte' | 'lt' | 'lte' | 'in' | 'contains' | 'regex';
+
+interface LogFilter {
+  field: string;
+  operator: LogFilterOperator;
+  value: unknown;
+}
+
+interface AggregationConfig {
+  type: 'terms' | 'date_histogram' | 'avg' | 'sum' | 'min' | 'max' | 'percentiles';
+  field: string;
+  name: string;
+  size?: number;
+  interval?: string;
+  percentiles?: number[];
+}
+
 interface LogQuery {
   // Time range (required for performance)
   timeRange: {
@@ -33,11 +50,7 @@ interface LogQuery {
   text?: string;
 
   // Structured filters
-  filters?: {
-    field: string;
-    operator: 'eq' | 'ne' | 'gt' | 'gte' | 'lt' | 'lte' | 'in' | 'contains' | 'regex';
-    value: unknown;
-  }[];
+  filters?: LogFilter[];
 
   // Aggregations
   aggregations?: AggregationConfig[];
@@ -71,8 +84,8 @@ class LogQueryBuilder {
   }
 
   // Filter by field value
-  where(field: string, operator: string, value: unknown): this {
-    this.query.filters!.push({ field, operator: operator as any, value });
+  where(field: string, operator: LogFilterOperator, value: unknown): this {
+    this.query.filters!.push({ field, operator, value });
     return this;
   }
 
@@ -175,6 +188,11 @@ Convert queries to Elasticsearch DSL:
 // search/elasticsearch-translator.ts
 // Translate queries to Elasticsearch DSL
 
+type ElasticsearchBoolQuery = {
+  must?: object[];
+  filter: object[];
+};
+
 class ElasticsearchQueryTranslator {
   translate(query: LogQuery): object {
     const must: object[] = [];
@@ -208,12 +226,15 @@ class ElasticsearchQueryTranslator {
     }
 
     // Build query
+    const bool: ElasticsearchBoolQuery = { filter };
+
+    if (must.length > 0) {
+      bool.must = must;
+    }
+
     const esQuery: any = {
       query: {
-        bool: {
-          must: must.length > 0 ? must : undefined,
-          filter
-        }
+        bool
       }
     };
 
@@ -249,7 +270,7 @@ class ElasticsearchQueryTranslator {
     return esQuery;
   }
 
-  private translateFilter(filter: LogQuery['filters'][0]): object {
+  private translateFilter(filter: LogFilter): object {
     switch (filter.operator) {
       case 'eq':
         return { term: { [filter.field]: filter.value } };
@@ -284,6 +305,10 @@ class ElasticsearchQueryTranslator {
           }
         };
       case 'date_histogram':
+        if (!agg.interval) {
+          throw new Error('date_histogram aggregations require an interval');
+        }
+
         return {
           date_histogram: {
             field: agg.field,
@@ -323,12 +348,43 @@ Find patterns in log data:
 // analysis/pattern-detection.ts
 // Log pattern detection and clustering
 
+interface LogEntry {
+  timestamp: string | Date;
+  level: string;
+  message?: string;
+  service?: string;
+  duration_ms?: number;
+  http?: {
+    duration_ms?: number;
+    status?: number;
+  };
+  error?: {
+    type?: string;
+    message?: string;
+  };
+}
+
 interface LogPattern {
   pattern: string;
   count: number;
   examples: string[];
   firstSeen: Date;
   lastSeen: Date;
+}
+
+interface PatternSpike {
+  pattern: string;
+  baselineCount: number;
+  currentCount: number;
+  increasePercent: number;
+}
+
+interface PatternAnalysis {
+  totalLogs: number;
+  uniquePatterns: number;
+  topPatterns: LogPattern[];
+  newPatterns: LogPattern[];
+  patternCoverage: number;
 }
 
 class LogPatternDetector {
@@ -370,7 +426,8 @@ class LogPatternDetector {
 
   // Record a log message and update patterns
   record(log: LogEntry): void {
-    const pattern = this.extractPattern(log.message || '');
+    const message = log.message || '';
+    const pattern = this.extractPattern(message);
     const timestamp = new Date(log.timestamp);
 
     const existing = this.patterns.get(pattern);
@@ -381,13 +438,13 @@ class LogPatternDetector {
 
       // Keep up to 5 examples
       if (existing.examples.length < 5) {
-        existing.examples.push(log.message);
+        existing.examples.push(message);
       }
     } else {
       this.patterns.set(pattern, {
         pattern,
         count: 1,
-        examples: [log.message],
+        examples: [message],
         firstSeen: timestamp,
         lastSeen: timestamp
       });
@@ -399,6 +456,10 @@ class LogPatternDetector {
     return [...this.patterns.values()]
       .sort((a, b) => b.count - a.count)
       .slice(0, limit);
+  }
+
+  getPatternCount(): number {
+    return this.patterns.size;
   }
 
   // Find new patterns (appeared recently)
@@ -428,10 +489,12 @@ async function analyzeLogPatterns(logs: LogEntry[]): Promise<PatternAnalysis> {
 
   return {
     totalLogs: logs.length,
-    uniquePatterns: topPatterns.length,
+    uniquePatterns: detector.getPatternCount(),
     topPatterns,
     newPatterns,
-    patternCoverage: topPatterns.reduce((sum, p) => sum + p.count, 0) / logs.length
+    patternCoverage: logs.length > 0
+      ? topPatterns.reduce((sum, p) => sum + p.count, 0) / logs.length
+      : 0
   };
 }
 ```
@@ -445,6 +508,73 @@ Build analytics dashboards from log data:
 ```typescript
 // analysis/analytics.ts
 // Log analytics and metrics
+
+interface TimeSeriesData {
+  timestamp: Date;
+  value: number;
+  metadata: {
+    total: number;
+    errors: number;
+  };
+}
+
+interface PercentileData {
+  p50: number;
+  p90: number;
+  p95: number;
+  p99: number;
+  count: number;
+}
+
+interface ErrorCount {
+  errorType: string;
+  count: number;
+  services: string[];
+  lastSeen: string | Date;
+  example: LogEntry;
+}
+
+interface ErrorCountAccumulator extends Omit<ErrorCount, 'services'> {
+  services: Set<string>;
+}
+
+interface ServiceStats {
+  service: string;
+  totalLogs: number;
+  errorCount: number;
+  errorRate: number;
+  warnCount: number;
+  avgLatency: number | null;
+  statusCodes: Record<number, number>;
+}
+
+interface ServiceStatsAccumulator {
+  service: string;
+  totalLogs: number;
+  errorCount: number;
+  warnCount: number;
+  latencies: number[];
+  statusCodes: Map<number, number>;
+}
+
+interface TimeRange {
+  start: Date;
+  end: Date;
+}
+
+interface LogSearchClient {
+  search(query: LogQuery): Promise<LogEntry[]>;
+}
+
+interface DashboardData {
+  timeRange: TimeRange;
+  totalLogs: number;
+  errorRate: TimeSeriesData[];
+  latencyPercentiles: PercentileData;
+  topErrors: ErrorCount[];
+  serviceStats: ServiceStats[];
+  generatedAt: Date;
+}
 
 interface LogAnalytics {
   // Compute error rate over time
@@ -490,7 +620,7 @@ class LogAnalyticsEngine implements LogAnalytics {
 
   computeLatencyPercentiles(logs: LogEntry[]): PercentileData {
     const latencies = logs
-      .map(log => log.http?.duration_ms || log.duration_ms)
+      .map(log => log.http?.duration_ms ?? log.duration_ms)
       .filter((lat): lat is number => typeof lat === 'number')
       .sort((a, b) => a - b);
 
@@ -513,7 +643,7 @@ class LogAnalyticsEngine implements LogAnalytics {
   }
 
   findTopErrors(logs: LogEntry[], limit: number): ErrorCount[] {
-    const errorCounts: Map<string, ErrorCount> = new Map();
+    const errorCounts: Map<string, ErrorCountAccumulator> = new Map();
 
     for (const log of logs) {
       if (log.level !== 'error' && log.level !== 'fatal') continue;
@@ -528,7 +658,7 @@ class LogAnalyticsEngine implements LogAnalytics {
       };
 
       existing.count++;
-      existing.services.add(log.service);
+      existing.services.add(log.service || 'unknown');
       if (new Date(log.timestamp) > new Date(existing.lastSeen)) {
         existing.lastSeen = log.timestamp;
         existing.example = log;
@@ -547,7 +677,7 @@ class LogAnalyticsEngine implements LogAnalytics {
   }
 
   computeServiceStats(logs: LogEntry[]): ServiceStats[] {
-    const stats: Map<string, ServiceStats> = new Map();
+    const stats: Map<string, ServiceStatsAccumulator> = new Map();
 
     for (const log of logs) {
       const service = log.service || 'unknown';
@@ -568,11 +698,11 @@ class LogAnalyticsEngine implements LogAnalytics {
         existing.warnCount++;
       }
 
-      if (log.http?.duration_ms) {
+      if (typeof log.http?.duration_ms === 'number') {
         existing.latencies.push(log.http.duration_ms);
       }
 
-      if (log.http?.status) {
+      if (typeof log.http?.status === 'number') {
         const current = existing.statusCodes.get(log.http.status) || 0;
         existing.statusCodes.set(log.http.status, current + 1);
       }
@@ -629,6 +759,12 @@ Optimize queries for better performance:
 // search/optimization.ts
 // Search performance optimization strategies
 
+interface IndexSuggestion {
+  field: string;
+  reason: string;
+  suggestedType: string;
+}
+
 class SearchOptimizer {
   // Optimize query before execution
   optimize(query: LogQuery): LogQuery {
@@ -667,7 +803,7 @@ class SearchOptimizer {
     return optimized;
   }
 
-  private orderFilters(filters: LogQuery['filters']): LogQuery['filters'] {
+  private orderFilters(filters: LogFilter[]): LogFilter[] {
     // Order: exact matches first, then ranges, then text searches
     const priority: Record<string, number> = {
       eq: 1,

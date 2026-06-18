@@ -138,7 +138,7 @@ server.on('upgrade', (req, socket, head) => {
 
 ### 3. Subprotocol Negotiation Failure
 
-When the client requests specific subprotocols, the server must acknowledge at least one.
+When a browser client requests specific subprotocols, the server must acknowledge one of the requested protocols for the handshake to complete.
 
 ```javascript
 // client.js
@@ -177,8 +177,9 @@ const wss = new WebSocket.Server({
       }
     }
 
-    // Return false to reject all protocols (connection will fail)
-    // Or return a supported protocol even if not requested
+    // Return false to omit Sec-WebSocket-Protocol from the response.
+    // Browser clients that requested protocols will fail the handshake.
+    // Do not return a protocol that the client did not request.
     return false;
   },
 });
@@ -197,6 +198,7 @@ Servers often validate the Origin header to prevent cross-origin attacks.
 // Origin validation in WebSocket server
 
 const WebSocket = require('ws');
+const http = require('http');
 
 const ALLOWED_ORIGINS = [
   'https://app.example.com',
@@ -209,28 +211,28 @@ if (process.env.NODE_ENV === 'development') {
   ALLOWED_ORIGINS.push('http://127.0.0.1:3000');
 }
 
-const wss = new WebSocket.Server({
-  port: 8080,
-  verifyClient: (info, callback) => {
-    const origin = info.origin || info.req.headers.origin;
+const server = http.createServer();
+const wss = new WebSocket.Server({ noServer: true });
 
-    console.log('Connection attempt from origin:', origin);
+server.on('upgrade', (req, socket, head) => {
+  const origin = req.headers.origin;
 
-    if (!origin) {
-      // Allow connections without origin (e.g., from server-side code)
-      callback(true);
-      return;
-    }
+  console.log('Connection attempt from origin:', origin);
 
-    if (ALLOWED_ORIGINS.includes(origin)) {
-      callback(true);
-    } else {
-      console.warn('Rejected connection from unauthorized origin:', origin);
-      // Second parameter is HTTP status code, third is reason
-      callback(false, 403, 'Origin not allowed');
-    }
-  },
+  if (origin && !ALLOWED_ORIGINS.includes(origin)) {
+    console.warn('Rejected connection from unauthorized origin:', origin);
+    socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+    socket.destroy();
+    return;
+  }
+
+  // Allow connections without origin (e.g., from server-side code)
+  wss.handleUpgrade(req, socket, head, (ws) => {
+    wss.emit('connection', ws, req);
+  });
 });
+
+server.listen(8080);
 ```
 
 ```mermaid
@@ -253,46 +255,53 @@ When authentication is required before the WebSocket connection.
 // Authentication during WebSocket handshake
 
 const WebSocket = require('ws');
+const http = require('http');
 const jwt = require('jsonwebtoken');
-const url = require('url');
 
-const wss = new WebSocket.Server({
-  port: 8080,
-  verifyClient: async (info, callback) => {
-    try {
-      // Method 1: Token in query string
-      const parsedUrl = url.parse(info.req.url, true);
-      const token = parsedUrl.query.token;
+const server = http.createServer();
+const wss = new WebSocket.Server({ noServer: true });
 
-      // Method 2: Token in Authorization header
-      // const token = info.req.headers.authorization?.split(' ')[1];
+function rejectUpgrade(socket, statusCode, reason) {
+  socket.write(`HTTP/1.1 ${statusCode} ${reason}\r\n\r\n`);
+  socket.destroy();
+}
 
-      // Method 3: Token in cookie
-      // const cookies = parseCookies(info.req.headers.cookie);
-      // const token = cookies.accessToken;
+server.on('upgrade', async (req, socket, head) => {
+  try {
+    // Method 1: Token in query string
+    const parsedUrl = new URL(req.url, 'http://localhost');
+    const token = parsedUrl.searchParams.get('token');
 
-      if (!token) {
-        callback(false, 401, 'Authentication required');
-        return;
-      }
+    // Method 2: Token in Authorization header (Node.js clients only)
+    // const token = req.headers.authorization?.split(' ')[1];
 
-      // Verify token
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    // Method 3: Token in cookie
+    // const cookies = parseCookies(req.headers.cookie);
+    // const token = cookies.accessToken;
 
-      // Attach user to request for later use
-      info.req.user = decoded;
-
-      callback(true);
-    } catch (error) {
-      if (error.name === 'TokenExpiredError') {
-        callback(false, 401, 'Token expired');
-      } else if (error.name === 'JsonWebTokenError') {
-        callback(false, 401, 'Invalid token');
-      } else {
-        callback(false, 500, 'Authentication error');
-      }
+    if (!token) {
+      rejectUpgrade(socket, 401, 'Authentication required');
+      return;
     }
-  },
+
+    // Verify token
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    // Attach user to request for later use
+    req.user = decoded;
+
+    wss.handleUpgrade(req, socket, head, (ws) => {
+      wss.emit('connection', ws, req);
+    });
+  } catch (error) {
+    if (error.name === 'TokenExpiredError') {
+      rejectUpgrade(socket, 401, 'Token expired');
+    } else if (error.name === 'JsonWebTokenError') {
+      rejectUpgrade(socket, 401, 'Invalid token');
+    } else {
+      rejectUpgrade(socket, 500, 'Authentication error');
+    }
+  }
 });
 
 wss.on('connection', (ws, req) => {
@@ -300,6 +309,8 @@ wss.on('connection', (ws, req) => {
   console.log('User connected:', req.user.id);
   ws.userId = req.user.id;
 });
+
+server.listen(8080);
 ```
 
 ```javascript
@@ -310,7 +321,7 @@ async function connectWebSocket() {
   const token = await getAccessToken();
 
   // Method 1: Token in query string (simple but visible in logs)
-  const ws = new WebSocket(`wss://api.example.com/ws?token=${token}`);
+  const ws = new WebSocket(`wss://api.example.com/ws?token=${encodeURIComponent(token)}`);
 
   // Note: Browsers do not allow custom headers on WebSocket connections
   // So you cannot use Authorization header directly
@@ -403,7 +414,7 @@ ws.on('error', (error) => {
 
   // Common TLS error codes
   if (error.code === 'UNABLE_TO_VERIFY_LEAF_SIGNATURE') {
-    console.error('Solution: Add CA certificate or set rejectUnauthorized: false');
+    console.error('Solution: Add the missing CA certificate');
   } else if (error.code === 'CERT_HAS_EXPIRED') {
     console.error('Solution: Renew the server certificate');
   } else if (error.code === 'DEPTH_ZERO_SELF_SIGNED_CERT') {
@@ -416,9 +427,9 @@ ws.on('open', () => {
 });
 ```
 
-### 8. HTTP/2 Incompatibility
+### 8. Traditional Upgrade Over HTTP/2
 
-WebSocket requires HTTP/1.1. HTTP/2 connections cannot be upgraded to WebSocket in the traditional way.
+The traditional WebSocket upgrade handshake uses HTTP/1.1. HTTP/2 does not use the same `Upgrade` and `Connection` header mechanism, although RFC 8441 defines a separate way to run WebSockets over HTTP/2 when both client and server support it.
 
 ```nginx
 # nginx.conf
@@ -439,7 +450,7 @@ server {
         proxy_pass http://backend;
     }
 
-    # WebSocket - forces HTTP/1.1
+    # WebSocket - use HTTP/1.1 for the upstream upgrade request
     location /ws {
         proxy_pass http://websocket_backend;
 
@@ -464,10 +475,10 @@ server {
 
 ```bash
 # Test WebSocket handshake manually
-curl -v \
+curl --http1.1 -v \
   -H "Upgrade: websocket" \
   -H "Connection: Upgrade" \
-  -H "Sec-WebSocket-Key: dGVzdGluZzEyMw==" \
+  -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
   -H "Sec-WebSocket-Version: 13" \
   -H "Origin: https://app.example.com" \
   https://api.example.com/ws
@@ -489,6 +500,7 @@ const WebSocket = require('ws');
 const http = require('http');
 
 const server = http.createServer();
+const wss = new WebSocket.Server({ noServer: true });
 
 // Log all upgrade requests
 server.on('upgrade', (request, socket, head) => {
@@ -499,27 +511,25 @@ server.on('upgrade', (request, socket, head) => {
     console.log(`  ${key}: ${value}`);
   });
   console.log('================================');
-});
 
-const wss = new WebSocket.Server({
-  server,
-  verifyClient: (info, callback) => {
-    console.log('verifyClient called');
-    console.log('  Origin:', info.origin);
-    console.log('  Secure:', info.secure);
-    console.log('  URL:', info.req.url);
+  console.log('Validation called');
+  console.log('  Origin:', request.headers.origin);
+  console.log('  Secure:', Boolean(request.socket.encrypted));
+  console.log('  URL:', request.url);
 
-    // Your validation logic here
-    const isValid = true;
+  // Your validation logic here
+  const isValid = true;
 
-    if (isValid) {
-      console.log('  Result: ACCEPTED');
-      callback(true);
-    } else {
-      console.log('  Result: REJECTED');
-      callback(false, 403, 'Validation failed');
-    }
-  },
+  if (isValid) {
+    console.log('  Result: ACCEPTED');
+    wss.handleUpgrade(request, socket, head, (ws) => {
+      wss.emit('connection', ws, request);
+    });
+  } else {
+    console.log('  Result: REJECTED');
+    socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+    socket.destroy();
+  }
 });
 
 wss.on('connection', (ws, request) => {
@@ -612,6 +622,6 @@ function connectWithRetry(url, maxAttempts = 3) {
 | Auth failure | Invalid or missing authentication token | Verify token handling in handshake |
 | Proxy misconfiguration | Proxy not forwarding upgrade headers | Configure proxy_http_version 1.1 and upgrade headers |
 | TLS issues | Certificate validation failures | Fix certificates or configure CA trust |
-| HTTP/2 | WebSocket incompatible with HTTP/2 upgrade | Force HTTP/1.1 for WebSocket endpoints |
+| HTTP/2 | HTTP/1.1 upgrade headers do not apply to HTTP/2 | Use HTTP/1.1 for traditional WebSocket endpoints or RFC 8441 where supported |
 
 Understanding the handshake process is essential for debugging connection issues. Always check both client and server logs, and use network inspection tools to see the actual HTTP request and response during the handshake.

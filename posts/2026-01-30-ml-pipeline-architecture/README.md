@@ -131,7 +131,7 @@ from typing import NamedTuple
 
 @dsl.component(
     base_image="python:3.10",
-    packages_to_install=["pandas", "sqlalchemy", "great-expectations"]
+    packages_to_install=["pandas", "pyarrow", "sqlalchemy", "great-expectations"]
 )
 def ingest_data(
     db_connection_string: str,
@@ -155,6 +155,7 @@ def ingest_data(
     import pandas as pd
     from sqlalchemy import create_engine
     import great_expectations as gx
+    from great_expectations import expectations as gxe
     from collections import namedtuple
 
     # Connect and fetch data
@@ -168,24 +169,31 @@ def ingest_data(
 
     # Validate data using Great Expectations
     context = gx.get_context()
+    data_source = context.data_sources.add_pandas(name="ingestion_source")
+    data_asset = data_source.add_dataframe_asset(name="transactions")
+    batch_definition = data_asset.add_batch_definition_whole_dataframe(
+        "transactions_batch"
+    )
+    batch = batch_definition.get_batch(batch_parameters={"dataframe": df})
 
     # Define expectations for data quality
     expectations = [
         # Ensure no completely null ID columns
-        {"expectation_type": "expect_column_values_to_not_be_null",
-         "kwargs": {"column": "id", "mostly": 0.99}},
+        gxe.ExpectColumnValuesToNotBeNull(column="id", mostly=0.99),
         # Timestamp should be recent
-        {"expectation_type": "expect_column_values_to_be_between",
-         "kwargs": {"column": "created_at", "min_value": "2024-01-01"}}
+        gxe.ExpectColumnValuesToBeBetween(
+            column="created_at",
+            min_value="2024-01-01"
+        )
     ]
 
     # Run validation checks
     validation_passed = True
-    for exp in expectations:
-        result = df.expect(**exp)
+    for expectation in expectations:
+        result = batch.validate(expectation)
         if not result.success:
             validation_passed = False
-            metrics.log_metric(f"failed_{exp['expectation_type']}", 1)
+            metrics.log_metric(f"failed_{expectation.__class__.__name__}", 1)
 
     # Save validated data to parquet format
     df.to_parquet(output_data.path)
@@ -259,7 +267,7 @@ from kfp.dsl import Input, Output, Dataset, Model
 
 @dsl.component(
     base_image="python:3.10",
-    packages_to_install=["pandas", "scikit-learn", "feast"]
+    packages_to_install=["pandas", "pyarrow", "scikit-learn", "feast"]
 )
 def engineer_features(
     input_data: Input[Dataset],
@@ -348,12 +356,13 @@ def engineer_features(
 # Define feature views for online and offline serving
 
 from datetime import timedelta
-from feast import Entity, Feature, FeatureView, FileSource, ValueType
+from feast import Entity, FeatureView, Field, FileSource
+from feast.types import Float64, Int64
 
 # Define the entity (the thing we are making predictions about)
 customer = Entity(
-    name="customer_id",
-    value_type=ValueType.INT64,
+    name="customer",
+    join_keys=["customer_id"],
     description="Unique identifier for a customer"
 )
 
@@ -367,16 +376,15 @@ customer_transactions_source = FileSource(
 # Define the feature view with all customer transaction features
 customer_transaction_features = FeatureView(
     name="customer_transaction_features",
-    entities=["customer_id"],
+    entities=[customer],
     ttl=timedelta(days=90),  # Features older than 90 days are stale
-    features=[
-        Feature(name="transaction_count_30d", dtype=ValueType.INT64),
-        Feature(name="avg_transaction_amount_30d", dtype=ValueType.DOUBLE),
-        Feature(name="max_transaction_amount_30d", dtype=ValueType.DOUBLE),
-        Feature(name="days_since_last_transaction", dtype=ValueType.INT64),
-        Feature(name="unique_merchants_30d", dtype=ValueType.INT64),
+    schema=[
+        Field(name="transaction_count_30d", dtype=Int64),
+        Field(name="avg_transaction_amount_30d", dtype=Float64),
+        Field(name="max_transaction_amount_30d", dtype=Float64),
+        Field(name="days_since_last_transaction", dtype=Int64),
+        Field(name="unique_merchants_30d", dtype=Int64),
     ],
-    online=True,   # Enable online serving for real-time inference
     source=customer_transactions_source,
     tags={"team": "ml-platform", "status": "production"}
 )
@@ -425,7 +433,7 @@ from kfp.dsl import Input, Output, Dataset, Model, Metrics
 @dsl.component(
     base_image="python:3.10",
     packages_to_install=[
-        "pandas", "scikit-learn", "xgboost",
+        "pandas", "pyarrow", "scikit-learn", "xgboost",
         "mlflow", "optuna"
     ]
 )
@@ -435,6 +443,7 @@ def train_model(
     hyperparameter_search: bool,
     mlflow_tracking_uri: str,
     experiment_name: str,
+    output_test_data: Output[Dataset],
     output_model: Output[Model],
     metrics: Output[Metrics]
 ):
@@ -454,6 +463,7 @@ def train_model(
         hyperparameter_search: Whether to run hyperparameter optimization
         mlflow_tracking_uri: URI for MLflow tracking server
         experiment_name: Name of the MLflow experiment
+        output_test_data: Holdout test data used by the evaluation component
         output_model: Trained model artifact
         metrics: Training metrics output
     """
@@ -498,7 +508,6 @@ def train_model(
                 "max_depth": 6,
                 "learning_rate": 0.1,
                 "random_state": 42,
-                "use_label_encoder": False,
                 "eval_metric": "logloss"
             },
             "search_space": {
@@ -539,7 +548,6 @@ def train_model(
         # Add fixed params
         params["random_state"] = 42
         if model_type == "xgboost":
-            params["use_label_encoder"] = False
             params["eval_metric"] = "logloss"
 
         model = config["class"](**params)
@@ -563,7 +571,6 @@ def train_model(
             best_params = study.best_params
             best_params["random_state"] = 42
             if model_type == "xgboost":
-                best_params["use_label_encoder"] = False
                 best_params["eval_metric"] = "logloss"
 
             mlflow.log_params({"best_" + k: v for k, v in best_params.items()})
@@ -608,11 +615,16 @@ def train_model(
             metrics.log_metric(name, value)
 
         # Log model to MLflow
-        mlflow.sklearn.log_model(model, "model")
+        mlflow.sklearn.log_model(sk_model=model, name="model")
 
         # Save model artifact for Kubeflow
         with open(output_model.path, "wb") as f:
             pickle.dump(model, f)
+
+        # Save the holdout test set for the evaluation component
+        test_df = X_test.copy()
+        test_df["target"] = y_test.values
+        test_df.to_parquet(output_test_data.path)
 
         # Log feature importances if available
         if hasattr(model, "feature_importances_"):
@@ -668,7 +680,7 @@ from typing import NamedTuple
 @dsl.component(
     base_image="python:3.10",
     packages_to_install=[
-        "pandas", "scikit-learn", "matplotlib",
+        "pandas", "pyarrow", "scikit-learn", "matplotlib",
         "seaborn", "fairlearn"
     ]
 )
@@ -932,29 +944,34 @@ def register_model(
 def promote_model(
     model_name: str,
     version: str,
-    stage: str
+    alias: str
 ) -> None:
     """
-    Promote a model version to a new stage.
+    Promote a model version by assigning an alias.
 
-    Stages: None -> Staging -> Production -> Archived
+    Example aliases: staging, champion, production
 
     Args:
         model_name: Name of the registered model
         version: Version number to promote
-        stage: Target stage (Staging, Production, Archived)
+        alias: Alias to point at this model version
     """
     client = MlflowClient()
 
-    # Transition to new stage
-    client.transition_model_version_stage(
+    # Point the alias at the approved model version
+    client.set_registered_model_alias(
+        name=model_name,
+        alias=alias,
+        version=version
+    )
+    client.set_model_version_tag(
         name=model_name,
         version=version,
-        stage=stage,
-        archive_existing_versions=(stage == "Production")
+        key="deployment_alias",
+        value=alias
     )
 
-    print(f"Model {model_name} version {version} promoted to {stage}")
+    print(f"Model {model_name} version {version} promoted to alias {alias}")
 ```
 
 ### Kubernetes Deployment with Canary
@@ -963,21 +980,18 @@ def promote_model(
 # kubernetes/model-deployment.yaml
 # Deploy model with canary traffic splitting
 
-apiVersion: serving.kubeflow.org/v1beta1
+apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService
 metadata:
   name: fraud-detection-model
   namespace: ml-serving
-  annotations:
-    # Enable canary deployment
-    serving.kubeflow.org/canaryTrafficPercent: "10"
 spec:
   predictor:
-    # Production model (90% traffic)
+    # New model revision receiving 10% of traffic
     model:
       modelFormat:
         name: mlflow
-      storageUri: "s3://models/fraud-detection/production"
+      storageUri: "s3://models/fraud-detection/canary"
       resources:
         requests:
           cpu: "1"
@@ -990,50 +1004,7 @@ spec:
     maxReplicas: 10
     scaleTarget: 100  # Target concurrent requests per replica
     scaleMetric: concurrency
-
-  canaryTrafficPercent: 10
-  canary:
-    # Canary model (10% traffic)
-    predictor:
-      model:
-        modelFormat:
-          name: mlflow
-        storageUri: "s3://models/fraud-detection/canary"
-        resources:
-          requests:
-            cpu: "1"
-            memory: "2Gi"
-          limits:
-            cpu: "2"
-            memory: "4Gi"
----
-# Horizontal Pod Autoscaler for scaling
-apiVersion: autoscaling/v2
-kind: HorizontalPodAutoscaler
-metadata:
-  name: fraud-detection-hpa
-  namespace: ml-serving
-spec:
-  scaleTargetRef:
-    apiVersion: serving.kubeflow.org/v1beta1
-    kind: InferenceService
-    name: fraud-detection-model
-  minReplicas: 2
-  maxReplicas: 20
-  metrics:
-    - type: Resource
-      resource:
-        name: cpu
-        target:
-          type: Utilization
-          averageUtilization: 70
-    - type: Pods
-      pods:
-        metric:
-          name: http_requests_per_second
-        target:
-          type: AverageValue
-          averageValue: "100"
+    canaryTrafficPercent: 10
 ```
 
 ---
@@ -1090,7 +1061,7 @@ def fraud_detection_pipeline(
     )
 
     # Gate: Only proceed if data validation passed
-    with dsl.Condition(ingest_task.outputs["validation_passed"] == True):
+    with dsl.If(ingest_task.outputs["validation_passed"] == True):
 
         # Stage 2: Feature Engineering
         feature_task = engineer_features(
@@ -1110,12 +1081,12 @@ def fraud_detection_pipeline(
         # Stage 4: Model Evaluation
         eval_task = evaluate_model(
             model=train_task.outputs["output_model"],
-            test_data=feature_task.outputs["output_features"],
+            test_data=train_task.outputs["output_test_data"],
             evaluation_config=evaluation_config
         )
 
         # Log approval decision
-        with dsl.Condition(eval_task.outputs["approved"] == True):
+        with dsl.If(eval_task.outputs["approved"] == True):
             # Model approved: could trigger deployment here
             pass
 

@@ -93,14 +93,18 @@ import * as pulumi from "@pulumi/pulumi";
 import * as aws from "@pulumi/aws";
 
 // Create an S3 bucket - the simplest resource
-const bucket = new aws.s3.Bucket("my-bucket", {
-    // Configuration options
-    versioning: {
-        enabled: true,
-    },
+export const bucket = new aws.s3.Bucket("my-bucket", {
     tags: {
         Environment: "dev",
         ManagedBy: "pulumi",
+    },
+});
+
+// Enable bucket versioning with the dedicated S3 versioning resource
+export const bucketVersioning = new aws.s3.BucketVersioning("my-bucket-versioning", {
+    bucket: bucket.id,
+    versioningConfiguration: {
+        status: "Enabled",
     },
 });
 
@@ -425,7 +429,7 @@ const dbPassword = config.requireSecret("dbPassword");
 // Create the RDS instance
 const database = new aws.rds.Instance("app-db", {
     engine: "postgres",
-    engineVersion: "15.4",
+    engineVersion: "15.18",
     instanceClass: "db.t3.micro",
     allocatedStorage: 20,
     dbName: "appdb",
@@ -477,13 +481,22 @@ class StaticWebsite extends pulumi.ComponentResource {
         // Create S3 bucket for hosting
         const bucket = new aws.s3.Bucket(
             `${name}-bucket`,
+            {},
+            { parent: this } // Important: set parent for proper resource hierarchy
+        );
+
+        const websiteConfiguration = new aws.s3.BucketWebsiteConfiguration(
+            `${name}-website`,
             {
-                website: {
-                    indexDocument: indexDoc,
-                    errorDocument: errorDoc,
+                bucket: bucket.id,
+                indexDocument: {
+                    suffix: indexDoc,
+                },
+                errorDocument: {
+                    key: errorDoc,
                 },
             },
-            { parent: this } // Important: set parent for proper resource hierarchy
+            { parent: this }
         );
 
         // Configure bucket for public access
@@ -520,7 +533,7 @@ class StaticWebsite extends pulumi.ComponentResource {
 
         // Set outputs
         this.bucketName = bucket.id;
-        this.websiteUrl = bucket.websiteEndpoint;
+        this.websiteUrl = websiteConfiguration.websiteEndpoint;
 
         // Register outputs
         this.registerOutputs({
@@ -580,8 +593,8 @@ describe("Infrastructure", function () {
 
     describe("S3 Bucket", function () {
         it("should have versioning enabled", function (done) {
-            pulumi.all([infra.bucket.versioning]).apply(([versioning]) => {
-                assert.strictEqual(versioning?.enabled, true);
+            pulumi.all([infra.bucketVersioning.versioningConfiguration]).apply(([versioning]) => {
+                assert.strictEqual(versioning?.status, "Enabled");
                 done();
             });
         });
@@ -795,7 +808,7 @@ jobs:
           aws-region: us-east-1
 
       - name: Pulumi preview
-        uses: pulumi/actions@v5
+        uses: pulumi/actions@v7
         with:
           command: preview
           stack-name: prod
@@ -803,7 +816,7 @@ jobs:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
 
       - name: Pulumi deploy
-        uses: pulumi/actions@v5
+        uses: pulumi/actions@v7
         with:
           command: up
           stack-name: prod

@@ -8,7 +8,7 @@ Description: A practical guide to configuring WebSocket connections through Kube
 
 ---
 
-WebSocket connections through Kubernetes Ingress require specific configuration that differs from standard HTTP traffic. Without proper settings, WebSocket connections may fail to establish or disconnect unexpectedly. This guide covers the essential configuration for reliable WebSocket support.
+WebSocket connections through Kubernetes Ingress often require timeout and session configuration that differs from standard short-lived HTTP traffic. Without proper settings, WebSocket connections may disconnect unexpectedly. This guide covers the essential configuration for reliable WebSocket support.
 
 ## Understanding WebSocket in Kubernetes
 
@@ -27,15 +27,17 @@ sequenceDiagram
     Pod-->>Service: 101 Switching Protocols
     Service-->>Ingress: Upgrade Response
     Ingress-->>Client: WebSocket Established
-    Client->>Pod: Bidirectional Messages
-    Pod->>Client: Bidirectional Messages
+    Client->>Ingress: Bidirectional Messages
+    Ingress->>Pod: Bidirectional Messages
+    Pod->>Ingress: Bidirectional Messages
+    Ingress->>Client: Bidirectional Messages
 ```
 
 The key difference from HTTP is that the connection must persist and both parties can send data at any time.
 
 ## NGINX Ingress Controller Configuration
 
-The NGINX Ingress Controller is the most common choice and requires specific annotations for WebSocket support.
+The NGINX Ingress Controller supports WebSocket upgrades out of the box. The main configuration you usually need is longer read and send timeouts for long-lived connections.
 
 ### Basic WebSocket Configuration
 
@@ -45,12 +47,6 @@ kind: Ingress
 metadata:
   name: websocket-ingress
   namespace: default
-  annotations:
-    # Enable WebSocket support
-    nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
-    nginx.ingress.kubernetes.io/upstream-hash-by: "$request_uri"
-    # Required for WebSocket upgrade
-    nginx.ingress.kubernetes.io/proxy-set-headers: "default/websocket-headers"
 spec:
   ingressClassName: nginx
   rules:
@@ -66,18 +62,7 @@ spec:
                   number: 8080
 ```
 
-Create a ConfigMap for the WebSocket headers.
-
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: websocket-headers
-  namespace: default
-data:
-  Upgrade: "$http_upgrade"
-  Connection: "upgrade"
-```
+No additional ConfigMap is required for WebSocket upgrade headers when using ingress-nginx.
 
 ### Timeout Configuration
 
@@ -90,12 +75,8 @@ metadata:
   name: websocket-ingress
   annotations:
     # Increase timeouts for long-lived connections
-    nginx.ingress.kubernetes.io/proxy-connect-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
-    # WebSocket specific
-    nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
-    nginx.ingress.kubernetes.io/upstream-hash-by: "$request_uri"
 spec:
   ingressClassName: nginx
   rules:
@@ -113,7 +94,7 @@ spec:
 
 ### Sticky Sessions for Scaled Deployments
 
-When running multiple WebSocket server replicas, sticky sessions ensure clients always connect to the same pod.
+When running multiple WebSocket server replicas, sticky sessions help reconnecting clients return to the same pod when your application stores connection state locally.
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -121,7 +102,6 @@ kind: Ingress
 metadata:
   name: websocket-sticky
   annotations:
-    nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
     # Enable sticky sessions
@@ -147,15 +127,13 @@ spec:
 
 ## Traefik Ingress Configuration
 
-If you use Traefik as your ingress controller, the configuration differs.
+If you use Traefik as your ingress controller, WebSocket headers are preserved automatically. A standard Kubernetes Ingress is enough unless you need TLS, middleware, or sticky sessions.
 
 ```yaml
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: websocket-traefik
-  annotations:
-    traefik.ingress.kubernetes.io/router.middlewares: default-websocket-middleware@kubernetescrd
 spec:
   ingressClassName: traefik
   rules:
@@ -169,22 +147,12 @@ spec:
                 name: websocket-service
                 port:
                   number: 8080
----
-apiVersion: traefik.containo.us/v1alpha1
-kind: Middleware
-metadata:
-  name: websocket-middleware
-spec:
-  headers:
-    customRequestHeaders:
-      Connection: "upgrade"
-      Upgrade: "websocket"
 ```
 
-For Traefik IngressRoute with explicit WebSocket configuration.
+For Traefik IngressRoute with sticky sessions.
 
 ```yaml
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: websocket-route
@@ -214,7 +182,6 @@ kind: Ingress
 metadata:
   name: websocket-tls
   annotations:
-    nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
     # SSL settings
@@ -313,15 +280,13 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: mixed-traffic
-  annotations:
-    nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
 spec:
   ingressClassName: nginx
   rules:
     - host: api.example.com
       http:
         paths:
-          # WebSocket path with extended timeouts
+          # WebSocket path
           - path: /ws
             pathType: Prefix
             backend:
@@ -355,7 +320,6 @@ kind: Ingress
 metadata:
   name: websocket-paths
   annotations:
-    nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
 spec:
@@ -447,10 +411,10 @@ wscat -c ws://localhost:8080/
 
 **Connection drops after 60 seconds:** Increase proxy-read-timeout and proxy-send-timeout annotations.
 
-**101 Switching Protocols not received:** Ensure proxy-http-version is set to 1.1 and upgrade headers are configured.
+**101 Switching Protocols not received:** Ensure the backend supports WebSocket upgrades and the Ingress is routing the request to the correct Service.
 
 **Load balancing issues with multiple replicas:** Enable sticky sessions using affinity annotations.
 
 **SSL handshake failures:** Verify TLS secret exists and certificate chain is complete.
 
-Proper WebSocket configuration in Kubernetes requires attention to timeouts, upgrade headers, and session affinity. Start with the basic configuration and add sticky sessions if running multiple replicas.
+Proper WebSocket configuration in Kubernetes requires attention to timeouts, TLS, and session affinity. Start with the basic configuration and add sticky sessions if running multiple replicas.

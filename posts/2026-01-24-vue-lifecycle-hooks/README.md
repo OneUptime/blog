@@ -16,12 +16,12 @@ Vue lifecycle hooks allow you to execute code at specific stages of a component'
 
 ```mermaid
 flowchart TD
-    A[Component Created] --> B[setup / beforeCreate]
-    B --> C[created]
+    A[Component Initialization] --> B[setup]
+    B --> C[beforeCreate / created]
 
-    C --> D{Has Template?}
-    D -->|Yes| E[Compile Template]
-    D -->|No| F[Compile el's innerHTML]
+    C --> D{Has Render Function?}
+    D -->|No| E[Compile Template]
+    D -->|Yes| F[Use Render Function]
 
     E --> G[beforeMount]
     F --> G
@@ -90,8 +90,8 @@ flowchart LR
 
 ```javascript
 export default {
-  // Called before instance is created
-  // Data and methods are NOT available
+  // Called after instance initialization and props resolution
+  // Data and methods are NOT available yet
   beforeCreate() {
     console.log('beforeCreate')
     console.log('data:', this.message)  // undefined
@@ -135,7 +135,8 @@ export default {
 <script setup>
 import { ref, onMounted } from 'vue'
 
-// setup() runs during beforeCreate and created
+// setup() runs before Options API lifecycle hooks,
+// including beforeCreate and created
 // All code in script setup is in the setup phase
 
 const message = ref('Hello')
@@ -166,11 +167,11 @@ onMounted(() => {
 ```javascript
 export default {
   // Called before mounting begins
-  // Template is compiled but not rendered
+  // Reactive state is ready, but the initial render has not run
   // $el is not yet available
   beforeMount() {
     console.log('beforeMount')
-    console.log('$el:', this.$el) // null
+    console.log('$el:', this.$el) // undefined
 
     // Rarely used - most logic goes in created or mounted
     // Good for: last-minute data changes before render

@@ -44,7 +44,7 @@ Let's start with the essentials. First, install FastAPI and its dependencies:
 ```bash
 # Install FastAPI with all dependencies
 
-pip install fastapi[all] python-multipart aiofiles
+pip install "fastapi[standard]" python-multipart aiofiles
 ```
 
 Here's a minimal file upload endpoint:
@@ -229,11 +229,11 @@ def generate_safe_filename(original: str) -> str:
     uniqueness and prevent overwriting existing files.
     """
     import uuid
-    from pathlib import Path
+    from pathlib import Path, PureWindowsPath
 
     # Extract just the filename, removing any path components
     # This prevents ../../../etc/passwd type attacks
-    clean_name = Path(original).name
+    clean_name = Path(PureWindowsPath(original).name).name
 
     # Add UUID prefix for uniqueness
     unique_prefix = str(uuid.uuid4())[:8]
@@ -246,6 +246,7 @@ def generate_safe_filename(original: str) -> str:
 Handling multiple files is straightforward with FastAPI:
 
 ```python
+from fastapi import File, HTTPException, UploadFile
 from typing import List
 
 @app.post("/upload/multiple")
@@ -302,7 +303,7 @@ async def upload_multiple_files(files: List[UploadFile] = File(...)):
 
 ## Upload Progress Tracking
 
-For large files, users need feedback. Here's how to implement server-sent events (SSE) for progress tracking:
+For large files, users need feedback. Since FastAPI parses multipart data before calling the endpoint, this SSE example tracks the server-side copy from `UploadFile` to storage. For browser-to-server network upload progress, use client-side upload progress events or the chunked upload pattern shown later.
 
 ```mermaid
 flowchart LR
@@ -320,8 +321,20 @@ flowchart LR
 from fastapi import FastAPI, UploadFile, File, Request
 from fastapi.responses import StreamingResponse
 from typing import AsyncGenerator
+from pathlib import Path, PureWindowsPath
 import asyncio
+import aiofiles
 import json
+import uuid
+
+app = FastAPI()
+UPLOAD_DIR = Path("uploads")
+UPLOAD_DIR.mkdir(exist_ok=True)
+
+
+def generate_safe_filename(original: str) -> str:
+    clean_name = Path(PureWindowsPath(original).name).name
+    return f"{uuid.uuid4().hex[:8]}_{clean_name}"
 
 # Store upload progress by upload ID
 upload_progress: dict = {}
@@ -337,8 +350,8 @@ async def upload_with_progress(
     Clients should connect to /upload/progress/{upload_id} via SSE
     before starting the upload to receive progress updates.
     """
-    # Get file size from content-length header if available
-    # Note: This isn't always accurate for multipart uploads
+    # Starlette calculates UploadFile.size from the parsed request body.
+    # It may be None if the parser did not set it.
     file_size = file.size or 0
 
     # Initialize progress tracking
@@ -433,11 +446,21 @@ For very large files, chunked uploads allow resumable transfers:
 
 ```python
 # chunked_upload.py
-from fastapi import FastAPI, UploadFile, File, Header, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException
 from pydantic import BaseModel
-from typing import Optional
+from pathlib import Path, PureWindowsPath
 import aiofiles
 import os
+import uuid
+
+app = FastAPI()
+UPLOAD_DIR = Path("uploads")
+UPLOAD_DIR.mkdir(exist_ok=True)
+
+
+def generate_safe_filename(original: str) -> str:
+    clean_name = Path(PureWindowsPath(original).name).name
+    return f"{uuid.uuid4().hex[:8]}_{clean_name}"
 
 # Track ongoing chunked uploads
 chunked_uploads: dict = {}
@@ -606,9 +629,26 @@ flowchart TB
 ```python
 # s3_upload.py
 from fastapi import FastAPI, UploadFile, File, HTTPException
+from starlette.concurrency import run_in_threadpool
 import boto3
 from botocore.exceptions import ClientError
 import os
+from pathlib import Path, PureWindowsPath
+import uuid
+from validators import FileValidator
+
+app = FastAPI()
+
+image_validator = FileValidator(
+    max_size=5 * 1024 * 1024,
+    allowed_extensions={".jpg", ".jpeg", ".png", ".gif"},
+    allowed_content_types={"image/jpeg", "image/png", "image/gif"}
+)
+
+
+def generate_safe_filename(original: str) -> str:
+    clean_name = Path(PureWindowsPath(original).name).name
+    return f"{uuid.uuid4().hex[:8]}_{clean_name}"
 
 # Initialize S3 client
 # Credentials should be in environment variables or IAM role
@@ -639,7 +679,8 @@ async def upload_to_s3(file: UploadFile = File(...)):
     try:
         # Upload to S3 using streaming
         # upload_fileobj handles multipart uploads automatically
-        s3_client.upload_fileobj(
+        await run_in_threadpool(
+            s3_client.upload_fileobj,
             file.file,  # SpooledTemporaryFile from UploadFile
             BUCKET_NAME,
             s3_key,
@@ -686,7 +727,7 @@ async def get_presigned_upload_url(filename: str, content_type: str):
 
     Client workflow:
     1. Call this endpoint to get presigned URL
-    2. PUT file directly to the presigned URL
+    2. POST a multipart form directly to S3 using the returned URL and fields
     3. Notify your server that upload is complete
     """
     safe_filename = generate_safe_filename(filename)
@@ -722,7 +763,7 @@ async def get_presigned_upload_url(filename: str, content_type: str):
 
 ## Complete Example Application
 
-Here's a complete, production-ready file upload service:
+Here's a more complete file upload service:
 
 ```python
 # app.py
@@ -733,22 +774,24 @@ from typing import List, Optional
 import aiofiles
 import os
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 
 app = FastAPI(
     title="File Upload Service",
-    description="Production-ready file upload API",
+    description="File upload API",
     version="1.0.0"
 )
+
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
 
 # Enable CORS for frontend applications
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "DELETE"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 # Configuration
@@ -791,13 +834,15 @@ class FileValidator:
                 detail=f"Extension {ext} not allowed"
             )
 
-        # Check size by reading
-        content = await file.read()
-        if len(content) > self.max_size:
-            raise HTTPException(
-                status_code=400,
-                detail=f"File exceeds maximum size of {self.max_size} bytes"
-            )
+        # Check size by reading in chunks
+        size = 0
+        while chunk := await file.read(1024 * 1024):
+            size += len(chunk)
+            if size > self.max_size:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"File exceeds maximum size of {self.max_size} bytes"
+                )
 
         # Reset file position
         await file.seek(0)
@@ -829,8 +874,8 @@ async def upload_file(file: UploadFile = Depends(validate_file)):
 
     # Save file
     async with aiofiles.open(file_path, "wb") as buffer:
-        content = await file.read()
-        await buffer.write(content)
+        while content := await file.read(1024 * 1024):
+            await buffer.write(content)
 
     file_size = os.path.getsize(file_path)
 
@@ -840,7 +885,7 @@ async def upload_file(file: UploadFile = Depends(validate_file)):
         original_name=file.filename,
         size=file_size,
         content_type=file.content_type,
-        upload_time=datetime.utcnow().isoformat(),
+        upload_time=datetime.now(timezone.utc).isoformat(),
         url=f"/files/{safe_filename}"
     )
 
@@ -851,7 +896,7 @@ async def upload_images(files: List[UploadFile] = File(...)):
     Upload multiple image files at once.
 
     Each file is validated individually, and the response includes
-    the status of each upload.
+    each successful upload.
     """
     results = []
 
@@ -868,8 +913,8 @@ async def upload_images(files: List[UploadFile] = File(...)):
 
             # Save file
             async with aiofiles.open(file_path, "wb") as buffer:
-                content = await validated_file.read()
-                await buffer.write(content)
+                while content := await validated_file.read(1024 * 1024):
+                    await buffer.write(content)
 
             file_size = os.path.getsize(file_path)
 
@@ -879,7 +924,7 @@ async def upload_images(files: List[UploadFile] = File(...)):
                 original_name=validated_file.filename,
                 size=file_size,
                 content_type=validated_file.content_type,
-                upload_time=datetime.utcnow().isoformat(),
+                upload_time=datetime.now(timezone.utc).isoformat(),
                 url=f"/files/{safe_filename}"
             ))
 

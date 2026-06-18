@@ -45,6 +45,7 @@ pub struct CircuitBreaker {
     state: RwLock<CircuitState>,
     failure_count: AtomicU64,
     success_count: AtomicU64,
+    half_open_requests: AtomicU64,
     last_failure_time: RwLock<Option<Instant>>,
     // Configuration
     failure_threshold: u64,
@@ -53,7 +54,7 @@ pub struct CircuitBreaker {
 }
 ```
 
-The struct holds our state machine along with counters for tracking successes and failures. The thresholds determine when the circuit opens and when it can close again.
+The struct holds our state machine along with counters for tracking successes, failures, and half-open probe requests. The thresholds determine when the circuit opens and when it can close again.
 
 ## Implementing State Transitions
 
@@ -70,6 +71,7 @@ impl CircuitBreaker {
             state: RwLock::new(CircuitState::Closed),
             failure_count: AtomicU64::new(0),
             success_count: AtomicU64::new(0),
+            half_open_requests: AtomicU64::new(0),
             last_failure_time: RwLock::new(None),
             failure_threshold,
             success_threshold,
@@ -91,12 +93,24 @@ impl CircuitBreaker {
                         let mut state_guard = self.state.write().unwrap();
                         *state_guard = CircuitState::HalfOpen;
                         self.success_count.store(0, Ordering::SeqCst);
+                        self.half_open_requests.store(1, Ordering::SeqCst);
                         return true;
                     }
                 }
                 false
             }
-            CircuitState::HalfOpen => true,
+            CircuitState::HalfOpen => {
+                // Limit concurrent probe requests while testing recovery
+                self.half_open_requests
+                    .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |current| {
+                        if current < self.success_threshold {
+                            Some(current + 1)
+                        } else {
+                            None
+                        }
+                    })
+                    .is_ok()
+            }
         }
     }
 
@@ -110,12 +124,19 @@ impl CircuitBreaker {
                 self.failure_count.store(0, Ordering::SeqCst);
             }
             CircuitState::HalfOpen => {
+                let _ = self.half_open_requests.fetch_update(
+                    Ordering::SeqCst,
+                    Ordering::SeqCst,
+                    |current| current.checked_sub(1),
+                );
                 let count = self.success_count.fetch_add(1, Ordering::SeqCst) + 1;
                 if count >= self.success_threshold {
                     // Enough successes - close the circuit
                     let mut state_guard = self.state.write().unwrap();
                     *state_guard = CircuitState::Closed;
                     self.failure_count.store(0, Ordering::SeqCst);
+                    self.success_count.store(0, Ordering::SeqCst);
+                    self.half_open_requests.store(0, Ordering::SeqCst);
                 }
             }
             CircuitState::Open => {}
@@ -140,6 +161,8 @@ impl CircuitBreaker {
                 // Any failure in half-open goes back to open
                 let mut state_guard = self.state.write().unwrap();
                 *state_guard = CircuitState::Open;
+                self.success_count.store(0, Ordering::SeqCst);
+                self.half_open_requests.store(0, Ordering::SeqCst);
                 *self.last_failure_time.write().unwrap() = Some(Instant::now());
             }
             CircuitState::Open => {}
@@ -148,7 +171,7 @@ impl CircuitBreaker {
 }
 ```
 
-The key insight here is that we use atomic operations for counters but `RwLock` for state transitions. This keeps the common path fast while ensuring state changes happen atomically.
+The key insight here is that we use atomic operations for counters but `RwLock` for state transitions. This keeps counter updates cheap while ensuring each state write has exclusive access.
 
 ## Using the Circuit Breaker
 
@@ -219,9 +242,9 @@ Notice that we only count server errors (5xx) and network failures against the c
 
 The basic implementation above works, but production systems need a few more features.
 
-### Sliding Windows
+### Time Windows
 
-Instead of simple counters, use sliding time windows. A burst of 5 failures in one second is more concerning than 5 failures spread over an hour. The `failsafe-rs` crate provides windowed failure tracking out of the box.
+Instead of simple counters, use time windows. A burst of 5 failures in one second is more concerning than 5 failures spread over an hour. The `failsafe` crate provides a success-rate-over-time-window failure policy out of the box.
 
 ### Metrics and Observability
 
@@ -271,11 +294,11 @@ pub async fn get_user(&self, user_id: u64) -> User {
 
 If you prefer not to roll your own, several Rust crates implement circuit breakers:
 
-- **failsafe-rs**: Full-featured with sliding windows, backoff, and async support
+- **failsafe**: Full-featured with time-windowed success-rate policies, backoff, and async support
 - **recloser**: Minimal implementation focused on simplicity
-- **tower**: The `tower` middleware ecosystem includes circuit breaker support
+- **tower-resilience**: Tower-compatible middleware that includes circuit breaker support
 
-For most production use cases, `failsafe-rs` hits the right balance of features and simplicity.
+For most production use cases, `failsafe` hits the right balance of features and simplicity.
 
 ## When Not to Use Circuit Breakers
 

@@ -86,6 +86,7 @@ interface ResourceAttributes {
   resourceId: string;
   resourceType: string;
   owner: string;
+  ownerManager?: string;
   classification: 'public' | 'internal' | 'confidential' | 'restricted';
   createdAt: Date;
 }
@@ -131,6 +132,8 @@ interface Condition {
 }
 
 interface Rule {
+  id: string;
+  description: string;
   conditions: Condition[];
   effect: 'permit' | 'deny';
   combineWith: 'AND' | 'OR';
@@ -271,7 +274,10 @@ class PolicyDecisionPoint {
     // Apply rule combining algorithm
     switch (policy.ruleCombining) {
       case 'denyOverrides':
-        return ruleResults.includes('deny') ? 'deny' : 'permit';
+        if (ruleResults.includes('deny')) {
+          return 'deny';
+        }
+        return ruleResults.includes('permit') ? 'permit' : 'deny';
       case 'permitOverrides':
         return ruleResults.includes('permit') ? 'permit' : 'deny';
       case 'firstApplicable':
@@ -310,8 +316,10 @@ class PolicyDecisionPoint {
     request: AccessRequest
   ): Promise<boolean> {
     // Resolve attribute value from request
-    const actualValue = this.resolveAttribute(condition.attribute, request);
-    const expectedValue = this.resolveValue(condition.value, request);
+    const [actualValue, expectedValue] = this.normalizeValues(
+      this.resolveAttribute(condition.attribute, request),
+      this.resolveValue(condition.value, request)
+    );
 
     switch (condition.operator) {
       case 'equals':
@@ -351,6 +359,24 @@ class PolicyDecisionPoint {
       return this.resolveAttribute(path, request);
     }
     return value;
+  }
+
+  private normalizeValues(actualValue: any, expectedValue: any): [any, any] {
+    if (
+      actualValue instanceof Date &&
+      Array.isArray(expectedValue) &&
+      expectedValue.every(value => typeof value === 'string' && /^\d{2}:\d{2}$/.test(value))
+    ) {
+      const minutes = actualValue.getHours() * 60 + actualValue.getMinutes();
+      const expectedMinutes = expectedValue.map(value => {
+        const [hours, mins] = value.split(':').map(Number);
+        return hours * 60 + mins;
+      });
+
+      return [minutes, expectedMinutes];
+    }
+
+    return [actualValue, expectedValue];
   }
 }
 ```
@@ -395,6 +421,7 @@ class PolicyInformationPoint {
       resourceId: resource.id,
       resourceType: resourceType,
       owner: resource.ownerId,
+      ownerManager: resource.ownerManagerId,
       classification: resource.classification,
       createdAt: resource.createdAt
     };
@@ -417,8 +444,14 @@ class PolicyInformationPoint {
 The PEP sits at your API boundary and intercepts requests:
 
 ```typescript
+interface AuthenticatedRequest extends Request {
+  user: {
+    id: string;
+  };
+}
+
 function abacMiddleware(pdp: PolicyDecisionPoint, pip: PolicyInformationPoint) {
-  return async (req: Request, res: Response, next: NextFunction) => {
+  return async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       // Build the access request from incoming HTTP request
       const accessRequest: AccessRequest = {
@@ -453,8 +486,8 @@ function abacMiddleware(pdp: PolicyDecisionPoint, pip: PolicyInformationPoint) {
   };
 }
 
-function mapHttpMethodToAction(method: string): string {
-  const mapping: Record<string, string> = {
+function mapHttpMethodToAction(method: string): ActionAttributes['action'] {
+  const mapping: Record<string, ActionAttributes['action']> = {
     'GET': 'read',
     'POST': 'write',
     'PUT': 'write',
@@ -519,7 +552,7 @@ Allow managers to access their direct reports' resources:
     {
       "attribute": "subject.userId",
       "operator": "equals",
-      "value": "${resource.owner.manager}"
+      "value": "${resource.ownerManager}"
     },
     {
       "attribute": "action.action",
@@ -632,7 +665,7 @@ class CachedPIP extends PolicyInformationPoint {
 
 ## Testing Your ABAC Implementation
 
-Write tests that cover policy edge cases:
+Write tests that cover policy edge cases. These examples assume `createRequest` merges the provided overrides with a complete set of valid default attributes:
 
 ```typescript
 describe('Document Access Policy', () => {

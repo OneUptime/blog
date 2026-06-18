@@ -274,27 +274,28 @@ app.use(directivesPlugin);
 app.mount('#app');
 ```
 
-## Common Cause 6: Dynamic Directive Names
+## Common Cause 6: Dynamic Directive Arguments
 
-When using dynamic directive names, ensure the directive exists:
+Vue supports dynamic directive arguments, but the directive name itself must still be static and registered:
 
 ```vue
 <template>
-    <!-- Dynamic directive -->
-    <div v-[directiveName]="value"></div>
+    <!-- Dynamic argument for a registered directive -->
+    <div v-highlight:[argumentName]="value"></div>
 </template>
 
 <script setup>
 import { ref } from 'vue';
 
-// Directive name as reactive ref
-const directiveName = ref('highlight');
+// Directive argument as reactive ref
+const argumentName = ref('background');
 
-// Must have all possible directives registered
+// The directive itself must be registered
 const vHighlight = { /* ... */ };
-const vTooltip = { /* ... */ };
 </script>
 ```
+
+Syntax such as `v-[directiveName]="value"` is not valid for choosing a directive dynamically.
 
 ## Common Cause 7: TypeScript Type Errors
 
@@ -343,7 +344,7 @@ Create a debugging utility to trace directive registration:
 
 ```typescript
 // src/utils/debugDirectives.ts
-import type { App, Directive } from 'vue';
+import type { Directive } from 'vue';
 
 export function debugDirective<T, V>(
     name: string,

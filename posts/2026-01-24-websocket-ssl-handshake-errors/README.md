@@ -115,7 +115,7 @@ openssl verify -CAfile /path/to/ca-bundle.crt /path/to/server-cert.pem
 
 # Download intermediate certificates
 # Combine them in the correct order: server cert first, then intermediates
-cat server.crt intermediate.crt root.crt > fullchain.pem
+cat server.crt intermediate.crt > fullchain.pem
 ```
 
 Configure server with complete certificate chain.
@@ -197,9 +197,7 @@ const server = https.createServer({
   key: fs.readFileSync('/path/to/key.pem'),
   // Require TLS 1.2 or higher
   minVersion: 'TLSv1.2',
-  maxVersion: 'TLSv1.3',
-  // Disable older protocols explicitly
-  secureProtocol: 'TLS_method'
+  maxVersion: 'TLSv1.3'
 });
 
 const wss = new WebSocket.Server({ server });
@@ -347,7 +345,7 @@ checkCertificateExpiry('api.example.com')
 
 ### Mixed Content Errors
 
-Browsers block WSS connections from HTTP pages and WS from HTTPS pages.
+Browsers block insecure WS connections from HTTPS pages.
 
 ```javascript
 // Detect protocol and use appropriate WebSocket URL
@@ -405,7 +403,12 @@ class SecureWebSocketClient {
 // Debug SSL issues in browser
 async function debugSSLConnection(url) {
   // First test HTTPS to the same host
-  const httpsUrl = url.replace('wss://', 'https://').replace(/\/.*$/, '/');
+  const parsedUrl = new URL(url);
+  parsedUrl.protocol = parsedUrl.protocol === 'wss:' ? 'https:' : 'http:';
+  parsedUrl.pathname = '/';
+  parsedUrl.search = '';
+  parsedUrl.hash = '';
+  const httpsUrl = parsedUrl.toString();
 
   try {
     const response = await fetch(httpsUrl, { method: 'HEAD' });
@@ -423,7 +426,8 @@ async function debugSSLConnection(url) {
 # /etc/nginx/conf.d/websocket-ssl.conf
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name ws.example.com;
 
     # SSL certificate configuration
@@ -506,7 +510,7 @@ echo | openssl s_client -connect "${HOST}:${PORT}" -servername "${HOST}" 2>/dev/
 # Check TLS versions
 echo -e "\n4. Supported TLS Versions:"
 for version in tls1 tls1_1 tls1_2 tls1_3; do
-    if echo | openssl s_client -connect "${HOST}:${PORT}" -servername "${HOST}" -"${version}" 2>/dev/null | grep -q "Cipher is"; then
+    if echo | openssl s_client -connect "${HOST}:${PORT}" -servername "${HOST}" -"${version}" -brief 2>&1 | grep -q "Protocol version:"; then
         echo "   ${version}: supported"
     else
         echo "   ${version}: not supported"
@@ -520,7 +524,7 @@ echo | openssl s_client -connect "${HOST}:${PORT}" -servername "${HOST}" 2>&1 | 
 
 # WebSocket upgrade test over TLS
 echo -e "\n6. WebSocket Upgrade Test:"
-curl -sI --connect-timeout 5 \
+curl -si --http1.1 --connect-timeout 5 \
     -H "Connection: Upgrade" \
     -H "Upgrade: websocket" \
     -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \

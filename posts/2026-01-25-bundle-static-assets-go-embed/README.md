@@ -166,7 +166,7 @@ var assets embed.FS
 The embed directive supports several pattern types:
 
 - `file.txt` - exact file match
-- `dir/*` - all files in a directory (not recursive)
+- `dir/*` - all entries directly in a directory; if a matched entry is a directory, its non-hidden subtree is embedded
 - `dir/**` - not supported; use `dir` instead
 - `dir` - the directory and all contents recursively
 

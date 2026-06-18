@@ -80,7 +80,7 @@ class WorkingMemoryBuffer:
     def __init__(self, capacity: int = 7):
         self.capacity = capacity
         self._items: Dict[str, MemoryItem] = {}
-        self._priority_queue: List[tuple] = []  # (relevance, id) — min-heap on relevance
+        self._priority_queue: List[tuple] = []  # (relevance, id) - min-heap on relevance
 
     def add(self, item_id: str, item: MemoryItem) -> Optional[MemoryItem]:
         """

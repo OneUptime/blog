@@ -14,7 +14,7 @@ This guide covers implementing context management in OpenTelemetry for both sync
 
 ## Understanding Context in OpenTelemetry
 
-Context in OpenTelemetry carries three key pieces of information:
+For tracing, the current span stored in OpenTelemetry Context includes a SpanContext with key propagation fields:
 
 1. **Trace ID**: Identifies the entire distributed trace
 2. **Span ID**: Identifies the current operation
@@ -90,7 +90,7 @@ The `startActiveSpan` method simplifies context management:
 
 ```javascript
 // active-span.js
-const { trace } = require('@opentelemetry/api');
+const { trace, SpanStatusCode } = require('@opentelemetry/api');
 
 const tracer = trace.getTracer('my-service');
 
@@ -107,7 +107,7 @@ function processOrder(order) {
       return { success: true };
     } catch (error) {
       span.recordException(error);
-      span.setStatus({ code: 2, message: error.message });
+      span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
       throw error;
     } finally {
       span.end();
@@ -187,7 +187,7 @@ function handleIncomingRequest(req, res) {
 
 ```javascript
 // express-context-middleware.js
-const { trace, context, propagation, SpanKind } = require('@opentelemetry/api');
+const { trace, context, propagation, SpanKind, SpanStatusCode } = require('@opentelemetry/api');
 
 const tracer = trace.getTracer('http-server');
 
@@ -220,7 +220,7 @@ function tracingMiddleware(req, res, next) {
     res.on('finish', () => {
       span.setAttribute('http.status_code', res.statusCode);
       if (res.statusCode >= 400) {
-        span.setStatus({ code: 2, message: `HTTP ${res.statusCode}` });
+        span.setStatus({ code: SpanStatusCode.ERROR, message: `HTTP ${res.statusCode}` });
       }
       span.end();
     });
@@ -285,7 +285,7 @@ For callback-based APIs, use `context.bind`:
 
 ```javascript
 // callback-context.js
-const { trace, context } = require('@opentelemetry/api');
+const { trace, context, SpanStatusCode } = require('@opentelemetry/api');
 const fs = require('fs');
 
 const tracer = trace.getTracer('file-service');
@@ -298,7 +298,7 @@ function readFileWithTracing(filepath) {
     const boundCallback = context.bind(context.active(), (err, data) => {
       if (err) {
         span.recordException(err);
-        span.setStatus({ code: 2, message: err.message });
+        span.setStatus({ code: SpanStatusCode.ERROR, message: err.message });
       } else {
         span.setAttribute('file.size', data.length);
       }
@@ -331,8 +331,7 @@ function setupEventEmitter(emitter) {
 ```python
 # context_basics.py
 
-from opentelemetry import trace, context
-from opentelemetry.trace import set_span_in_context
+from opentelemetry import trace
 
 tracer = trace.get_tracer("my-service")
 
@@ -407,8 +406,9 @@ async def process_with_context(ctx):
 ```python
 # flask_context.py
 from flask import Flask, request, g
-from opentelemetry import trace, context, propagation
-from opentelemetry.trace import SpanKind
+from opentelemetry import trace, context
+from opentelemetry.propagate import extract
+from opentelemetry.trace import SpanKind, Status, StatusCode
 
 app = Flask(__name__)
 tracer = trace.get_tracer("flask-app")
@@ -416,7 +416,7 @@ tracer = trace.get_tracer("flask-app")
 @app.before_request
 def before_request():
     # Extract context from incoming headers
-    ctx = propagation.extract(carrier=request.headers)
+    ctx = extract(carrier=request.headers)
 
     # Start a span for this request
     span = tracer.start_span(
@@ -432,7 +432,7 @@ def before_request():
 
     # Store span and token for later
     g.span = span
-    g.context_token = context.attach(trace.set_span_in_context(span))
+    g.context_token = context.attach(trace.set_span_in_context(span, ctx))
 
 @app.after_request
 def after_request(response):
@@ -440,7 +440,7 @@ def after_request(response):
     if span:
         span.set_attribute("http.status_code", response.status_code)
         if response.status_code >= 400:
-            span.set_status(trace.Status(trace.StatusCode.ERROR))
+            span.set_status(Status(StatusCode.ERROR))
         span.end()
 
     token = getattr(g, 'context_token', None)
@@ -461,7 +461,7 @@ def create_order():
 
 OpenTelemetry supports multiple propagation formats:
 
-### W3C Trace Context (Default)
+### W3C Trace Context (Default for Trace Context)
 
 ```javascript
 // w3c-propagation.js
@@ -502,27 +502,26 @@ Baggage lets you pass custom key-value pairs across service boundaries:
 
 ```javascript
 // baggage.js
-const { propagation, context, baggage } = require('@opentelemetry/api');
+const { propagation, context } = require('@opentelemetry/api');
 
 function setUserContext(userId, userTier) {
   // Create baggage entries
-  const bag = baggage.setEntry(
-    baggage.setEntry(baggage.active(), 'user.id', { value: userId }),
-    'user.tier',
-    { value: userTier }
-  );
+  const bag = propagation.createBaggage({
+    'user.id': { value: userId },
+    'user.tier': { value: userTier }
+  });
 
   // Return context with baggage
-  return baggage.setBaggage(context.active(), bag);
+  return propagation.setBaggage(context.active(), bag);
 }
 
-function makeRequestWithBaggage(url) {
+async function makeRequestWithBaggage(url) {
   const ctx = setUserContext('user-123', 'premium');
 
-  context.with(ctx, async () => {
+  return context.with(ctx, async () => {
     const headers = {};
     propagation.inject(context.active(), headers);
-    // Headers now include baggage
+    // Headers include baggage when W3CBaggagePropagator is configured
     // baggage: user.id=user-123,user.tier=premium
 
     await fetch(url, { headers });
@@ -532,7 +531,7 @@ function makeRequestWithBaggage(url) {
 // On receiving service
 function extractBaggage(headers) {
   const ctx = propagation.extract(context.active(), headers);
-  const bag = baggage.getBaggage(ctx);
+  const bag = propagation.getBaggage(ctx);
 
   const userId = bag?.getEntry('user.id')?.value;
   const userTier = bag?.getEntry('user.tier')?.value;

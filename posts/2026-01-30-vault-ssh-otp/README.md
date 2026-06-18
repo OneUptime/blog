@@ -499,7 +499,7 @@ auth requisite pam_exec.so quiet expose_authtok log=/var/log/vault-ssh.log /usr/
 ### Recommendations
 
 1. **Use TLS**: Always configure TLS between vault-ssh-helper and Vault
-2. **One-time use**: OTPs are inherently one-time use and invalidated immediately after verification — never log or reuse them
+2. **One-time use**: OTPs are inherently one-time use and invalidated immediately after verification - never log or reuse them
 3. **Restrict CIDR**: Limit allowed CIDR ranges to only necessary hosts
 4. **Audit logging**: Enable Vault audit logging for all OTP requests
 5. **Separate roles**: Create distinct roles for different environments

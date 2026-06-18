@@ -68,7 +68,7 @@ receivers:
 
 processors:
   memory_limiter:
-    # Prevents OOM kills by dropping data when memory exceeds thresholds
+    # Prevents OOM kills by refusing data when memory exceeds thresholds
     # If this triggers, it means the collector is receiving more data
     # than it can process. Scale up the collector deployment.
     check_interval: 1s
@@ -77,7 +77,7 @@ processors:
 
   batch:
     # Batches telemetry before export to reduce network calls
-    # send_batch_size: number of spans/metrics/logs per batch
+    # send_batch_size: number of spans/metric points/log records that triggers a send
     # timeout: max time to wait before sending a partial batch
     send_batch_size: 8192
     timeout: 5s
@@ -116,10 +116,10 @@ This is the most valuable part of your runbook. List every known failure mode, i
 | Failure Mode | Symptoms | Check | Fix |
 |---|---|---|---|
 | Collector OOM | Pods restarting, gaps in telemetry | `kubectl describe pod` shows OOMKilled | Increase memory limits or scale horizontally |
-| Exporter backpressure | `otelcol_exporter_send_failed_spans` increasing | Check exporter queue size metrics | Verify backend is healthy, increase batch timeout |
+| Exporter backpressure | `otelcol_exporter_send_failed_spans` increasing | Check `otelcol_exporter_queue_size` and `otelcol_exporter_queue_capacity` | Verify backend is healthy, tune exporter queue/retry settings, or scale collectors |
 | TLS cert expired | All receivers returning connection errors | Check cert expiry: `openssl s_client -connect ...` | Rotate certificates, check cert-manager |
-| Sampling dropping too much | Missing traces for important transactions | Check `otelcol_processor_tail_sampling_count` | Adjust sampling policies |
-| Memory limiter active | `otelcol_processor_refused_spans` > 0 | Collector memory metrics | Scale collector deployment |
+| Sampling dropping too much | Missing traces for important transactions | Check `otelcol_processor_tail_sampling_global_count_traces_sampled` | Adjust sampling policies |
+| Memory limiter active | `otelcol_receiver_refused_spans` > 0 | Collector memory metrics | Scale collector deployment |
 ```
 
 ## Include Health Check Commands
@@ -135,6 +135,7 @@ kubectl logs -l app=otel-collector -n observability --tail=100 | grep -i error
 
 # Check collector internal metrics
 # The collector exposes its own metrics on port 8888
+kubectl port-forward -n observability deployment/otel-collector 8888:8888
 curl http://localhost:8888/metrics | grep otelcol_receiver_accepted
 
 # Verify the collector is receiving data
@@ -145,7 +146,7 @@ curl http://localhost:8888/metrics | grep otelcol_exporter_sent_spans
 
 # Calculate drop rate
 # If refused > 0, the pipeline is under pressure
-curl http://localhost:8888/metrics | grep otelcol_processor_refused
+curl http://localhost:8888/metrics | grep otelcol_receiver_refused
 ```
 
 ## Document Configuration Changes

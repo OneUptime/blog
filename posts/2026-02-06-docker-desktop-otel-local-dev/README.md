@@ -1,44 +1,82 @@
-# How to Use Docker Desktop Built-In OpenTelemetry Integration
+# How to Use OpenTelemetry with Docker Desktop for Local Development
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Docker Desktop, Local Development, Tracing
 
-Description: Use Docker Desktop's built-in OpenTelemetry integration to collect traces and metrics from your local development environment automatically.
+Description: Use OpenTelemetry with Docker Desktop to collect traces and metrics from your local development environment.
 
-Docker Desktop includes a built-in OpenTelemetry Collector that captures telemetry from containers running on your machine. This means you can start collecting traces, metrics, and logs during local development without setting up a separate Collector. It is a quick way to validate your instrumentation before deploying to staging or production.
+Docker Desktop works well with the OpenTelemetry Collector running as a local container. This means you can start collecting traces, metrics, and logs during local development with a small Compose setup. It is a quick way to validate your instrumentation before deploying to staging or production.
 
-## Enabling the Built-In OTLP Endpoint
+## Running a Local OTLP Endpoint
 
-Docker Desktop exposes an OTLP endpoint that your containers can send telemetry to. In Docker Desktop settings:
-
-1. Open Docker Desktop
-2. Go to Settings (gear icon)
-3. Navigate to General
-4. Enable "Send usage statistics" or the OTLP-related setting
-
-The OTLP endpoint is available at `host.docker.internal:4317` (gRPC) and `host.docker.internal:4318` (HTTP) from inside containers.
-
-## Configuring Your Application
-
-Point your application's OTLP exporter at the Docker Desktop endpoint:
+Run an OpenTelemetry Collector container that your application containers can send telemetry to:
 
 ```yaml
 # docker-compose.yaml
 
-version: "3.8"
+services:
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.152.0
+    volumes:
+      - ./collector-config.yaml:/etc/otelcol-contrib/config.yaml
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+```
+
+Use this minimal collector configuration to receive telemetry and print it to the collector logs:
+
+```yaml
+# collector-config.yaml
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+exporters:
+  debug:
+    verbosity: detailed
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [debug]
+    metrics:
+      receivers: [otlp]
+      exporters: [debug]
+    logs:
+      receivers: [otlp]
+      exporters: [debug]
+```
+
+The OTLP endpoint is available at `otel-collector:4317` for OTLP/gRPC and `otel-collector:4318` for OTLP/HTTP from containers on the same Compose network. If the collector is running on the host and your app is in a separate Compose project, use `host.docker.internal:4317` or `host.docker.internal:4318` from inside Docker Desktop containers.
+
+## Configuring Your Application
+
+Point your application's OTLP exporter at the local collector endpoint in the same Compose file or Compose project:
+
+```yaml
+# docker-compose.yaml
 
 services:
   web-app:
     build: .
     environment:
-      # Use the Docker Desktop OTLP endpoint
-      - OTEL_EXPORTER_OTLP_ENDPOINT=http://host.docker.internal:4318
+      # Use the local collector's OTLP/HTTP endpoint
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
       - OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
       - OTEL_SERVICE_NAME=web-app
-      - OTEL_RESOURCE_ATTRIBUTES=deployment.environment=local
+      - OTEL_RESOURCE_ATTRIBUTES=deployment.environment.name=development
     ports:
       - "8080:8080"
+    depends_on:
+      - otel-collector
 ```
 
 For a Go application:
@@ -50,13 +88,11 @@ import (
     "context"
     "log"
     "net/http"
-    "os"
 
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
     "go.opentelemetry.io/otel/sdk/resource"
     sdktrace "go.opentelemetry.io/otel/sdk/trace"
-    semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
 )
 
 func initTracer() (*sdktrace.TracerProvider, error) {
@@ -69,9 +105,8 @@ func initTracer() (*sdktrace.TracerProvider, error) {
     }
 
     res, err := resource.New(ctx,
-        resource.WithAttributes(
-            semconv.ServiceName(os.Getenv("OTEL_SERVICE_NAME")),
-        ),
+        resource.WithFromEnv(),
+        resource.WithTelemetrySDK(),
     )
     if err != nil {
         return nil, err
@@ -105,18 +140,16 @@ func main() {
 }
 ```
 
-## Viewing Traces in Docker Desktop
+## Viewing Traces Locally
 
-Docker Desktop provides a built-in trace viewer. Open Docker Desktop and navigate to the "Open Telemetry" or "Observability" tab (depending on your version). You will see traces from your containers, including span details, timing, and attributes.
+Docker Desktop does not provide a built-in application trace viewer. With the debug exporter above, you can confirm that spans are being received by checking the OpenTelemetry Collector container logs in Docker Desktop or by running `docker compose logs otel-collector`. For a trace UI, send the traces to a local backend such as Grafana Tempo.
 
 ## Setting Up a Local Grafana Stack
 
-For a richer experience, forward traces from Docker Desktop to a local Grafana stack:
+For a richer experience, forward traces from the OpenTelemetry Collector to a local Grafana stack:
 
 ```yaml
 # docker-compose-observability.yaml
-version: "3.8"
-
 services:
   tempo:
     image: grafana/tempo:latest
@@ -139,12 +172,40 @@ services:
 
   # Your collector that receives from apps and forwards to Tempo
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:latest
+    image: otel/opentelemetry-collector-contrib:0.152.0
     volumes:
       - ./collector-config.yaml:/etc/otelcol-contrib/config.yaml
     ports:
       - "4317:4317"
       - "4318:4318"
+```
+
+Update `collector-config.yaml` to export traces to Tempo:
+
+```yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+
+exporters:
+  otlp:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp]
 ```
 
 ## Using the OTLP Exporter with Different Languages
@@ -181,7 +242,8 @@ Set the environment variables in your Docker Compose:
 
 ```yaml
 environment:
-  - OTEL_EXPORTER_OTLP_ENDPOINT=http://host.docker.internal:4318
+  - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+  - OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
   - OTEL_SERVICE_NAME=java-service
   - JAVA_TOOL_OPTIONS=-javaagent:/opt/opentelemetry-javaagent.jar
 ```
@@ -190,9 +252,9 @@ environment:
 
 Keep these practices in mind for local development:
 
-1. **Always set `OTEL_SERVICE_NAME`**: Without it, all your services show up as "unknown_service" in the trace viewer.
+1. **Always set `OTEL_SERVICE_NAME`**: Without it, SDKs use a default service name such as "unknown_service".
 
-2. **Use `deployment.environment=local`**: This lets you filter out local development traces if they accidentally reach your production backend.
+2. **Use `deployment.environment.name=development`**: This lets you filter out local development traces if they accidentally reach your production backend.
 
 3. **Set sampling to 100%**: During development, you want to see every trace. Set `OTEL_TRACES_SAMPLER=always_on`.
 
@@ -201,7 +263,7 @@ Keep these practices in mind for local development:
 ```bash
 # Quick test to verify tracing works
 curl http://localhost:8080/
-# Then check Docker Desktop or Grafana for the trace
+# Then check the collector logs or Grafana for the trace
 ```
 
 ## Switching Between Local and Remote Backends
@@ -210,11 +272,13 @@ Use environment variable files to switch between local and remote backends:
 
 ```bash
 # .env.local
-OTEL_EXPORTER_OTLP_ENDPOINT=http://host.docker.internal:4318
+OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
 OTEL_TRACES_SAMPLER=always_on
 
 # .env.staging
 OTEL_EXPORTER_OTLP_ENDPOINT=https://staging-collector.example.com:4318
+OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
 OTEL_TRACES_SAMPLER=parentbased_traceidratio
 OTEL_TRACES_SAMPLER_ARG=0.1
 ```
@@ -225,4 +289,4 @@ docker compose --env-file .env.local up
 
 ## Summary
 
-Docker Desktop's built-in OpenTelemetry support makes it easy to collect traces during local development. Point your application's OTLP exporter at `host.docker.internal:4317` or `host.docker.internal:4318`, and traces appear in Docker Desktop's UI. For more advanced analysis, forward traces to a local Grafana and Tempo stack. This lets you validate your instrumentation before it reaches production.
+Docker Desktop makes it easy to run an OpenTelemetry Collector for local development. Point your application's OTLP exporter at `otel-collector:4318` for OTLP/HTTP or `otel-collector:4317` for OTLP/gRPC, and confirm received telemetry in the collector logs. For more advanced analysis, forward traces to a local Grafana and Tempo stack. This lets you validate your instrumentation before it reaches production.

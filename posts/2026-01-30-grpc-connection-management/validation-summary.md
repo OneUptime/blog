@@ -36,6 +36,11 @@ Tutorial / technical guide
 - The Go DNS load-balancing snippet imported `roundrobin` as a named package without using it, which would fail compilation. Changed it to a blank import to register the balancer.
 - The Go service config snippets used the older `loadBalancingPolicy` JSON key. Updated them to the documented `loadBalancingConfig` form.
 - The Go connection pool comment said ClientConns were ready immediately after initialization. With `grpc.NewClient`, they connect lazily unless `Connect()` is called, so the comment was corrected.
+- The retry policy comment described `RESOURCE_EXHAUSTED` as "rate limited (with retry-after header)." gRPC has no HTTP-style `retry-after` header; the server can signal a retry delay via the `grpc-retry-pushback-ms` metadata key (per gRFC A6). Reworded the comment accordingly.
+
+## Sources Consulted (additional)
+- gRFC A6 Client Retries: https://github.com/grpc/proposal/blob/master/A6-client-retries.md
+- gRPC Connectivity Semantics: https://grpc.github.io/grpc/core/md_doc_connectivity-semantics-and-api.html
 
 ## Review Notes
 The snippets remain illustrative and still use placeholder generated client/protobuf symbols such as `pb`, `MyServiceClient`, and `MyServiceStub`. Those are expected to be supplied by the reader's generated gRPC code.

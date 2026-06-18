@@ -13,7 +13,7 @@ Virtual classrooms depend on stable video and audio quality. When a teacher's vi
 Before writing any code, you need to understand the metrics that matter for video quality:
 
 - **Jitter**: Variation in packet arrival times. High jitter causes choppy audio and video.
-- **Packet loss**: Percentage of packets that never arrive. Even 2-3% loss makes video unwatchable.
+- **Packet loss**: Percentage of packets that never arrive. Even 2-3% loss can noticeably degrade video quality.
 - **Round-trip latency**: Time for a packet to travel to the recipient and back. Above 300ms, conversations become awkward.
 - **Bitrate**: Current encoding rate. Drops indicate the system is compensating for poor conditions.
 - **Frame rate**: Actual frames per second being delivered to the viewer.
@@ -43,10 +43,17 @@ const rttHistogram = meter.createHistogram('webrtc.rtt_ms', {
   unit: 'ms',
 });
 
-const bitrateGauge = meter.createObservableGauge('webrtc.bitrate_kbps', {
+const bitrateGauge = meter.createGauge('webrtc.bitrate_kbps', {
   description: 'Current bitrate in kilobits per second',
   unit: 'kbps',
 });
+
+const frameRateGauge = meter.createGauge('webrtc.frame_rate', {
+  description: 'Frames per second delivered to the viewer',
+  unit: 'fps',
+});
+
+const previousInboundStats = new Map();
 
 // Collect stats from a WebRTC peer connection every 2 seconds
 async function collectWebRTCMetrics(peerConnection, sessionInfo) {
@@ -57,12 +64,22 @@ async function collectWebRTCMetrics(peerConnection, sessionInfo) {
     'classroom.region': sessionInfo.region,
   };
 
+  const selectedCandidatePairIds = new Set();
+
+  stats.forEach((report) => {
+    if (report.type === 'transport' && report.selectedCandidatePairId) {
+      selectedCandidatePairIds.add(report.selectedCandidatePairId);
+    }
+  });
+
   stats.forEach((report) => {
     if (report.type === 'inbound-rtp' && report.kind === 'video') {
       // Calculate packet loss percentage
-      const totalPackets = report.packetsReceived + report.packetsLost;
+      const packetsReceived = report.packetsReceived || 0;
+      const packetsLost = Math.max(report.packetsLost || 0, 0);
+      const totalPackets = packetsReceived + packetsLost;
       const lossPercent = totalPackets > 0
-        ? (report.packetsLost / totalPackets) * 100
+        ? (packetsLost / totalPackets) * 100
         : 0;
 
       packetLossHistogram.record(lossPercent, {
@@ -77,9 +94,39 @@ async function collectWebRTCMetrics(peerConnection, sessionInfo) {
           'webrtc.media_type': 'video',
         });
       }
+
+      const previous = previousInboundStats.get(report.id);
+      if (previous && report.bytesReceived !== undefined) {
+        const elapsedMs = report.timestamp - previous.timestamp;
+        const bytesDelta = report.bytesReceived - previous.bytesReceived;
+
+        if (elapsedMs > 0 && bytesDelta >= 0) {
+          bitrateGauge.record((bytesDelta * 8) / elapsedMs, {
+            ...attributes,
+            'webrtc.media_type': 'video',
+          });
+        }
+      }
+
+      if (report.bytesReceived !== undefined) {
+        previousInboundStats.set(report.id, {
+          bytesReceived: report.bytesReceived,
+          timestamp: report.timestamp,
+        });
+      }
+
+      if (report.framesPerSecond !== undefined) {
+        frameRateGauge.record(report.framesPerSecond, {
+          ...attributes,
+          'webrtc.media_type': 'video',
+        });
+      }
     }
 
-    if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+    if (
+      report.type === 'candidate-pair'
+      && selectedCandidatePairIds.has(report.id)
+    ) {
       // Round-trip time
       if (report.currentRoundTripTime !== undefined) {
         rttHistogram.record(report.currentRoundTripTime * 1000, attributes);

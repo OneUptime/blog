@@ -4,9 +4,9 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Docker, Log, Metadata Enrichment
 
-Description: Learn how to collect Docker container logs and enrich each log record with container name, image, and labels using the OpenTelemetry Collector.
+Description: Learn how to collect Docker container logs and enrich each log record with container name, image, and selected labels using the OpenTelemetry Collector.
 
-When you collect Docker container logs from disk, each log line carries minimal context. You get the message, a timestamp, and the stream type. But for effective troubleshooting, you need to know which container produced the log, what image it was running, and what labels were attached. The OpenTelemetry Collector can enrich log records with this metadata using a combination of the filelog receiver and the Docker observer or resource detection processor.
+When you collect Docker container logs from disk, each log line carries minimal context. You get the message, a timestamp, and the stream type. But for effective troubleshooting, you need to know which container produced the log, what image it was running, and what labels were attached. The OpenTelemetry Collector can enrich log records with this metadata using a combination of the file log receiver, the Docker observer, and the receiver creator.
 
 ## The Problem with Raw Docker Logs
 
@@ -18,9 +18,9 @@ Raw Docker JSON logs at `/var/lib/docker/containers/` only include the container
 
 Without container name, image, or labels, finding the source of this error means manually running `docker inspect` with the container ID. That does not scale when you have dozens of containers.
 
-## Using the Docker Stats Receiver for Metadata
+## Using the Docker Observer for Metadata
 
-The OpenTelemetry Collector Contrib distribution includes the `docker_observer` extension and the resource detection processor. But the simplest approach is to use the Docker API directly through a custom pipeline that combines filelog with metadata enrichment.
+The OpenTelemetry Collector Contrib distribution includes the `docker_observer` extension and the receiver creator. The Docker observer watches running containers through the Docker API, and the receiver creator can start a `file_log` receiver for each discovered container with resource attributes taken from the Docker metadata.
 
 Here is a Collector config that pulls metadata from the Docker API:
 
@@ -31,33 +31,33 @@ extensions:
     endpoint: unix:///var/run/docker.sock
     # How often to refresh container metadata
     cache_sync_interval: 60s
+    # Emit an endpoint even for containers without exposed ports
+    include_all_containers: true
 
 receivers:
-  filelog:
-    include:
-      - /var/lib/docker/containers/*/*-json.log
-    start_at: end
-    operators:
-      # Parse the JSON log line
-      - type: json_parser
-        timestamp:
-          parse_from: attributes.time
-          layout: '%Y-%m-%dT%H:%M:%S.%LZ'
-      # Extract container ID from the file path
-      - type: regex_parser
-        regex: '/var/lib/docker/containers/(?P<container_id>[a-f0-9]{64})/'
-        parse_from: attributes["log.file.path"]
-      - type: move
-        from: attributes.log
-        to: body
+  receiver_creator/docker_logs:
+    watch_observers: [docker_observer]
+    receivers:
+      file_log:
+        rule: type == "container" && port == 0
+        config:
+          include:
+            - /var/lib/docker/containers/`container_id`/`container_id`-json.log
+          start_at: end
+          include_file_path: true
+          operators:
+            # Parse Docker JSON log lines and move the message into the body
+            - type: container
+              format: docker
+              add_metadata_from_filepath: false
+        resource_attributes:
+          container.id: '`container_id`'
+          container.name: '`name`'
+          container.image.name: '`image`'
+          # Example of copying a known label into a resource attribute
+          service.name: '`"com.docker.compose.service" in labels ? labels["com.docker.compose.service"] : name`'
 
 processors:
-  # Use the resource detection processor to add Docker metadata
-  resourcedetection:
-    detectors: [docker]
-    timeout: 2s
-    override: false
-
   # Add custom resource attributes using the transform processor
   transform:
     log_statements:
@@ -70,7 +70,7 @@ processors:
     send_batch_size: 500
 
 exporters:
-  otlp:
+  otlp_grpc:
     endpoint: "your-backend:4317"
     tls:
       insecure: false
@@ -79,36 +79,33 @@ service:
   extensions: [docker_observer]
   pipelines:
     logs:
-      receivers: [filelog]
-      processors: [resourcedetection, transform, batch]
-      exporters: [otlp]
+      receivers: [receiver_creator/docker_logs]
+      processors: [transform, batch]
+      exporters: [otlp_grpc]
 ```
 
 ## Using the Docker API for Container Name Lookup
 
-A more direct approach uses a script or the Collector's built-in container log parsing. The filelog receiver supports a `container` parser that can resolve container metadata:
+A more direct approach uses a script or the Collector's built-in container log parsing. The file log receiver supports a `container` parser that parses Docker JSON log lines, including the log message, stream, and timestamp. It does not query the Docker API for container names by itself, so use the Docker observer pattern above or do a separate Docker API lookup when you need names and labels:
 
 ```yaml
 receivers:
-  filelog:
+  file_log:
     include:
       - /var/lib/docker/containers/*/*-json.log
+    include_file_path: true
     start_at: end
     operators:
-      - type: json_parser
-        timestamp:
-          parse_from: attributes.time
-          layout: '%Y-%m-%dT%H:%M:%S.%LZ'
-      - type: move
-        from: attributes.log
-        to: body
+      - type: container
+        format: docker
+        add_metadata_from_filepath: false
       # Extract the container ID from the log file path
       - type: regex_parser
         regex: '/var/lib/docker/containers/(?P<container_id>[a-f0-9]{64})/'
         parse_from: attributes["log.file.path"]
 ```
 
-Then use the `k8s_tagger` or a custom lookup processor. For non-Kubernetes Docker setups, you can write a simple enrichment script that queries the Docker API:
+For non-Kubernetes Docker setups outside the Collector pipeline, you can write a simple enrichment script that queries the Docker API:
 
 ```python
 import docker
@@ -163,26 +160,26 @@ docker run -d \
   --name otel-collector \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
   -v /var/lib/docker/containers:/var/lib/docker/containers:ro \
-  -v ./config.yaml:/etc/otelcol/config.yaml \
+  -v ./config.yaml:/etc/otelcol-contrib/config.yaml:ro \
   otel/opentelemetry-collector-contrib:latest
 ```
 
-The Docker socket gives the Collector read access to container metadata. The `:ro` flag ensures it cannot modify anything.
+The Docker socket lets the Collector query container metadata. Treat socket access as sensitive: the `:ro` flag makes the bind-mounted socket file read-only as a filesystem object, but it does not make the Docker API itself read-only.
 
 ## Caching Metadata for Performance
 
-Querying the Docker API for every log line is expensive. Cache the results:
+Querying the Docker API for every log line is expensive. Use the Docker observer's container cache instead of doing per-log-line lookups:
 
 ```yaml
 extensions:
   docker_observer:
     endpoint: unix:///var/run/docker.sock
-    # Refresh metadata every 60 seconds instead of per-log-line
+    # Resync the observed container list every 60 seconds
     cache_sync_interval: 60s
 ```
 
-This means metadata updates (like label changes) take up to 60 seconds to appear in your logs. For most use cases, that delay is acceptable.
+This means metadata updates that are only picked up during a resync can take up to 60 seconds to appear in newly created receivers. For most use cases, that delay is acceptable.
 
 ## Summary
 
-Enriching Docker container logs with metadata transforms raw log lines into actionable observability data. You can extract the container ID from file paths, query the Docker API for container name, image, and labels, and attach those as resource attributes. The key is caching metadata lookups and mounting both the Docker socket and the container log directory into your Collector container.
+Enriching Docker container logs with metadata transforms raw log lines into actionable observability data. You can extract the container ID from file paths, query the Docker API for container name, image, and selected labels, and attach those as resource attributes. The key is caching metadata lookups and mounting both the Docker socket and the container log directory into your Collector container.

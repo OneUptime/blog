@@ -45,15 +45,14 @@ The most common cause is the server endpoint not being set up for WebSocket conn
 ```javascript
 // BAD: Regular HTTP endpoint, not WebSocket
 const express = require('express');
-const app = express();
+const badApp = express();
 
 // This will return HTTP 200, causing "unexpected response"
-app.get('/ws', (req, res) => {
+badApp.get('/ws', (req, res) => {
     res.send('Hello');
 });
 
 // GOOD: Proper WebSocket server setup
-const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
 
@@ -88,13 +87,13 @@ server.listen(8080);
 // If server expects /ws but client connects to /websocket
 
 // BAD: Mismatched paths
-const ws = new WebSocket('ws://localhost:8080/websocket'); // Wrong path
+const wrongWs = new WebSocket('ws://localhost:8080/websocket'); // Wrong path
 
 // Server configured for /ws
 const wss = new WebSocket.Server({ server, path: '/ws' });
 
 // GOOD: Matching paths
-const ws = new WebSocket('ws://localhost:8080/ws'); // Correct path
+const correctWs = new WebSocket('ws://localhost:8080/ws'); // Correct path
 ```
 
 **Debugging URL issues:**
@@ -149,7 +148,7 @@ sequenceDiagram
 
 # Correct Nginx configuration for WebSocket
 location /ws {
-    # Without these, Nginx returns 400 Bad Request
+    # Without these, the backend won't receive a proper upgrade request
     proxy_http_version 1.1;
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection "upgrade";
@@ -171,7 +170,7 @@ location /ws {
 URL="https://example.com/ws"
 
 echo "Testing WebSocket handshake..."
-curl -sI \
+curl -i -N --http1.1 --max-time 5 \
     -H "Connection: Upgrade" \
     -H "Upgrade: websocket" \
     -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
@@ -196,53 +195,29 @@ Some servers redirect HTTP to HTTPS, causing the WebSocket handshake to fail.
 ```javascript
 // BAD: Server redirects all HTTP to HTTPS
 // Client tries ws:// but server returns 301
+const WebSocket = require('ws');
 
-const ws = new WebSocket('ws://example.com/ws');  // HTTP
+const wsHttp = new WebSocket('ws://example.com/ws');  // HTTP
 // Server returns: 301 Moved Permanently -> https://example.com/ws
 
 // GOOD: Use correct protocol
-const ws = new WebSocket('wss://example.com/ws'); // HTTPS/WSS
+const wsSecure = new WebSocket('wss://example.com/ws'); // HTTPS/WSS
 
-// Or handle redirect in client (Node.js)
-const WebSocket = require('ws');
-
-function connectWithRedirect(url, maxRedirects = 3) {
+// Or allow the Node.js ws client to follow redirects
+function connectWithRedirect(url) {
     return new Promise((resolve, reject) => {
-        let redirectCount = 0;
+        const ws = new WebSocket(url, {
+            followRedirects: true,
+            maxRedirects: 3
+        });
 
-        function connect(currentUrl) {
-            const ws = new WebSocket(currentUrl, {
-                followRedirects: true,
-                maxRedirects: maxRedirects
-            });
+        ws.on('redirect', (redirectUrl) => {
+            console.log(`Redirecting to: ${redirectUrl}`);
+        });
 
-            ws.on('open', () => resolve(ws));
+        ws.on('open', () => resolve(ws));
+        ws.on('error', reject);
 
-            ws.on('unexpected-response', (req, res) => {
-                if (res.statusCode >= 300 && res.statusCode < 400) {
-                    const location = res.headers.location;
-                    if (location && redirectCount < maxRedirects) {
-                        redirectCount++;
-                        console.log(`Redirecting to: ${location}`);
-                        ws.close();
-
-                        // Convert http:// to ws://, https:// to wss://
-                        const wsUrl = location
-                            .replace('http://', 'ws://')
-                            .replace('https://', 'wss://');
-                        connect(wsUrl);
-                    } else {
-                        reject(new Error('Too many redirects'));
-                    }
-                } else {
-                    reject(new Error(`Unexpected response: ${res.statusCode}`));
-                }
-            });
-
-            ws.on('error', reject);
-        }
-
-        connect(url);
     });
 }
 
@@ -319,51 +294,44 @@ ws.on('unexpected-response', (req, res) => {
 
 ---
 
-### 6. CORS Issues with Browser Clients
+### 6. Origin Rejection with Browser Clients
 
-While WebSocket itself does not have CORS, the initial HTTP handshake may be blocked.
+WebSocket itself does not use CORS preflights, but browser clients send an `Origin` header and servers often reject unexpected origins during the handshake.
 
 ```javascript
-// Server with CORS handling for upgrade requests
+// Server with Origin handling for upgrade requests
 const http = require('http');
 const WebSocket = require('ws');
 
 const server = http.createServer((req, res) => {
-    // Handle CORS preflight for non-WebSocket requests
-    if (req.method === 'OPTIONS') {
-        res.writeHead(200, {
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-            'Access-Control-Allow-Headers': 'Authorization, Content-Type'
-        });
-        res.end();
-        return;
-    }
-
     res.writeHead(404);
     res.end();
 });
 
-const wss = new WebSocket.Server({
-    server,
-    verifyClient: (info, callback) => {
-        // Log origin for debugging
-        console.log('Connection from origin:', info.origin);
+const wss = new WebSocket.Server({ noServer: true });
 
-        // Accept connections from specific origins
-        const allowedOrigins = [
-            'http://localhost:3000',
-            'https://myapp.example.com'
-        ];
+const allowedOrigins = [
+    'http://localhost:3000',
+    'https://myapp.example.com'
+];
 
-        if (allowedOrigins.includes(info.origin)) {
-            callback(true);
-        } else {
-            console.log('Rejected connection from:', info.origin);
-            // This returns 401, causing "unexpected response"
-            callback(false, 401, 'Origin not allowed');
-        }
+server.on('upgrade', (request, socket, head) => {
+    const origin = request.headers.origin;
+
+    // Log origin for debugging
+    console.log('Connection from origin:', origin);
+
+    if (!allowedOrigins.includes(origin)) {
+        console.log('Rejected connection from:', origin);
+        // This returns 403, causing "unexpected response"
+        socket.write('HTTP/1.1 403 Forbidden\r\n\r\nOrigin not allowed');
+        socket.destroy();
+        return;
     }
+
+    wss.handleUpgrade(request, socket, head, (ws) => {
+        wss.emit('connection', ws, request);
+    });
 });
 ```
 
@@ -435,7 +403,7 @@ function connectWithDebugging(url, options = {}) {
                         console.error('Forbidden - check:');
                         console.error('  - Origin header validation');
                         console.error('  - IP restrictions');
-                        console.error('  - CORS configuration');
+                        console.error('  - Allowed origins configuration');
                         break;
                     case 404:
                         console.error('Not Found - the WebSocket path does not exist');
@@ -539,18 +507,22 @@ server.listen(8080);
 
 ```python
 import asyncio
-import websockets
 import logging
 from http import HTTPStatus
+from websockets.exceptions import ConnectionClosed
+from websockets.asyncio.server import serve
 
 # Enable detailed logging
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger('websockets')
 
-async def health_check(path, request_headers):
+async def health_check(connection, request):
     """Handle HTTP requests that are not WebSocket upgrades"""
+    path = request.path
+    request_headers = request.headers
+
     if path == '/health':
-        return HTTPStatus.OK, [], b'OK\n'
+        return connection.respond(HTTPStatus.OK, 'OK\n')
 
     # Log non-WebSocket requests to WebSocket path
     if path == '/ws':
@@ -559,27 +531,28 @@ async def health_check(path, request_headers):
 
         # Check for missing upgrade headers
         upgrade = request_headers.get('Upgrade', '').lower()
-        connection = request_headers.get('Connection', '').lower()
+        connection_header = request_headers.get('Connection', '').lower()
 
         if upgrade != 'websocket':
             logger.error(f"Missing or wrong Upgrade header: {upgrade}")
-        if 'upgrade' not in connection:
-            logger.error(f"Missing upgrade in Connection header: {connection}")
+        if 'upgrade' not in connection_header:
+            logger.error(f"Missing upgrade in Connection header: {connection_header}")
 
     return None  # Continue with normal WebSocket handling
 
-async def handler(websocket, path):
+async def handler(websocket):
     """Handle WebSocket connections"""
+    path = websocket.request.path
     logger.info(f"WebSocket connected: {path}")
 
     try:
         async for message in websocket:
             await websocket.send(f"Echo: {message}")
-    except websockets.exceptions.ConnectionClosed as e:
+    except ConnectionClosed as e:
         logger.info(f"Connection closed: {e.code} {e.reason}")
 
 async def main():
-    async with websockets.serve(
+    async with serve(
         handler,
         "0.0.0.0",
         8080,
@@ -604,7 +577,7 @@ if __name__ == "__main__":
 | 301/302 | Redirect | Use wss:// or follow redirect |
 | 400 | Bad Request | Check headers, proxy config |
 | 401 | Unauthorized | Add authentication |
-| 403 | Forbidden | Check origin, CORS |
+| 403 | Forbidden | Check origin or access policy |
 | 404 | Not Found | Verify URL path |
 | 426 | Upgrade Required | Use correct WS version |
 | 502/503 | Gateway Error | Fix proxy configuration |
@@ -630,7 +603,7 @@ if __name__ == "__main__":
 ### Authentication
 - [ ] Auth tokens accepted in headers
 - [ ] Invalid auth returns clear error message
-- [ ] CORS/Origin validation configured
+- [ ] Origin validation configured
 
 ### SSL/TLS
 - [ ] Using wss:// for HTTPS sites

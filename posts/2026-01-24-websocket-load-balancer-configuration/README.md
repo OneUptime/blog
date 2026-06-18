@@ -8,7 +8,7 @@ Description: A comprehensive guide to configuring load balancers for WebSocket a
 
 ---
 
-> WebSocket connections are persistent and stateful, which creates unique challenges for load balancing. Unlike HTTP requests that can be distributed freely across servers, WebSocket connections must maintain affinity with a specific backend server for the duration of the connection.
+> WebSocket connections are persistent and stateful, which creates unique challenges for load balancing. Unlike HTTP requests that can be distributed freely across servers, WebSocket connections stay attached to the backend server that accepted the upgrade, and related requests or reconnects often need affinity with that same backend.
 
 This guide covers the configuration required for popular load balancers to properly handle WebSocket traffic, including connection upgrades, timeout settings, and session affinity.
 
@@ -56,7 +56,7 @@ flowchart TD
 
 1. **Connection Upgrade Support**: The load balancer must forward HTTP Upgrade headers
 2. **Long Timeouts**: WebSocket connections can last hours or days
-3. **Sticky Sessions**: Connections must stay with the same backend server
+3. **Sticky Sessions**: Reconnects and related HTTP requests should return to the same backend when the application keeps connection state locally
 4. **Health Checks**: Detect failed backends without disrupting connections
 
 ---
@@ -113,7 +113,7 @@ http {
 
             # Long timeouts for persistent connections
             # These are critical for WebSocket stability
-            proxy_connect_timeout 7d;
+            proxy_connect_timeout 75s;
             proxy_send_timeout 7d;
             proxy_read_timeout 7d;
 
@@ -152,6 +152,12 @@ http {
         ip_hash;
         server notify1.internal:8080;
         server notify2.internal:8080;
+        keepalive 32;
+    }
+
+    upstream api_backend {
+        server api1.internal:8080;
+        server api2.internal:8080;
         keepalive 32;
     }
 
@@ -319,6 +325,11 @@ backend websocket_backend
     server ws1 10.0.0.1:8080 cookie ws1 check inter 10s
     server ws2 10.0.0.2:8080 cookie ws2 check inter 10s
     server ws3 10.0.0.3:8080 cookie ws3 check inter 10s
+
+backend api_backend
+    balance roundrobin
+    server app1 10.0.1.1:8080 check
+    server app2 10.0.1.2:8080 check
 ```
 
 ---
@@ -338,6 +349,10 @@ resource "aws_lb" "websocket" {
 
   # Enable deletion protection in production
   enable_deletion_protection = true
+
+  # Critical: Increase idle timeout for WebSocket
+  # Default is 60 seconds, WebSocket needs much more
+  idle_timeout = 3600  # 1 hour
 
   tags = {
     Name = "websocket-alb"
@@ -364,7 +379,7 @@ resource "aws_lb_target_group" "websocket" {
     matcher             = "200"
   }
 
-  # Sticky sessions for WebSocket affinity
+  # Sticky sessions for reconnect and related-request affinity
   stickiness {
     type            = "lb_cookie"
     cookie_duration = 86400  # 24 hours
@@ -389,33 +404,6 @@ resource "aws_lb_listener" "https" {
   }
 }
 
-# ALB attributes for WebSocket
-resource "aws_lb_listener" "websocket_listener" {
-  load_balancer_arn = aws_lb.websocket.arn
-  port              = 443
-  protocol          = "HTTPS"
-  certificate_arn   = var.certificate_arn
-
-  default_action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.websocket.arn
-  }
-}
-
-# Increase idle timeout for WebSocket connections
-resource "aws_lb" "websocket_with_timeout" {
-  name               = "websocket-alb"
-  load_balancer_type = "application"
-  subnets            = var.public_subnet_ids
-
-  # Critical: Increase idle timeout for WebSocket
-  # Default is 60 seconds, WebSocket needs much more
-  idle_timeout = 3600  # 1 hour
-
-  tags = {
-    Name = "websocket-alb"
-  }
-}
 ```
 
 ### AWS CLI Commands
@@ -475,9 +463,6 @@ metadata:
     nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-connect-timeout: "7"
-
-    # WebSocket support
-    nginx.ingress.kubernetes.io/websocket-services: "websocket-service"
 
     # Sticky sessions
     nginx.ingress.kubernetes.io/affinity: "cookie"
@@ -558,7 +543,7 @@ spec:
 
 ```yaml
 # kubernetes/websocket-traefik.yaml
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: websocket-ingress
@@ -571,6 +556,7 @@ spec:
       services:
         - name: websocket-service
           port: 8080
+          serversTransport: websocket-transport
           sticky:
             cookie:
               name: ws_affinity
@@ -581,7 +567,7 @@ spec:
   tls:
     secretName: websocket-tls
 ---
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
   name: websocket-headers
@@ -590,7 +576,7 @@ spec:
     customRequestHeaders:
       X-Forwarded-Proto: "https"
 ---
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: ServersTransport
 metadata:
   name: websocket-transport
@@ -753,7 +739,7 @@ echo "=== Testing WebSocket Load Balancer ==="
 # Test 1: Basic connection
 echo ""
 echo "Test 1: Basic WebSocket connection"
-wscat -c "$WSURL" -x '{"type":"ping"}' --execute-timeout 5000 2>&1
+wscat -c "$WSURL" -x '{"type":"ping"}' -w 5 2>&1
 
 # Test 2: Check upgrade headers
 echo ""
@@ -796,12 +782,12 @@ echo "=== Tests Complete ==="
 | Nginx | proxy_http_version 1.1, Upgrade headers, long timeouts | ip_hash or sticky cookie |
 | HAProxy | timeout tunnel, option http-server-close | balance source or cookie |
 | AWS ALB | idle_timeout 3600, stickiness enabled | lb_cookie |
-| Kubernetes Nginx | websocket-services annotation, affinity cookie | Session cookie |
+| Kubernetes Nginx | proxy-read-timeout, proxy-send-timeout, affinity cookie | Session cookie |
 
 The most critical settings for WebSocket load balancing are:
 1. **Connection upgrade headers** - Without these, WebSocket handshake fails
 2. **Long timeouts** - Default timeouts will kill persistent connections
-3. **Sticky sessions** - Connections must stay with the same backend
+3. **Sticky sessions** - Reconnects and related requests should return to the same backend when local state requires it
 
 ---
 

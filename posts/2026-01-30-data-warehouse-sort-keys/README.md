@@ -8,11 +8,11 @@ Description: Learn to implement sort keys for optimizing data storage order and 
 
 ---
 
-Sort keys are one of the most powerful optimization techniques in columnar data warehouses like Amazon Redshift, Google BigQuery, and Snowflake. They determine the physical order in which data is stored on disk, directly impacting query performance through efficient data retrieval and zone map utilization.
+Sort keys are one of the most powerful optimization techniques in Amazon Redshift, and similar clustering or ordering features exist in columnar data warehouses like Google BigQuery and Snowflake. They influence how data is organized on disk, directly impacting query performance through efficient data retrieval and block pruning.
 
 ## Understanding Sort Keys
 
-Sort keys define how rows are physically ordered within each data block on disk. When you query data with predicates that match the sort key columns, the database can skip entire blocks of data that do not contain relevant values. This is accomplished through zone maps, which store the minimum and maximum values for each block.
+In Redshift, sort keys define how rows are physically ordered within data blocks on disk. When you query data with predicates that match the sort key columns, the database can skip entire blocks of data that do not contain relevant values. This is accomplished through block metadata, often called zone maps, which store the minimum and maximum values for each block.
 
 ```mermaid
 flowchart TD
@@ -116,11 +116,11 @@ GROUP BY region;
 
 ### Interleaved Sort Keys
 
-Interleaved sort keys give equal weight to each column in the sort key definition. They use a space-filling Z-order curve algorithm to interleave the sort order of all specified columns. This approach is beneficial when queries filter on different columns with roughly equal frequency.
+Interleaved sort keys give equal weight to each column, or subset of columns, in the sort key definition. This approach is beneficial when queries filter on different columns with roughly equal frequency.
 
 ```sql
 -- Create a table with an interleaved sort key
--- All three columns (region, sale_date, product_id) have equal sort priority
+-- All three columns (region, category, product_id) have equal sort priority
 -- Useful when queries filter on any combination of these columns
 CREATE TABLE sales_analytics (
     sale_id         BIGINT IDENTITY(1,1),
@@ -133,7 +133,7 @@ CREATE TABLE sales_analytics (
     total_amount    DECIMAL(12,2)
 )
 DISTKEY(region)
-INTERLEAVED SORTKEY(region, sale_date, product_id);
+INTERLEAVED SORTKEY(region, category, product_id);
 ```
 
 Interleaved sort keys work well for varied query patterns:
@@ -147,14 +147,14 @@ FROM sales_analytics
 WHERE region = 'Asia Pacific'
 GROUP BY sale_date;
 
--- Query filtering only on sale_date (also works well)
+-- Query filtering only on category (also works well)
 -- Unlike compound sort keys, this query benefits from zone maps
 SELECT
     region,
     product_id,
     SUM(quantity) as units_sold
 FROM sales_analytics
-WHERE sale_date BETWEEN '2024-06-01' AND '2024-06-30'
+WHERE category = 'Electronics'
 GROUP BY region, product_id;
 
 -- Query filtering only on product_id (also efficient)
@@ -177,9 +177,9 @@ flowchart TB
 
     subgraph Interleaved[Interleaved Sort Key]
         I1[Region]
-        I2[Sale Date]
+        I2[Category]
         I3[Product ID]
-        I4[Priority: Region = Sale Date = Product ID]
+        I4[Priority: Region = Category = Product ID]
     end
 
     Compound --> CP[Best for: Consistent filter patterns<br/>on leading columns]
@@ -191,9 +191,9 @@ flowchart TB
 | Aspect | Compound Sort Key | Interleaved Sort Key |
 |--------|-------------------|----------------------|
 | Query Pattern | Best for consistent filters on leading columns | Best for varied filters on any column |
-| Load Performance | Faster data loading | Slower data loading (2x overhead) |
+| Load Performance | Faster data loading | Slower data loading |
 | VACUUM Performance | Faster VACUUM operations | Slower VACUUM operations |
-| Storage Overhead | Lower | Higher due to interleaving metadata |
+| Operational Overhead | Lower | Higher maintenance overhead |
 | Zone Map Efficiency | High for leading columns, low for others | Moderate for all columns |
 
 ### Implementing Sort Keys: A Practical Example
@@ -240,11 +240,12 @@ COMPOUND SORTKEY(order_date, customer_segment, product_category);
 
 -- Step 3: Load data in sorted order when possible
 -- This creates optimal zone maps from the start
+-- For Parquet loads, COPY does not support a SORTKEY parameter;
+-- prepare the files in sort-key order before loading when possible.
 COPY ecommerce_orders
 FROM 's3://data-bucket/orders/'
 IAM_ROLE 'arn:aws:iam::123456789:role/RedshiftCopyRole'
-FORMAT AS PARQUET
-SORTKEY order_date;
+FORMAT AS PARQUET;
 ```
 
 ### Monitoring Sort Key Effectiveness
@@ -263,8 +264,8 @@ FROM svv_table_info
 WHERE "table" = 'ecommerce_orders';
 
 -- Analyze zone map effectiveness for a specific query
--- Look at rows_pre_filter vs rows to see zone map filtering
--- A high ratio means zone maps are working effectively
+-- Look at rows_pre_filter vs rows to see scan filtering
+-- A large difference can indicate that many scanned rows are discarded by filters
 EXPLAIN
 SELECT
     customer_segment,
@@ -273,20 +274,21 @@ FROM ecommerce_orders
 WHERE order_date BETWEEN '2024-01-01' AND '2024-01-31'
 GROUP BY customer_segment;
 
--- Monitor block skipping through zone maps
--- This shows how many blocks were skipped vs scanned
--- Higher skip rates indicate better sort key effectiveness
+-- Monitor scan filtering after running a representative query
+-- is_rrscan = 't' indicates a range-restricted scan used sort-key metadata
 SELECT
     query,
     segment,
     step,
+    is_rrscan,
     rows,
     rows_pre_filter,
+    rows_pre_user_filter,
     CASE
         WHEN rows_pre_filter > 0
         THEN ROUND((1 - (rows::FLOAT / rows_pre_filter)) * 100, 2)
         ELSE 0
-    END as block_skip_percentage
+    END as filtered_row_percentage
 FROM stl_scan
 WHERE query = pg_last_query_id()
 ORDER BY segment, step;
@@ -317,6 +319,9 @@ SELECT
     status,
     time_remaining_estimate
 FROM svv_vacuum_progress;
+
+-- Reindex interleaved sort keys when key distribution skew changes significantly
+VACUUM REINDEX sales_analytics;
 ```
 
 ### Sort Key Selection Strategy
@@ -332,7 +337,7 @@ flowchart TD
     C -->|No| D
     D --> F{How many columns<br/>to include?}
     E --> G{How many columns<br/>to include?}
-    F --> H[Limit to 4 columns max<br/>for interleaved]
+    F --> H[Limit interleaved columns<br/>to what queries use]
     G --> I[Primary filter first<br/>Secondary filters follow]
     H --> J[Test with representative queries]
     I --> J
@@ -350,7 +355,7 @@ flowchart TD
 
 3. **Place most selective columns first**: For compound sort keys, columns with higher cardinality and more frequent filtering should come first
 
-4. **Limit interleaved columns**: Do not include more than 4 columns in an interleaved sort key. The overhead increases exponentially
+4. **Limit interleaved columns**: Redshift supports up to 8 columns in an interleaved sort key, but include only columns that are useful for common selective filters
 
 5. **Monitor and maintain**: Regularly check sort percentages and run VACUUM operations during maintenance windows
 
@@ -371,7 +376,7 @@ FROM svv_table_info ti
 LEFT JOIN (
     SELECT
         tbl,
-        AVG(elapsed) / 1000 as avg_elapsed_time_ms,
+        AVG(DATEDIFF(milliseconds, q.starttime, q.endtime)) as avg_elapsed_time_ms,
         COUNT(*) as query_count
     FROM stl_scan s
     JOIN stl_query q ON s.query = q.query

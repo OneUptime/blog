@@ -136,3 +136,16 @@ dist
 logging-operator/
 roles/
 prompts/
+
+# Stray build artifacts from code-snippet validation runs (Rust/compiled output)
+/box
+/cow
+/struct
+/owned
+/output
+/ref_param
+/hashmap_actual_problem
+/snippet_[0-9]*
+/*.rlib
+/openapitools.json
+/src/*.rs

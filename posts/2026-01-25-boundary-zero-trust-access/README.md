@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: HashiCorp Boundary, Zero Trust, Security, Access Management, Kubernetes, Identity-Based Access
+Tags: HashiCorp Boundary, Zero Trust, Security, Access Management, Identity-Based Access
 
 Description: Learn how to deploy HashiCorp Boundary for zero trust access to infrastructure.
 
@@ -62,106 +62,104 @@ graph TB
 
 Before deploying Boundary:
 
-- Kubernetes cluster (v1.21+) or VMs for deployment
-- PostgreSQL 11+ for controller database
-- TLS certificates for controller and workers
+- VMs or bare-metal hosts for controllers and workers
+- PostgreSQL 12+ for controller database
+- TLS certificates for controllers
 - OIDC provider for SSO (optional but recommended)
 
 ---
 
 ## Deploying Boundary Controllers
 
-Deploy Boundary controllers using Helm:
+Deploy Boundary controllers with a Boundary controller configuration file:
 
-```yaml
-# boundary-controller-values.yaml
+```hcl
+# /etc/boundary.d/controller.hcl
 
-# Helm values for Boundary controller deployment
+disable_mlock = true
 
-controller:
-  replicas: 2
+listener "tcp" {
+  purpose       = "api"
+  address       = "0.0.0.0:9200"
+  tls_disable   = false
+  tls_cert_file = "/etc/boundary.d/tls/boundary-cert.pem"
+  tls_key_file  = "/etc/boundary.d/tls/boundary-key.pem"
+}
 
-  # Database configuration for controller state
-  database:
-    url: "postgres://boundary:password@postgres:5432/boundary?sslmode=require"
+listener "tcp" {
+  purpose = "cluster"
+  address = "0.0.0.0:9201"
+}
 
-  # KMS configuration for encryption
-  kms:
-    # Root KMS key for encrypting other keys
-    root:
-      purpose: root
-      aead:
-        type: aead
-        aead_type: aes-gcm
-        key: "replace-with-32-byte-base64-key"
+listener "tcp" {
+  purpose       = "ops"
+  address       = "0.0.0.0:9203"
+  tls_disable   = false
+  tls_cert_file = "/etc/boundary.d/tls/boundary-cert.pem"
+  tls_key_file  = "/etc/boundary.d/tls/boundary-key.pem"
+}
 
-    # Recovery KMS for disaster recovery
-    recovery:
-      purpose: recovery
-      aead:
-        type: aead
-        aead_type: aes-gcm
-        key: "replace-with-32-byte-base64-key"
+controller {
+  name                = "boundary-controller-1"
+  public_cluster_addr = "boundary-cluster.example.com:9201"
 
-    # Worker auth KMS for worker-controller communication
-    workerAuth:
-      purpose: worker-auth
-      aead:
-        type: aead
-        aead_type: aes-gcm
-        key: "replace-with-32-byte-base64-key"
+  database {
+    url = "env://POSTGRESQL_CONNECTION_STRING"
+  }
+}
 
-  # TLS configuration
-  tls:
-    certSecret: boundary-controller-tls
-    cert: tls.crt
-    key: tls.key
+kms "aead" {
+  purpose   = "root"
+  aead_type = "aes-gcm"
+  key       = "replace-with-32-byte-base64-key"
+  key_id    = "global_root"
+}
 
-  # Listener configuration
-  listener:
-    api:
-      address: "0.0.0.0"
-      port: 9200
-    cluster:
-      address: "0.0.0.0"
-      port: 9201
+kms "aead" {
+  purpose   = "recovery"
+  aead_type = "aes-gcm"
+  key       = "replace-with-32-byte-base64-key"
+  key_id    = "global_recovery"
+}
 
-  resources:
-    requests:
-      cpu: 500m
-      memory: 512Mi
-    limits:
-      cpu: 2000m
-      memory: 1Gi
+kms "aead" {
+  purpose   = "worker-auth"
+  aead_type = "aes-gcm"
+  key       = "replace-with-32-byte-base64-key"
+  key_id    = "global_worker_auth"
+}
 
-# Service configuration
-service:
-  type: LoadBalancer
-  annotations:
-    service.beta.kubernetes.io/aws-load-balancer-type: nlb
+kms "aead" {
+  purpose   = "bsr"
+  aead_type = "aes-gcm"
+  key       = "replace-with-32-byte-base64-key"
+  key_id    = "global_bsr"
+}
 ```
 
 Install the controller:
 
 ```bash
-# Create namespace
-kubectl create namespace boundary
+# Add the HashiCorp Linux repository on Ubuntu/Debian
+curl -fsSL https://apt.releases.hashicorp.com/gpg | \
+  sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
 
-# Create TLS secret
-kubectl create secret tls boundary-controller-tls \
-  --cert=controller.crt \
-  --key=controller.key \
-  -n boundary
+echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | \
+  sudo tee /etc/apt/sources.list.d/hashicorp.list
 
-# Install Boundary controller
-helm install boundary-controller hashicorp/boundary \
-  --namespace boundary \
-  --values boundary-controller-values.yaml
+sudo apt update
+sudo apt install boundary
 
-# Initialize the database
-kubectl exec -n boundary deploy/boundary-controller -- \
-  boundary database init \
-  -config=/etc/boundary/config.hcl
+# Store sensitive values outside the config file
+sudo tee /etc/boundary.d/boundary.env >/dev/null <<'EOF'
+POSTGRESQL_CONNECTION_STRING=postgresql://boundary:password@postgres.example.com:5432/boundary?sslmode=require
+EOF
+
+# Initialize the database once
+boundary database init -config=/etc/boundary.d/controller.hcl
+
+# Start the controller service
+sudo systemctl enable --now boundary
 ```
 
 ---
@@ -170,61 +168,45 @@ kubectl exec -n boundary deploy/boundary-controller -- \
 
 Workers proxy connections and can be deployed in multiple regions:
 
-```yaml
-# boundary-worker-values.yaml
-# Configuration for Boundary worker deployment
+```hcl
+# /etc/boundary.d/egress-worker.hcl
 
-worker:
-  # Connect to controller cluster
-  controllers:
-  - "boundary-controller.boundary.svc.cluster.local:9201"
+disable_mlock = true
 
-  # Worker authentication
-  auth:
-    # Method for authenticating to controller
-    method: "controller-generated"
+listener "tcp" {
+  purpose = "proxy"
+  address = "0.0.0.0:9202"
+}
 
-  # Public address for client connections
-  publicAddr: "worker-east.example.com:9202"
+worker {
+  public_addr       = "worker-east.example.com:9202"
+  initial_upstreams = ["boundary-cluster.example.com:9201"]
+  auth_storage_path = "/var/lib/boundary"
 
-  # Tags for target matching
-  tags:
-    region: ["us-east-1"]
-    type: ["prod"]
+  tags {
+    region = ["us-east-1"]
+    type   = ["prod", "egress"]
+  }
+}
 
-  # Listener configuration
-  listener:
-    proxy:
-      address: "0.0.0.0"
-      port: 9202
-
-  resources:
-    requests:
-      cpu: 250m
-      memory: 256Mi
-    limits:
-      cpu: 1000m
-      memory: 512Mi
-
-# Deploy as DaemonSet for high availability
-kind: DaemonSet
+kms "aead" {
+  purpose   = "worker-auth-storage"
+  aead_type = "aes-gcm"
+  key       = "replace-with-32-byte-base64-key"
+  key_id    = "worker_auth_storage"
+}
 ```
 
 Deploy workers:
 
 ```bash
-# Deploy worker in us-east region
-helm install boundary-worker-east hashicorp/boundary-worker \
-  --namespace boundary \
-  --values boundary-worker-values.yaml \
-  --set worker.tags.region=["us-east-1"]
+# Start the worker service
+sudo systemctl enable --now boundary
 
-# Deploy worker in us-west region
-helm install boundary-worker-west hashicorp/boundary-worker \
-  --namespace boundary \
-  --values boundary-worker-values.yaml \
-  --set worker.tags.region=["us-west-2"] \
-  --set worker.publicAddr="worker-west.example.com:9202"
+# Register a worker-led worker with the controller
+export BOUNDARY_ADDR="https://boundary.example.com:9200"
+export WORKER_TOKEN="<worker-auth-registration-request-token>"
+boundary workers create worker-led -worker-generated-auth-token="$WORKER_TOKEN"
 ```
 
 ---
@@ -241,7 +223,7 @@ terraform {
   required_providers {
     boundary = {
       source  = "hashicorp/boundary"
-      version = "~> 1.1"
+      version = "~> 1.5"
     }
   }
 }
@@ -301,7 +283,7 @@ resource "boundary_auth_method_oidc" "google" {
   signing_algorithms = ["RS256"]
 
   # Map OIDC claims to Boundary accounts
-  claims_scopes = ["email", "profile"]
+  claims_scopes = ["email", "profile", "groups"]
   account_claim_maps = ["email=email"]
 
   # API URL for callback
@@ -317,8 +299,8 @@ resource "boundary_managed_group" "engineers" {
   description    = "Engineering team members"
   auth_method_id = boundary_auth_method_oidc.google.id
 
-  # Filter based on email domain
-  filter = "\"@engineering.example.com\" in \"/token/email\""
+  # Filter based on an OIDC group claim
+  filter = "\"engineers\" in \"/userinfo/groups\""
 }
 ```
 
@@ -365,7 +347,39 @@ resource "boundary_host_set_static" "web_servers" {
   ]
 }
 
-# SSH target with credential injection
+resource "boundary_host_static" "postgres" {
+  name            = "postgres-production"
+  description     = "Production PostgreSQL database"
+  address         = "10.0.2.10"
+  host_catalog_id = boundary_host_catalog_static.production_servers.id
+}
+
+resource "boundary_host_set_static" "postgres" {
+  name            = "postgres"
+  description     = "Production PostgreSQL hosts"
+  host_catalog_id = boundary_host_catalog_static.production_servers.id
+  host_ids = [
+    boundary_host_static.postgres.id,
+  ]
+}
+
+resource "boundary_host_static" "kubernetes" {
+  name            = "kubernetes-api"
+  description     = "Production Kubernetes API server"
+  address         = "10.0.3.10"
+  host_catalog_id = boundary_host_catalog_static.production_servers.id
+}
+
+resource "boundary_host_set_static" "kubernetes" {
+  name            = "kubernetes-api"
+  description     = "Production Kubernetes API hosts"
+  host_catalog_id = boundary_host_catalog_static.production_servers.id
+  host_ids = [
+    boundary_host_static.kubernetes.id,
+  ]
+}
+
+# SSH access through a TCP target with credential brokering
 resource "boundary_target" "ssh_web_servers" {
   name        = "ssh-web-servers"
   description = "SSH access to production web servers"
@@ -387,9 +401,9 @@ resource "boundary_target" "ssh_web_servers" {
     boundary_host_set_static.web_servers.id
   ]
 
-  # Inject SSH credentials automatically
+  # Broker SSH credentials to the client
   brokered_credential_source_ids = [
-    boundary_credential_library_vault.ssh_creds.id
+    boundary_credential_library_vault_ssh_certificate.ssh_creds.id
   ]
 }
 
@@ -410,7 +424,7 @@ resource "boundary_target" "postgres_production" {
     boundary_host_set_static.postgres.id
   ]
 
-  # Database credential injection
+  # Database credential brokering
   brokered_credential_source_ids = [
     boundary_credential_library_vault.postgres_creds.id
   ]
@@ -462,22 +476,22 @@ resource "boundary_credential_store_vault" "vault" {
 }
 
 # SSH credential library using Vault SSH secrets engine
-resource "boundary_credential_library_vault" "ssh_creds" {
+resource "boundary_credential_library_vault_ssh_certificate" "ssh_creds" {
   name                = "ssh-credentials"
-  description         = "SSH credentials from Vault"
+  description         = "SSH certificates from Vault"
   credential_store_id = boundary_credential_store_vault.vault.id
-  credential_type     = "ssh_private_key"
 
   # Vault path for SSH certificate signing
-  path        = "ssh/sign/production-role"
-  http_method = "POST"
+  path                        = "ssh/sign/production-role"
+  username                    = "ubuntu"
+  additional_valid_principals = ["ec2-user"]
+  key_type                    = "ecdsa"
+  key_bits                    = 384
+  ttl                         = "8h"
 
-  # Request body for certificate signing
-  http_request_body = jsonencode({
-    public_key = "{{user.ssh_public_key}}"
-    valid_principals = "ubuntu,ec2-user"
-    ttl = "8h"
-  })
+  extensions = {
+    permit-pty = ""
+  }
 }
 
 # PostgreSQL credential library
@@ -504,9 +518,14 @@ Connect to targets using the Boundary CLI:
 brew install hashicorp/tap/boundary
 
 # Linux
-curl -fsSL https://apt.releases.hashicorp.com/gpg | sudo apt-key add -
-sudo apt-add-repository "deb https://apt.releases.hashicorp.com $(lsb_release -cs) main"
-sudo apt-get update && sudo apt-get install boundary
+curl -fsSL https://apt.releases.hashicorp.com/gpg | \
+  sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+
+echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | \
+  sudo tee /etc/apt/sources.list.d/hashicorp.list
+
+sudo apt update
+sudo apt install boundary
 
 # Authenticate to Boundary
 boundary authenticate oidc \
@@ -529,10 +548,10 @@ boundary connect postgres \
 # Connect with kubectl
 boundary connect kube \
   -target-id=ttcp_kubernetes \
-  -- kubectl get pods
+  -- get pods
 
-# Generic TCP connection (returns local port)
-boundary connect \
+# TCP connection using a fixed local proxy port
+boundary connect postgres \
   -target-id=ttcp_1234567890 \
   -listen-port=5432
 ```
@@ -563,6 +582,8 @@ resource "boundary_storage_bucket" "recordings" {
     access_key_id     = var.aws_access_key
     secret_access_key = var.aws_secret_key
   })
+
+  worker_filter = "\"egress\" in \"/tags/type\""
 }
 
 # Enable recording on target
@@ -583,7 +604,7 @@ resource "boundary_target" "ssh_recorded" {
   ]
 
   injected_application_credential_source_ids = [
-    boundary_credential_library_vault.ssh_creds.id
+    boundary_credential_library_vault_ssh_certificate.ssh_creds.id
   ]
 }
 ```

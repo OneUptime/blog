@@ -8,13 +8,13 @@ Description: A hands-on guide to deploying and configuring the Dynatrace Distrib
 
 ---
 
-Dynatrace offers its own distribution of the OpenTelemetry Collector that is designed to work with the Dynatrace platform. It includes the Dynatrace-specific OTLP exporter configuration, resource detection for Dynatrace entities, and pre-built settings that align telemetry data with Dynatrace's data model and topology.
+Dynatrace offers its own distribution of the OpenTelemetry Collector that is designed to work with the Dynatrace platform. It includes a set of Collector components that Dynatrace verifies for common Dynatrace use cases, including OTLP export, resource detection, Kubernetes enrichment, and metric temporality conversion.
 
 If you are a Dynatrace customer looking to bring in OpenTelemetry data, this distribution simplifies the integration. Let's go through the setup, configuration, and how it compares to using the upstream collector with Dynatrace's OTLP API.
 
 ## How Dynatrace Handles OpenTelemetry
 
-Dynatrace has a native OTLP API endpoint, which means any OTel Collector (upstream or Dynatrace distribution) can send data to Dynatrace using the standard OTLP exporter. The Dynatrace distribution adds optimizations and defaults on top of this.
+Dynatrace has a native OTLP HTTP API endpoint, which means any OTel Collector (upstream or Dynatrace distribution) can send data to Dynatrace using the standard OTLP HTTP exporter. The Dynatrace distribution adds a tested set of components on top of this.
 
 ```mermaid
 flowchart LR
@@ -45,7 +45,7 @@ docker run -d \
   -p 4317:4317 \
   -p 4318:4318 \
   -v ./dt-config.yaml:/etc/otelcol/config.yaml \
-  ghcr.io/dynatrace/dynatrace-otel-collector/dynatrace-otel-collector:latest \
+  ghcr.io/dynatrace/dynatrace-otel-collector/dynatrace-otel-collector:0.49.0 \
   --config /etc/otelcol/config.yaml
 ```
 
@@ -55,8 +55,10 @@ Download and install the binary:
 
 ```bash
 # Download the Dynatrace OTel Collector for Linux
+VERSION=0.49.0
+ARCH=x86_64
 curl -L -o dt-otel-collector.tar.gz \
-  https://github.com/Dynatrace/dynatrace-otel-collector/releases/latest/download/dynatrace-otel-collector-linux-amd64.tar.gz
+  "https://github.com/Dynatrace/dynatrace-otel-collector/releases/download/v${VERSION}/dynatrace-otel-collector_${VERSION}_Linux_${ARCH}.tar.gz"
 
 tar -xzf dt-otel-collector.tar.gz
 sudo mv dynatrace-otel-collector /usr/local/bin/
@@ -70,16 +72,18 @@ dynatrace-otel-collector --config /etc/otelcol/dt-config.yaml
 Deploy on Kubernetes:
 
 ```bash
-# Add the Dynatrace Helm repository
-helm repo add dynatrace https://raw.githubusercontent.com/Dynatrace/dynatrace-otel-collector/main/helm
+# Add the OpenTelemetry Helm repository
+helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
 helm repo update
 
-# Install the Dynatrace OTel Collector
-helm install dt-otel-collector dynatrace/dynatrace-otel-collector \
+# Install the OpenTelemetry Collector chart with the Dynatrace image
+helm upgrade -i dt-otel-collector open-telemetry/opentelemetry-collector \
   --namespace monitoring \
   --create-namespace \
-  --set dynatrace.apiToken=your-api-token \
-  --set dynatrace.endpoint=https://your-env.live.dynatrace.com/api/v2/otlp
+  --set mode=deployment \
+  --set image.repository=ghcr.io/dynatrace/dynatrace-otel-collector/dynatrace-otel-collector \
+  --set image.tag=0.49.0 \
+  --set command.name=dynatrace-otel-collector
 ```
 
 ## Basic Configuration
@@ -113,12 +117,12 @@ processors:
 
   # Detect environment resources for Dynatrace entity mapping
   # This is important for Smartscape topology
-  resourcedetection:
+  resource_detection:
     detectors: [system, env, ec2, gcp, azure, docker]
     override: false
 
-  # Make sure required resource attributes are present
-  # Dynatrace needs these for proper entity creation
+  # Make sure useful resource attributes are present
+  # service.name is important for service correlation
   resource:
     attributes:
       - key: service.name
@@ -134,25 +138,25 @@ processors:
 exporters:
   # Send to Dynatrace using OTLP HTTP
   # Dynatrace exposes an OTLP API at /api/v2/otlp
-  otlphttp/dynatrace:
-    endpoint: "${DT_ENDPOINT}"
+  otlp_http/dynatrace:
+    endpoint: "${env:DT_ENDPOINT}"
     headers:
-      Authorization: "Api-Token ${DT_API_TOKEN}"
+      Authorization: "Api-Token ${env:DT_API_TOKEN}"
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [memory_limiter, resourcedetection, resource, batch]
-      exporters: [otlphttp/dynatrace]
+      processors: [memory_limiter, resource_detection, resource, batch]
+      exporters: [otlp_http/dynatrace]
     metrics:
       receivers: [otlp]
-      processors: [memory_limiter, resourcedetection, resource, batch]
-      exporters: [otlphttp/dynatrace]
+      processors: [memory_limiter, resource_detection, resource, batch]
+      exporters: [otlp_http/dynatrace]
     logs:
       receivers: [otlp]
-      processors: [memory_limiter, resourcedetection, resource, batch]
-      exporters: [otlphttp/dynatrace]
+      processors: [memory_limiter, resource_detection, resource, batch]
+      exporters: [otlp_http/dynatrace]
 ```
 
 ## Dynatrace API Token Permissions
@@ -174,7 +178,7 @@ Collect infrastructure metrics and send them to Dynatrace:
 ```yaml
 receivers:
   # Collect host metrics for infrastructure monitoring
-  hostmetrics:
+  host_metrics:
     collection_interval: 30s
     scrapers:
       cpu:
@@ -204,7 +208,7 @@ processors:
   batch:
     timeout: 10s
 
-  resourcedetection:
+  resource_detection:
     detectors: [system, env]
     system:
       hostname_sources: ["os"]
@@ -228,22 +232,22 @@ processors:
         - system.network.io
 
 exporters:
-  otlphttp/dynatrace:
-    endpoint: "${DT_ENDPOINT}"
+  otlp_http/dynatrace:
+    endpoint: "${env:DT_ENDPOINT}"
     headers:
-      Authorization: "Api-Token ${DT_API_TOKEN}"
+      Authorization: "Api-Token ${env:DT_API_TOKEN}"
 
 service:
   pipelines:
     metrics:
-      receivers: [hostmetrics, prometheus]
-      processors: [resourcedetection, cumulativetodelta, batch]
-      exporters: [otlphttp/dynatrace]
+      receivers: [host_metrics, prometheus]
+      processors: [resource_detection, cumulativetodelta, batch]
+      exporters: [otlp_http/dynatrace]
 ```
 
 ## Kubernetes Deployment
 
-Full Kubernetes DaemonSet configuration for the Dynatrace distribution:
+Example Kubernetes DaemonSet configuration for the Dynatrace distribution:
 
 ```yaml
 # dt-otel-configmap.yaml
@@ -262,7 +266,7 @@ data:
           http:
             endpoint: 0.0.0.0:4318
 
-      kubeletstats:
+      kubelet_stats:
         collection_interval: 30s
         auth_type: serviceAccount
         endpoint: "https://${env:NODE_NAME}:10250"
@@ -282,7 +286,7 @@ data:
         limit_mib: 400
         spike_limit_mib: 100
 
-      k8sattributes:
+      k8s_attributes:
         auth_type: serviceAccount
         extract:
           metadata:
@@ -296,7 +300,7 @@ data:
               key: team
               from: pod
 
-      resourcedetection:
+      resource_detection:
         detectors: [env, system]
 
       # Enrich with Dynatrace entity attributes
@@ -307,7 +311,7 @@ data:
             action: upsert
 
     exporters:
-      otlphttp/dynatrace:
+      otlp_http/dynatrace:
         endpoint: "${env:DT_ENDPOINT}"
         headers:
           Authorization: "Api-Token ${env:DT_API_TOKEN}"
@@ -316,16 +320,16 @@ data:
       pipelines:
         traces:
           receivers: [otlp]
-          processors: [memory_limiter, k8sattributes, resourcedetection, resource/dt, batch]
-          exporters: [otlphttp/dynatrace]
+          processors: [memory_limiter, k8s_attributes, resource_detection, resource/dt, batch]
+          exporters: [otlp_http/dynatrace]
         metrics:
-          receivers: [otlp, kubeletstats]
-          processors: [memory_limiter, k8sattributes, resourcedetection, resource/dt, batch]
-          exporters: [otlphttp/dynatrace]
+          receivers: [otlp, kubelet_stats]
+          processors: [memory_limiter, k8s_attributes, resource_detection, resource/dt, batch]
+          exporters: [otlp_http/dynatrace]
         logs:
           receivers: [otlp]
-          processors: [memory_limiter, k8sattributes, resourcedetection, resource/dt, batch]
-          exporters: [otlphttp/dynatrace]
+          processors: [memory_limiter, k8s_attributes, resource_detection, resource/dt, batch]
+          exporters: [otlp_http/dynatrace]
 ---
 apiVersion: apps/v1
 kind: DaemonSet
@@ -344,7 +348,7 @@ spec:
       serviceAccountName: dt-otel-collector
       containers:
         - name: collector
-          image: ghcr.io/dynatrace/dynatrace-otel-collector/dynatrace-otel-collector:latest
+          image: ghcr.io/dynatrace/dynatrace-otel-collector/dynatrace-otel-collector:0.49.0
           args: ["--config", "/conf/config.yaml"]
           env:
             - name: DT_ENDPOINT
@@ -387,12 +391,12 @@ For Dynatrace to correctly map OTel data to Smartscape entities (services, hosts
 flowchart TD
     A["service.name"] --> B["Dynatrace Service Entity"]
     C["host.name + host.id"] --> D["Dynatrace Host Entity"]
-    E["process.pid + service.name"] --> F["Dynatrace Process Group"]
+    E["process.executable.name"] --> F["OpenTelemetry Process Entity"]
     G["k8s.deployment.name"] --> H["Dynatrace K8s Workload"]
     I["k8s.namespace.name"] --> J["Dynatrace K8s Namespace"]
 ```
 
-Make sure your instrumentation or collector processors set these attributes. The `resourcedetection` processor handles most of them automatically, but `service.name` must come from your application's OTel SDK configuration.
+Make sure your instrumentation or collector processors set these attributes. The `resource_detection` processor handles host attributes, Kubernetes attributes come from the `k8s_attributes` processor, and `service.name` must come from your application's OTel SDK configuration.
 
 ## Dynatrace ActiveGate as a Proxy
 
@@ -401,10 +405,10 @@ In some environments, you send data through Dynatrace ActiveGate instead of dire
 ```yaml
 # Sending through ActiveGate instead of directly to the cluster
 exporters:
-  otlphttp/dynatrace-ag:
+  otlp_http/dynatrace-ag:
     endpoint: "https://your-activegate:9999/e/your-env-id/api/v2/otlp"
     headers:
-      Authorization: "Api-Token ${DT_API_TOKEN}"
+      Authorization: "Api-Token ${env:DT_API_TOKEN}"
     tls:
       # If ActiveGate uses a self-signed certificate
       insecure_skip_verify: false
@@ -416,29 +420,42 @@ exporters:
 Send data to Dynatrace and another backend:
 
 ```yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  resource_detection:
+    detectors: [system, env]
+  batch:
+
 exporters:
   # Primary: Dynatrace
-  otlphttp/dynatrace:
-    endpoint: "${DT_ENDPOINT}"
+  otlp_http/dynatrace:
+    endpoint: "${env:DT_ENDPOINT}"
     headers:
-      Authorization: "Api-Token ${DT_API_TOKEN}"
+      Authorization: "Api-Token ${env:DT_API_TOKEN}"
 
   # Secondary: OneUptime
-  otlphttp/oneuptime:
-    endpoint: "https://otlp.oneuptime.com"
+  otlp_http/oneuptime:
+    endpoint: "https://oneuptime.com/otlp"
     headers:
-      x-oneuptime-token: "${ONEUPTIME_TOKEN}"
+      x-oneuptime-token: "${env:ONEUPTIME_TOKEN}"
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [resourcedetection, batch]
-      exporters: [otlphttp/dynatrace, otlphttp/oneuptime]
+      processors: [resource_detection, batch]
+      exporters: [otlp_http/dynatrace, otlp_http/oneuptime]
     metrics:
       receivers: [otlp]
-      processors: [resourcedetection, batch]
-      exporters: [otlphttp/dynatrace, otlphttp/oneuptime]
+      processors: [resource_detection, batch]
+      exporters: [otlp_http/dynatrace, otlp_http/oneuptime]
 ```
 
 ## Dynatrace Distribution vs Upstream Collector
@@ -446,10 +463,10 @@ service:
 | Feature | Dynatrace Distribution | Upstream Contrib |
 |---------|----------------------|-----------------|
 | Smartscape mapping | Optimized | Manual attribute config |
-| Resource detection | Dynatrace-aware | Generic |
-| OTLP export to DT | Pre-configured | Manual endpoint + auth |
-| ActiveGate support | Built-in | Manual TLS config |
-| Delta conversion | Pre-configured | Manual setup |
+| Resource detection | Included and verified for Dynatrace use cases | Available in Contrib |
+| OTLP export to DT | Standard OTLP HTTP exporter included | Manual endpoint + auth |
+| ActiveGate support | Supported through the OTLP HTTP exporter | Manual endpoint + TLS config |
+| Delta conversion | Included cumulativetodelta processor | Available in Contrib |
 | Non-DT exporters | Limited | Full contrib set |
 | Support | Dynatrace support | Community |
 | Release testing | Against DT platform | Community testing |
@@ -460,7 +477,7 @@ Choose the Dynatrace distribution when:
 
 - Dynatrace is your primary observability platform
 - You want Smartscape entity mapping to work correctly without manual tuning
-- You are deploying on Kubernetes and want tested Helm charts
+- You are deploying on Kubernetes and want Dynatrace's documented Helm chart approach
 - You have a Dynatrace support contract
 
-The upstream collector with the OTLP HTTP exporter pointed at Dynatrace works well too. Since Dynatrace accepts standard OTLP, the main advantage of the Dynatrace distribution is pre-configured defaults and testing against the Dynatrace platform. If you are comfortable configuring the resource attributes and OTLP endpoint yourself, the upstream collector is a fine choice.
+The upstream collector with the OTLP HTTP exporter pointed at Dynatrace works well too. Since Dynatrace accepts standard OTLP, the main advantage of the Dynatrace distribution is its curated component set and testing against the Dynatrace platform. If you are comfortable configuring the resource attributes and OTLP endpoint yourself, the upstream collector is a fine choice.

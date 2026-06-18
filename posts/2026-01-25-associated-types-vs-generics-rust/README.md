@@ -89,26 +89,22 @@ Use generics when a type can implement the trait multiple times with different t
 
 ```rust
 // Generic parameter example
-trait From<T> {
-    fn from(value: T) -> Self;
-}
-
 struct UserId(u64);
 
 // Multiple From implementations for UserId
-impl From<u64> for UserId {
+impl std::convert::From<u64> for UserId {
     fn from(value: u64) -> Self {
         UserId(value)
     }
 }
 
-impl From<i32> for UserId {
+impl std::convert::From<i32> for UserId {
     fn from(value: i32) -> Self {
         UserId(value as u64)
     }
 }
 
-impl From<String> for UserId {
+impl std::convert::From<String> for UserId {
     fn from(value: String) -> Self {
         UserId(value.parse().unwrap_or(0))
     }
@@ -355,15 +351,13 @@ fn main() {
 }
 ```
 
-## Default Associated Types
+## Default Generic Parameters
 
-Associated types can have defaults:
+Generic type parameters can have defaults:
 
 ```rust
-trait Builder {
-    type Output = String;  // Default type
-
-    fn build(&self) -> Self::Output;
+trait Builder<Output = String> {
+    fn build(&self) -> Output;
 }
 
 struct SimpleBuilder;
@@ -377,9 +371,7 @@ impl Builder for SimpleBuilder {
 
 struct CustomBuilder;
 
-impl Builder for CustomBuilder {
-    type Output = Vec<u8>;  // Override default
-
+impl Builder<Vec<u8>> for CustomBuilder {
     fn build(&self) -> Vec<u8> {
         vec![1, 2, 3]
     }

@@ -345,14 +345,14 @@ npm install -g @redocly/cli
 # Lint the specification
 redocly lint openapi.yaml
 
-# Preview documentation
-redocly preview-docs openapi.yaml
+# Generate documentation
+redocly build-docs openapi.yaml -o docs/api.html
 ```
 
-Configure linting rules in `.redocly.yaml`:
+Configure linting rules in `redocly.yaml`:
 
 ```yaml
-# .redocly.yaml
+# redocly.yaml
 extends:
   - recommended
 
@@ -475,19 +475,14 @@ Validate implementations match the specification:
 
 ```typescript
 // tests/contract.test.ts
-import { OpenAPIValidator } from 'express-openapi-validator';
 import request from 'supertest';
 import app from '../src/app';
 
 describe('API Contract Tests', () => {
-  beforeAll(async () => {
-    // Install OpenAPI validator middleware
-    await OpenAPIValidator.install(app, {
-      apiSpec: './openapi.yaml',
-      validateRequests: true,
-      validateResponses: true,
-    });
-  });
+  // The app should install OpenApiValidator.middleware({
+  //   apiSpec: './openapi.yaml',
+  //   validateResponses: true,
+  // }) before registering routes.
 
   describe('GET /orders', () => {
     it('returns valid response matching schema', async () => {
@@ -526,8 +521,8 @@ Generate beautiful documentation:
 # Generate static HTML documentation with Redoc
 npx @redocly/cli build-docs openapi.yaml -o docs/api.html
 
-# Or serve interactive docs
-npx @redocly/cli preview-docs openapi.yaml
+# Or build with the globally installed CLI
+redocly build-docs openapi.yaml -o docs/api.html
 ```
 
 Embed in your documentation site:
@@ -585,10 +580,8 @@ jobs:
       - name: Lint specification
         run: redocly lint openapi.yaml
 
-      - name: Check for breaking changes
-        run: |
-          git fetch origin main
-          redocly diff openapi.yaml origin/main:openapi.yaml
+      - name: Bundle specification
+        run: redocly bundle openapi.yaml --output /tmp/openapi-bundle.yaml
 
       - name: Generate clients
         run: |

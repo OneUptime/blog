@@ -145,12 +145,14 @@ The `startupProbe` is particularly important for Spring Boot applications. Java 
 
 The default health checks are useful, but real applications need custom checks. Here's how to create a health indicator that verifies your database connection:
 
+These imports use the current Spring Boot 4 health contributor packages. In Spring Boot 3.x and earlier, `Health` and `HealthIndicator` are in `org.springframework.boot.actuate.health`.
+
 ```java
 // DatabaseHealthIndicator.java
 package com.example.health;
 
-import org.springframework.boot.actuate.health.Health;
-import org.springframework.boot.actuate.health.HealthIndicator;
+import org.springframework.boot.health.contributor.Health;
+import org.springframework.boot.health.contributor.HealthIndicator;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
@@ -193,8 +195,8 @@ For checking external services like Redis:
 // RedisHealthIndicator.java
 package com.example.health;
 
-import org.springframework.boot.actuate.health.Health;
-import org.springframework.boot.actuate.health.HealthIndicator;
+import org.springframework.boot.health.contributor.Health;
+import org.springframework.boot.health.contributor.HealthIndicator;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.stereotype.Component;
 
@@ -238,34 +240,7 @@ public class RedisHealthIndicator implements HealthIndicator {
 
 Here's where it gets interesting. You want your liveness probe to be simple and fast - it should only restart your pod when the process is truly stuck. The readiness probe, on the other hand, should check dependencies.
 
-```java
-// CustomHealthConfig.java
-package com.example.health;
-
-import org.springframework.boot.actuate.availability.LivenessStateHealthIndicator;
-import org.springframework.boot.actuate.availability.ReadinessStateHealthIndicator;
-import org.springframework.boot.availability.ApplicationAvailability;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-
-@Configuration
-public class CustomHealthConfig {
-
-    // Liveness should be simple - is the JVM running?
-    @Bean
-    public LivenessStateHealthIndicator livenessIndicator(
-            ApplicationAvailability availability) {
-        return new LivenessStateHealthIndicator(availability);
-    }
-
-    // Readiness checks if we can handle traffic
-    @Bean
-    public ReadinessStateHealthIndicator readinessIndicator(
-            ApplicationAvailability availability) {
-        return new ReadinessStateHealthIndicator(availability);
-    }
-}
-```
+Spring Boot Actuator already provides `LivenessStateHealthIndicator` and `ReadinessStateHealthIndicator` when Kubernetes probes are enabled, so you usually do not need to define those beans yourself. Keep the liveness group limited to `livenessState`, and add dependency checks to the readiness group instead.
 
 You can also control the availability state programmatically:
 
@@ -321,44 +296,9 @@ public class ApplicationStateManager {
 
 ## Handling Graceful Shutdown
 
-When Kubernetes sends a SIGTERM signal, your app needs to stop accepting new traffic while finishing existing requests. Here's how to handle this properly:
+When Kubernetes sends a SIGTERM signal, your app needs to stop accepting new traffic while finishing existing requests. Spring Boot updates the readiness state to `REFUSING_TRAFFIC` during graceful shutdown and lets in-flight requests complete during the configured shutdown phase timeout.
 
-```java
-// GracefulShutdownHandler.java
-package com.example.lifecycle;
-
-import com.example.health.ApplicationStateManager;
-import org.springframework.context.ApplicationListener;
-import org.springframework.context.event.ContextClosedEvent;
-import org.springframework.stereotype.Component;
-
-@Component
-public class GracefulShutdownHandler
-        implements ApplicationListener<ContextClosedEvent> {
-
-    private final ApplicationStateManager stateManager;
-
-    public GracefulShutdownHandler(ApplicationStateManager stateManager) {
-        this.stateManager = stateManager;
-    }
-
-    @Override
-    public void onApplicationEvent(ContextClosedEvent event) {
-        // Mark as not ready - Kubernetes will stop sending traffic
-        stateManager.markNotReady();
-
-        try {
-            // Wait for in-flight requests to complete
-            // This should match your terminationGracePeriodSeconds
-            Thread.sleep(5000);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-    }
-}
-```
-
-Also enable graceful shutdown in your configuration:
+Configure graceful shutdown in your application:
 
 ```yaml
 # application.yml
@@ -414,7 +354,7 @@ Without a startup probe, Kubernetes might restart your Spring Boot app before it
 
 **4. Not handling graceful shutdown**
 
-If your readiness probe doesn't fail during shutdown, Kubernetes will keep sending traffic to a pod that's about to terminate.
+If your readiness probe doesn't fail during shutdown, Kubernetes may keep sending traffic to a pod that's about to terminate.
 
 ---
 

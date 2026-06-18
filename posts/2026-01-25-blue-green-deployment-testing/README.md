@@ -463,7 +463,7 @@ fi
 # Switch traffic
 echo "Patching service selector..."
 kubectl patch svc $SERVICE_NAME -n $NAMESPACE \
-    -p "{\"spec\":{\"selector\":{\"version\":\"$TARGET_VERSION\"}}}"
+    -p "{\"spec\":{\"selector\":{\"app\":\"api\",\"version\":\"$TARGET_VERSION\"}}}"
 
 # Verify switch
 NEW_VERSION=$(kubectl get svc $SERVICE_NAME -n $NAMESPACE \
@@ -487,7 +487,7 @@ if curl -s -f "http://api.$NAMESPACE.svc.cluster.local/health/ready" > /dev/null
 else
     echo "ERROR: Health check failed, rolling back..."
     kubectl patch svc $SERVICE_NAME -n $NAMESPACE \
-        -p "{\"spec\":{\"selector\":{\"version\":\"$CURRENT_VERSION\"}}}"
+        -p "{\"spec\":{\"selector\":{\"app\":\"api\",\"version\":\"$CURRENT_VERSION\"}}}"
     exit 1
 fi
 
@@ -575,33 +575,29 @@ class RollbackMonitor {
 
     // Get current active version
     async getCurrentVersion(): Promise<string> {
-        const service = await this.k8sApi.readNamespacedService(
-            this.serviceName,
-            this.namespace
-        );
-        return service.body.spec?.selector?.version || 'unknown';
+        const service = await this.k8sApi.readNamespacedService({
+            name: this.serviceName,
+            namespace: this.namespace,
+        });
+        return service.spec?.selector?.version || 'unknown';
     }
 
     // Switch to specified version
     async switchTo(version: string): Promise<void> {
-        await this.k8sApi.patchNamespacedService(
-            this.serviceName,
-            this.namespace,
-            {
-                spec: {
-                    selector: {
+        await this.k8sApi.patchNamespacedService({
+            name: this.serviceName,
+            namespace: this.namespace,
+            body: [
+                {
+                    op: 'replace',
+                    path: '/spec/selector',
+                    value: {
                         app: 'api',
                         version: version,
                     },
                 },
-            },
-            undefined,
-            undefined,
-            undefined,
-            undefined,
-            undefined,
-            { headers: { 'Content-Type': 'application/strategic-merge-patch+json' } }
-        );
+            ],
+        });
     }
 
     // Monitor and rollback if needed
@@ -729,7 +725,7 @@ jobs:
       - name: Switch to green
         run: |
           kubectl patch svc api -n production \
-            -p '{"spec":{"selector":{"version":"green"}}}'
+            -p '{"spec":{"selector":{"app":"api","version":"green"}}}'
 
       - name: Monitor for 10 minutes
         run: npx ts-node scripts/rollback-monitor.ts --duration=600

@@ -82,11 +82,11 @@ wal_level = logical
 max_wal_senders = 4
 max_replication_slots = 4
 
-# Plugin for logical decoding (pgoutput is built-in for PostgreSQL 10+)
+# Disable idle WAL sender timeouts for long-running replication connections
 wal_sender_timeout = 0
 ```
 
-Create a replication slot and publication:
+Create a CDC user and publication:
 
 ```sql
 -- Create a dedicated user for CDC with replication privileges
@@ -121,8 +121,8 @@ binlog_format = ROW
 # This is essential for CDC to capture full change context
 binlog_row_image = FULL
 
-# Retention period for binary logs (in seconds)
-expire_logs_days = 7
+# Retention period for binary logs (7 days, in seconds)
+binlog_expire_logs_seconds = 604800
 
 # Enable GTID for reliable replication tracking
 gtid_mode = ON
@@ -151,8 +151,6 @@ Create a Docker Compose file for Kafka Connect with Debezium:
 ```yaml
 # docker-compose.yml
 # Complete CDC infrastructure setup
-version: '3.8'
-
 services:
   # Zookeeper for Kafka cluster coordination
   zookeeper:
@@ -212,7 +210,7 @@ Start the infrastructure:
 
 ```bash
 # Start all services in detached mode
-docker-compose up -d
+docker compose up -d
 
 # Wait for services to be healthy
 echo "Waiting for Kafka Connect to start..."
@@ -255,12 +253,6 @@ Create a connector configuration file:
     "snapshot.mode": "initial",
 
     "tombstones.on.delete": true,
-
-    "transforms": "unwrap",
-    "transforms.unwrap.type": "io.debezium.transforms.ExtractNewRecordState",
-    "transforms.unwrap.drop.tombstones": false,
-    "transforms.unwrap.delete.handling.mode": "rewrite",
-    "transforms.unwrap.add.fields": "op,source.ts_ms",
 
     "heartbeat.interval.ms": 10000
   }
@@ -515,8 +507,9 @@ class CDCProcessor:
     """
     Processes CDC events and routes them to downstream systems.
 
-    This processor implements idempotent event handling to ensure
-    exactly-once semantics even when events are replayed.
+    This processor commits offsets only after successful processing,
+    providing at-least-once delivery. Add idempotent handlers when
+    downstream systems must tolerate replayed events.
     """
 
     def __init__(
@@ -544,7 +537,7 @@ class CDCProcessor:
             # Disable auto-commit for manual offset management
             enable_auto_commit=False,
             # Deserialize JSON messages
-            value_deserializer=lambda m: json.loads(m.decode('utf-8')),
+            value_deserializer=lambda m: json.loads(m.decode('utf-8')) if m else None,
             # Wait up to 1 second for batch of messages
             fetch_max_wait_ms=1000,
             # Process up to 500 messages per poll
@@ -564,6 +557,11 @@ class CDCProcessor:
         try:
             for message in self.consumer:
                 try:
+                    if message.value is None:
+                        logger.debug("Skipping tombstone record")
+                        self.consumer.commit()
+                        continue
+
                     # Parse the CDC event
                     event = CDCEvent.from_debezium(message.value)
 
@@ -753,7 +751,7 @@ flowchart TB
 ```python
 """
 Idempotent CDC Event Processor
-Ensures events are processed exactly once using LSN tracking.
+Uses LSN tracking to make replayed events idempotent.
 """
 
 import psycopg2
@@ -762,7 +760,7 @@ from typing import Optional
 
 class IdempotentProcessor:
     """
-    Processes CDC events with exactly-once semantics.
+    Processes CDC events with idempotent replay handling.
 
     Uses a watermark table to track the last processed LSN
     for each source table. Events are processed within
@@ -827,7 +825,7 @@ class IdempotentProcessor:
         process_func: callable
     ) -> bool:
         """
-        Process a CDC event with exactly-once guarantee.
+        Process a CDC event with idempotent replay protection.
 
         The event processing and watermark update happen in the
         same database transaction, ensuring atomicity.
@@ -1203,7 +1201,7 @@ Key takeaways:
 
 1. Configure your database for logical replication before deploying CDC
 2. Use Debezium connectors for reliable log reading across different databases
-3. Design consumers with idempotent processing for exactly-once semantics
+3. Design consumers with idempotent processing so replayed events are safe
 4. Monitor replication lag and connector health continuously
 5. Plan for schema evolution from the start
 

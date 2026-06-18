@@ -12,7 +12,7 @@ Every engineering team has services that are drastically overprovisioned - payin
 
 The first requirement is having every service report resource usage in the same format. Use the OpenTelemetry auto-instrumentation or SDK to add resource metrics, and the collector to enrich them with deployment metadata.
 
-This collector config enriches incoming metrics with Kubernetes metadata so you can group by service, namespace, and deployment:
+This collector config enriches incoming metrics with Kubernetes metadata so you can group by service, namespace, and deployment. If you remote-write directly to Prometheus, start Prometheus with `--web.enable-remote-write-receiver`:
 
 ```yaml
 # otel-collector-config.yaml
@@ -37,6 +37,8 @@ processors:
           from: pod
     pod_association:
       - sources:
+          - from: connection
+      - sources:
           - from: resource_attribute
             name: k8s.pod.ip
 
@@ -47,15 +49,17 @@ processors:
         action: upsert
 
 exporters:
-  prometheusremotewrite:
+  prometheus_remote_write:
     endpoint: "http://prometheus:9090/api/v1/write"
+    resource_to_telemetry_conversion:
+      enabled: true
 
 service:
   pipelines:
     metrics:
       receivers: [otlp]
       processors: [k8sattributes, resource]
-      exporters: [prometheusremotewrite]
+      exporters: [prometheus_remote_write]
 ```
 
 ## Defining Provisioning Thresholds
@@ -86,27 +90,51 @@ thresholds:
 
 The core of this approach is a set of PromQL queries that calculate utilization ratios for each service. You compare actual usage against requested (or limit) resources.
 
-These queries compute CPU and memory utilization ratios per deployment, using the P95 over a week to avoid false positives from short spikes:
+These queries compute CPU and memory utilization ratios per deployment, using the P95 over a week to avoid false positives from short spikes. The joins map pod-level container metrics to their owning Deployment through kube-state-metrics:
 
 ```promql
 # CPU utilization ratio: actual usage vs requested
 # Values > 1.0 mean the service is using more than it requested
 quantile_over_time(0.95,
   (
-    sum(rate(container_cpu_usage_seconds_total{container!="POD",container!=""}[5m])) by (namespace, pod)
+    sum by (namespace, deployment) (
+      rate(container_cpu_usage_seconds_total{container!="POD",container!="",pod!=""}[5m])
+      * on (namespace, pod) group_left(replicaset)
+        label_replace(kube_pod_owner{owner_kind="ReplicaSet",owner_is_controller="true"}, "replicaset", "$1", "owner_name", "(.*)")
+      * on (namespace, replicaset) group_left(deployment)
+        label_replace(kube_replicaset_owner{owner_kind="Deployment"}, "deployment", "$1", "owner_name", "(.*)")
+    )
     /
-    sum(kube_pod_container_resource_requests{resource="cpu"}) by (namespace, pod)
+    sum by (namespace, deployment) (
+      kube_pod_container_resource_requests{resource="cpu",unit="core"}
+      * on (namespace, pod) group_left(replicaset)
+        label_replace(kube_pod_owner{owner_kind="ReplicaSet",owner_is_controller="true"}, "replicaset", "$1", "owner_name", "(.*)")
+      * on (namespace, replicaset) group_left(deployment)
+        label_replace(kube_replicaset_owner{owner_kind="Deployment"}, "deployment", "$1", "owner_name", "(.*)")
+    )
   )[7d:1h]
-) by (namespace)
+)
 
 # Memory utilization ratio: working set vs requested
 quantile_over_time(0.95,
   (
-    sum(container_memory_working_set_bytes{container!="POD",container!=""}) by (namespace, pod)
+    sum by (namespace, deployment) (
+      container_memory_working_set_bytes{container!="POD",container!="",pod!=""}
+      * on (namespace, pod) group_left(replicaset)
+        label_replace(kube_pod_owner{owner_kind="ReplicaSet",owner_is_controller="true"}, "replicaset", "$1", "owner_name", "(.*)")
+      * on (namespace, replicaset) group_left(deployment)
+        label_replace(kube_replicaset_owner{owner_kind="Deployment"}, "deployment", "$1", "owner_name", "(.*)")
+    )
     /
-    sum(kube_pod_container_resource_requests{resource="memory"}) by (namespace, pod)
+    sum by (namespace, deployment) (
+      kube_pod_container_resource_requests{resource="memory",unit="byte"}
+      * on (namespace, pod) group_left(replicaset)
+        label_replace(kube_pod_owner{owner_kind="ReplicaSet",owner_is_controller="true"}, "replicaset", "$1", "owner_name", "(.*)")
+      * on (namespace, replicaset) group_left(deployment)
+        label_replace(kube_replicaset_owner{owner_kind="Deployment"}, "deployment", "$1", "owner_name", "(.*)")
+    )
   )[7d:1h]
-) by (namespace)
+)
 ```
 
 ## Automating the Provisioning Report
@@ -145,18 +173,31 @@ cpu_query = """
     quantile_over_time(0.95,
       (
         sum by (namespace, deployment) (
-          label_replace(
-            rate(container_cpu_usage_seconds_total{container!="POD"}[5m]),
-            "deployment", "$1", "pod", "(.*)-[a-z0-9]+-[a-z0-9]+"
-          )
+          rate(container_cpu_usage_seconds_total{container!="POD",container!="",pod!=""}[5m])
+          * on (namespace, pod) group_left(replicaset)
+            label_replace(kube_pod_owner{owner_kind="ReplicaSet",owner_is_controller="true"}, "replicaset", "$1", "owner_name", "(.*)")
+          * on (namespace, replicaset) group_left(deployment)
+            label_replace(kube_replicaset_owner{owner_kind="Deployment"}, "deployment", "$1", "owner_name", "(.*)")
         )
         /
         sum by (namespace, deployment) (
-          kube_deployment_spec_replicas
-          * on(namespace, deployment)
-          group_left avg(kube_pod_container_resource_requests{resource="cpu"}) by (namespace, deployment)
+          kube_pod_container_resource_requests{resource="cpu",unit="core"}
+          * on (namespace, pod) group_left(replicaset)
+            label_replace(kube_pod_owner{owner_kind="ReplicaSet",owner_is_controller="true"}, "replicaset", "$1", "owner_name", "(.*)")
+          * on (namespace, replicaset) group_left(deployment)
+            label_replace(kube_replicaset_owner{owner_kind="Deployment"}, "deployment", "$1", "owner_name", "(.*)")
         )
       )[7d:1h]
+    )
+"""
+
+request_query = """
+    sum by (namespace, deployment) (
+      kube_pod_container_resource_requests{resource="cpu",unit="core"}
+      * on (namespace, pod) group_left(replicaset)
+        label_replace(kube_pod_owner{owner_kind="ReplicaSet",owner_is_controller="true"}, "replicaset", "$1", "owner_name", "(.*)")
+      * on (namespace, replicaset) group_left(deployment)
+        label_replace(kube_replicaset_owner{owner_kind="Deployment"}, "deployment", "$1", "owner_name", "(.*)")
     )
 """
 
@@ -170,6 +211,11 @@ for r in results:
     status = classify_utilization(ratio, "cpu")
     report[f"{ns}/{deploy}"]["cpu_p95"] = ratio
     report[f"{ns}/{deploy}"]["cpu_status"] = status
+
+for r in query_prometheus(request_query):
+    ns = r["metric"].get("namespace", "unknown")
+    deploy = r["metric"].get("deployment", "unknown")
+    report[f"{ns}/{deploy}"]["requested_cpu_cores"] = float(r["value"][1])
 
 # Print the report sorted by waste potential
 print(f"{'Service':<40} {'CPU P95':>8} {'Status':<30}")
@@ -225,8 +271,23 @@ groups:
       - alert: ServiceSeverelyOverprovisioned
         expr: |
           quantile_over_time(0.95,
-            (sum by (namespace, deployment) (rate(container_cpu_usage_seconds_total[5m]))
-            / sum by (namespace, deployment) (kube_pod_container_resource_requests{resource="cpu"}))
+            (
+              sum by (namespace, deployment) (
+                rate(container_cpu_usage_seconds_total{container!="POD",container!="",pod!=""}[5m])
+                * on (namespace, pod) group_left(replicaset)
+                  label_replace(kube_pod_owner{owner_kind="ReplicaSet",owner_is_controller="true"}, "replicaset", "$1", "owner_name", "(.*)")
+                * on (namespace, replicaset) group_left(deployment)
+                  label_replace(kube_replicaset_owner{owner_kind="Deployment"}, "deployment", "$1", "owner_name", "(.*)")
+              )
+              /
+              sum by (namespace, deployment) (
+                kube_pod_container_resource_requests{resource="cpu",unit="core"}
+                * on (namespace, pod) group_left(replicaset)
+                  label_replace(kube_pod_owner{owner_kind="ReplicaSet",owner_is_controller="true"}, "replicaset", "$1", "owner_name", "(.*)")
+                * on (namespace, replicaset) group_left(deployment)
+                  label_replace(kube_replicaset_owner{owner_kind="Deployment"}, "deployment", "$1", "owner_name", "(.*)")
+              )
+            )
           [7d:1h]) < 0.05
         for: 24h
         labels:
@@ -238,8 +299,23 @@ groups:
       - alert: ServiceCriticallyUnderprovisioned
         expr: |
           quantile_over_time(0.95,
-            (sum by (namespace, deployment) (rate(container_cpu_usage_seconds_total[5m]))
-            / sum by (namespace, deployment) (kube_pod_container_resource_requests{resource="cpu"}))
+            (
+              sum by (namespace, deployment) (
+                rate(container_cpu_usage_seconds_total{container!="POD",container!="",pod!=""}[5m])
+                * on (namespace, pod) group_left(replicaset)
+                  label_replace(kube_pod_owner{owner_kind="ReplicaSet",owner_is_controller="true"}, "replicaset", "$1", "owner_name", "(.*)")
+                * on (namespace, replicaset) group_left(deployment)
+                  label_replace(kube_replicaset_owner{owner_kind="Deployment"}, "deployment", "$1", "owner_name", "(.*)")
+              )
+              /
+              sum by (namespace, deployment) (
+                kube_pod_container_resource_requests{resource="cpu",unit="core"}
+                * on (namespace, pod) group_left(replicaset)
+                  label_replace(kube_pod_owner{owner_kind="ReplicaSet",owner_is_controller="true"}, "replicaset", "$1", "owner_name", "(.*)")
+                * on (namespace, replicaset) group_left(deployment)
+                  label_replace(kube_replicaset_owner{owner_kind="Deployment"}, "deployment", "$1", "owner_name", "(.*)")
+              )
+            )
           [7d:1h]) > 0.90
         for: 6h
         labels:

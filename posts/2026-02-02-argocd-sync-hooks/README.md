@@ -572,7 +572,7 @@ ArgoCD maps Helm hooks to its own hook system:
 | pre-delete | PreDelete |
 | post-delete | PostDelete |
 
-Note that if you define any ArgoCD hooks on a resource, Helm hooks on that same resource are ignored — the two systems are mutually exclusive per resource.
+Note that if you define any ArgoCD hooks on a resource, Helm hooks on that same resource are ignored - the two systems are mutually exclusive per resource.
 
 ## Monitoring Hook Execution
 

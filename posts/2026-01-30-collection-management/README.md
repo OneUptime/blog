@@ -117,7 +117,7 @@ collection_schema = {
         "category": {"type": "string", "indexed": True, "filterable": True},
         "created_at": {"type": "datetime", "indexed": True},
         "word_count": {"type": "integer", "indexed": False},
-        "tags": {"type": "array[string]", "filterable": True}
+        "tags": {"type": "array[string]", "indexed": True, "filterable": True}
     }
 }
 ```
@@ -161,7 +161,7 @@ from typing import Dict, List, Optional, Any
 from enum import Enum
 import hashlib
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 class DistanceMetric(Enum):
     COSINE = "cosine"
@@ -186,8 +186,6 @@ class VectorConfig:
     def validate(self):
         if self.dimensions <= 0:
             raise ValueError("Dimensions must be positive")
-        if self.dimensions > 4096:
-            raise ValueError("Dimensions exceeds maximum (4096)")
         if self.precision not in ["float32", "float16", "int8"]:
             raise ValueError(f"Invalid precision: {self.precision}")
 
@@ -212,7 +210,7 @@ class CollectionSchema:
         self.metadata_fields = metadata_fields
         self.description = description
         self.version = 1
-        self.created_at = datetime.utcnow()
+        self.created_at = datetime.now(timezone.utc)
 
     def validate(self) -> List[str]:
         """Validate the schema and return any errors."""
@@ -246,11 +244,14 @@ class CollectionSchema:
             "name": self.name,
             "vector_dimensions": self.vector_config.dimensions,
             "distance_metric": self.vector_config.distance_metric.value,
+            "precision": self.vector_config.precision,
             "fields": [
                 {
                     "name": f.name,
                     "type": f.field_type.value,
-                    "indexed": f.indexed
+                    "indexed": f.indexed,
+                    "filterable": f.filterable,
+                    "required": f.required
                 }
                 for f in sorted(self.metadata_fields, key=lambda x: x.name)
             ]
@@ -288,7 +289,8 @@ class CollectionSchema:
 ### 4.1 Collection Manager Implementation
 
 ```python
-from typing import Dict, Optional
+from typing import Dict, List, Optional
+from datetime import datetime
 import logging
 
 logger = logging.getLogger(__name__)
@@ -306,6 +308,34 @@ class CollectionManager:
             schema_data = self.client.get_collection_metadata(collection_name)
             if schema_data:
                 self.schemas[collection_name] = self._deserialize_schema(schema_data)
+
+    def _deserialize_schema(self, schema_data: Dict) -> CollectionSchema:
+        """Deserialize schema metadata returned by the vector database."""
+        vector_config = VectorConfig(
+            dimensions=schema_data["vector_config"]["dimensions"],
+            distance_metric=DistanceMetric(schema_data["vector_config"]["distance_metric"]),
+            precision=schema_data["vector_config"].get("precision", "float32")
+        )
+        metadata_fields = [
+            MetadataField(
+                name=field["name"],
+                field_type=FieldType(field["type"]),
+                indexed=field.get("indexed", False),
+                filterable=field.get("filterable", False),
+                required=field.get("required", False)
+            )
+            for field in schema_data.get("metadata_fields", [])
+        ]
+        schema = CollectionSchema(
+            name=schema_data["name"],
+            vector_config=vector_config,
+            metadata_fields=metadata_fields,
+            description=schema_data.get("description", "")
+        )
+        schema.version = schema_data.get("version", 1)
+        if "created_at" in schema_data:
+            schema.created_at = datetime.fromisoformat(schema_data["created_at"])
+        return schema
 
     def create_collection(
         self,
@@ -456,13 +486,16 @@ class IndexConfig:
     @classmethod
     def for_memory_constrained(cls, vector_count: int) -> "IndexConfig":
         """IVF-PQ index for large collections with memory limits."""
-        nlist = int(vector_count ** 0.5)  # sqrt(n) is a good starting point
+        if vector_count <= 0:
+            raise ValueError("vector_count must be positive")
+
+        nlist = max(1, int(vector_count ** 0.5))  # sqrt(n) is a good starting point
 
         return cls(
             index_type=IndexType.IVF_PQ,
             ivf_config=IVFConfig(
                 nlist=min(nlist, 4096),
-                nprobe=min(nlist // 10, 128),
+                nprobe=max(1, min(nlist // 10, 128)),
                 pq_segments=8
             )
         )
@@ -547,11 +580,10 @@ flowchart LR
 ### 6.1 Version Registry
 
 ```python
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Dict, List, Optional
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from enum import Enum
-import json
 
 class VersionStatus(Enum):
     ACTIVE = "active"  # Receiving writes and reads
@@ -592,7 +624,7 @@ class VersionRegistry:
             version=new_version,
             schema_hash=schema.get_schema_hash(),
             status=status,
-            created_at=datetime.utcnow()
+            created_at=datetime.now(timezone.utc)
         )
 
         # Store version record
@@ -614,7 +646,7 @@ class VersionRegistry:
         for v in versions:
             if v.status == VersionStatus.ACTIVE:
                 v.status = VersionStatus.DEPRECATED
-                v.deprecated_at = datetime.utcnow()
+                v.deprecated_at = datetime.now(timezone.utc)
                 self._save_version(collection_name, v)
 
         # Promote specified version
@@ -645,8 +677,8 @@ class VersionRegistry:
             raise ValueError("Cannot deprecate active version")
 
         target.status = VersionStatus.DEPRECATED
-        target.deprecated_at = datetime.utcnow()
-        target.delete_after = datetime.utcnow() + timedelta(days=delete_after_days)
+        target.deprecated_at = datetime.now(timezone.utc)
+        target.delete_after = datetime.now(timezone.utc) + timedelta(days=delete_after_days)
         self._save_version(collection_name, target)
 
         return True
@@ -661,6 +693,7 @@ class VersionRegistry:
                 "schema_hash": v.schema_hash,
                 "created_at": v.created_at.isoformat(),
                 "deprecated_at": v.deprecated_at.isoformat() if v.deprecated_at else None,
+                "delete_after": v.delete_after.isoformat() if v.delete_after else None,
                 "vector_count": v.vector_count
             }
             for v in sorted(versions, key=lambda x: x.version, reverse=True)
@@ -690,7 +723,7 @@ flowchart TB
         A[Schema Change Detected] --> B{Change Type}
 
         B -->|Add Field| C[In-place Migration]
-        B -->|Remove Field| C
+        B -->|Remove Field| D
         B -->|Change Index| D[Reindex Migration]
         B -->|Change Dimensions| E[Full Rebuild]
         B -->|Change Distance Metric| E
@@ -760,7 +793,8 @@ class AddFieldMigration(MigrationStrategy):
 
         # Can handle if only new fields are added
         return old_fields.issubset(new_fields) and \
-               old_schema.vector_config.dimensions == new_schema.vector_config.dimensions
+               old_schema.vector_config.dimensions == new_schema.vector_config.dimensions and \
+               old_schema.vector_config.distance_metric == new_schema.vector_config.distance_metric
 
     def execute(
         self,
@@ -806,8 +840,9 @@ class ReindexMigration(MigrationStrategy):
     """Handles index configuration changes."""
 
     def can_handle(self, old_schema: CollectionSchema, new_schema: CollectionSchema) -> bool:
-        # Same vectors, different index configuration
-        return old_schema.vector_config.dimensions == new_schema.vector_config.dimensions
+        # Same vectors and metric, different index configuration
+        return old_schema.vector_config.dimensions == new_schema.vector_config.dimensions and \
+               old_schema.vector_config.distance_metric == new_schema.vector_config.distance_metric
 
     def execute(
         self,
@@ -830,10 +865,23 @@ class ReindexMigration(MigrationStrategy):
         total = client.count(collection_name)
         batch_size = 1000
         copied = 0
+        target_fields = {field.name for field in new_schema.metadata_fields}
 
         for batch in self._iter_batches(client, collection_name, batch_size):
-            client.insert(temp_collection, batch)
-            copied += len(batch)
+            transformed_batch = []
+            for record in batch:
+                metadata = record.get("metadata", {})
+                transformed_batch.append({
+                    **record,
+                    "metadata": {
+                        key: value
+                        for key, value in metadata.items()
+                        if key in target_fields
+                    }
+                })
+
+            client.insert(temp_collection, transformed_batch)
+            copied += len(transformed_batch)
             if progress_callback:
                 progress_callback(copied, total)
 
@@ -854,14 +902,17 @@ class ReindexMigration(MigrationStrategy):
             offset += len(batch)
 
 class FullRebuildMigration(MigrationStrategy):
-    """Handles dimension changes requiring re-embedding."""
+    """Handles dimension or metric changes that require rebuilding the collection."""
 
     def __init__(self, embedding_fn: Callable[[str], List[float]]):
         self.embedding_fn = embedding_fn
 
     def can_handle(self, old_schema: CollectionSchema, new_schema: CollectionSchema) -> bool:
-        # Required when dimensions change
-        return old_schema.vector_config.dimensions != new_schema.vector_config.dimensions
+        # Required when dimensions or distance metric change
+        return (
+            old_schema.vector_config.dimensions != new_schema.vector_config.dimensions or
+            old_schema.vector_config.distance_metric != new_schema.vector_config.distance_metric
+        )
 
     def execute(
         self,
@@ -1021,7 +1072,7 @@ stateDiagram-v2
 ### 8.1 Lifecycle Manager
 
 ```python
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 import threading
 import time
@@ -1082,7 +1133,7 @@ class LifecycleManager:
                 if version_info["status"] == "migrating":
                     # Check if migration has stalled
                     created = datetime.fromisoformat(version_info["created_at"])
-                    if datetime.utcnow() - created > timedelta(days=1):
+                    if datetime.now(timezone.utc) - created > timedelta(days=1):
                         logger.warning(
                             f"Migration stalled for {collection_name} v{version_info['version']}"
                         )
@@ -1101,8 +1152,12 @@ class LifecycleManager:
                     continue
 
                 deprecated_date = datetime.fromisoformat(deprecated_at)
-                # Default 30-day retention
-                if datetime.utcnow() - deprecated_date > timedelta(days=30):
+                delete_after = version_info.get("delete_after")
+                delete_after_date = (
+                    datetime.fromisoformat(delete_after)
+                    if delete_after else deprecated_date + timedelta(days=30)
+                )
+                if datetime.now(timezone.utc) > delete_after_date:
                     versioned_name = f"{collection_name}_v{version_info['version']}"
                     try:
                         self.collection_manager.delete_collection(
@@ -1145,7 +1200,7 @@ class LifecycleManager:
 Regular maintenance keeps your vector database healthy:
 
 ```python
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 import logging
 
@@ -1175,7 +1230,7 @@ class MaintenanceManager:
 
     def vacuum_deleted(self, collection_name: str, older_than_days: int = 7) -> int:
         """Permanently remove soft-deleted vectors."""
-        cutoff = datetime.utcnow() - timedelta(days=older_than_days)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=older_than_days)
 
         deleted_count = self.client.vacuum(
             collection=collection_name,
@@ -1253,7 +1308,7 @@ class MaintenanceManager:
         """Run all maintenance tasks on a collection."""
         results = {
             "collection": collection_name,
-            "started_at": datetime.utcnow().isoformat(),
+            "started_at": datetime.now(timezone.utc).isoformat(),
             "tasks": {}
         }
 
@@ -1278,7 +1333,7 @@ class MaintenanceManager:
             self.rebuild_index(collection_name)
             results["tasks"]["rebuild_index"] = {"completed": True}
 
-        results["completed_at"] = datetime.utcnow().isoformat()
+        results["completed_at"] = datetime.now(timezone.utc).isoformat()
         return results
 ```
 

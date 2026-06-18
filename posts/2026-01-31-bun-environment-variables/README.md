@@ -39,7 +39,7 @@ const host = process.env.HOST;
 console.log(`Server will run on ${host}:${port}`);
 ```
 
-Since `Bun.env` and `process.env` point to the same underlying object, either form works identically — pick whichever style suits your project.
+Since `Bun.env` and `process.env` point to the same underlying object, either form works identically - pick whichever style suits your project.
 
 ## Working with .env Files
 

@@ -676,7 +676,7 @@ const server = new ApolloServer({
 });
 ```
 
-Note that APQ on its own still accepts arbitrary new queries from clients — it just caches them by hash. To actually reject non-persisted queries, add a plugin that rejects requests without a known hash.
+Note that APQ on its own still accepts arbitrary new queries from clients - it just caches them by hash. To actually reject non-persisted queries, add a plugin that rejects requests without a known hash.
 
 ```javascript
 // Strict persisted queries - only allow pre-registered queries

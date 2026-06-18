@@ -102,13 +102,21 @@ The `useradd` command supports many useful options:
 ```bash
 # Create user with specific options
 sudo useradd \
-    -m \                    # Create home directory
-    -d /home/johndoe \      # Specify home directory path
-    -s /bin/bash \          # Set login shell
-    -c "John Doe" \         # Add comment/full name
-    -G sudo,developers \    # Add to supplementary groups
-    -e 2026-12-31 \         # Set account expiration date
+    -m \
+    -d /home/johndoe \
+    -s /bin/bash \
+    -c "John Doe" \
+    -G sudo,developers \
+    -e 2026-12-31 \
     johndoe
+
+# Options used above:
+# -m creates the home directory
+# -d specifies the home directory path
+# -s sets the login shell
+# -c adds the comment/full name
+# -G adds supplementary groups
+# -e sets the account expiration date
 
 # Verify the user settings
 id johndoe
@@ -126,7 +134,7 @@ flowchart TD
     D --> F[Update /etc/passwd]
     E --> F
     F --> G[Update /etc/shadow]
-    G --> H[Create user group]
+    G --> H[Create user group if configured]
     H --> I{Supplementary groups -G?}
     I -->|Yes| J[Add to groups in /etc/group]
     I -->|No| K[User creation complete]
@@ -144,7 +152,7 @@ System users are for services and applications, not real people:
 
 ```bash
 # Create a system user for a service
-# -r creates a system user (UID below 1000)
+# -r creates a system user from the system UID range
 # -s /usr/sbin/nologin prevents interactive login
 sudo useradd \
     -r \
@@ -274,12 +282,12 @@ graph LR
     style G3 fill:#bfb,stroke:#333
 ```
 
-### Locking and Unlocking Accounts
+### Locking and Unlocking Passwords
 
-Control user access without deleting accounts:
+Control password access without deleting accounts:
 
 ```bash
-# Lock a user account (prevents login)
+# Lock a user's password
 sudo usermod -L johndoe
 
 # Check if account is locked (look for ! before password hash)
@@ -292,6 +300,10 @@ sudo usermod -U johndoe
 # Alternative: Use passwd to lock/unlock
 sudo passwd -l johndoe  # Lock
 sudo passwd -u johndoe  # Unlock
+
+# To disable the account itself, including non-password login methods,
+# set an account expiration date in the past
+sudo usermod -e 1 johndoe
 ```
 
 ### Setting Account Expiration
@@ -320,11 +332,11 @@ sudo chage -W 14 johndoe  # Warn 14 days before expiration
 ```mermaid
 stateDiagram-v2
     [*] --> Active: useradd + passwd
-    Active --> Locked: usermod -L
+    Active --> Locked: usermod -L password
     Locked --> Active: usermod -U
     Active --> Expired: Date reached
     Expired --> Active: usermod -e ""
-    Active --> Disabled: Remove shell
+    Active --> Disabled: Set nologin shell
     Disabled --> Active: Restore shell
     Active --> Deleted: userdel
     Locked --> Deleted: userdel
@@ -483,8 +495,10 @@ sudo vi /etc/login.defs
 # Key settings:
 # PASS_MAX_DAYS   90    # Maximum password age
 # PASS_MIN_DAYS   1     # Minimum days between changes
-# PASS_MIN_LEN    12    # Minimum password length
 # PASS_WARN_AGE   14    # Days before expiry to warn
+
+# Minimum password length is normally enforced through PAM,
+# such as pam_pwquality, rather than login.defs.
 
 # Apply to existing user
 sudo chage -M 90 -m 1 -W 14 username
@@ -493,7 +507,8 @@ sudo chage -M 90 -m 1 -W 14 username
 ### Restrict Shell Access
 
 ```bash
-# For users who only need SFTP access
+# For users who only need SFTP access, configure sshd with
+# ForceCommand internal-sftp and use a non-login shell
 sudo usermod -s /usr/sbin/nologin sftpuser
 
 # Or use a restricted shell

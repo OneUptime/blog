@@ -133,7 +133,7 @@ export async function invalidateTag(tag: string): Promise<number> {
 }
 ```
 
-This implementation handles the basic workflow: setting entries with tags, retrieving entries, and invalidating by tag. The pipeline batches commands so they ship in a single round trip. Note that ioredis pipelines are not transactions — if you need true atomicity, use `redis.multi()` instead.
+This implementation handles the basic workflow: setting entries with tags, retrieving entries, and invalidating by tag. The pipeline batches commands so they ship in a single round trip. Note that ioredis pipelines are not transactions - if you need true atomicity, use `redis.multi()` instead.
 
 ---
 

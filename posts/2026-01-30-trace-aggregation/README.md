@@ -2036,7 +2036,7 @@ const wrongP95 = (bucket1.p95 + bucket2.p95) / 2;
 
 Fixed-width buckets (minutes, hours) work fine on epoch milliseconds because the
 epoch is timezone-agnostic. The trap appears when you bucket by *calendar*
-units (day, week, month) — those boundaries depend on the viewer's timezone.
+units (day, week, month) - those boundaries depend on the viewer's timezone.
 
 ```typescript
 // BAD: Day boundary using local time on the aggregator host

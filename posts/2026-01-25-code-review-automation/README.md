@@ -142,6 +142,9 @@ on:
 jobs:
   size-check:
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+      issues: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -216,6 +219,9 @@ on:
 jobs:
   lint:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - uses: actions/checkout@v4
 
@@ -289,6 +295,8 @@ jobs:
   assign:
     if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
     steps:
       - uses: actions/github-script@v7
         with:
@@ -354,6 +362,9 @@ on:
 jobs:
   review:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -406,17 +417,18 @@ jobs:
             }
 
             // Create review with comments
-            if (comments.length > 0) {
+            const reviewComments = comments.filter(c => c.line !== null);
+            if (reviewComments.length > 0) {
               await github.rest.pulls.createReview({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 pull_number: context.issue.number,
                 event: 'COMMENT',
-                comments: comments.map(c => ({
+                comments: reviewComments.map(c => ({
                   path: c.path,
                   body: c.body,
                   side: 'RIGHT',
-                  line: c.line || 1
+                  line: c.line
                 }))
               });
             }
@@ -426,14 +438,22 @@ jobs:
               for (let i = 0; i < lines.length; i++) {
                 if (typeof pattern === 'string' ? lines[i].includes(pattern) : lines[i].match(pattern)) {
                   // Extract line number from diff header
-                  const match = lines.slice(0, i).reverse().find(l => l.startsWith('@@'));
+                  const hunkStart = lines.slice(0, i).findLastIndex(l => l.startsWith('@@'));
+                  const match = hunkStart >= 0 ? lines[hunkStart] : null;
                   if (match) {
                     const lineMatch = match.match(/\+(\d+)/);
-                    if (lineMatch) return parseInt(lineMatch[1]) + i;
+                    if (!lineMatch) return null;
+
+                    let newLine = parseInt(lineMatch[1], 10);
+                    for (let j = hunkStart + 1; j <= i; j++) {
+                      if (lines[j].startsWith('-')) continue;
+                      if (j === i) return newLine;
+                      newLine++;
+                    }
                   }
                 }
               }
-              return 1;
+              return null;
             }
 ```
 
@@ -476,6 +496,9 @@ on:
 jobs:
   stale:
     runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
     steps:
       - uses: actions/stale@v9
         with:

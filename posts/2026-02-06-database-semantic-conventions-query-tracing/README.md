@@ -44,7 +44,7 @@ The OpenTelemetry database semantic conventions define a set of attributes that 
 graph TD
     A[Database Span] --> B[Common Attributes]
     A --> C[System-Specific Attributes]
-    B --> D[db.system]
+    B --> D[db.system.name]
     B --> E[db.operation.name]
     B --> F[db.namespace]
     B --> G[server.address]
@@ -54,7 +54,7 @@ graph TD
     C --> K[db.response.status_code]
 ```
 
-The `db.system` attribute is the foundation. It identifies which database technology is being used and determines which additional attributes are relevant.
+The `db.system.name` attribute is the foundation. It identifies which database technology is being used and determines which additional attributes are relevant.
 
 ## SQL Database Instrumentation in Python
 
@@ -88,7 +88,7 @@ Psycopg2Instrumentor().instrument(
 )
 ```
 
-The `Psycopg2Instrumentor` automatically creates spans for every query and populates them with the correct semantic convention attributes. It sets `db.system` to `"postgresql"`, captures the `db.query.text`, identifies the `db.namespace` (database name), and records the server connection details.
+The `Psycopg2Instrumentor` automatically creates spans for every query and populates database semantic convention attributes. With stable database semantic conventions enabled, it sets `db.system.name` to `"postgresql"`, captures the query text when supported and sanitized, identifies the `db.namespace` (database and schema when available), and records the server connection details. Some existing instrumentation versions still emit the older experimental names, such as `db.system` and `db.statement`, unless you opt in to stable database conventions with `OTEL_SEMCONV_STABILITY_OPT_IN=database` or emit both sets with `OTEL_SEMCONV_STABILITY_OPT_IN=database/dup`.
 
 For manual instrumentation or cases where you need additional control, here is how to create database spans by hand.
 
@@ -108,8 +108,8 @@ def get_user_by_email(email: str) -> dict:
         name="SELECT users",
         kind=trace.SpanKind.CLIENT,
         attributes={
-            "db.system": "postgresql",
-            "db.namespace": "app_production",
+            "db.system.name": "postgresql",
+            "db.namespace": "app_production|public",
             "db.operation.name": "SELECT",
             "db.collection.name": "users",
             "db.query.text": query,
@@ -151,10 +151,10 @@ NoSQL databases have their own set of conventions. MongoDB operations use `db.co
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { MongoDBInstrumentation } = require('@opentelemetry/instrumentation-mongodb');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 
 const sdk = new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     'service.name': 'catalog-service',
     'service.version': '1.7.0',
   }),
@@ -172,13 +172,13 @@ const sdk = new NodeSDK({
 sdk.start();
 ```
 
-The MongoDB instrumentation automatically sets `db.system` to `"mongodb"`, captures `db.collection.name`, `db.operation.name`, and `db.namespace`. With `enhancedDatabaseReporting` enabled, the query filter is also captured in the span.
+The MongoDB instrumentation automatically creates spans for MongoDB commands. With stable database semantic conventions enabled, it sets `db.system.name` to `"mongodb"` and captures `db.collection.name`, `db.operation.name`, and `db.namespace`. With `enhancedDatabaseReporting` enabled, additional query details may also be attached to the span.
 
 For manual MongoDB spans, here is the pattern.
 
 ```javascript
 // manual-mongo-span.js - Manual MongoDB span with semantic conventions
-const { trace, SpanKind } = require('@opentelemetry/api');
+const { trace, SpanKind, SpanStatusCode } = require('@opentelemetry/api');
 
 const tracer = trace.getTracer('catalog-service.db');
 
@@ -187,14 +187,12 @@ async function findProductsByCategory(category) {
   const span = tracer.startSpan('find products', {
     kind: SpanKind.CLIENT,
     attributes: {
-      'db.system': 'mongodb',
+      'db.system.name': 'mongodb',
       'db.namespace': 'catalog_db',
       'db.collection.name': 'products',
       'db.operation.name': 'find',
       'server.address': 'mongo-primary.internal',
       'server.port': 27017,
-      // Capture the query filter for debugging
-      'db.query.text': JSON.stringify({ category: category, active: true }),
     },
   });
 
@@ -208,7 +206,7 @@ async function findProductsByCategory(category) {
     span.setAttribute('db.response.returned_rows', results.length);
     return results;
   } catch (error) {
-    span.setStatus({ code: 2, message: error.message });
+    span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
     span.recordException(error);
     throw error;
   } finally {
@@ -217,7 +215,7 @@ async function findProductsByCategory(category) {
 }
 ```
 
-The structure is the same as the SQL example. The `db.system` attribute changes, and the query details are different, but the core attributes remain consistent.
+The structure is the same as the SQL example. The `db.system.name` attribute changes, and the query details are different, but the core attributes remain consistent.
 
 ## Redis and Cache Operations
 
@@ -240,10 +238,10 @@ def get_session(session_id: str) -> dict:
         name="GET session_cache",
         kind=trace.SpanKind.CLIENT,
         attributes={
-            "db.system": "redis",
+            "db.system.name": "redis",
             "db.namespace": "0",           # Redis database index
             "db.operation.name": "GET",
-            "db.query.text": "GET session:{session_id}",
+            "db.query.text": "GET session:?",
             "server.address": "redis-primary.internal",
             "server.port": 6379,
         },
@@ -285,7 +283,7 @@ safe_query = sanitize_sql(original_query)
 span.set_attribute("db.query.text", safe_query)
 ```
 
-Most auto-instrumentation libraries handle this sanitization by default. They record the parameterized query template rather than the query with interpolated values. But if you are doing manual instrumentation, make sure you sanitize before recording.
+Auto-instrumentation should only record `db.query.text` by default when it can sanitize sensitive information, and many SQL instrumentations record the parameterized query template rather than interpolated values. If you are doing manual instrumentation, make sure you sanitize before recording.
 
 ## Building Dashboards from Database Telemetry
 
@@ -294,29 +292,29 @@ With consistent database semantic conventions in place, you can build powerful d
 ```sql
 -- Slowest database operations across all services and database types
 SELECT
-    db.system,
-    db.operation.name,
-    db.collection.name,
-    resource.service.name,
+    `db.system.name`,
+    `db.operation.name`,
+    `db.collection.name`,
+    `resource.service.name`,
     avg(duration_ms) as avg_latency_ms,
     p99(duration_ms) as p99_latency_ms,
     count(*) as operation_count
 FROM spans
-WHERE db.system IS NOT NULL
-GROUP BY db.system, db.operation.name, db.collection.name, resource.service.name
+WHERE `db.system.name` IS NOT NULL
+GROUP BY `db.system.name`, `db.operation.name`, `db.collection.name`, `resource.service.name`
 ORDER BY p99_latency_ms DESC
 LIMIT 20;
 
 -- Database error rates by system and operation
 SELECT
-    db.system,
-    db.operation.name,
+    `db.system.name`,
+    `db.operation.name`,
     count(*) as total,
     countIf(status_code = 'ERROR') as errors,
     round(errors / total * 100, 2) as error_rate
 FROM spans
-WHERE db.system IS NOT NULL
-GROUP BY db.system, db.operation.name
+WHERE `db.system.name` IS NOT NULL
+GROUP BY `db.system.name`, `db.operation.name`
 HAVING error_rate > 1
 ORDER BY error_rate DESC;
 ```
@@ -345,6 +343,6 @@ The span name should consist of the operation and the target table or collection
 
 ## Wrapping Up
 
-Database semantic conventions turn your query traces from scattered, inconsistent metadata into a unified view of how your applications interact with data stores. The core pattern is the same regardless of the database system: set `db.system`, `db.operation.name`, `db.collection.name`, `db.namespace`, and the server connection attributes. Layer on system-specific details as needed, sanitize sensitive data in queries, and keep span names low-cardinality.
+Database semantic conventions turn your query traces from scattered, inconsistent metadata into a unified view of how your applications interact with data stores. The core pattern is the same regardless of the database system: set `db.system.name`, `db.operation.name`, `db.collection.name`, `db.namespace`, and the server connection attributes. Layer on system-specific details as needed, sanitize sensitive data in queries, and keep span names low-cardinality.
 
 Start with auto-instrumentation for your database drivers, verify the attributes are correct, and extend with custom attributes where your team needs additional context. Once every service follows the same conventions, answering questions like "which queries are slowest" or "which database operations are failing" becomes a single query away.

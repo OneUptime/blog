@@ -8,7 +8,7 @@ Description: A comprehensive guide to migrating Vue components from the Options 
 
 ---
 
-> Migrating from the Options API to the Composition API improves code organization, reusability, and TypeScript support. This guide provides a systematic approach to migrating your Vue 2/3 Options API code to the modern Composition API.
+> Migrating from the Options API to the Composition API improves code organization, reusability, and TypeScript support. This guide provides a systematic approach to migrating your Vue 3 Options API code to the modern Composition API.
 
 The Composition API is not a replacement but an alternative to the Options API. You can use both in the same project, making gradual migration possible.
 
@@ -257,13 +257,13 @@ const name = ref('John')
 const items = ref([])
 
 // Objects - can use ref or reactive
-const user = ref({
+const userRef = ref({
   firstName: 'John',
   lastName: 'Doe'
 })
 
 // Or with reactive (no .value needed for nested properties)
-const user = reactive({
+const userReactive = reactive({
   firstName: 'John',
   lastName: 'Doe'
 })
@@ -278,10 +278,10 @@ this.user.firstName = 'Jane'
 
 // Composition API with ref
 count.value++
-user.value.firstName = 'Jane'
+userRef.value.firstName = 'Jane'
 
 // Composition API with reactive
-user.firstName = 'Jane'  // No .value needed
+userReactive.firstName = 'Jane'  // No .value needed
 ```
 
 ---
@@ -661,10 +661,12 @@ onMounted(() => {
 
 ```javascript
 // Options API - Provider
+import { computed } from 'vue'
+
 export default {
   provide() {
     return {
-      theme: this.theme,
+      theme: computed(() => this.theme),
       updateTheme: this.updateTheme
     }
   },
@@ -710,10 +712,13 @@ const theme = inject('theme')
 const updateTheme = inject('updateTheme')
 
 // With default value
-const theme = inject('theme', ref('light'))
+const themeWithDefault = inject('theme', ref('light'))
 
 // Or inject object
-const { theme, updateTheme } = inject('themeContext')
+const {
+  theme: contextTheme,
+  updateTheme: updateThemeFromContext
+} = inject('themeContext')
 ```
 
 ---
@@ -848,7 +853,7 @@ function handleClick() {
 
 ```javascript
 // Testing Composition API components
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import UserProfile from './UserProfile.vue'
 
 describe('UserProfile', () => {
@@ -859,8 +864,8 @@ describe('UserProfile', () => {
       }
     })
 
-    // Wait for async operations
-    await wrapper.vm.$nextTick()
+    // Wait for async operations such as fetch mocks to resolve
+    await flushPromises()
 
     expect(wrapper.text()).toContain('John Doe')
   })

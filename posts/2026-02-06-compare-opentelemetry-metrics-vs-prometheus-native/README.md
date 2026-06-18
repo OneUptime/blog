@@ -12,9 +12,9 @@ Prometheus has been the standard for metrics in the cloud-native ecosystem for y
 
 ## Data Model Differences
 
-Prometheus uses a pull-based model with a simple data model: every metric is a time series identified by a metric name and a set of labels. There are four core metric types: counter, gauge, histogram, and summary.
+Prometheus uses a pull-based collection model with a simple data model: every metric is a time series identified by a metric name and a set of labels. There are four core metric types: counter, gauge, histogram, and summary.
 
-OpenTelemetry uses a push-based model (though pull is supported) with a richer data model. Metrics carry resource attributes, scope information, and more instrument types including UpDownCounter and exponential histograms.
+OpenTelemetry is commonly exported through push-based OTLP pipelines (though pull exporters are supported) and has a richer data model. Metrics carry resource attributes, scope information, and more instrument types including UpDownCounter and exponential histograms.
 
 ```mermaid
 graph TD
@@ -30,7 +30,7 @@ graph TD
     end
 ```
 
-The most significant conceptual difference is temporality. Prometheus always uses cumulative metrics (counters go up from process start). OpenTelemetry supports both cumulative and delta temporality. Delta temporality reports only the change since the last collection, which can be more efficient for certain backends.
+The most significant conceptual difference is temporality. Prometheus counters and classic histogram buckets are cumulative (counters go up from process start or reset). OpenTelemetry supports both cumulative and delta temporality for sums, histograms, and exponential histograms. Delta temporality reports only the change since the last collection, which can be more efficient for certain backends.
 
 ## Instrumentation Comparison
 
@@ -128,7 +128,7 @@ func main() {
 
     // Counter for total HTTP requests
     requestCounter, _ := meter.Int64Counter(
-        "http.server.request.count",
+        "http.server.requests",
         metric.WithDescription("Total number of HTTP requests"),
     )
 
@@ -147,9 +147,9 @@ func main() {
 
         duration := time.Since(start).Seconds()
         attrs := []attribute.KeyValue{
-            attribute.String("http.method", r.Method),
+            attribute.String("http.request.method", r.Method),
             attribute.String("http.route", r.URL.Path),
-            attribute.Int("http.status_code", 200),
+            attribute.Int("http.response.status_code", 200),
         }
         requestCounter.Add(r.Context(), 1, metric.WithAttributes(attrs...))
         requestDuration.Record(r.Context(), duration, metric.WithAttributes(attrs...))
@@ -159,7 +159,7 @@ func main() {
 }
 ```
 
-The OpenTelemetry version is slightly more verbose but follows the same patterns. The key difference is that OpenTelemetry pushes metrics to a collector or backend, while Prometheus exposes a `/metrics` endpoint that gets scraped.
+The OpenTelemetry version is slightly more verbose but follows the same patterns. The key difference in this setup is that OpenTelemetry exports metrics to a collector or backend over OTLP, while Prometheus exposes a `/metrics` endpoint that gets scraped.
 
 ## Collection Models
 
@@ -177,7 +177,7 @@ graph LR
 
 Prometheus scrapes targets on a configured interval. This means your applications need to expose an HTTP endpoint, and Prometheus needs to know where all your targets are (through service discovery or static configuration).
 
-OpenTelemetry pushes metrics from the application. This simplifies networking (no inbound connections needed) and works naturally behind firewalls, in serverless environments, and across network boundaries.
+OpenTelemetry commonly pushes metrics from the application through OTLP exporters. This simplifies networking (no inbound connections needed) and works naturally behind firewalls, in serverless environments, and across network boundaries.
 
 However, the OpenTelemetry Collector can also scrape Prometheus endpoints:
 
@@ -198,11 +198,14 @@ receivers:
             - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
               action: keep
               regex: true
-            - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
+            - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
               action: replace
               target_label: __address__
-              regex: (.+)
-              replacement: $1
+              regex: ([^:]+)(?::\d+)?;(\d+)
+              replacement: $1:$2
+
+processors:
+  batch:
 
 exporters:
   prometheusremotewrite:
@@ -216,7 +219,7 @@ service:
       exporters: [prometheusremotewrite]
 ```
 
-This is a common bridge pattern that lets you use OpenTelemetry Collector as a drop-in replacement for Prometheus scraping while gaining access to the OTel processing pipeline.
+This is a common bridge pattern that lets you centralize Prometheus scraping in the OpenTelemetry Collector while gaining access to the OTel processing pipeline.
 
 ## Histogram Implementation
 
@@ -234,20 +237,30 @@ histogram := prometheus.NewHistogram(prometheus.HistogramOpts{
 })
 ```
 
-OpenTelemetry supports exponential histograms (also called base-2 exponential histograms), which automatically adapt their bucket boundaries to the observed data:
+OpenTelemetry supports exponential histograms (also called base-2 exponential histograms), which use bucket widths that grow exponentially and allocate bucket ranges as observations are recorded:
 
 ```go
 // OpenTelemetry exponential histogram
-// Bucket boundaries adapt automatically to the data distribution
+// Configure exponential histogram aggregation with a view
+view := sdkmetric.NewView(
+    sdkmetric.Instrument{Name: "request_duration_seconds"},
+    sdkmetric.Stream{
+        Aggregation: sdkmetric.AggregationBase2ExponentialHistogram{
+            MaxSize:  160,
+            MaxScale: 20,
+        },
+    },
+)
+provider := sdkmetric.NewMeterProvider(sdkmetric.WithView(view))
+meter := provider.Meter("my-service")
+
 histogram, _ := meter.Float64Histogram(
     "request_duration_seconds",
     metric.WithDescription("Request duration"),
-    // Exponential histogram is the default in many SDKs
-    // No need to specify bucket boundaries
 )
 ```
 
-Exponential histograms provide better resolution across the full range of values with predictable memory usage. Prometheus has added support for native histograms (their version of exponential histograms), but the feature is still evolving.
+Exponential histograms can provide better resolution across a wide range of values with bounded memory usage. Prometheus has added support for native histograms (their version of exponential histograms). In current Prometheus versions, native histograms are stable but still require explicit scrape or remote write configuration.
 
 ## Naming Conventions
 
@@ -260,13 +273,13 @@ http_request_duration_seconds  # Histogram (should include unit)
 process_resident_memory_bytes  # Gauge (should include unit)
 ```
 
-OpenTelemetry uses semantic conventions with dot-separated namespaces:
+OpenTelemetry conventionally uses dot-separated namespaces, with semantic conventions where standard metrics exist:
 
 ```text
-# OpenTelemetry semantic conventions
-http.server.request.count      # Counter
-http.server.request.duration   # Histogram (unit specified separately)
-process.runtime.memory.usage   # Gauge (unit specified separately)
+# OpenTelemetry naming examples
+http.server.requests           # Custom counter
+http.server.request.duration   # Semantic convention histogram (unit specified separately)
+process.memory.usage           # Semantic convention UpDownCounter (unit specified separately)
 ```
 
 When OpenTelemetry metrics are exported to Prometheus, the names are automatically converted. Dots become underscores, units are appended as suffixes, and `_total` is added to counters.
@@ -278,7 +291,7 @@ If you use PromQL for alerting and dashboards, you can still query OpenTelemetry
 ```promql
 # PromQL query works the same regardless of instrumentation source
 # This query works for both native Prometheus and OTel-originated metrics
-rate(http_server_request_count_total{service="order-service"}[5m])
+rate(http_server_requests_total{service="order-service"}[5m])
 ```
 
 The OpenTelemetry Collector's Prometheus remote write exporter ensures that metrics land in a format that PromQL can query.

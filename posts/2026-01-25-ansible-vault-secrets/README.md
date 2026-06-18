@@ -124,7 +124,7 @@ Encrypt individual values instead of entire files using `encrypt_string`.
 
 ```bash
 # Encrypt a string value
-ansible-vault encrypt_string 'my_secret_password' --name 'db_password'
+ansible-vault encrypt_string --ask-vault-pass 'my_secret_password' --name 'db_password'
 
 # Output:
 # db_password: !vault |
@@ -132,7 +132,7 @@ ansible-vault encrypt_string 'my_secret_password' --name 'db_password'
 #           62313365396662343061393464336163383764316462...
 
 # Encrypt from stdin (hides password from shell history)
-echo -n 'my_secret_password' | ansible-vault encrypt_string --stdin-name 'db_password'
+echo -n 'my_secret_password' | ansible-vault encrypt_string --ask-vault-pass --stdin-name 'db_password'
 
 # Encrypt with specific vault ID
 ansible-vault encrypt_string 'secret' --name 'api_key' --vault-id prod@prompt
@@ -347,7 +347,7 @@ fi
 find . -name 'vault.yml' -exec ansible-vault rekey {} \;
 
 # Or rekey with specific vault IDs
-ansible-vault rekey --vault-id prod@old_pass --new-vault-id prod@new_pass secrets/prod/*.yml
+ansible-vault rekey --vault-id prod@old_pass_file --new-vault-id prod@new_pass_file secrets/prod/*.yml
 ```
 
 ### 3. Use Descriptive Variable Names
@@ -380,10 +380,10 @@ For enterprise environments, fetch secrets from HashiCorp Vault or AWS Secrets M
 
 ```yaml
 # Lookup plugin to fetch from HashiCorp Vault
-db_password: "{{ lookup('hashi_vault', 'secret/data/production/db:password') }}"
+db_password: "{{ lookup('community.hashi_vault.hashi_vault', 'secret/data/production/db:password') }}"
 
 # AWS Secrets Manager
-api_key: "{{ lookup('aws_secret', 'production/api-key') }}"
+api_key: "{{ lookup('amazon.aws.secretsmanager_secret', 'production/api-key') }}"
 ```
 
 ---

@@ -128,15 +128,15 @@ public class ApiClient
             "CallExternalApi",
             ActivityKind.Client);
 
-        activity?.SetTag("http.url", endpoint);
-        activity?.SetTag("http.method", "GET");
+        activity?.SetTag("url.full", endpoint);
+        activity?.SetTag("http.request.method", "GET");
 
         try
         {
             // HttpClient automatically propagates trace context
             var response = await _httpClient.GetAsync(endpoint);
 
-            activity?.SetTag("http.status_code", (int)response.StatusCode);
+            activity?.SetTag("http.response.status_code", (int)response.StatusCode);
             activity?.SetStatus(
                 response.IsSuccessStatusCode ? ActivityStatusCode.Ok : ActivityStatusCode.Error);
 
@@ -394,7 +394,7 @@ public class ApiMetrics
         // Histogram for request latency
         _requestDuration = _meter.CreateHistogram<double>(
             "http.server.request.duration",
-            unit: "ms",
+            unit: "s",
             description: "HTTP request duration");
 
         // Counter for total requests
@@ -405,7 +405,7 @@ public class ApiMetrics
 
         // UpDownCounter for active requests (can increase or decrease)
         _activeRequests = _meter.CreateUpDownCounter<long>(
-            "http.server.requests.active",
+            "http.server.active_requests",
             unit: "{requests}",
             description: "Number of active HTTP requests");
 
@@ -421,7 +421,7 @@ public class ApiMetrics
     {
         // Increment active requests
         _activeRequests.Add(1,
-            new KeyValuePair<string, object?>("http.method", method),
+            new KeyValuePair<string, object?>("http.request.method", method),
             new KeyValuePair<string, object?>("http.route", route));
 
         var startTime = Stopwatch.GetTimestamp();
@@ -446,11 +446,11 @@ public class ApiMetrics
 
         public void Dispose()
         {
-            var duration = Stopwatch.GetElapsedTime(_startTime).TotalMilliseconds;
+            var duration = Stopwatch.GetElapsedTime(_startTime).TotalSeconds;
 
             var tags = new[]
             {
-                new KeyValuePair<string, object?>("http.method", _method),
+                new KeyValuePair<string, object?>("http.request.method", _method),
                 new KeyValuePair<string, object?>("http.route", _route)
             };
 
@@ -495,7 +495,7 @@ builder.Services.AddSingleton<ApiMetrics>();
 // Configure OpenTelemetry
 builder.Services.AddOpenTelemetry()
     .ConfigureResource(resource => resource
-        .AddService("DiagnosticsDemo", "1.0.0"))
+        .AddService("DiagnosticsDemo", serviceVersion: "1.0.0"))
     .WithTracing(tracing => tracing
         // Register your ActivitySources
         .AddSource("DiagnosticsDemo.*")
@@ -536,22 +536,24 @@ using OpenTelemetry.Trace;
 
 public class CustomSampler : Sampler
 {
-    private readonly double _samplingRate;
+    private readonly TraceIdRatioBasedSampler _ratioSampler;
 
     public CustomSampler(double samplingRate)
     {
-        _samplingRate = samplingRate;
+        _ratioSampler = new TraceIdRatioBasedSampler(samplingRate);
     }
 
     public override SamplingResult ShouldSample(in SamplingParameters samplingParameters)
     {
-        // Always sample errors
+        // Always sample activities marked critical at creation time
         var tags = samplingParameters.Tags;
         if (tags != null)
         {
             foreach (var tag in tags)
             {
-                if (tag.Key == "error" && (bool)tag.Value!)
+                if (tag.Key == "sampling.priority" &&
+                    tag.Value is string value &&
+                    value == "critical")
                 {
                     return new SamplingResult(SamplingDecision.RecordAndSample);
                 }
@@ -559,11 +561,7 @@ public class CustomSampler : Sampler
         }
 
         // Sample based on rate for normal requests
-        var hash = samplingParameters.TraceId.GetHashCode();
-        var shouldSample = (hash & int.MaxValue) < int.MaxValue * _samplingRate;
-
-        return new SamplingResult(
-            shouldSample ? SamplingDecision.RecordAndSample : SamplingDecision.Drop);
+        return _ratioSampler.ShouldSample(samplingParameters);
     }
 }
 
@@ -632,7 +630,7 @@ Follow these practices to build effective observability:
 
 Use hierarchical naming for ActivitySources and Meters. Names like "CompanyName.ServiceName.Component" create clear organization and enable wildcard matching.
 
-Create ActivitySources and Meters as static readonly fields. They're designed to be long-lived and reused throughout your application's lifetime.
+Create ActivitySources and Meters once and reuse them throughout your application's lifetime. ActivitySources are commonly static readonly fields, while Meters created through IMeterFactory can be held by long-lived services and disposed by the DI container.
 
 Always check for null activities. Activities are only created when listeners are active, so defensive null checks prevent unnecessary work.
 

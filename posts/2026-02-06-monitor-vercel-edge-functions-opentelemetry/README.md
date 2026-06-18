@@ -10,15 +10,15 @@ Description: Learn how to set up OpenTelemetry monitoring for Vercel Edge Functi
 
 Vercel Edge Functions run on the Edge Runtime, executing JavaScript and TypeScript at points of presence around the world. They are fast and close to users, but their distributed nature makes debugging difficult. A slow response could be caused by your function code, an external API call, or an issue with data fetching. Without tracing, you are left guessing.
 
-OpenTelemetry provides the instrumentation layer needed to understand what happens inside each edge function invocation. This guide covers setting up OpenTelemetry with Vercel Edge Functions, including Next.js middleware, edge API routes, and standalone edge functions.
+OpenTelemetry provides the instrumentation layer needed to understand what happens inside each edge function invocation. This guide covers setting up OpenTelemetry with Vercel Edge Functions, including Next.js middleware and edge API routes.
 
 ## Understanding the Constraints
 
-Vercel Edge Functions run on the Edge Runtime, which is a subset of the standard Node.js runtime. This means some OpenTelemetry SDK features that rely on Node.js-specific APIs are not available. Specifically:
+Vercel Edge Functions run on the Edge Runtime, which is a minimal JavaScript runtime built on Web APIs with only some Node.js-compatible APIs available. This means some OpenTelemetry SDK features that rely on Node.js-specific APIs are not available. Specifically:
 
 - No file system access (so file-based exporters are out)
 - No native gRPC support (HTTP-based OTLP export only)
-- Limited execution time (typically 30 seconds max)
+- Limited execution time (Edge Runtime functions must begin sending a response within 25 seconds, and streaming responses can continue for up to 300 seconds)
 - No persistent state between invocations
 
 These constraints shape how you configure OpenTelemetry. You need to use HTTP-based OTLP export, keep span counts low, and flush telemetry before the function returns.
@@ -47,7 +47,7 @@ Create a shared instrumentation module that initializes the tracer. This module 
 import { trace, SpanStatusCode } from "@opentelemetry/api";
 import { BasicTracerProvider, SimpleSpanProcessor } from "@opentelemetry/sdk-trace-base";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
-import { Resource } from "@opentelemetry/resources";
+import { resourceFromAttributes } from "@opentelemetry/resources";
 import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from "@opentelemetry/semantic-conventions";
 
 // Initialize the OTLP exporter pointing to your collector
@@ -61,7 +61,7 @@ const exporter = new OTLPTraceExporter({
 });
 
 // Create a resource describing this service
-const resource = new Resource({
+const resource = resourceFromAttributes({
   [ATTR_SERVICE_NAME]: "vercel-edge-api",
   [ATTR_SERVICE_VERSION]: process.env.VERCEL_GIT_COMMIT_SHA || "unknown",
   "deployment.environment": process.env.VERCEL_ENV || "development",
@@ -71,9 +71,11 @@ const resource = new Resource({
 
 // Use SimpleSpanProcessor for edge functions
 // BatchSpanProcessor relies on timers that may not fire before the function completes
-const provider = new BasicTracerProvider({ resource });
-provider.addSpanProcessor(new SimpleSpanProcessor(exporter));
-provider.register();
+const provider = new BasicTracerProvider({
+  resource,
+  spanProcessors: [new SimpleSpanProcessor(exporter)],
+});
+trace.setGlobalTracerProvider(provider);
 
 // Export a convenience function for getting the tracer
 export function getTracer(name: string = "edge-function") {
@@ -88,11 +90,11 @@ export async function flushTraces(): Promise<void> {
 export { SpanStatusCode };
 ```
 
-The critical detail here is using `SimpleSpanProcessor` instead of `BatchSpanProcessor`. In a long-running server, batching is more efficient because it groups spans and sends them periodically. But edge functions have short lifetimes. A batch processor might not flush before the function terminates, causing you to lose telemetry. The simple processor sends each span immediately, which has more network overhead but guarantees delivery.
+The critical detail here is using `SimpleSpanProcessor` instead of `BatchSpanProcessor`. In a long-running server, batching is more efficient because it groups spans and sends them periodically. But edge functions have short lifetimes. A batch processor might not flush before the function terminates, causing you to lose telemetry. The simple processor starts exporting each span when it ends, which has more network overhead but reduces the chance that telemetry is still sitting in a batch when the invocation finishes.
 
 ## Instrumenting Next.js Middleware
 
-Next.js middleware runs on Vercel's Edge Runtime by default. It intercepts every request before it reaches your pages or API routes, making it a natural place for tracing:
+Next.js middleware in Next.js 15 and earlier runs on Vercel's Edge Runtime by default. It intercepts every request before it reaches your pages or API routes, making it a natural place for tracing. In Next.js 16, the `middleware.ts` convention was renamed to `proxy.ts`, and Proxy defaults to the Node.js runtime, so this example applies to projects that are still using Edge middleware:
 
 ```typescript
 // middleware.ts
@@ -100,6 +102,7 @@ Next.js middleware runs on Vercel's Edge Runtime by default. It intercepts every
 // This runs on every request before reaching the page or API route
 
 import { NextRequest, NextResponse } from "next/server";
+import { context, trace } from "@opentelemetry/api";
 import { getTracer, flushTraces, SpanStatusCode } from "./lib/tracing";
 
 const tracer = getTracer("nextjs-middleware");
@@ -159,14 +162,18 @@ export async function middleware(req: NextRequest) {
 async function checkRateLimit(clientIP: string, parentSpan: any): Promise<boolean> {
   const childSpan = tracer.startSpan("check-rate-limit", {
     attributes: { "client.ip": clientIP },
-  });
+  }, trace.setSpan(context.active(), parentSpan));
   // Your rate limiting logic here
   childSpan.end();
   return false;
 }
 
 async function validateAuth(req: NextRequest, parentSpan: any) {
-  const childSpan = tracer.startSpan("validate-auth");
+  const childSpan = tracer.startSpan(
+    "validate-auth",
+    {},
+    trace.setSpan(context.active(), parentSpan)
+  );
   // Your auth validation logic here
   childSpan.end();
   return { valid: true, userId: "user-123" };
@@ -189,6 +196,7 @@ Edge API routes in Next.js use the same Edge Runtime. Here is how to instrument 
 // Edge API route with OpenTelemetry tracing for a search endpoint
 
 import { NextRequest, NextResponse } from "next/server";
+import { context, trace, TraceFlags } from "@opentelemetry/api";
 import { getTracer, flushTraces, SpanStatusCode } from "@/lib/tracing";
 
 // Declare this route runs on the edge
@@ -209,7 +217,11 @@ export async function GET(req: NextRequest) {
     span.setAttribute("search.query_length", query.length);
 
     // Trace the external API call to a search backend
-    const searchSpan = tracer.startSpan("search-backend-call");
+    const searchSpan = tracer.startSpan(
+      "search-backend-call",
+      {},
+      trace.setSpan(context.active(), span)
+    );
     const response = await fetch(
       `https://search-api.internal.example.com/query?q=${encodeURIComponent(query)}`,
       {
@@ -250,7 +262,8 @@ export async function GET(req: NextRequest) {
 // Build a W3C traceparent header from a span
 function buildTraceparent(span: any): string {
   const ctx = span.spanContext();
-  return `00-${ctx.traceId}-${ctx.spanId}-01`;
+  const flags = ctx.traceFlags === TraceFlags.SAMPLED ? "01" : "00";
+  return `00-${ctx.traceId}-${ctx.spanId}-${flags}`;
 }
 ```
 
@@ -291,19 +304,19 @@ OTEL_EXPORTER_ENDPOINT=https://collector.example.com:4318/v1/traces
 # API key for authenticating with your collector
 OTEL_API_KEY=your-collector-api-key
 
-# These are automatically set by Vercel, no need to configure:
+# These are available when Vercel System Environment Variables are exposed:
 # VERCEL_ENV (production, preview, development)
 # VERCEL_REGION (iad1, sfo1, etc.)
 # VERCEL_GIT_COMMIT_SHA (current deployment's commit hash)
 ```
 
-Vercel automatically injects several environment variables that are useful as resource attributes. The region, environment, and commit SHA help you correlate traces with specific deployments and regions when debugging production issues.
+Vercel can expose several system environment variables that are useful as resource attributes. The region, environment, and commit SHA help you correlate traces with specific deployments and regions when debugging production issues.
 
 ## Performance Considerations
 
 OpenTelemetry adds overhead to every function invocation. On the Edge Runtime, where cold starts and execution time directly impact user experience, you need to be mindful of this cost.
 
-The `SimpleSpanProcessor` with HTTP export adds roughly 5 to 15 milliseconds per span, depending on network latency between the edge location and your collector. For functions where latency is critical, consider these optimizations:
+The `SimpleSpanProcessor` with HTTP export adds latency because it exports ended spans during the invocation, and the cost depends on network latency between the edge location and your collector. For functions where latency is critical, consider these optimizations:
 
 - Limit the number of spans per invocation to the essentials
 - Use span events instead of child spans for lightweight annotations

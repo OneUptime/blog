@@ -12,12 +12,12 @@ Slow pipelines kill developer productivity. Every minute spent waiting for depen
 
 ## How GitLab CI Caching Works
 
-GitLab CI caching stores files on the runner's host machine or a distributed cache like S3. When a job starts, it downloads the cache. When it ends, it uploads any changes. Unlike artifacts, caches are best-effort and may not always be available.
+GitLab CI caching stores files on the runner's host machine or a distributed cache like S3. By default, when a job starts, it downloads the cache. When a successful job ends, it uploads any changes. Unlike artifacts, caches are best-effort and may not always be available.
 
 Key differences between cache and artifacts:
 
 - Cache: For dependencies, optional, may be missing, shared across pipelines
-- Artifacts: For build outputs, guaranteed, passed to later jobs in same pipeline
+- Artifacts: For build outputs, stored in GitLab, passed to later jobs in the same pipeline
 
 ## Basic Cache Configuration
 
@@ -297,7 +297,7 @@ cache:
     - default
 ```
 
-This lets feature branches use the main branch cache as a starting point.
+This lets feature branches use the main branch cache as a starting point. By default, GitLab separates caches for protected and non-protected branches, so this fallback works across those branches only if that setting is disabled or the branches use the same cache suffix.
 
 ## Cache Flow Diagram
 
@@ -382,7 +382,7 @@ cache:
   key: ${CI_COMMIT_REF_SLUG}
 ```
 
-**Missing cache directories** break caching silently.
+**Missing cache directories** prevent useful caches from being created.
 
 ```yaml
 # Bad: might not exist on first run

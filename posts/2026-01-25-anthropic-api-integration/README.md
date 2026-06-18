@@ -17,7 +17,7 @@ Integrating large language models into production applications requires careful 
 ```bash
 # Python SDK
 
-pip install anthropic
+pip install anthropic pydantic-settings
 
 # Node.js SDK
 npm install @anthropic-ai/sdk
@@ -41,7 +41,7 @@ def verify_connection():
     """Test that the API connection works."""
     try:
         response = client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model="claude-sonnet-4-6",
             max_tokens=100,
             messages=[
                 {"role": "user", "content": "Hello, Claude!"}
@@ -85,7 +85,7 @@ class AnthropicClient:
     def __init__(
         self,
         api_key: str,
-        default_model: str = "claude-sonnet-4-20250514",
+        default_model: str = "claude-sonnet-4-6",
         max_retries: int = 3
     ):
         self.client = anthropic.Anthropic(
@@ -156,6 +156,29 @@ class AnthropicClient:
         except anthropic.APIStatusError as e:
             logger.error(f"API error: {e.status_code} - {e.message}")
             raise
+
+    def count_tokens(
+        self,
+        messages: List[Message],
+        system_prompt: Optional[str] = None,
+        model: Optional[str] = None
+    ) -> int:
+        """Count input tokens for a message payload using Anthropic's tokenizer."""
+        api_messages = [
+            {"role": m.role, "content": m.content}
+            for m in messages
+        ]
+
+        params = {
+            "model": model or self.default_model,
+            "messages": api_messages
+        }
+
+        if system_prompt:
+            params["system"] = system_prompt
+
+        result = self.client.messages.count_tokens(**params)
+        return result.input_tokens
 ```
 
 ## Implementing Streaming Responses
@@ -227,10 +250,10 @@ class StreamingAnthropicClient(AnthropicClient):
 
         return ConversationResponse(
             content=full_content,
-            model=self.default_model,
+            model=final_message.model,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
-            stop_reason="end_turn"
+            stop_reason=final_message.stop_reason
         )
 
 # Usage example
@@ -254,9 +277,6 @@ def print_streaming_response():
 Managing multi-turn conversations requires tracking message history and handling context limits.
 
 ```python
-from collections import deque
-import tiktoken
-
 class ConversationManager:
     """Manage multi-turn conversations with context window handling."""
 
@@ -271,20 +291,12 @@ class ConversationManager:
         self.max_context_tokens = max_context_tokens
         self.messages: List[Message] = []
 
-        # Use tiktoken for approximate token counting
-        # Claude uses a similar tokenizer
-        self.encoder = tiktoken.get_encoding("cl100k_base")
-
-    def _count_tokens(self, text: str) -> int:
-        """Approximate token count for text."""
-        return len(self.encoder.encode(text))
-
     def _get_conversation_tokens(self) -> int:
-        """Count total tokens in conversation."""
-        total = self._count_tokens(self.system_prompt)
-        for msg in self.messages:
-            total += self._count_tokens(msg.content)
-        return total
+        """Count total input tokens in conversation."""
+        return self.client.count_tokens(
+            messages=self.messages,
+            system_prompt=self.system_prompt
+        )
 
     def _trim_conversation(self, reserve_tokens: int = 4096):
         """
@@ -363,8 +375,9 @@ def with_retry(max_retries: int = 3, base_delay: float = 1.0):
                 except anthropic.RateLimitError as e:
                     last_exception = e
                     # Use retry-after header if available
-                    retry_after = getattr(e, 'retry_after', None)
-                    delay = retry_after or (base_delay * (2 ** attempt))
+                    retry_after = e.response.headers.get("retry-after")
+                    retry_after_seconds = float(retry_after) if retry_after else None
+                    delay = retry_after_seconds or (base_delay * (2 ** attempt))
                     logger.warning(
                         f"Rate limited, retrying in {delay}s "
                         f"(attempt {attempt + 1}/{max_retries})"
@@ -439,9 +452,9 @@ class TokenUsageTracker:
 
     # Pricing per 1M tokens (as of early 2026)
     PRICING = {
-        "claude-sonnet-4-20250514": {"input": 3.00, "output": 15.00},
-        "claude-opus-4-20250514": {"input": 15.00, "output": 75.00},
-        "claude-3-5-haiku-20241022": {"input": 0.80, "output": 4.00}
+        "claude-sonnet-4-6": {"input": 3.00, "output": 15.00},
+        "claude-opus-4-8": {"input": 5.00, "output": 25.00},
+        "claude-haiku-4-5-20251001": {"input": 1.00, "output": 5.00}
     }
 
     def __init__(self):
@@ -506,13 +519,15 @@ class TrackedAnthropicClient(RobustAnthropicClient):
 For production deployments, use environment-based configuration.
 
 ```python
-from pydantic import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class AnthropicSettings(BaseSettings):
     """Configuration for Anthropic integration."""
 
+    model_config = SettingsConfigDict(env_prefix="ANTHROPIC_")
+
     api_key: str
-    default_model: str = "claude-sonnet-4-20250514"
+    default_model: str = "claude-sonnet-4-6"
     max_retries: int = 3
     timeout_seconds: float = 60.0
     max_tokens_default: int = 4096
@@ -520,9 +535,6 @@ class AnthropicSettings(BaseSettings):
     # Rate limiting
     requests_per_minute: int = 50
     tokens_per_minute: int = 100000
-
-    class Config:
-        env_prefix = "ANTHROPIC_"
 
 def create_production_client() -> TrackedAnthropicClient:
     """Create a production-configured client."""

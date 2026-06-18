@@ -72,6 +72,7 @@ The interceptor hooks into SaveChanges to detect and record entity changes.
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using System.Reflection;
 using System.Text.Json;
 
 public class AuditSaveChangesInterceptor : SaveChangesInterceptor
@@ -120,7 +121,7 @@ public class AuditSaveChangesInterceptor : SaveChangesInterceptor
         context.ChangeTracker.DetectChanges();
 
         var auditEntries = new List<AuditEntry>();
-        var timestamp = _timeProvider.GetUtcNow().DateTime;
+        var timestamp = _timeProvider.GetUtcNow().UtcDateTime;
 
         foreach (var entry in context.ChangeTracker.Entries())
         {
@@ -247,6 +248,8 @@ internal class AuditEntry
 }
 ```
 
+If you use database-generated keys, added entities may still have temporary key values at this point because the interceptor runs before `SaveChanges` sends changes to the database. Use client-generated keys for insert audit records, or update the audit record from `SavedChanges` after the database has generated the key.
+
 ## Excluding Entities and Properties from Auditing
 
 Use attributes to mark entities or properties that should not be audited.
@@ -286,6 +289,9 @@ The interceptor needs to know who is making the changes. Implement a service tha
 
 ```csharp
 // ICurrentUserService.cs
+using Microsoft.AspNetCore.Http;
+using System.Security.Claims;
+
 public interface ICurrentUserService
 {
     string? UserId { get; }
@@ -443,6 +449,14 @@ public class AuditLogQuery
     public int Page { get; set; } = 1;
     public int PageSize { get; set; } = 50;
 }
+
+public class PagedResult<T>
+{
+    public List<T> Items { get; set; } = new();
+    public int TotalCount { get; set; }
+    public int Page { get; set; }
+    public int PageSize { get; set; }
+}
 ```
 
 ## Handling Soft Deletes
@@ -491,6 +505,8 @@ Audit logging adds overhead to every save operation. Here are some tips to minim
 
 ```csharp
 // 1. Use a separate DbContext for audit writes (optional)
+using System.Threading.Channels;
+
 public class AuditDbContext : DbContext
 {
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();

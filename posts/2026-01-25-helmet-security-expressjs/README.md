@@ -34,7 +34,7 @@ app.get('/', (req, res) => {
 app.listen(3000);
 ```
 
-That single `app.use(helmet())` line sets 15 security headers. But the defaults are not always right for every application. Let us understand each header and configure them properly.
+That single `app.use(helmet())` line sets 13 security headers. But the defaults are not always right for every application. Let us understand each header and configure them properly.
 
 ## What Helmet Sets by Default
 
@@ -210,13 +210,13 @@ app.use(
         // Modern way - through CSP
         contentSecurityPolicy: {
             directives: {
-                frameAncestors: ["'self'"]  // Only allow same origin
+                frameAncestors: ["'self'"],  // Only allow same origin
                 // frameAncestors: ["'none'"]  // Block all framing
                 // frameAncestors: ["https://trusted.com"]  // Specific domains
             }
         },
         // Legacy header (for older browsers)
-        frameguard: {
+        xFrameOptions: {
             action: 'sameorigin'  // 'deny' or 'sameorigin'
         }
     })
@@ -232,7 +232,7 @@ app.use(
     helmet({
         // How your page can be opened from other origins
         crossOriginOpenerPolicy: {
-            policy: 'same-origin'  // 'same-origin', 'same-origin-allow-popups', 'unsafe-none'
+            policy: 'same-origin'  // 'same-origin', 'same-origin-allow-popups', 'noopener-allow-popups', 'unsafe-none'
         },
 
         // Who can embed your resources
@@ -240,9 +240,9 @@ app.use(
             policy: 'same-origin'  // 'same-origin', 'same-site', 'cross-origin'
         },
 
-        // Who can embed your page
+        // What cross-origin resources your page can load
         crossOriginEmbedderPolicy: {
-            policy: 'require-corp'  // 'require-corp', 'credentialless', false
+            policy: 'require-corp'  // 'require-corp', 'credentialless', 'unsafe-none'
         }
     })
 );
@@ -302,7 +302,7 @@ app.use(
         },
 
         // Hide Express
-        hidePoweredBy: true
+        xPoweredBy: true
     })
 );
 ```

@@ -107,25 +107,27 @@ interface BuiltQuery {
 }
 
 // Comparison operators for WHERE clauses
-type Operator = '=' | '!=' | '>' | '<' | '>=' | '<=' | 'LIKE' | 'IN' | 'IS NULL' | 'IS NOT NULL';
+type ValueOperator = '=' | '!=' | '>' | '<' | '>=' | '<=' | 'LIKE';
+type NullOperator = 'IS NULL' | 'IS NOT NULL';
+type Operator = ValueOperator | NullOperator;
 
 // A condition in a WHERE clause
 interface WhereCondition {
   column: string;
   operator: Operator;
-  value: unknown;
+  value?: unknown;
 }
 
 // The main query builder class
 // T is the current table type, S is the full schema
-class QueryBuilder<T, S extends Record<string, unknown> = DatabaseSchema> {
-  private tableName: string;
+class QueryBuilder<T extends object, S extends object = DatabaseSchema> {
+  protected tableName: string;
   private selectedColumns: string[] = [];
   private whereConditions: WhereCondition[] = [];
   private orderByColumns: { column: string; direction: 'ASC' | 'DESC' }[] = [];
   private limitValue: number | null = null;
   private offsetValue: number | null = null;
-  private joins: string[] = [];
+  protected joins: string[] = [];
   private params: unknown[] = [];
 
   constructor(table: string) {
@@ -148,11 +150,22 @@ class QueryBuilder<T, S extends Record<string, unknown> = DatabaseSchema> {
   // Add a WHERE condition with type-safe column and value
   where<K extends ColumnNames<T>>(
     column: K,
-    operator: Operator,
+    operator: NullOperator
+  ): this;
+  where<K extends ColumnNames<T>>(
+    column: K,
+    operator: ValueOperator,
     value: ColumnType<T, K>
+  ): this;
+  where<K extends ColumnNames<T>>(
+    column: K,
+    operator: Operator,
+    value?: ColumnType<T, K>
   ): this {
     this.whereConditions.push({ column, operator, value });
-    this.params.push(value);
+    if (operator !== 'IS NULL' && operator !== 'IS NOT NULL') {
+      this.params.push(value);
+    }
     return this;
   }
 
@@ -291,20 +304,28 @@ Extend the query builder to support joins with type safety:
 ```typescript
 // joins.ts
 
-// Type to track which tables are joined
+// Types to track joined tables and compatible join columns
 // This allows selecting columns from joined tables
 type JoinedTables<T, U> = T & U;
+type Nullable<T> = { [K in keyof T]: T[K] | null };
+type CompatibleColumnNames<T, V> = {
+  [K in ColumnNames<T>]: T[K] extends V
+    ? V extends T[K]
+      ? K
+      : never
+    : never;
+}[ColumnNames<T>];
 
 // Extended query builder with join support
-class JoinableQueryBuilder<T, S extends Record<string, unknown> = DatabaseSchema>
+class JoinableQueryBuilder<T extends object, S extends object = DatabaseSchema>
   extends QueryBuilder<T, S> {
 
   // Inner join with type safety
   // Returns a new builder that knows about both tables
-  innerJoin<K extends keyof S>(
+  innerJoin<K extends keyof S, L extends ColumnNames<T>>(
     table: K,
-    leftColumn: ColumnNames<T>,
-    rightColumn: ColumnNames<S[K]>
+    leftColumn: L,
+    rightColumn: CompatibleColumnNames<S[K], ColumnType<T, L>>
   ): JoinableQueryBuilder<JoinedTables<T, S[K]>, S> {
     const joinSql = `INNER JOIN ${String(table)} ON ${this.tableName}.${leftColumn} = ${String(table)}.${rightColumn}`;
     this.addJoin(joinSql);
@@ -314,21 +335,20 @@ class JoinableQueryBuilder<T, S extends Record<string, unknown> = DatabaseSchema
   }
 
   // Left join preserves all rows from left table
-  leftJoin<K extends keyof S>(
+  leftJoin<K extends keyof S, L extends ColumnNames<T>>(
     table: K,
-    leftColumn: ColumnNames<T>,
-    rightColumn: ColumnNames<S[K]>
-  ): JoinableQueryBuilder<JoinedTables<T, Partial<S[K]>>, S> {
+    leftColumn: L,
+    rightColumn: CompatibleColumnNames<S[K], ColumnType<T, L>>
+  ): JoinableQueryBuilder<JoinedTables<T, Nullable<S[K]>>, S> {
     const joinSql = `LEFT JOIN ${String(table)} ON ${this.tableName}.${leftColumn} = ${String(table)}.${rightColumn}`;
     this.addJoin(joinSql);
 
-    // Partial because left join may have null values
-    return this as unknown as JoinableQueryBuilder<JoinedTables<T, Partial<S[K]>>, S>;
+    // Nullable because left join may return null values for the joined table
+    return this as unknown as JoinableQueryBuilder<JoinedTables<T, Nullable<S[K]>>, S>;
   }
 
   private addJoin(sql: string): void {
-    // Access private joins array from parent class
-    (this as any).joins.push(sql);
+    this.joins.push(sql);
   }
 }
 
@@ -357,13 +377,13 @@ Add support for building queries conditionally:
 // conditional.ts
 
 // Extend query builder with conditional methods
-class ConditionalQueryBuilder<T> extends JoinableQueryBuilder<T> {
+class ConditionalQueryBuilder<T extends object> extends JoinableQueryBuilder<T> {
 
   // Only add WHERE clause if condition is true
   whereIf<K extends ColumnNames<T>>(
     condition: boolean,
     column: K,
-    operator: Operator,
+    operator: ValueOperator,
     value: ColumnType<T, K>
   ): this {
     if (condition) {
@@ -413,7 +433,7 @@ function searchUsers(filters: SearchFilters): BuiltQuery {
 }
 
 // Usage
-const query = searchUsers({
+const searchQuery = searchUsers({
   email: 'example.com',
   isActive: true,
   sortBy: 'created_at',
@@ -431,7 +451,7 @@ Add insert and update operations:
 ```typescript
 // mutations.ts
 
-// Insert builder that ensures all required columns are provided
+// Insert builder with type-safe column values
 class InsertBuilder<T> {
   private tableName: string;
   private data: Partial<T> = {};
@@ -482,7 +502,7 @@ class UpdateBuilder<T> {
 
   where<K extends keyof T & string>(
     column: K,
-    operator: Operator,
+    operator: ValueOperator,
     value: T[K]
   ): this {
     this.conditions.push({ column, operator, value });
@@ -585,7 +605,7 @@ const db = new Database(process.env.DATABASE_URL!);
 
 async function getActiveUsers(): Promise<User[]> {
   const query = from('users')
-    .select('id', 'email', 'name')
+    .selectAll()
     .whereEquals('is_active', true)
     .orderBy('created_at', 'DESC')
     .build();

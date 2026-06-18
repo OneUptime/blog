@@ -4,19 +4,19 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Dead Letter Queue, Export Failures, Data Recovery, Reliability
 
-Description: Learn how to set up dead letter queues for OpenTelemetry export failures so you never permanently lose telemetry data, with file-based, Kafka, and S3 implementations.
+Description: Learn how to set up dead letter queue patterns for OpenTelemetry export failures so you can reduce permanent telemetry loss, with file-based, Kafka, and S3 implementations.
 
 ---
 
-When an OpenTelemetry export fails after all retries are exhausted, the data is gone. The sending queue drops the batch, the exporter moves on, and you have a gap in your telemetry. Dead letter queues (DLQs) catch these failed exports and store them somewhere safe so you can investigate and replay them later.
+When an OpenTelemetry export fails after all retries are exhausted, the data is gone. The sending queue drops the batch, the exporter moves on, and you have a gap in your telemetry. The OpenTelemetry Collector does not have native failed-export routing, so DLQ-style designs usually keep a second durable copy of telemetry that you can investigate and replay later.
 
 This guide shows you how to build dead letter queue patterns into your OpenTelemetry pipeline, from simple file-based approaches to production-grade Kafka and S3 implementations.
 
 ## Why You Need a Dead Letter Queue
 
-The retry mechanism in the OpenTelemetry Collector is good, but it has limits. Once `max_elapsed_time` passes, the batch is dropped. During a prolonged backend outage, even a persistent sending queue will eventually fill up and start dropping the oldest batches.
+The retry mechanism in the OpenTelemetry Collector is good, but it has limits. Once `max_elapsed_time` passes, the batch is dropped. During a prolonged backend outage, even a persistent sending queue can fill up and start rejecting new batches.
 
-A DLQ captures these dropped batches so you can:
+A DLQ-style secondary copy gives you data to work from when the primary path drops batches, so you can:
 
 - **Investigate failures**: Understand why exports are failing by examining the actual data.
 - **Replay data**: After the backend recovers, replay the DLQ data to fill in gaps.
@@ -29,19 +29,19 @@ flowchart LR
     end
 
     E -->|Success| Backend[Backend]
-    E -->|"Failure after retries"| DLQ[Dead Letter Queue]
-    DLQ -->|"Manual or automated replay"| Backend
+    E -->|Secondary copy| DLQ[Dead Letter Queue]
+    DLQ -->|"Manual or automated replay after a primary-path gap"| Backend
 
     style DLQ fill:#ffcc00,color:#000
 ```
 
 ## File-Based Dead Letter Queue
 
-The simplest DLQ writes failed exports to local files. This works well for single-collector deployments and is easy to set up.
+The simplest DLQ-style backup writes a copy of telemetry to local files. This works well for single-collector deployments and is easy to set up.
 
-The idea is to use the fan-out capability of the collector pipeline. You send data to both your primary exporter and a file exporter. The file exporter acts as your DLQ, but you only want it to receive data that the primary exporter failed to deliver.
+The idea is to use the fan-out capability of the collector pipeline. You send data to both your primary exporter and a file exporter. The file exporter acts as a replayable safety copy, because the Collector cannot send only the batches that the primary exporter failed to deliver.
 
-Since the collector does not have a native "on-failure-route-to" mechanism, we use a different approach: a separate pipeline that writes everything to a file, combined with aggressive rotation to keep disk usage manageable.
+Since the collector does not have a native "on-failure-route-to" mechanism, we use a different approach: write everything to a file alongside the primary exporter, combined with aggressive rotation to keep disk usage manageable.
 
 ```yaml
 # collector-config-with-file-dlq.yaml
@@ -66,6 +66,8 @@ exporters:
   # Primary exporter to your backend
   otlp/primary:
     endpoint: backend.observability.svc:4317
+    tls:
+      insecure: true
     retry_on_failure:
       enabled: true
       initial_interval: 5s
@@ -112,8 +114,8 @@ To replay data from the file DLQ, you can use a separate collector instance that
 # replay-collector-config.yaml
 # Run this collector to replay DLQ data back to the backend
 receivers:
-  # Use the filelog receiver to read the DLQ files
-  filelog:
+  # Use the OTLP JSON file receiver to read files written by the file exporter
+  otlp_json_file:
     include:
       - /var/lib/otel/dlq/traces*.jsonl
     start_at: beginning
@@ -123,6 +125,8 @@ receivers:
 exporters:
   otlp:
     endpoint: backend.observability.svc:4317
+    tls:
+      insecure: true
     retry_on_failure:
       enabled: true
       initial_interval: 10s
@@ -136,14 +140,14 @@ exporters:
 
 service:
   pipelines:
-    logs:
-      receivers: [filelog]
+    traces:
+      receivers: [otlp_json_file]
       exporters: [otlp]
 ```
 
 ## Kafka-Based Dead Letter Queue
 
-For production environments, Kafka is a much better DLQ than local files. It provides durability, replication, and the ability to replay data without running a special collector.
+For production environments, Kafka is a much better replay buffer than local files. It provides durability, replication, and the ability to replay data by consuming from stored offsets.
 
 ```mermaid
 flowchart TD
@@ -192,6 +196,8 @@ exporters:
   # Primary exporter
   otlp/primary:
     endpoint: backend.observability.svc:4317
+    tls:
+      insecure: true
     retry_on_failure:
       enabled: true
       initial_interval: 5s
@@ -209,8 +215,9 @@ exporters:
       - kafka-1.kafka.svc:9092
       - kafka-2.kafka.svc:9092
       - kafka-3.kafka.svc:9092
-    topic: otel-dlq-traces
-    encoding: otlp_proto
+    traces:
+      topic: otel-dlq-traces
+      encoding: otlp_proto
     producer:
       # Use snappy compression to reduce Kafka storage
       compression: snappy
@@ -273,14 +280,32 @@ kafka-topics.sh --create \
 
 ## S3-Based Dead Letter Queue
 
-For long-term archival, writing failed exports to S3 (or any S3-compatible storage) gives you virtually unlimited retention at low cost.
+For long-term archival, writing a secondary copy to S3 (or any S3-compatible storage) gives you virtually unlimited retention at low cost.
 
 ```yaml
 # collector-config-with-s3-dlq.yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 2048
+    spike_limit_mib: 512
+
+  batch:
+    send_batch_size: 1024
+    timeout: 5s
+
 exporters:
   # Primary exporter
   otlp/primary:
     endpoint: backend.observability.svc:4317
+    tls:
+      insecure: true
     retry_on_failure:
       enabled: true
       initial_interval: 5s
@@ -297,13 +322,11 @@ exporters:
       # Use a dedicated bucket for DLQ data
       s3_bucket: otel-dead-letter-queue
       # Organize by date for easy browsing and lifecycle policies
-      s3_prefix: "traces/"
-      # Partition by date
-      s3_partition: minute
+      s3_prefix: "traces"
+      # Partition by date and minute
+      s3_partition_format: "year=%Y/month=%m/day=%d/hour=%H/minute=%M"
       # Use gzip compression to reduce storage costs
       compression: gzip
-      # Buffer data for 5 minutes before uploading
-      # This reduces the number of S3 PUT requests
       file_prefix: "dlq-"
 
     # Marshal as OTLP proto for efficient storage and
@@ -356,19 +379,15 @@ receivers:
   kafka:
     brokers:
       - kafka-1.kafka.svc:9092
-    topic: otel-dlq-traces
+    traces:
+      topics: [otel-dlq-traces]
+      encoding: otlp_proto
     group_id: otel-dlq-replay
-    encoding: otlp_proto
     # Start from the specific offset where the outage began
-    # Use "earliest" to replay everything, or set specific offsets
+    # Use "earliest" to replay everything if the group has no committed offset
     initial_offset: earliest
 
 processors:
-  # Rate limit the replay to avoid overwhelming the backend
-  # that just recovered
-  rate_limiting:
-    spans_per_second: 10000
-
   batch:
     send_batch_size: 512
     timeout: 5s
@@ -377,6 +396,54 @@ exporters:
   otlp:
     endpoint: backend.observability.svc:4317
     timeout: 30s
+    tls:
+      insecure: true
+    retry_on_failure:
+      enabled: true
+      initial_interval: 10s
+      max_interval: 120s
+    sending_queue:
+      enabled: true
+      # Use fewer consumers during replay to avoid
+      # overwhelming the backend
+      num_consumers: 3
+      queue_size: 500
+
+service:
+  pipelines:
+    traces:
+      receivers: [kafka]
+      processors: [batch]
+      exporters: [otlp]
+```
+
+### Replaying from S3
+
+```yaml
+# s3-replay-collector.yaml
+# Dedicated collector for replaying archived DLQ data from S3
+receivers:
+  awss3/dlq:
+    starttime: "2026-02-06"
+    endtime: "2026-02-07"
+    s3downloader:
+      region: us-east-1
+      s3_bucket: otel-dead-letter-queue
+      s3_prefix: "traces"
+      s3_partition_format: "year=%Y/month=%m/day=%d/hour=%H/minute=%M"
+      file_prefix: "dlq-"
+
+processors:
+  batch:
+    send_batch_size: 512
+    timeout: 5s
+
+exporters:
+  otlp:
+    endpoint: backend.observability.svc:4317
+    timeout: 30s
+    tls:
+      insecure: true
     retry_on_failure:
       enabled: true
       initial_interval: 10s
@@ -389,51 +456,9 @@ exporters:
 service:
   pipelines:
     traces:
-      receivers: [kafka]
-      processors: [rate_limiting, batch]
+      receivers: [awss3/dlq]
+      processors: [batch]
       exporters: [otlp]
-```
-
-### Replaying from S3
-
-```bash
-#!/bin/bash
-# replay-from-s3.sh
-# Downloads DLQ data from S3 and replays it through a collector
-
-BUCKET="otel-dead-letter-queue"
-PREFIX="traces/"
-START_DATE="2026-02-06"
-END_DATE="2026-02-07"
-LOCAL_DIR="/tmp/dlq-replay"
-COLLECTOR_ENDPOINT="localhost:4317"
-
-# Download the DLQ files for the outage period
-echo "Downloading DLQ data from S3..."
-mkdir -p "$LOCAL_DIR"
-aws s3 sync "s3://$BUCKET/$PREFIX" "$LOCAL_DIR" \
-  --exclude "*" \
-  --include "*${START_DATE}*" \
-  --include "*${END_DATE}*"
-
-# Count the files to replay
-FILE_COUNT=$(find "$LOCAL_DIR" -name "*.gz" | wc -l)
-echo "Found $FILE_COUNT files to replay"
-
-# Start a replay collector that reads from the downloaded files
-# and sends to the backend
-echo "Starting replay..."
-# Use telemetrygen or a custom tool to send the OTLP proto files
-# back through the pipeline
-for file in "$LOCAL_DIR"/*.gz; do
-  echo "Replaying: $file"
-  gunzip -c "$file" | \
-    otel-replay-tool --endpoint="$COLLECTOR_ENDPOINT" --input=-
-  # Add a small delay between files to avoid overwhelming the backend
-  sleep 1
-done
-
-echo "Replay complete"
 ```
 
 ## Monitoring Your Dead Letter Queue
@@ -442,7 +467,8 @@ Track the health of your DLQ to make sure it is working and to know when you nee
 
 ```promql
 # Rate of data flowing to the DLQ exporter
-# Any non-zero sustained rate means primary exports are failing
+# This confirms the secondary copy is being written; it does not
+# mean primary exports are failing
 rate(otelcol_exporter_sent_spans{exporter="kafka/dlq"}[5m])
 
 # DLQ exporter failures -- if the DLQ itself is failing,
@@ -454,7 +480,7 @@ rate(otelcol_exporter_send_failed_spans{exporter="kafka/dlq"}[5m])
 kafka_consumer_group_lag{topic="otel-dlq-traces", group="otel-dlq-replay"}
 ```
 
-Alert when the DLQ is accumulating data:
+Alert when primary exports are failing while the DLQ copy is active:
 
 ```yaml
 groups:
@@ -469,8 +495,8 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: "DLQ is accumulating data due to primary export failures"
-          description: "The primary exporter is failing and data is accumulating in the dead letter queue. Investigate the primary backend and plan a DLQ replay."
+          summary: "Primary exports are failing while DLQ copy is active"
+          description: "The primary exporter is failing while telemetry is still being written to the dead letter queue. Investigate the primary backend and plan a DLQ replay if data was dropped."
 
       - alert: DLQExporterFailing
         expr: rate(otelcol_exporter_send_failed_spans{exporter=~".*dlq.*"}[5m]) > 0

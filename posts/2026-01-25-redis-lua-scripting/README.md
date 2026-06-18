@@ -84,6 +84,7 @@ result = r.evalsha(sha, 1, 'mykey')
 ```python
 import redis
 import time
+import uuid
 
 r = redis.Redis(host='localhost', port=6379, db=0)
 
@@ -92,6 +93,7 @@ local key = KEYS[1]
 local limit = tonumber(ARGV[1])
 local window = tonumber(ARGV[2])
 local current_time = tonumber(ARGV[3])
+local request_id = ARGV[4]
 
 -- Remove old entries outside the window
 local window_start = current_time - window
@@ -102,7 +104,7 @@ local count = redis.call('ZCARD', key)
 
 if count < limit then
     -- Add this request
-    redis.call('ZADD', key, current_time, current_time .. math.random())
+    redis.call('ZADD', key, current_time, current_time .. ':' .. request_id)
     redis.call('EXPIRE', key, window)
     return {1, limit - count - 1}  -- allowed, remaining
 else
@@ -117,7 +119,7 @@ def check_rate_limit(user_id, limit=100, window=60):
 
     result = rate_limit_script(
         keys=[key],
-        args=[limit, window, current_time]
+        args=[limit, window, current_time, str(uuid.uuid4())]
     )
 
     allowed = result[0] == 1
@@ -131,7 +133,7 @@ for i in range(5):
     print(f"Request {i+1}: {'allowed' if allowed else 'denied'}, {remaining} remaining")
 ```
 
-### Distributed Lock
+### Single-Instance Lock
 
 ```python
 import redis
@@ -165,7 +167,7 @@ else
 end
 """)
 
-class DistributedLock:
+class RedisLock:
     def __init__(self, name, ttl_ms=10000):
         self.key = f'lock:{name}'
         self.token = str(uuid.uuid4())
@@ -193,10 +195,12 @@ class DistributedLock:
         self.release()
 
 # Usage
-with DistributedLock('resource:1') as lock:
+with RedisLock('resource:1') as lock:
     # Critical section
     print("Doing exclusive work...")
 ```
+
+This pattern protects a single Redis primary. For multi-node fault tolerance, use a Redlock implementation or a Redis locking library that implements it.
 
 ### Atomic Counter with Limit
 
@@ -333,6 +337,10 @@ end
 
 -- Get user's new rank
 local rank = redis.call('ZREVRANK', leaderboard, user_id)
+local rank_value = false
+if rank then
+    rank_value = rank + 1
+end
 
 -- Calculate if it is a personal best
 local is_personal_best = 0
@@ -340,7 +348,7 @@ if not prev_score or score > tonumber(prev_score) then
     is_personal_best = 1
 end
 
-return {rank + 1, is_personal_best, score}
+return {rank_value, is_personal_best, tostring(score)}
 """)
 
 def update_score(user_id, score, max_entries=100):
@@ -356,7 +364,7 @@ def update_score(user_id, score, max_entries=100):
     return {
         'rank': rank,
         'personal_best': bool(is_pb),
-        'score': final_score
+        'score': float(final_score)
     }
 
 # Usage
@@ -402,7 +410,7 @@ print(f"Script exists: {exists}")
 | Use Case | Pattern |
 |----------|---------|
 | Rate limiting | Sliding window with sorted sets |
-| Distributed locks | SET NX with token validation |
+| Single-instance locks | SET NX with token validation |
 | Atomic counters | GET, modify, SET in script |
 | Cache-aside | Check cache, populate if missing |
 | Leaderboards | ZADD with rank calculation |

@@ -156,6 +156,10 @@ Resources:
                   - dynamodb:DeleteItem
                   - dynamodb:Query
                   - dynamodb:Scan
+                  - dynamodb:UpdateItem
+                  - dynamodb:BatchGetItem
+                  - dynamodb:BatchWriteItem
+                  - dynamodb:TransactWriteItems
                 Resource:
                   - !GetAtt ConnectionsTable.Arn
                   - !Sub '${ConnectionsTable.Arn}/index/*'
@@ -208,7 +212,7 @@ Resources:
       Runtime: nodejs20.x
       Handler: index.handler
       Role: !GetAtt LambdaExecutionRole.Arn
-      Timeout: 30
+      Timeout: 29
       Environment:
         Variables:
           CONNECTIONS_TABLE: !Ref ConnectionsTable
@@ -472,8 +476,8 @@ The message handler processes incoming messages and can broadcast to other conne
 // Lambda handler for message routes
 
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
-const { DynamoDBDocumentClient, QueryCommand, UpdateCommand, GetCommand } = require('@aws-sdk/lib-dynamodb');
-const { ApiGatewayManagementApiClient, PostToConnectionCommand, DeleteConnectionCommand } = require('@aws-sdk/client-apigatewaymanagementapi');
+const { DynamoDBDocumentClient, QueryCommand, UpdateCommand, GetCommand, DeleteCommand } = require('@aws-sdk/lib-dynamodb');
+const { ApiGatewayManagementApiClient, PostToConnectionCommand } = require('@aws-sdk/client-apigatewaymanagementapi');
 
 const dynamoClient = new DynamoDBClient({});
 const docClient = DynamoDBDocumentClient.from(dynamoClient);
@@ -703,7 +707,7 @@ async function broadcastToConnections(endpoint, connections, payload, excludeCon
                     Data: message
                 }));
             } catch (err) {
-                if (err.statusCode === 410) {
+                if (isGoneException(err)) {
                     // Connection is stale, remove it
                     console.log('Removing stale connection:', conn.connectionId);
                     await docClient.send(new DeleteCommand({
@@ -728,7 +732,7 @@ async function sendToConnection(endpoint, connectionId, payload) {
             Data: JSON.stringify(payload)
         }));
     } catch (err) {
-        if (err.statusCode === 410) {
+        if (isGoneException(err)) {
             // Connection is gone
             await docClient.send(new DeleteCommand({
                 TableName: CONNECTIONS_TABLE,
@@ -751,6 +755,12 @@ async function sendError(connectionId, endpoint, message) {
     }
 
     return { statusCode: 400, body: message };
+}
+
+function isGoneException(err) {
+    return err.name === 'GoneException' ||
+        err.statusCode === 410 ||
+        err.$metadata?.httpStatusCode === 410;
 }
 ```
 
@@ -786,7 +796,7 @@ class ConnectionManager {
             }));
             return true;
         } catch (err) {
-            if (err.statusCode === 410) {
+            if (isGoneException(err)) {
                 return false;
             }
             throw err;
@@ -795,20 +805,29 @@ class ConnectionManager {
 
     // Clean up stale connections
     async cleanupStaleConnections() {
-        const scanResult = await docClient.send(new ScanCommand({
-            TableName: this.tableName,
-            ProjectionExpression: 'connectionId'
-        }));
-
         const staleConnections = [];
+        let checked = 0;
+        let lastKey;
 
-        // Check each connection
-        for (const item of scanResult.Items || []) {
-            const isActive = await this.isConnectionActive(item.connectionId);
-            if (!isActive) {
-                staleConnections.push(item.connectionId);
+        do {
+            const scanResult = await docClient.send(new ScanCommand({
+                TableName: this.tableName,
+                ExclusiveStartKey: lastKey,
+                ProjectionExpression: 'connectionId'
+            }));
+
+            checked += scanResult.Items?.length || 0;
+
+            // Check each connection
+            for (const item of scanResult.Items || []) {
+                const isActive = await this.isConnectionActive(item.connectionId);
+                if (!isActive) {
+                    staleConnections.push(item.connectionId);
+                }
             }
-        }
+
+            lastKey = scanResult.LastEvaluatedKey;
+        } while (lastKey);
 
         // Delete stale connections in batches
         if (staleConnections.length > 0) {
@@ -816,7 +835,7 @@ class ConnectionManager {
         }
 
         return {
-            checked: scanResult.Items?.length || 0,
+            checked,
             removed: staleConnections.length
         };
     }
@@ -874,6 +893,12 @@ class ConnectionManager {
     }
 }
 
+function isGoneException(err) {
+    return err.name === 'GoneException' ||
+        err.statusCode === 410 ||
+        err.$metadata?.httpStatusCode === 410;
+}
+
 module.exports = { ConnectionManager };
 ```
 
@@ -898,20 +923,8 @@ Set up a scheduled Lambda to clean up stale connections.
           CONNECTIONS_TABLE: !Ref ConnectionsTable
           WEBSOCKET_ENDPOINT: !Sub 'https://${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}'
       Code:
-        ZipFile: |
-          const { ConnectionManager } = require('./connection-manager');
-
-          exports.handler = async (event) => {
-            const manager = new ConnectionManager(
-              process.env.CONNECTIONS_TABLE,
-              process.env.WEBSOCKET_ENDPOINT
-            );
-
-            const result = await manager.cleanupStaleConnections();
-            console.log('Cleanup result:', result);
-
-            return result;
-          };
+        S3Bucket: your-deployment-bucket
+        S3Key: websocket-cleanup.zip # Package index.js with connection-manager.js
 
   CleanupSchedule:
     Type: AWS::Events::Rule
@@ -1143,7 +1156,7 @@ flowchart TB
 
         subgraph APIGateway["API Gateway"]
             Throttling[Throttling]
-            Caching[Response Caching]
+            Metrics[Detailed Metrics]
             Regional[Regional Endpoints]
         end
     end
@@ -1155,6 +1168,7 @@ flowchart TB
 
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const { DynamoDBDocumentClient, BatchGetCommand, TransactWriteCommand } = require('@aws-sdk/lib-dynamodb');
+const { PostToConnectionCommand } = require('@aws-sdk/client-apigatewaymanagementapi');
 
 // Connection reuse for Lambda
 const dynamoClient = new DynamoDBClient({
@@ -1213,7 +1227,7 @@ async function parallelBroadcast(apiGatewayClient, connections, message, concurr
                 }));
                 results.success++;
             } catch (err) {
-                if (err.statusCode === 410) {
+                if (isGoneException(err)) {
                     results.stale.push(conn.connectionId);
                 }
                 results.failed++;
@@ -1245,6 +1259,12 @@ async function atomicRoomJoin(tableName, connectionId, roomId, userId) {
     }));
 }
 
+function isGoneException(err) {
+    return err.name === 'GoneException' ||
+        err.statusCode === 410 ||
+        err.$metadata?.httpStatusCode === 410;
+}
+
 module.exports = {
     batchGetConnections,
     parallelBroadcast,
@@ -1260,12 +1280,29 @@ Set up CloudWatch metrics and alarms for your WebSocket API.
 # monitoring.yaml
 # CloudWatch monitoring for WebSocket API
 
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+  WebSocketApi:
+    Type: String
+    Description: API Gateway WebSocket API ID
+  AlertSNSTopic:
+    Type: String
+    Description: ARN of the SNS topic for alarm notifications
+
 Resources:
+  ConnectLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${Environment}-websocket-connect'
+      RetentionInDays: 30
+
   # Custom metric filter for connection errors
   ConnectionErrorMetric:
     Type: AWS::Logs::MetricFilter
     Properties:
-      LogGroupName: !Sub '/aws/lambda/${Environment}-websocket-connect'
+      LogGroupName: !Ref ConnectLogGroup
       FilterPattern: 'ERROR'
       MetricTransformations:
         - MetricName: ConnectionErrors
@@ -1299,10 +1336,10 @@ Resources:
             {
               "type": "metric",
               "properties": {
-                "title": "Connection Count",
+                "title": "Connection and Message Activity",
                 "metrics": [
                   ["AWS/ApiGateway", "ConnectCount", "ApiId", "${WebSocketApi}"],
-                  ["AWS/ApiGateway", "DisconnectCount", "ApiId", "${WebSocketApi}"]
+                  ["AWS/ApiGateway", "MessageCount", "ApiId", "${WebSocketApi}"]
                 ],
                 "period": 60,
                 "stat": "Sum"

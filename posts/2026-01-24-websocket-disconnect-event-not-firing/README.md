@@ -121,10 +121,10 @@ io.on('connection', (socket) => {
         console.log('This will never fire');
     });
 
-    // Issue 2: Disconnect without proper transport configuration
-    // Default pingTimeout and pingInterval might be too long
+    // Issue 2: Disconnect without proper heartbeat tuning
+    // Socket.IO v4 defaults are pingInterval: 25000 and pingTimeout: 20000
     socket.on('disconnect', (reason) => {
-        // Might take up to 5 minutes with default settings
+        // Might take up to about 45 seconds with default settings
         console.log('Disconnected:', reason);
     });
 });
@@ -149,8 +149,6 @@ const WebSocket = require('ws');
 
 // Configuration
 const HEARTBEAT_INTERVAL = 30000;  // Send ping every 30 seconds
-const HEARTBEAT_TIMEOUT = 35000;   // Terminate if no pong within 35 seconds
-
 const wss = new WebSocket.Server({ port: 8080 });
 
 // Track all connections with their state
@@ -425,12 +423,12 @@ io.on('connection', (socket) => {
 
         // Analyze disconnect reason
         switch (reason) {
-            case 'io server disconnect':
+            case 'server namespace disconnect':
                 // Server forcefully disconnected the socket
                 console.log('Server initiated disconnect');
                 break;
 
-            case 'io client disconnect':
+            case 'client namespace disconnect':
                 // Client called socket.disconnect()
                 console.log('Clean client disconnect');
                 break;
@@ -448,6 +446,11 @@ io.on('connection', (socket) => {
             case 'transport error':
                 // Connection encountered an error
                 console.log('Transport error');
+                break;
+
+            case 'server shutting down':
+                // Server is shutting down
+                console.log('Server shutting down');
                 break;
 
             default:
@@ -499,8 +502,8 @@ io.use((socket, next) => {
     }
 });
 
-// Handle middleware errors
-io.on('connect_error', (err) => {
+// Handle low-level Engine.IO connection errors on the server
+io.engine.on('connection_error', (err) => {
     console.error('Connection error:', err.message);
 });
 ```
@@ -522,7 +525,7 @@ class RobustWebSocketServer {
 
         // Multiple detection mechanisms
         this.PING_INTERVAL = 15000;     // Ping every 15 seconds
-        this.PONG_TIMEOUT = 20000;      // Expect pong within 20 seconds
+        this.PONG_TIMEOUT = 10000;      // Expect pong within 10 seconds
         this.ACTIVITY_TIMEOUT = 60000;  // No activity for 60 seconds
 
         this.setupServer();
@@ -1027,12 +1030,12 @@ async function testNetworkFailure(serverUrl) {
     // Requires server-side heartbeat with short timeout for quick testing
 
     return new Promise((resolve, reject) => {
-        const ws = new WebSocket(serverUrl);
+        const ws = new WebSocket(serverUrl, { autoPong: false });
 
         ws.on('open', () => {
             console.log('Test: Network failure - connected');
 
-            // Override ping handler to not respond
+            // Disable automatic pong responses and ignore pings
             ws.on('ping', () => {
                 console.log('Test: Ignoring server ping');
                 // Do not send pong

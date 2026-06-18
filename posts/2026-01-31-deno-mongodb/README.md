@@ -20,7 +20,7 @@ Before getting started, ensure you have the following installed:
 
 ## Setting Up the MongoDB Driver
 
-Deno uses URL-based imports, and the community-maintained `deno_mongo` driver (from denodrivers) is available through deno.land. The driver provides TypeScript support out of the box. Note that it does not implement every MongoDB feature — for instance, sessions and transactions are not supported, so if you need those you should use the official `npm:mongodb` driver via Deno's npm specifier.
+Deno uses URL-based imports, and the community-maintained `deno_mongo` driver (from denodrivers) is available through deno.land. The driver provides TypeScript support out of the box. Note that it does not implement every MongoDB feature - for instance, sessions and transactions are not supported, so if you need those you should use the official `npm:mongodb` driver via Deno's npm specifier.
 
 Create a new file to set up your database connection:
 
@@ -1056,7 +1056,7 @@ async function runInTransaction<T>(
 }
 ```
 
-Transactions require MongoDB to be running as a replica set or sharded cluster — they are not available on standalone deployments.
+Transactions require MongoDB to be running as a replica set or sharded cluster - they are not available on standalone deployments.
 
 ## Best Practices Summary
 

@@ -368,7 +368,7 @@ spec:
 
 ## Template Overrides
 
-Override specific parts of the template for certain Applications:
+Override specific parts of the template for certain Applications with `templatePatch`:
 
 ```yaml
 # template-override.yaml
@@ -378,6 +378,7 @@ metadata:
   name: apps-with-patches
   namespace: argocd
 spec:
+  goTemplate: true
   generators:
     - list:
         elements:
@@ -385,25 +386,24 @@ spec:
             sync: automated
           - app: database
             sync: manual
-        template:
-          spec:
-            # This patches only applications from this generator
-            syncPolicy:
-              automated: null
   template:
     metadata:
-      name: '{{app}}'
+      name: '{{.app}}'
     spec:
       project: default
       source:
         repoURL: https://github.com/myorg/apps.git
-        path: '{{app}}'
+        path: '{{.app}}'
       destination:
         server: https://kubernetes.default.svc
-        namespace: '{{app}}'
+        namespace: '{{.app}}'
+  templatePatch: |
+    {{- if eq .sync "automated" }}
+    spec:
       syncPolicy:
         automated:
           prune: true
+    {{- end }}
 ```
 
 ## Sync Policy for ApplicationSets
@@ -449,15 +449,17 @@ name: '{{cluster.region}}-{{app}}-{{env}}'
 name: '{{path.basename}}'
 ```
 
-### Set Resource Limits
+### Control Pruning
 
 ```yaml
 template:
   metadata:
     name: '{{app}}'
-    annotations:
-      # Prevent runaway syncs
-      argocd.argoproj.io/sync-options: Prune=false
+  spec:
+    syncPolicy:
+      syncOptions:
+        # Disable pruning by default for generated Applications
+        - Prune=false
 ```
 
 ### Group by Project

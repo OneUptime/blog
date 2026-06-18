@@ -60,7 +60,7 @@ meter = metrics.get_meter("deployment-tracker")
 
 # Counter that increments once per deployment
 deploy_counter = meter.create_counter(
-    name="deployments.total",
+    name="deployments",
     description="Number of deployments",
     unit="1",
 )
@@ -72,6 +72,7 @@ def record_deployment(service_name, version, commit_sha):
         "service.version": version,
         "commit.sha": commit_sha,
     })
+    provider.force_flush()
 ```
 
 ## Overlaying Deployment Markers in Grafana
@@ -82,7 +83,7 @@ If you used the metrics approach (Approach 2), create an annotation query from P
 
 ```promql
 # Use this as an annotation query in Grafana
-# It fires whenever the deployment counter increments
+# If exported to Prometheus, the OpenTelemetry counter appears as deployments_total
 increase(deployments_total[1m]) > 0
 ```
 
@@ -96,12 +97,12 @@ The real value is in quantifying deployment impact. Use Grafana's time shift fea
 
 ```promql
 # Error rate in the last 30 minutes (post-deploy)
-sum(rate(http_server_request_duration_seconds_count{status_code="STATUS_CODE_ERROR"}[30m]))
+sum(rate(http_server_request_duration_seconds_count{error_type=~".+"}[30m]))
 /
 sum(rate(http_server_request_duration_seconds_count[30m]))
 
 # Error rate 30 minutes before that (pre-deploy) using offset
-sum(rate(http_server_request_duration_seconds_count{status_code="STATUS_CODE_ERROR"}[30m] offset 30m))
+sum(rate(http_server_request_duration_seconds_count{error_type=~".+"}[30m] offset 30m))
 /
 sum(rate(http_server_request_duration_seconds_count[30m] offset 30m))
 ```
@@ -143,7 +144,7 @@ graph TD
 
 ## Automating Deployment Scoring
 
-You can take this further by computing a deployment health score. Use a Grafana recording rule that evaluates key metrics after each deploy and assigns a score.
+You can take this further by computing a deployment health score. Use a Prometheus recording rule that evaluates key metrics on a regular interval and assigns a score you can view alongside each deploy.
 
 ```yaml
 # recording-rules.yaml
@@ -155,17 +156,17 @@ groups:
       - record: deploy:error_rate:healthy
         expr: >
           (
-            sum(rate(http_server_request_duration_seconds_count{status_code="STATUS_CODE_ERROR"}[15m]))
+            sum(rate(http_server_request_duration_seconds_count{error_type=~".+"}[15m]))
             /
             sum(rate(http_server_request_duration_seconds_count[15m]))
-          ) < 0.01
+          ) < bool 0.01
 
       # 1 if P95 latency is below threshold, 0 otherwise
       - record: deploy:latency_p95:healthy
         expr: >
           histogram_quantile(0.95,
             sum by (le) (rate(http_server_request_duration_seconds_bucket[15m]))
-          ) < 0.5
+          ) < bool 0.5
 ```
 
 With deployment annotations layered on top of OpenTelemetry metrics, your dashboard becomes a deployment review tool. Every release gets an implicit scorecard - you can see its effect on latency, errors, and throughput within minutes of it going live. This feedback loop helps teams catch regressions early and build confidence in their release process.

@@ -1088,7 +1088,7 @@ scrape_configs:
 
 ### Adjust Scrape Intervals
 
-Balance between granularity and resource usage. Run two scrape jobs against the same exporter target at different cadences — use `metric_relabel_configs` to keep only the metrics relevant to each job.
+Balance between granularity and resource usage. Run two scrape jobs against the same exporter target at different cadences - use `metric_relabel_configs` to keep only the metrics relevant to each job.
 
 ```yaml
 # prometheus.yml

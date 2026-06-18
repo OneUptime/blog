@@ -605,7 +605,7 @@ async function processWithDynamicTimeout(queueUrl, processingFunction) {
 
 ## FIFO Queue Delays
 
-FIFO queues support delays but with important caveats. FIFO queues do not support per-message timers — `DelaySeconds` can only be configured at the queue level via the `DelaySeconds` attribute, and the delay applies to every message added to the queue. Message group ordering is preserved within each group.
+FIFO queues support delays but with important caveats. FIFO queues do not support per-message timers - `DelaySeconds` can only be configured at the queue level via the `DelaySeconds` attribute, and the delay applies to every message added to the queue. Message group ordering is preserved within each group.
 
 ```mermaid
 flowchart LR
@@ -666,7 +666,7 @@ def send_fifo_message(
 ) -> dict:
     """
     Send a message to a FIFO queue. Any delay must be configured at the queue
-    level via the DelaySeconds attribute — FIFO queues do not support per-message
+    level via the DelaySeconds attribute - FIFO queues do not support per-message
     timers, so SendMessage cannot specify DelaySeconds.
 
     Args:

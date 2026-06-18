@@ -175,6 +175,7 @@ Tests must be independent and able to run in any order. Use proper setup and tea
 ```javascript
 describe('Database operations', () => {
   let connection;
+  let userRepository;
   let testUser;
 
   // Setup runs before each test
@@ -182,6 +183,7 @@ describe('Database operations', () => {
     // Start a transaction for test isolation
     connection = await db.getConnection();
     await connection.beginTransaction();
+    userRepository = new UserRepository(connection);
 
     // Create fresh test data
     testUser = await createTestUser(connection);
@@ -216,6 +218,14 @@ Good unit tests cover edge cases, not just the happy path. Consider boundary con
 
 ```javascript
 describe('calculateAge', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   // Happy path
   it('should calculate age correctly', () => {
     jest.setSystemTime(new Date('2026-01-24'));

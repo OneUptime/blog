@@ -48,7 +48,7 @@ Understanding execution order is critical when working with multiple middleware.
 | Added Second   | Executed Second   | Executed Second     |
 | Added Last     | Executed First    | Executed Last       |
 
-This behavior follows the "onion model" where outer layers wrap inner layers. The middleware added last becomes the outermost layer — the request enters it first and the response leaves through it last.
+This behavior follows the "onion model" where outer layers wrap inner layers. The middleware added last becomes the outermost layer - the request enters it first and the response leaves through it last.
 
 ---
 

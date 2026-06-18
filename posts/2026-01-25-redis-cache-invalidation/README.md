@@ -140,7 +140,7 @@ class TaggedCache:
         """
         Store a value with associated tags for group invalidation.
         """
-        # Use a pipeline for atomic operations
+        # Use a pipeline to execute the writes together
         pipe = self.r.pipeline()
 
         # Store the actual value
@@ -151,8 +151,10 @@ class TaggedCache:
         for tag in tags:
             tag_key = f"tag:{tag}"
             pipe.sadd(tag_key, key)
-            # Expire the tag set slightly after the longest possible TTL
-            pipe.expire(tag_key, ttl + 60)
+            # Keep the tag set long enough for the longest active entry
+            current_tag_ttl = self.r.ttl(tag_key)
+            if current_tag_ttl < ttl + 60:
+                pipe.expire(tag_key, ttl + 60)
 
         pipe.execute()
 
@@ -300,17 +302,17 @@ Instead of invalidating, update the cache immediately when data changes. This ke
 ```python
 def update_user_profile_write_through(user_id, new_data):
     """
-    Write-through pattern: update both database and cache atomically.
-    The cache is always current, no invalidation needed.
+    Write-through pattern: update both database and cache in the same write path.
+    The cache is refreshed immediately after the database write.
     """
     # Start a database transaction
     with db.transaction():
         # Update the database
         update_profile_in_db(user_id, new_data)
 
-        # Immediately update the cache with fresh data
-        cache_key = f"user:profile:{user_id}"
-        r.set(cache_key, json.dumps(new_data), ex=300)
+    # Immediately update the cache with fresh data
+    cache_key = f"user:profile:{user_id}"
+    r.set(cache_key, json.dumps(new_data), ex=300)
 
     return new_data
 
@@ -324,12 +326,12 @@ def create_order_write_through(user_id, order_data):
         # Create the order in the database
         order = create_order_in_db(user_id, order_data)
 
-        # Update the orders list cache by fetching fresh data
-        orders = fetch_user_orders_from_db(user_id)
-        r.set(f"user:{user_id}:orders", json.dumps(orders), ex=600)
+    # Update the orders list cache by fetching fresh data
+    orders = fetch_user_orders_from_db(user_id)
+    r.set(f"user:{user_id}:orders", json.dumps(orders), ex=600)
 
-        # Update order count
-        r.set(f"user:{user_id}:order_count", len(orders), ex=600)
+    # Update order count
+    r.set(f"user:{user_id}:order_count", len(orders), ex=600)
 
     return order
 ```
@@ -344,6 +346,9 @@ def get_popular_data_with_lock(key, fetch_func, ttl=300):
     Prevent cache stampede using a distributed lock.
     Only one request will fetch from the database, others wait.
     """
+    import time
+    import uuid
+
     # Try to get from cache
     cached = r.get(key)
     if cached:
@@ -351,10 +356,11 @@ def get_popular_data_with_lock(key, fetch_func, ttl=300):
 
     # Cache miss - try to acquire lock for rebuilding
     lock_key = f"lock:{key}"
+    lock_token = str(uuid.uuid4())
 
     # SET NX returns True if we got the lock (key didn't exist)
     # Lock expires after 10 seconds to prevent deadlocks
-    acquired = r.set(lock_key, "1", nx=True, ex=10)
+    acquired = r.set(lock_key, lock_token, nx=True, ex=10)
 
     if acquired:
         try:
@@ -363,11 +369,17 @@ def get_popular_data_with_lock(key, fetch_func, ttl=300):
             r.set(key, json.dumps(data), ex=ttl)
             return data
         finally:
-            # Release the lock
-            r.delete(lock_key)
+            # Release only the lock we acquired
+            release_script = """
+            if redis.call("get", KEYS[1]) == ARGV[1] then
+                return redis.call("del", KEYS[1])
+            else
+                return 0
+            end
+            """
+            r.eval(release_script, 1, lock_key, lock_token)
     else:
         # Another request is fetching, wait and retry
-        import time
         for _ in range(50):  # Wait up to 5 seconds
             time.sleep(0.1)
             cached = r.get(key)

@@ -861,7 +861,7 @@ export class OrderQueryController {
       try {
         const order = await this.getOrderSummaryHandler.execute({ orderId });
 
-        if (!expectedVersion || order.version >= expectedVersion) {
+        if (expectedVersion === undefined || order.version >= expectedVersion) {
           return order;
         }
       } catch (error) {
@@ -874,10 +874,10 @@ export class OrderQueryController {
       await new Promise(resolve => setTimeout(resolve, 100));
     }
 
-    // Return stale data with warning header if timeout exceeded
+    // Return a conflict response if the read model is still stale after the timeout
     const order = await this.getOrderSummaryHandler.execute({ orderId });
 
-    if (expectedVersion && order.version < expectedVersion) {
+    if (expectedVersion !== undefined && order.version < expectedVersion) {
       throw new HttpException(
         {
           statusCode: HttpStatus.CONFLICT,

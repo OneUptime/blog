@@ -57,10 +57,10 @@ class DataLoader<K, V> {
     const promise = new Promise<V>((resolve, reject) => {
       this.queue.push(key);
 
-      // Schedule batch execution on next tick
+      // Schedule batch execution after the current call stack
       if (!this.scheduled) {
         this.scheduled = true;
-        process.nextTick(() => this.executeBatch());
+        queueMicrotask(() => this.executeBatch());
       }
 
       // Store resolver to call later
@@ -97,6 +97,9 @@ class DataLoader<K, V> {
         }
       });
     } catch (error) {
+      // Do not cache failed batch loads
+      keys.forEach(key => this.cache.delete(key));
+
       // Reject all promises on error
       resolvers.forEach(resolver => {
         resolver.reject(error as Error);
@@ -187,9 +190,10 @@ interface Product {
 
 // Many APIs support batch endpoints like /products?ids=1,2,3
 async function batchFetchProducts(productIds: string[]): Promise<Product[]> {
-  const response = await fetch(
-    `https://api.example.com/products?ids=${productIds.join(',')}`
-  );
+  const url = new URL('https://api.example.com/products');
+  url.searchParams.set('ids', productIds.join(','));
+
+  const response = await fetch(url);
 
   if (!response.ok) {
     throw new Error(`API error: ${response.status}`);
@@ -313,12 +317,14 @@ GraphQL naturally benefits from batching because resolvers run independently but
 ```typescript
 // graphql-context.ts
 import DataLoader from 'dataloader';
+import { ApolloServer } from '@apollo/server';
+import { startStandaloneServer } from '@apollo/server/standalone';
 import { Pool } from 'pg';
 
 // Create fresh loaders per request to avoid stale data
 function createLoaders(pool: Pool) {
   return {
-    userLoader: new DataLoader<number, User>(async (ids) => {
+    userLoader: new DataLoader<number, User | null>(async (ids) => {
       const result = await pool.query(
         'SELECT * FROM users WHERE id = ANY($1)',
         [ids]
@@ -327,7 +333,7 @@ function createLoaders(pool: Pool) {
       return ids.map(id => userMap.get(id) || null);
     }),
 
-    postLoader: new DataLoader<number, Post>(async (ids) => {
+    postLoader: new DataLoader<number, Post | null>(async (ids) => {
       const result = await pool.query(
         'SELECT * FROM posts WHERE id = ANY($1)',
         [ids]
@@ -359,7 +365,10 @@ function createLoaders(pool: Pool) {
 const server = new ApolloServer({
   typeDefs,
   resolvers,
-  context: ({ req }) => ({
+});
+
+await startStandaloneServer(server, {
+  context: async ({ req }) => ({
     loaders: createLoaders(pool),
     user: authenticateRequest(req),
   }),
@@ -414,8 +423,8 @@ async function batchWithPartialFailure<K, V>(
   }
 }
 
-// Using dataloader with error objects for missing items
-const userLoader = new DataLoader<number, User | Error>(async (ids) => {
+// Using the official dataloader package with error objects for missing items
+const userLoader = new DataLoader<number, User>(async (ids) => {
   const result = await pool.query(
     'SELECT * FROM users WHERE id = ANY($1)',
     [ids as number[]]

@@ -8,7 +8,7 @@ Description: Learn how to automate TLS certificate management in Kubernetes usin
 
 ---
 
-> cert-manager is the standard solution for automating TLS certificate management in Kubernetes. It handles certificate issuance, renewal, and revocation, eliminating the manual overhead of managing certificates across your cluster.
+> cert-manager is the standard solution for automating TLS certificate management in Kubernetes. It handles certificate issuance and renewal, eliminating the manual overhead of managing certificates across your cluster.
 
 Manual certificate management is error-prone and time-consuming. Expired certificates cause outages, and tracking renewal dates across dozens of services is impractical. cert-manager solves these problems by automating the entire certificate lifecycle.
 
@@ -30,7 +30,7 @@ cert-manager introduces several Kubernetes custom resources:
 
 Before installing cert-manager:
 
-- Kubernetes cluster (v1.19+)
+- A Kubernetes cluster version supported by your cert-manager release
 - kubectl with cluster admin access
 - Helm 3.x installed
 - DNS management access (for DNS-01 challenges)
@@ -43,18 +43,14 @@ Before installing cert-manager:
 Deploy cert-manager using Helm:
 
 ```bash
-# Add the Jetstack Helm repository
-
-helm repo add jetstack https://charts.jetstack.io
-helm repo update
-
 # Install cert-manager with CRDs
-helm install cert-manager jetstack/cert-manager \
+helm install cert-manager oci://quay.io/jetstack/charts/cert-manager \
   --namespace cert-manager \
   --create-namespace \
-  --version v1.13.3 \
-  --set installCRDs=true \
-  --set prometheus.enabled=true
+  --version v1.20.2 \
+  --set crds.enabled=true \
+  --set prometheus.enabled=true \
+  --set prometheus.podmonitor.enabled=true
 
 # Verify installation
 kubectl get pods -n cert-manager
@@ -99,7 +95,7 @@ spec:
     solvers:
     - http01:
         ingress:
-          class: nginx
+          ingressClassName: nginx
 
 ---
 # ClusterIssuer for Let's Encrypt production
@@ -120,21 +116,22 @@ spec:
     # HTTP-01 for ingress-accessible domains
     - http01:
         ingress:
-          class: nginx
+          ingressClassName: nginx
       selector:
-        dnsZones:
-        - "example.com"
+        dnsNames:
+        - api.example.com
+        - api-internal.example.com
 
     # DNS-01 for wildcard certificates
     - dns01:
         cloudflare:
-          email: ops@example.com
           apiTokenSecretRef:
             name: cloudflare-api-token
             key: api-token
       selector:
-        dnsZones:
+        dnsNames:
         - "*.example.com"
+        - "example.com"
 ```
 
 Apply the issuers:
@@ -423,16 +420,16 @@ spec:
         summary: "Certificate {{ $labels.name }} is not ready"
         description: "Certificate {{ $labels.name }} in namespace {{ $labels.namespace }} has been not ready for 15 minutes"
 
-    # Alert on certificate renewal failures
-    - alert: CertificateRenewalFailed
+    # Alert when a certificate has passed its scheduled renewal time
+    - alert: CertificateRenewalOverdue
       expr: |
-        increase(certmanager_certificate_renewal_errors_total[1h]) > 0
-      for: 5m
+        certmanager_certificate_renewal_timestamp_seconds < time()
+      for: 1h
       labels:
         severity: warning
       annotations:
-        summary: "Certificate renewal errors detected"
-        description: "cert-manager has encountered renewal errors in the last hour"
+        summary: "Certificate {{ $labels.name }} renewal is overdue"
+        description: "Certificate {{ $labels.name }} in namespace {{ $labels.namespace }} has passed its scheduled renewal time"
 ```
 
 ---
@@ -470,7 +467,7 @@ kubectl get challenge -n $NAMESPACE
 
 echo ""
 echo "=== cert-manager Logs ==="
-kubectl logs -n cert-manager -l app=cert-manager --tail=50 | grep -i "$CERT_NAME"
+kubectl logs -n cert-manager -l app.kubernetes.io/name=cert-manager,app.kubernetes.io/component=controller --tail=50 | grep -i "$CERT_NAME"
 
 echo ""
 echo "=== Secret Status ==="

@@ -36,7 +36,7 @@ print(counter["orange"])  # 0 (no KeyError!)
 
 # Update counts
 counter.update(["banana", "cherry", "cherry"])
-print(counter)  # Counter({'apple': 3, 'cherry': 3, 'banana': 3})
+print(counter)  # Counter({'apple': 3, 'banana': 3, 'cherry': 3})
 ```
 
 ### Counter Operations

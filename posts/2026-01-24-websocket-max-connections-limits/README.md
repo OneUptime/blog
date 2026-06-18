@@ -104,17 +104,17 @@ free -h
 echo "=== WebSocket Connections ==="
 
 # Total established connections on common WebSocket ports
-echo "Port 80: $(ss -tn state established '( dport = :80 or sport = :80 )' | wc -l)"
-echo "Port 443: $(ss -tn state established '( dport = :443 or sport = :443 )' | wc -l)"
-echo "Port 8080: $(ss -tn state established '( dport = :8080 or sport = :8080 )' | wc -l)"
+echo "Port 80: $(ss -Htn state established '( dport = :80 or sport = :80 )' | wc -l)"
+echo "Port 443: $(ss -Htn state established '( dport = :443 or sport = :443 )' | wc -l)"
+echo "Port 8080: $(ss -Htn state established '( dport = :8080 or sport = :8080 )' | wc -l)"
 
 # Connection states
 echo -e "\n=== Connection States ==="
-ss -tan | awk 'NR>1 {print $1}' | sort | uniq -c | sort -rn
+ss -Htan | awk '{print $1}' | sort | uniq -c | sort -rn
 
 # Top connections by IP
 echo -e "\n=== Top 10 IPs by Connection Count ==="
-ss -tn | awk 'NR>1 {print $5}' | cut -d: -f1 | sort | uniq -c | sort -rn | head -10
+ss -Htn | awk '{print $5}' | sed -E 's/^\[?([^]]+)\]?:[0-9]+$/\1/' | sort | uniq -c | sort -rn | head -10
 
 # File descriptors for node process
 if pgrep -x "node" > /dev/null; then
@@ -256,7 +256,7 @@ const config = {
     connectionTimeout: 60000
 };
 
-if (cluster.isMaster) {
+if (cluster.isPrimary) {
     console.log(`Master ${process.pid} starting ${config.workers} workers`);
 
     // Fork workers
@@ -294,15 +294,24 @@ function startWorker() {
 
     // Create HTTP server with high backlog
     const server = http.createServer();
-    server.maxConnections = config.maxConnections / config.workers;
+    server.maxConnections = Math.ceil(config.maxConnections / config.workers);
 
     // Configure WebSocket server
     const wss = new WebSocket.Server({
-        server,
+        noServer: true,
         maxPayload: 1024 * 1024,  // 1MB max message
         perMessageDeflate: false, // Disable compression to save CPU
         clientTracking: false     // Manual tracking for efficiency
     });
+
+    function removeConnection(connectionId, ip) {
+        if (!connections.has(connectionId)) {
+            return;
+        }
+
+        connections.delete(connectionId);
+        decrementIPCount(ip);
+    }
 
     // Connection rate limiting by IP
     function checkIPLimit(ip) {
@@ -380,14 +389,12 @@ function startWorker() {
         });
 
         ws.on('close', () => {
-            connections.delete(connectionId);
-            decrementIPCount(ip);
+            removeConnection(connectionId, ip);
         });
 
         ws.on('error', (error) => {
             console.error(`Connection ${connectionId} error:`, error.message);
-            connections.delete(connectionId);
-            decrementIPCount(ip);
+            ws.terminate();
         });
     });
 
@@ -399,16 +406,12 @@ function startWorker() {
             // Check for dead connections
             if (!conn.ws.isAlive) {
                 conn.ws.terminate();
-                connections.delete(id);
-                decrementIPCount(conn.ip);
                 continue;
             }
 
             // Check for idle timeout
             if (now - conn.lastActivity > config.connectionTimeout) {
                 conn.ws.close(1000, 'Idle timeout');
-                connections.delete(id);
-                decrementIPCount(conn.ip);
                 continue;
             }
 
@@ -430,7 +433,7 @@ function startWorker() {
     });
 
     // Start server with high backlog
-    server.listen(config.port, { backlog: config.backlog }, () => {
+    server.listen({ port: config.port, backlog: config.backlog }, () => {
         console.log(`Worker ${process.pid} listening on port ${config.port}`);
     });
 
@@ -453,7 +456,7 @@ function startWorker() {
 const http = require('http');
 const { Server } = require('socket.io');
 const cluster = require('cluster');
-const { createAdapter } = require('@socket.io/cluster-adapter');
+const { createAdapter, setupPrimary } = require('@socket.io/cluster-adapter');
 const { setupMaster, setupWorker } = require('@socket.io/sticky');
 
 const config = {
@@ -462,13 +465,14 @@ const config = {
     maxConnections: 100000
 };
 
-if (cluster.isMaster) {
+if (cluster.isPrimary) {
     const httpServer = http.createServer();
 
     // Setup sticky sessions
     setupMaster(httpServer, {
         loadBalancingMethod: 'least-connection'
     });
+    setupPrimary();
 
     httpServer.listen(config.port, () => {
         console.log(`Master listening on port ${config.port}`);
@@ -485,6 +489,8 @@ if (cluster.isMaster) {
 
 } else {
     const httpServer = http.createServer();
+    httpServer.maxConnections = Math.ceil(config.maxConnections / config.workers);
+
     const io = new Server(httpServer, {
         // Transport settings
         transports: ['websocket'], // WebSocket only for efficiency
@@ -500,13 +506,7 @@ if (cluster.isMaster) {
         cookie: false,
 
         // Per-message settings
-        maxHttpBufferSize: 1e6, // 1MB
-
-        // Connection limits
-        connectionStateRecovery: {
-            maxDisconnectionDuration: 2 * 60 * 1000, // 2 minutes
-            skipMiddlewares: true
-        }
+        maxHttpBufferSize: 1e6 // 1MB
     });
 
     io.adapter(createAdapter());
@@ -615,11 +615,11 @@ frontend websocket_front
     bind *:443 ssl crt /etc/ssl/certs/server.pem
 
     # WebSocket detection
-    acl is_websocket hdr(Upgrade) -i WebSocket
-    acl is_websocket hdr(Connection) -i upgrade
+    acl has_upgrade hdr(Upgrade) -i websocket
+    acl has_connection_upgrade hdr_sub(Connection) -i upgrade
 
     # Route WebSocket to dedicated backend
-    use_backend websocket_servers if is_websocket
+    use_backend websocket_servers if has_upgrade has_connection_upgrade
     default_backend http_servers
 
 backend websocket_servers

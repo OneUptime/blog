@@ -712,7 +712,7 @@ class OrderCreated
 }
 ```
 
-> **Note:** Laravel's `ShouldBroadcast` interface is designed for real-time browser-facing broadcasting via Reverb, Pusher, or Ably — not for inter-service messaging over RabbitMQ. For service-to-service event delivery, dispatch a queued job (shown next) that publishes directly to the broker.
+> **Note:** Laravel's `ShouldBroadcast` interface is designed for real-time browser-facing broadcasting via Reverb, Pusher, or Ably - not for inter-service messaging over RabbitMQ. For service-to-service event delivery, dispatch a queued job (shown next) that publishes directly to the broker.
 
 ### Queue Job for Event Publishing
 

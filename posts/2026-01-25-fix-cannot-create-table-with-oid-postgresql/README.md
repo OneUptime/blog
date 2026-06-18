@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: PostgreSQL, Database, Troubleshooting, OID, Migration, Upgrade, SQL
 
-Description: Learn how to resolve 'cannot create a table with OID' errors in PostgreSQL. This guide covers why OIDs were deprecated, how to migrate legacy applications, and modern alternatives.
+Description: Learn how to resolve 'cannot create a table with OID' errors in PostgreSQL. This guide covers why table OIDs were removed, how to migrate legacy applications, and modern alternatives.
 
 ---
 
-The "cannot create a table with OID" error occurs when you try to create a table with Object Identifiers (OIDs) in PostgreSQL 12 or later. OIDs were deprecated in PostgreSQL 12 and the ability to create tables with OIDs was removed entirely. This guide will help you understand why this happened and how to migrate your legacy code.
+The "cannot create a table with OID" error occurs when you try to create a table with Object Identifiers (OIDs) in PostgreSQL 12 or later. The special `WITH OIDS` table feature was removed in PostgreSQL 12. This guide will help you understand why this happened and how to migrate your legacy code.
 
 ---
 
@@ -26,7 +26,7 @@ CREATE TABLE my_table (
 pg_restore: error: could not execute query: ERROR: tables declared WITH OIDS are not supported
 ```
 
-This error indicates that your SQL code or backup contains the deprecated `WITH OIDS` clause.
+This error indicates that your SQL code or backup contains the removed `WITH OIDS` clause.
 
 ---
 
@@ -51,7 +51,7 @@ SELECT oid, name FROM old_table;
 
 1. **Storage overhead**: Each OID consumed 4 bytes per row
 2. **Wraparound issues**: OIDs could wrap around after 4 billion rows
-3. **Not truly unique**: OIDs were only unique within a table, not across tables
+3. **Not safely unique**: OIDs should not be assumed to be unique across tables, and wraparound can also affect long-lived tables unless you add safeguards
 4. **Modern alternatives**: SERIAL and IDENTITY columns are superior
 
 ---
@@ -97,9 +97,11 @@ sed -i 's/WITH OIDS//' backup.sql
 # Method 2: Use grep to find affected lines first
 grep -n "WITH.*OIDS" backup.sql
 
-# Method 3: Use pg_dump with newer options
-# The --no-oids flag was default in older versions
-pg_dump --no-oids -F p dbname > backup.sql
+# Method 3: Dump after removing table OIDs on the source database
+# pg_dump excludes row OID data by default unless you pass --oids,
+# but tables created WITH OIDS should be changed before dumping.
+psql -d dbname -c 'ALTER TABLE customers SET WITHOUT OIDS;'
+pg_dump -F p dbname > backup.sql
 ```
 
 ### Solution 3: Migrate a Database with OID-dependent Code
@@ -195,7 +197,7 @@ DECLARE
 BEGIN
     -- Find all tables in the public schema
     FOR tbl IN
-        SELECT tablename
+        SELECT schemaname, tablename
         FROM pg_tables
         WHERE schemaname = 'public'
     LOOP
@@ -203,7 +205,7 @@ BEGIN
         SELECT EXISTS (
             SELECT 1
             FROM pg_constraint
-            WHERE conrelid = tbl.tablename::regclass
+            WHERE conrelid = format('%I.%I', tbl.schemaname, tbl.tablename)::regclass
             AND contype = 'p'
         ) INTO has_pk;
 
@@ -211,8 +213,8 @@ BEGIN
             RAISE NOTICE 'Adding primary key to table: %', tbl.tablename;
 
             -- Add serial primary key column
-            EXECUTE format('ALTER TABLE %I ADD COLUMN id SERIAL PRIMARY KEY',
-                tbl.tablename);
+            EXECUTE format('ALTER TABLE %I.%I ADD COLUMN id SERIAL PRIMARY KEY',
+                tbl.schemaname, tbl.tablename);
         END IF;
     END LOOP;
 END;
@@ -223,7 +225,9 @@ SELECT
     t.tablename,
     CASE WHEN c.conname IS NOT NULL THEN 'Yes' ELSE 'No' END AS has_pk
 FROM pg_tables t
-LEFT JOIN pg_constraint c ON c.conrelid = t.tablename::regclass AND c.contype = 'p'
+LEFT JOIN pg_constraint c
+    ON c.conrelid = format('%I.%I', t.schemaname, t.tablename)::regclass
+    AND c.contype = 'p'
 WHERE t.schemaname = 'public';
 ```
 
@@ -257,14 +261,17 @@ if [[ "$BACKUP_FILE" == *.sql ]]; then
     # Restore modified backup
     psql -d "$DB_NAME" -f "$TEMP_FILE"
 else
-    # Custom or directory format
-    # Use pg_restore with error handling
-    echo "Restoring custom format backup..."
-    pg_restore -d "$DB_NAME" --no-owner --no-privileges \
-        --disable-triggers "$BACKUP_FILE" 2>&1 | \
-        grep -v "WITH OIDS"
+    # Custom, directory, or tar format
+    # Convert to plain SQL first so WITH OIDS can be removed.
+    echo "Converting archive backup to SQL..."
+    pg_restore --no-owner --no-privileges -f "$TEMP_FILE" "$BACKUP_FILE"
 
-    # Note: Some errors may need manual intervention
+    CLEAN_FILE=$(mktemp)
+    sed 's/WITH (OIDS[^)]*)//' "$TEMP_FILE" | \
+    sed 's/WITH OIDS//' > "$CLEAN_FILE"
+
+    psql -d "$DB_NAME" -f "$CLEAN_FILE"
+    rm -f "$CLEAN_FILE"
 fi
 
 rm -f "$TEMP_FILE"
@@ -313,10 +320,14 @@ CREATE TABLE products (
 -- Insert with auto-generated ID
 INSERT INTO orders (user_id, total) VALUES (1, 99.99) RETURNING id;
 
--- Insert with manual ID (only with GENERATED BY DEFAULT)
+-- Insert with manual ID (allowed with GENERATED BY DEFAULT)
 INSERT INTO products (id, name, price)
-OVERRIDING SYSTEM VALUE
 VALUES (1000, 'Special Product', 49.99);
+
+-- For GENERATED ALWAYS identity columns, use OVERRIDING SYSTEM VALUE
+INSERT INTO orders (id, user_id, total)
+OVERRIDING SYSTEM VALUE
+VALUES (1000, 1, 99.99);
 ```
 
 ### Using UUID
@@ -371,9 +382,8 @@ AND n.nspname NOT IN ('pg_catalog', 'information_schema');
 
 | Version | OID Status |
 |---------|-----------|
-| PostgreSQL 7.x-11 | OIDs available, WITH OIDS supported |
-| PostgreSQL 12 | WITH OIDS removed, OIDs deprecated |
-| PostgreSQL 14 | System tables no longer use OIDs |
+| PostgreSQL 7.2-11 | OIDs available, WITH OIDS supported |
+| PostgreSQL 12+ | WITH OIDS removed for user tables; hidden catalog OID columns became ordinary `oid` columns |
 
 ---
 

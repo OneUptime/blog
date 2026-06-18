@@ -261,7 +261,7 @@ console.log('Errors:', result.errors);
 
 ## Performance-Critical: Working with Binary Data
 
-For image processing, file parsing, or any binary data work, you want to minimize the cost of moving data between JavaScript and WASM. Byte slices keep this straightforward — wasm-bindgen copies the bytes into WASM memory, runs your code, and copies any mutations back. For true zero-copy access, use `js_sys::Uint8Array` views into WASM linear memory directly. For most use cases, the slice approach below is fast enough:
+For image processing, file parsing, or any binary data work, you want to minimize the cost of moving data between JavaScript and WASM. Byte slices keep this straightforward - wasm-bindgen copies the bytes into WASM memory, runs your code, and copies any mutations back. For true zero-copy access, use `js_sys::Uint8Array` views into WASM linear memory directly. For most use cases, the slice approach below is fast enough:
 
 ```rust
 use wasm_bindgen::prelude::*;

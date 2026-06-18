@@ -14,9 +14,10 @@ By default, Kubernetes allows all pods to communicate with each other. This flat
 
 Calico extends Kubernetes NetworkPolicy with additional features:
 
-- **Standard Kubernetes NetworkPolicy**: Works with any CNI
-- **Calico NetworkPolicy**: Additional features like global policies, DNS rules, and application layer policies
+- **Standard Kubernetes NetworkPolicy**: Works with any CNI that implements NetworkPolicy enforcement
+- **Calico NetworkPolicy**: Additional features like explicit deny rules, ordered policies, and application layer policies with Istio
 - **GlobalNetworkPolicy**: Cluster-wide policies without namespace repetition
+- **Calico Enterprise/Cloud DNS Policy**: Domain-based egress rules for external services
 - **HostEndpoint**: Protect the nodes themselves
 - **High Performance**: Uses eBPF or iptables with optimized rule generation
 
@@ -56,10 +57,11 @@ flowchart TB
 ```bash
 # Install Calico as the CNI
 
-kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.26.4/manifests/tigera-operator.yaml
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/v1_crd_projectcalico_org.yaml
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/tigera-operator.yaml
 
 # Install Calico custom resources
-kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.26.4/manifests/custom-resources.yaml
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/custom-resources.yaml
 
 # Verify installation
 kubectl get pods -n calico-system
@@ -71,7 +73,7 @@ If you already have a CNI, install Calico in policy-only mode:
 
 ```bash
 # Install Calico for policy only (no networking)
-kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.26.4/manifests/calico-policy-only.yaml
+kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/calico-policy-only.yaml
 ```
 
 ### Install calicoctl
@@ -81,7 +83,7 @@ kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.26.4/
 brew install calicoctl
 
 # Linux
-curl -L https://github.com/projectcalico/calico/releases/download/v3.26.4/calicoctl-linux-amd64 -o calicoctl
+curl -L https://github.com/projectcalico/calico/releases/download/v3.32.0/calicoctl-linux-amd64 -o calicoctl
 chmod +x calicoctl
 sudo mv calicoctl /usr/local/bin/
 
@@ -92,7 +94,7 @@ export KUBECONFIG=~/.kube/config
 
 ## Kubernetes NetworkPolicy Basics
 
-Start with standard Kubernetes NetworkPolicy (works with any CNI):
+Start with standard Kubernetes NetworkPolicy (works with any CNI that supports NetworkPolicy):
 
 ### Default Deny All Ingress
 
@@ -212,9 +214,9 @@ spec:
     - action: Deny
 ```
 
-### DNS-Based Rules
+### DNS-Based Rules (Enterprise/Cloud)
 
-Allow egress based on domain names:
+In Calico Enterprise and Calico Cloud, allow egress based on domain names:
 
 ```yaml
 # allow-external-apis.yaml
@@ -247,7 +249,7 @@ spec:
 
 ### Application Layer Policy
 
-Inspect HTTP traffic (requires Envoy sidecar):
+Inspect HTTP traffic (requires Istio sidecars and Calico application layer policy setup):
 
 ```yaml
 # http-methods-policy.yaml
@@ -397,11 +399,12 @@ Isolate namespaces by default:
 ```yaml
 # namespace-isolation.yaml
 apiVersion: projectcalico.org/v3
-kind: GlobalNetworkPolicy
+kind: NetworkPolicy
 metadata:
   name: namespace-isolation
+  namespace: production
 spec:
-  namespaceSelector: isolation == 'enabled'
+  selector: all()
   types:
     - Ingress
     - Egress
@@ -409,16 +412,16 @@ spec:
     # Allow from same namespace
     - action: Allow
       source:
-        namespaceSelector: all()
+        selector: all()
     # Allow from monitoring
     - action: Allow
       source:
-        namespaceSelector: name == 'monitoring'
+        namespaceSelector: projectcalico.org/name == 'monitoring'
   egress:
     # Allow to same namespace
     - action: Allow
       destination:
-        namespaceSelector: all()
+        selector: all()
     # Allow DNS
     - action: Allow
       protocol: UDP
@@ -458,7 +461,7 @@ nc -zv postgres-service.database 5432
 
 ```bash
 # View Calico's policy logs
-kubectl logs -n calico-system -l k8s-app=calico-node -f
+sudo journalctl -k -f | grep calico-packet
 
 # Check endpoints
 calicoctl get workloadendpoint -n backend
@@ -467,19 +470,24 @@ calicoctl get workloadendpoint -n backend
 calicoctl get profile
 ```
 
-### Flow Logs
+### Packet Logs
 
-Enable Calico flow logs for traffic visibility:
+For Calico Open Source, use `Log` actions for packet visibility:
 
 ```yaml
-# enable-flow-logs.yaml
+# log-egress.yaml
 apiVersion: projectcalico.org/v3
-kind: FelixConfiguration
+kind: NetworkPolicy
 metadata:
-  name: default
+  name: log-egress
+  namespace: production
 spec:
-  flowLogsFlushInterval: 15s
-  flowLogsEnableNetworkSets: true
+  selector: all()
+  types:
+    - Egress
+  egress:
+    - action: Log
+    - action: Allow
 ```
 
 ## Staged Rollout Strategy
@@ -510,4 +518,4 @@ spec:
 
 ---
 
-Network policies transform Kubernetes from a flat network into a segmented, zero-trust environment. Start with default deny in new namespaces, add explicit allow rules for known traffic patterns, and use Calico's advanced features when you need DNS-based rules or global policies. The goal is not to block all traffic but to ensure only expected traffic flows.
+Network policies transform Kubernetes from a flat network into a segmented, zero-trust environment. Start with default deny in new namespaces, add explicit allow rules for known traffic patterns, and use Calico's advanced features when you need global policies or Enterprise/Cloud DNS-based rules. The goal is not to block all traffic but to ensure only expected traffic flows.

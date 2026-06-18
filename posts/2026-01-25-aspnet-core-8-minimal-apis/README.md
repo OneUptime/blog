@@ -14,7 +14,7 @@ ASP.NET Core 8 introduced significant improvements to Minimal APIs, making them 
 
 Minimal APIs offer several advantages:
 
-- **Less ceremony**: No controllers, no attributes, no inheritance
+- **Less ceremony**: No controller classes or MVC inheritance required; attributes are optional
 - **Better performance**: Reduced overhead compared to MVC
 - **Cleaner code**: Business logic is front and center
 - **Native AOT support**: Faster startup times for cloud-native scenarios
@@ -28,6 +28,8 @@ Create a new Minimal API project:
 ```bash
 dotnet new web -n ProductApi
 cd ProductApi
+dotnet add package Microsoft.EntityFrameworkCore.InMemory
+dotnet add package Swashbuckle.AspNetCore
 ```
 
 The default `Program.cs` is remarkably simple:
@@ -53,6 +55,7 @@ using Microsoft.EntityFrameworkCore;
 var builder = WebApplication.CreateBuilder(args);
 
 // Register the database context
+// The in-memory provider is useful for demos and tests; use a real database provider in production.
 builder.Services.AddDbContext<ProductDbContext>(options =>
     options.UseInMemoryDatabase("Products"));
 
@@ -216,9 +219,9 @@ public class ValidationFilter<T> : IEndpointFilter where T : class
 
 // Request with validation attributes
 public record CreateProductRequest(
-    [Required, MinLength(2), MaxLength(100)] string Name,
-    [Range(0.01, 100000)] decimal Price,
-    [Required] string Category
+    [property: Required, MinLength(2), MaxLength(100)] string Name,
+    [property: Range(0.01, 100000)] decimal Price,
+    [property: Required] string Category
 );
 
 // Apply the filter to an endpoint
@@ -236,6 +239,8 @@ app.MapPost("/api/products", async (CreateProductRequest request, ProductDbConte
 As your API grows, organize related endpoints using route groups:
 
 ```csharp
+builder.Services.AddAuthorization();
+
 var app = builder.Build();
 
 // Create a route group with shared configuration
@@ -262,6 +267,56 @@ static async Task<IResult> GetProductById(int id, ProductDbContext db)
     var product = await db.Products.FindAsync(id);
     return product is not null ? Results.Ok(product) : Results.NotFound();
 }
+
+static async Task<IResult> CreateProduct(CreateProductRequest request, ProductDbContext db)
+{
+    var product = new Product
+    {
+        Name = request.Name,
+        Price = request.Price,
+        Category = request.Category,
+        CreatedAt = DateTime.UtcNow
+    };
+
+    db.Products.Add(product);
+    await db.SaveChangesAsync();
+
+    return Results.Created($"/api/products/{product.Id}", product);
+}
+
+static async Task<IResult> UpdateProduct(int id, UpdateProductRequest request, ProductDbContext db)
+{
+    var product = await db.Products.FindAsync(id);
+
+    if (product is null)
+    {
+        return Results.NotFound();
+    }
+
+    product.Name = request.Name;
+    product.Price = request.Price;
+    product.Category = request.Category;
+    product.UpdatedAt = DateTime.UtcNow;
+
+    await db.SaveChangesAsync();
+
+    return Results.Ok(product);
+}
+
+static async Task<IResult> DeleteProduct(int id, ProductDbContext db)
+{
+    var product = await db.Products.FindAsync(id);
+
+    if (product is null)
+    {
+        return Results.NotFound();
+    }
+
+    db.Products.Remove(product);
+    await db.SaveChangesAsync();
+
+    return Results.NoContent();
+}
 ```
 
 ## Error Handling
@@ -269,6 +324,8 @@ static async Task<IResult> GetProductById(int id, ProductDbContext db)
 Implement consistent error handling with a custom exception handler:
 
 ```csharp
+using Microsoft.AspNetCore.Diagnostics;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add problem details service for standardized errors

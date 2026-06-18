@@ -58,7 +58,8 @@ nc -zv otel-collector.observability.svc.cluster.local 4317
 # Test port connectivity for OTLP HTTP (4318)
 nc -zv otel-collector.observability.svc.cluster.local 4318
 
-# Check if collector endpoints are reachable
+# Check if the OTLP HTTP listener responds. A GET can return 405/4xx;
+# the goal here is to verify that the HTTP endpoint is reachable.
 curl -v http://otel-collector.observability.svc.cluster.local:4318/v1/traces
 ```
 
@@ -81,7 +82,7 @@ receivers:
         max_recv_msg_size_mib: 4
         # Maximum concurrent streams per connection
         max_concurrent_streams: 100
-        # Connection timeout
+        # gRPC read and write buffer sizes
         read_buffer_size: 524288
         write_buffer_size: 524288
 
@@ -126,14 +127,32 @@ service:
     # Enable internal metrics from the collector itself
     metrics:
       level: detailed
-      # Expose metrics on port 8888
-      address: 0.0.0.0:8888
+      # Expose metrics on all interfaces on port 8888
+      readers:
+      - pull:
+          exporter:
+            prometheus:
+              host: 0.0.0.0
+              port: 8888
+              without_type_suffix: true
+              without_units: true
 
   pipelines:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [logging, otlp]
+      exporters: [debug, otlp]
+
+processors:
+  batch:
+
+exporters:
+  debug:
+    verbosity: basic
+  otlp:
+    endpoint: "backend.observability.svc.cluster.local:4317"
+    tls:
+      insecure: true
 ```
 
 Deploy this configuration and watch logs for receiver connection events:
@@ -169,17 +188,17 @@ scrape_configs:
 Key metrics to monitor for receiver health:
 
 ```promql
-# Number of accepted connections (should be stable or growing)
+# Number of accepted spans (should be stable or growing)
 otelcol_receiver_accepted_spans
 
-# Number of refused connections (should be zero or very low)
+# Number of refused spans (should be zero or very low)
 otelcol_receiver_refused_spans
 
 # Receiver processing errors
 rate(otelcol_receiver_refused_spans[5m])
 
-# Connection count per receiver
-otelcol_receiver_accepted_connections
+# Exporter queue utilization, which can reveal downstream backpressure
+otelcol_exporter_queue_size / otelcol_exporter_queue_capacity
 
 # Data received rate
 rate(otelcol_receiver_accepted_spans[1m])
@@ -193,15 +212,15 @@ groups:
 - name: otel-collector-receivers
   interval: 30s
   rules:
-  # Alert when receivers start refusing connections
-  - alert: CollectorReceiverRefusingConnections
+  # Alert when receivers start refusing telemetry
+  - alert: CollectorReceiverRefusingTelemetry
     expr: rate(otelcol_receiver_refused_spans[5m]) > 0
     for: 2m
     labels:
       severity: warning
       component: otel-collector
     annotations:
-      summary: "Collector receiver refusing connections"
+      summary: "Collector receiver refusing telemetry"
       description: "Collector {{ $labels.instance }} receiver is refusing {{ $value }} spans per second"
 
   # Alert when no data is being received
@@ -241,11 +260,10 @@ spec:
     spec:
       containers:
       - name: otel-collector
-        image: otel/opentelemetry-collector-contrib:0.93.0
+        image: otel/opentelemetry-collector-contrib:0.153.0
 
-        # Increase file descriptor limit for more connections
+        # Allow the process to raise resource limits if it is configured to do so
         securityContext:
-          # Allow increasing nofile limit
           capabilities:
             add:
             - SYS_RESOURCE
@@ -259,7 +277,7 @@ spec:
             cpu: 2000m
             memory: 2Gi
 
-        # Set ulimits for the container
+        # Keep Go heap below the container memory limit
         env:
         - name: GOMEMLIMIT
           value: "1800MiB"
@@ -299,8 +317,8 @@ processors:
     check_interval: 1s
     # Refuse new data at 1.8GB
     limit_mib: 1800
-    # Start dropping at 1.6GB
-    spike_limit_mib: 400
+    # Start refusing at approximately 1.6GB
+    spike_limit_mib: 200
 
   # Batch processor to reduce export frequency
   batch:
@@ -308,14 +326,10 @@ processors:
     send_batch_size: 8192
     send_batch_max_size: 16384
 
-  # Add queued retry for failed exports
-  queued_retry:
-    # Number of retries before dropping
-    num_retries: 5
-    # Queue size per pipeline
-    queue_size: 10000
-
 exporters:
+  debug:
+    verbosity: basic
+
   otlp:
     endpoint: "backend.observability.svc.cluster.local:4317"
     # Configure sending queue to buffer during exporter issues
@@ -326,6 +340,12 @@ exporters:
       # More consumers for parallel sends
       num_consumers: 20
 
+    retry_on_failure:
+      enabled: true
+      initial_interval: 1s
+      max_interval: 30s
+      max_elapsed_time: 300s
+
     # Shorter timeout to fail fast and retry
     timeout: 10s
 
@@ -334,8 +354,8 @@ service:
     traces:
       # Order matters: memory_limiter should be first
       receivers: [otlp]
-      processors: [memory_limiter, batch, queued_retry]
-      exporters: [otlp, logging]
+      processors: [memory_limiter, batch]
+      exporters: [otlp, debug]
 ```
 
 Monitor queue depth to detect backpressure:
@@ -386,10 +406,12 @@ Configure client applications to match these settings:
 ```go
 // Example Go client configuration
 import (
+    "context"
+    "time"
+
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
     "google.golang.org/grpc"
     "google.golang.org/grpc/keepalive"
-    "time"
 )
 
 func setupTraceExporter(ctx context.Context) (*otlptracegrpc.Exporter, error) {
@@ -435,10 +457,8 @@ spec:
       labels:
         app: otel-collector
       annotations:
-        # Exclude health check port from mesh
-        traffic.sidecar.istio.io/excludeInboundPorts: "13133"
-        # Exclude metrics port from mesh
-        traffic.sidecar.istio.io/excludeOutboundPorts: "8888"
+        # Exclude health check and metrics ports from inbound mesh interception
+        traffic.sidecar.istio.io/excludeInboundPorts: "13133,8888"
         # Increase proxy connection limits
         proxy.istio.io/config: |
           concurrency: 4
@@ -447,7 +467,7 @@ spec:
     spec:
       containers:
       - name: otel-collector
-        image: otel/opentelemetry-collector-contrib:0.93.0
+        image: otel/opentelemetry-collector-contrib:0.153.0
         ports:
         - containerPort: 4317
           name: otlp-grpc
@@ -464,7 +484,7 @@ Create a DestinationRule to configure connection pooling:
 
 ```yaml
 # istio-destination-rule.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: otel-collector
@@ -485,9 +505,9 @@ spec:
       http:
         # Maximum requests per connection
         http2MaxRequests: 1000
-        # Maximum pending requests
+        # Maximum requests before recycling a connection
         maxRequestsPerConnection: 100
-        # Maximum concurrent requests
+        # Maximum outstanding retries to all hosts in the cluster
         maxRetries: 3
 
     # Load balancing policy
@@ -507,12 +527,13 @@ metadata:
   name: otel-collector
   namespace: observability
   annotations:
-    # Increase connection tracking timeout (cloud-specific)
-    service.beta.kubernetes.io/aws-load-balancer-connection-idle-timeout: "300"
-    # Use IP mode for better connection distribution
+    service.beta.kubernetes.io/aws-load-balancer-type: "external"
+    # Use pod IP targets for better connection distribution
+    service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "ip"
+    # Preserve client source IP when supported by the target type
     service.beta.kubernetes.io/aws-load-balancer-target-group-attributes: "preserve_client_ip.enabled=true"
 spec:
-  type: ClusterIP
+  type: LoadBalancer
   # Use session affinity to reduce connection churn
   sessionAffinity: ClientIP
   sessionAffinityConfig:
@@ -562,6 +583,8 @@ Configure clients to use DNS-based load balancing:
 ```go
 // Example client-side load balancing in Go
 import (
+    "context"
+
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
     "google.golang.org/grpc"
 )
@@ -593,16 +616,10 @@ kubectl debug node/<node-name> -it --image=ubuntu:22.04
 # In the debug pod, install bpftrace
 apt-get update && apt-get install -y bpftrace
 
-# Trace TCP connections to port 4317
-bpftrace -e 'kprobe:tcp_connect {
-  printf("Connection from %s to port %d\n", comm, args->dport);
-} kprobe:tcp_close {
-  printf("Connection closed from %s\n", comm);
-}'
-
-# Monitor connection resets
-bpftrace -e 'tracepoint:tcp:tcp_reset {
-  printf("TCP reset: %s:%d -> %s:%d\n",
+# Trace TCP state changes involving destination port 4317
+bpftrace -e 'tracepoint:sock:inet_sock_set_state /args->dport == 4317/ {
+  printf("TCP state %d -> %d: %s:%d -> %s:%d\n",
+    args->oldstate, args->newstate,
     ntop(args->saddr), args->sport,
     ntop(args->daddr), args->dport);
 }'
@@ -736,18 +753,18 @@ Set up comprehensive monitoring for receiver health:
         ]
       },
       {
-        "title": "Active Connections",
+        "title": "Exporter Queue Size",
         "targets": [
           {
-            "expr": "otelcol_receiver_accepted_connections"
+            "expr": "otelcol_exporter_queue_size"
           }
         ]
       },
       {
-        "title": "Connection Errors by Type",
+        "title": "Exporter Send Failures",
         "targets": [
           {
-            "expr": "sum by (error_type) (rate(otelcol_receiver_errors[5m]))"
+            "expr": "rate(otelcol_exporter_send_failed_spans[5m])"
           }
         ]
       }

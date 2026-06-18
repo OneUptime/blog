@@ -42,8 +42,8 @@ sequenceDiagram
     App->>IDP: Authenticate & Request Token
     IDP->>App: Return JWT Token
     App->>Collector: Send Telemetry + JWT
-    Collector->>IDP: Validate Token (JWKS)
-    IDP->>Collector: Token Valid
+    Collector->>IDP: Fetch OIDC metadata and JWKS
+    IDP->>Collector: Return public keys
     Collector->>Collector: Process Telemetry
     Collector->>Backend: Forward Telemetry
 ```
@@ -60,10 +60,11 @@ Here's a minimal OIDC configuration for protecting a collector receiver:
 extensions:
   # oidc extension configuration
   oidc:
-    # URL of the OIDC issuer (identity provider)
-    issuer_url: "https://accounts.google.com"
-    # Audience claim that must be present in the token
-    audience: "your-client-id"
+    providers:
+      # URL of the OIDC issuer (identity provider)
+      - issuer_url: "https://accounts.google.com"
+        # Audience claim that must be present in the token
+        audience: "your-client-id"
 
 # Configure receivers that require authentication
 receivers:
@@ -87,8 +88,8 @@ processors:
 
 # Exporters send data to backends
 exporters:
-  logging:
-    loglevel: info
+  debug:
+    verbosity: basic
 
 # Service configuration
 service:
@@ -99,7 +100,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [logging]
+      exporters: [debug]
 ```
 
 With this configuration, clients must include a valid JWT token in the Authorization header when sending telemetry:
@@ -118,34 +119,26 @@ The OIDC extension supports various configuration options for different identity
 ```yaml
 extensions:
   oidc:
-    # OIDC provider configuration
-    issuer_url: "https://auth.example.com"
+    providers:
+      # OIDC provider configuration
+      - issuer_url: "https://auth.example.com"
 
-    # Expected audience claim in the token
-    # This should match your application/service identifier
-    audience: "otel-collector-production"
+        # Expected audience claim in the token
+        # This should match your application/service identifier
+        audience: "otel-collector-production"
 
-    # Optional: Additional audiences to accept
-    audiences:
-      - "otel-collector-production"
-      - "otel-collector-staging"
+        # Optional: Username claim to extract from token
+        # Default is "sub" (subject)
+        username_claim: "email"
 
-    # Optional: Username claim to extract from token
-    # Default is "sub" (subject)
-    username_claim: "email"
+        # Optional: Groups claim for authorization context
+        groups_claim: "groups"
 
-    # Optional: Groups claim for authorization
-    groups_claim: "groups"
+        # Optional: Custom CA certificate for OIDC provider
+        issuer_ca_path: "/etc/otel/certs/idp-ca.crt"
 
-    # Optional: Custom CA certificate for OIDC provider
-    issuer_ca_path: "/etc/otel/certs/idp-ca.crt"
-
-    # Optional: Claim mappings for attribute extraction
-    attribute:
-      # Extract tenant ID from custom claim
-      tenant_id: "tenant"
-      # Extract service name from claim
-      service_name: "service"
+        # Optional: Use a local JWKS file instead of OIDC discovery
+        public_keys_file: "/etc/otel/certs/idp-jwks.json"
 
 receivers:
   otlp:
@@ -169,6 +162,14 @@ processors:
       - key: authenticated
         value: "true"
         action: upsert
+      # Extract tenant ID from a custom JWT claim
+      - key: tenant.id
+        from_context: auth.claims.tenant
+        action: upsert
+      # Extract service name from a custom JWT claim
+      - key: service.name
+        from_context: auth.claims.service
+        action: upsert
 
 exporters:
   otlp:
@@ -191,17 +192,18 @@ Auth0 is a popular identity platform that provides OIDC authentication. Here's h
 ```yaml
 extensions:
   oidc:
-    # Auth0 tenant domain
-    issuer_url: "https://your-tenant.auth0.com/"
+    providers:
+      # Auth0 tenant domain
+      - issuer_url: "https://your-tenant.auth0.com/"
 
-    # Auth0 API identifier (audience)
-    audience: "https://api.yourcompany.com/otel-collector"
+        # Auth0 API identifier (audience)
+        audience: "https://api.yourcompany.com/otel-collector"
 
-    # Use email as username
-    username_claim: "email"
+        # Use email as username
+        username_claim: "email"
 
-    # Optional: Require specific Auth0 roles
-    groups_claim: "https://yourcompany.com/roles"
+        # Optional: Extract Auth0 roles into the authentication context
+        groups_claim: "https://yourcompany.com/roles"
 
 receivers:
   otlp:
@@ -244,8 +246,6 @@ Applications authenticate with Auth0 and include the token when sending telemetr
 ```javascript
 // Node.js example
 const axios = require('axios');
-const { auth } = require('express-oauth2-jwt-bearer');
-
 // Get token from Auth0
 async function getAuth0Token() {
   const response = await axios.post(
@@ -284,17 +284,18 @@ Keycloak is an open-source identity and access management solution that supports
 ```yaml
 extensions:
   oidc:
-    # Keycloak realm URL
-    issuer_url: "https://keycloak.example.com/realms/production"
+    providers:
+      # Keycloak realm URL
+      - issuer_url: "https://keycloak.example.com/realms/production"
 
-    # Client ID configured in Keycloak
-    audience: "otel-collector"
+        # Client ID configured in Keycloak
+        audience: "otel-collector"
 
-    # Extract username from preferred_username claim
-    username_claim: "preferred_username"
+        # Extract username from preferred_username claim
+        username_claim: "preferred_username"
 
-    # Extract groups from realm roles
-    groups_claim: "realm_access.roles"
+        # Extract groups from a top-level groups claim
+        groups_claim: "groups"
 
 receivers:
   otlp:
@@ -311,12 +312,12 @@ processors:
   batch:
     timeout: 10s
 
-  # Filter based on authentication context
-  filter:
-    traces:
-      span:
-        # Only allow authenticated spans
-        - 'attributes["authenticated"] == "true"'
+  # Add authentication context from the verified token
+  resource:
+    attributes:
+      - key: enduser.id
+        from_context: auth.subject
+        action: upsert
 
 exporters:
   otlp:
@@ -328,7 +329,7 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [batch, filter]
+      processors: [resource, batch]
       exporters: [otlp]
 ```
 
@@ -339,12 +340,9 @@ For multi-tenant environments, use token claims to route telemetry to tenant-spe
 ```yaml
 extensions:
   oidc:
-    issuer_url: "https://auth.example.com"
-    audience: "otel-collector-multitenant"
-
-    # Extract tenant ID from custom claim
-    attribute:
-      tenant_id: "tenant_id"
+    providers:
+      - issuer_url: "https://auth.example.com"
+        audience: "otel-collector-multitenant"
 
 receivers:
   otlp:
@@ -362,18 +360,20 @@ processors:
   resource:
     attributes:
       - key: tenant.id
-        from_attribute: tenant_id
+        from_context: auth.claims.tenant_id
         action: upsert
 
+connectors:
   # Route based on tenant ID
   routing:
-    from_attribute: tenant.id
+    default_pipelines: [traces/default]
     table:
-      - value: "tenant-a"
-        exporters: [otlp/tenant-a]
-      - value: "tenant-b"
-        exporters: [otlp/tenant-b]
-    default_exporters: [otlp/default]
+      - context: resource
+        condition: attributes["tenant.id"] == "tenant-a"
+        pipelines: [traces/tenant-a]
+      - context: resource
+        condition: attributes["tenant.id"] == "tenant-b"
+        pipelines: [traces/tenant-b]
 
 exporters:
   # Tenant-specific exporters
@@ -390,10 +390,22 @@ service:
   extensions: [oidc]
 
   pipelines:
-    traces:
+    traces/in:
       receivers: [otlp]
-      processors: [resource, batch, routing]
-      # Routing processor handles exporter selection
+      processors: [resource, batch]
+      exporters: [routing]
+
+    traces/tenant-a:
+      receivers: [routing]
+      exporters: [otlp/tenant-a]
+
+    traces/tenant-b:
+      receivers: [routing]
+      exporters: [otlp/tenant-b]
+
+    traces/default:
+      receivers: [routing]
+      exporters: [otlp/default]
 ```
 
 ## Integration with Cloud Identity Providers
@@ -405,9 +417,10 @@ Configure the collector to work with major cloud identity providers:
 ```yaml
 extensions:
   oidc:
-    issuer_url: "https://accounts.google.com"
-    audience: "YOUR_CLIENT_ID.apps.googleusercontent.com"
-    username_claim: "email"
+    providers:
+      - issuer_url: "https://accounts.google.com"
+        audience: "YOUR_CLIENT_ID.apps.googleusercontent.com"
+        username_claim: "email"
 
 receivers:
   otlp:
@@ -439,10 +452,11 @@ service:
 ```yaml
 extensions:
   oidc:
-    issuer_url: "https://login.microsoftonline.com/YOUR_TENANT_ID/v2.0"
-    audience: "api://otel-collector"
-    username_claim: "preferred_username"
-    groups_claim: "roles"
+    providers:
+      - issuer_url: "https://login.microsoftonline.com/YOUR_TENANT_ID/v2.0"
+        audience: "api://otel-collector"
+        username_claim: "preferred_username"
+        groups_claim: "roles"
 
 receivers:
   otlp:
@@ -474,10 +488,11 @@ service:
 ```yaml
 extensions:
   oidc:
-    issuer_url: "https://cognito-idp.REGION.amazonaws.com/YOUR_USER_POOL_ID"
-    audience: "YOUR_APP_CLIENT_ID"
-    username_claim: "cognito:username"
-    groups_claim: "cognito:groups"
+    providers:
+      - issuer_url: "https://cognito-idp.REGION.amazonaws.com/YOUR_USER_POOL_ID"
+        audience: "YOUR_APP_CLIENT_ID"
+        username_claim: "cognito:username"
+        groups_claim: "cognito:groups"
 
 receivers:
   otlp:
@@ -518,10 +533,11 @@ data:
   config.yaml: |
     extensions:
       oidc:
-        issuer_url: "https://auth.example.com"
-        audience: "otel-collector-k8s"
-        username_claim: "email"
-        groups_claim: "groups"
+        providers:
+          - issuer_url: "https://auth.example.com"
+            audience: "otel-collector-k8s"
+            username_claim: "email"
+            groups_claim: "groups"
 
     receivers:
       otlp:
@@ -617,15 +633,12 @@ Here's a comprehensive production configuration with OIDC authentication:
 extensions:
   # OIDC authentication
   oidc:
-    issuer_url: "https://auth.production.example.com"
-    audience: "otel-collector-production"
-    username_claim: "email"
-    groups_claim: "groups"
-    issuer_ca_path: "/etc/otel/certs/idp-ca.crt"
-
-    attribute:
-      tenant_id: "tenant_id"
-      environment: "env"
+    providers:
+      - issuer_url: "https://auth.production.example.com"
+        audience: "otel-collector-production"
+        username_claim: "email"
+        groups_claim: "groups"
+        issuer_ca_path: "/etc/otel/certs/idp-ca.crt"
 
   # Health check endpoint
   health_check:
@@ -669,7 +682,10 @@ processors:
         value: "true"
         action: upsert
       - key: tenant.id
-        from_attribute: tenant_id
+        from_context: auth.claims.tenant_id
+        action: upsert
+      - key: deployment.environment
+        from_context: auth.claims.env
         action: upsert
 
   # Batch for efficiency
@@ -700,8 +716,8 @@ exporters:
       num_consumers: 10
       queue_size: 5000
 
-  logging:
-    loglevel: info
+  debug:
+    verbosity: basic
     sampling_initial: 5
     sampling_thereafter: 200
 
@@ -712,7 +728,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, resource, attributes, batch]
-      exporters: [otlp/backend, logging]
+      exporters: [otlp/backend, debug]
 
     metrics:
       receivers: [otlp]
@@ -724,11 +740,11 @@ service:
 
 **Token Validation Failures**: Ensure the issuer URL is correct and accessible from the collector. Check that the audience claim in tokens matches the configured audience.
 
-**Certificate Issues**: If the OIDC provider uses a custom CA, provide the certificate via issuer_ca_path. Verify certificate validity and trust chain.
+**Certificate Issues**: If the OIDC provider uses a custom CA, provide the certificate via issuer_ca_path in the provider configuration. Verify certificate validity and trust chain.
 
-**Claim Extraction**: Use the collector's debug logging to see what claims are present in tokens. Adjust username_claim and groups_claim accordingly.
+**Claim Extraction**: JWT claims are available to processors through context keys such as auth.subject, auth.membership, and auth.claims.tenant_id. Adjust username_claim and groups_claim accordingly.
 
-**Performance**: OIDC validation requires fetching and caching JWKS. Monitor the collector's performance and adjust caching settings if needed.
+**Performance**: OIDC validation requires fetching and caching JWKS. If the collector cannot periodically reach the provider, configure public_keys_file with a local JWKS file.
 
 ## Security Best Practices
 
@@ -740,7 +756,7 @@ Implement token refresh mechanisms in client applications to automatically obtai
 
 Monitor authentication failures which could indicate expired tokens, misconfigured clients, or potential security incidents.
 
-Use the groups_claim to implement authorization logic, ensuring clients can only access resources they are permitted to use.
+Use the groups_claim to expose group membership in the authentication context, then implement any authorization or routing logic explicitly in collector processors or downstream systems.
 
 ## Related Resources
 

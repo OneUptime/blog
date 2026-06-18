@@ -38,13 +38,15 @@ path = "src/client.rs"
 [dependencies]
 tonic = "0.12"
 prost = "0.13"
-tokio = { version = "1.0", features = ["macros", "rt-multi-thread"] }
-tokio-stream = "0.1"
+tokio = { version = "1.0", features = ["macros", "rt-multi-thread", "sync", "io-std", "io-util", "time"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
 futures = "0.3"
 
 [build-dependencies]
 tonic-build = "0.12"
 ```
+
+Make sure the Protocol Buffers compiler (`protoc`) is installed and available on your `PATH`; `tonic-build` invokes it when compiling `.proto` files.
 
 ## Protocol Definition
 
@@ -89,7 +91,7 @@ Create `src/server.rs`:
 use futures::StreamExt;
 use std::pin::Pin;
 use tokio::sync::broadcast;
-use tokio_stream::wrappers::BroadcastStream;
+use tokio_stream::wrappers::{errors::BroadcastStreamRecvError, BroadcastStream};
 use tonic::{Request, Response, Status, Streaming};
 
 // Include the generated proto code
@@ -162,12 +164,11 @@ impl ChatService for ChatServer {
         let outbound = BroadcastStream::new(rx).filter_map(|result| async move {
             match result {
                 Ok(msg) => Some(Ok(msg)),
-                Err(broadcast::error::RecvError::Lagged(n)) => {
+                Err(BroadcastStreamRecvError::Lagged(n)) => {
                     // Client fell behind - log and continue
                     eprintln!("Receiver lagged by {} messages", n);
                     None
                 }
-                Err(broadcast::error::RecvError::Closed) => None,
             }
         });
 
@@ -397,7 +398,7 @@ Keep messages small. Large messages tie up the connection and increase latency f
 
 Monitor channel buffer sizes. Full buffers cause either dropped messages or blocked senders depending on your channel type. Track these metrics to right-size your buffers.
 
-Use connection pooling on the client side. Tonic's Channel type already handles this, but be aware of the overhead when creating new connections.
+Reuse or clone client channels instead of creating a new connection for every call. Tonic's `Channel` type is cheap to clone and is backed by a buffered HTTP/2 connection.
 
 ## Summary
 

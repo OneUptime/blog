@@ -92,9 +92,9 @@ function createClient(userConfig: Config): void {
 }
 ```
 
-## Readonly<T> - Make All Properties Immutable
+## Readonly<T> - Make All Properties Read-Only
 
-Prevents modification of properties after creation:
+Prevents reassignment of properties after creation:
 
 ```typescript
 interface Point {
@@ -115,7 +115,7 @@ interface AppState {
 function reducer(state: Readonly<AppState>, action: Action): AppState {
     switch (action.type) {
         case 'SET_USER':
-            // Must return new object, cannot mutate state
+            // Must return new object, cannot reassign state.user
             return { ...state, user: action.payload };
         default:
             return state;
@@ -274,8 +274,8 @@ type AppEvent =
     | { type: 'scroll'; delta: number }
     | { type: 'resize'; width: number; height: number };
 
-// Extract only mouse-related events
-type MouseEvent = Extract<AppEvent, { type: 'click' } | { type: 'scroll' }>;
+// Extract only interaction events
+type InteractionEvent = Extract<AppEvent, { type: 'click' } | { type: 'scroll' }>;
 // Result: { type: 'click'; x: number; y: number } | { type: 'scroll'; delta: number }
 ```
 

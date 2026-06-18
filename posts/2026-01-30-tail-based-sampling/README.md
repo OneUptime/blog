@@ -393,7 +393,7 @@ processors:
 
 ## 7. Combining Multiple Policies
 
-Real-world sampling requires combining multiple conditions. The tail sampling processor supports logical types such as `and`, `not`, `drop`, and `composite`. Note that multiple top-level policies are evaluated independently and combined with OR logic — if any policy votes to sample, the trace is kept (a `drop` decision overrides sample decisions).
+Real-world sampling requires combining multiple conditions. The tail sampling processor supports logical types such as `and`, `not`, `drop`, and `composite`. Note that multiple top-level policies are evaluated independently and combined with OR logic - if any policy votes to sample, the trace is kept (a `drop` decision overrides sample decisions).
 
 ```mermaid
 flowchart TD

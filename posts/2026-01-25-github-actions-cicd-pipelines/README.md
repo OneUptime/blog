@@ -96,6 +96,10 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
   # First job: run tests
   test:
@@ -174,10 +178,10 @@ jobs:
         run: |
           echo "Deploying image: ${{ needs.build.outputs.image-tag }}"
           # Add your deployment commands here
-          # kubectl set image deployment/app app=${{ needs.build.outputs.image-tag }}
+          # kubectl set image deployment/app app=<single-image-reference>
 ```
 
-The `needs` keyword creates dependencies between jobs. The `deploy` job waits for both `test` and `build` to complete successfully.
+The `needs` keyword creates dependencies between jobs. The `deploy` job waits for `build` to complete successfully, and `build` waits for `test`.
 
 ## Working with Multiple Environments
 
@@ -323,7 +327,7 @@ jobs:
 
       # Skip if commit message contains [skip ci]
       - name: Run expensive tests
-        if: "!contains(github.event.head_commit.message, '[skip ci]')"
+        if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
         run: npm run test:e2e
 ```
 
@@ -340,10 +344,9 @@ on:
       - 'src/backend/**'
       - 'package.json'
       - 'package-lock.json'
-    paths-ignore:
       # Never trigger for documentation
-      - '**.md'
-      - 'docs/**'
+      - '!**.md'
+      - '!docs/**'
 ```
 
 This reduces unnecessary builds when only documentation or unrelated files change.
@@ -361,6 +364,10 @@ on:
 jobs:
   maintenance:
     runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+
     steps:
       - uses: actions/checkout@v6
 

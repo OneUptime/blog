@@ -177,6 +177,8 @@ spec:
         - tunnel
         - --config
         - /etc/cloudflared/config.yaml
+        - --metrics
+        - 0.0.0.0:2000
         - run
         volumeMounts:
         - name: config
@@ -243,27 +245,30 @@ Using Terraform for DNS management:
 
 ```hcl
 # cloudflare-dns.tf
-resource "cloudflare_record" "dashboard" {
+resource "cloudflare_dns_record" "dashboard" {
   zone_id = var.cloudflare_zone_id
   name    = "dashboard"
-  value   = "${var.tunnel_id}.cfargotunnel.com"
+  content = "${var.tunnel_id}.cfargotunnel.com"
   type    = "CNAME"
+  ttl     = 1
   proxied = true
 }
 
-resource "cloudflare_record" "api_internal" {
+resource "cloudflare_dns_record" "api_internal" {
   zone_id = var.cloudflare_zone_id
   name    = "api-internal"
-  value   = "${var.tunnel_id}.cfargotunnel.com"
+  content = "${var.tunnel_id}.cfargotunnel.com"
   type    = "CNAME"
+  ttl     = 1
   proxied = true
 }
 
-resource "cloudflare_record" "k8s_api" {
+resource "cloudflare_dns_record" "k8s_api" {
   zone_id = var.cloudflare_zone_id
   name    = "k8s-api"
-  value   = "${var.tunnel_id}.cfargotunnel.com"
+  content = "${var.tunnel_id}.cfargotunnel.com"
   type    = "CNAME"
+  ttl     = 1
   proxied = true
 }
 ```
@@ -277,12 +282,12 @@ Create Access applications and policies using Terraform:
 ```hcl
 # cloudflare-access.tf
 # Configure identity provider
-resource "cloudflare_access_identity_provider" "okta" {
+resource "cloudflare_zero_trust_access_identity_provider" "okta" {
   account_id = var.cloudflare_account_id
   name       = "Okta"
   type       = "okta"
 
-  config {
+  config = {
     client_id     = var.okta_client_id
     client_secret = var.okta_client_secret
     okta_account  = "example.okta.com"
@@ -290,7 +295,7 @@ resource "cloudflare_access_identity_provider" "okta" {
 }
 
 # Access application for internal dashboard
-resource "cloudflare_access_application" "dashboard" {
+resource "cloudflare_zero_trust_access_application" "dashboard" {
   account_id                = var.cloudflare_account_id
   name                      = "Internal Dashboard"
   domain                    = "dashboard.example.com"
@@ -300,31 +305,39 @@ resource "cloudflare_access_application" "dashboard" {
 
   # Allowed identity providers
   allowed_idps = [
-    cloudflare_access_identity_provider.okta.id
+    cloudflare_zero_trust_access_identity_provider.okta.id
   ]
+
+  policies = [{
+    name       = "Engineering Team"
+    precedence = 1
+    decision   = "allow"
+
+    include = [{
+      # Allow users from the Okta engineering group
+      okta = {
+        identity_provider_id = cloudflare_zero_trust_access_identity_provider.okta.id
+        name                 = "Engineering"
+      }
+    }]
+
+    require = [{
+      # Require Okta authentication
+      login_method = {
+        id = cloudflare_zero_trust_access_identity_provider.okta.id
+      }
+    }]
+  }]
 }
 
-# Policy allowing engineering team
-resource "cloudflare_access_policy" "dashboard_engineering" {
-  account_id     = var.cloudflare_account_id
-  application_id = cloudflare_access_application.dashboard.id
-  name           = "Engineering Team"
-  precedence     = 1
-  decision       = "allow"
-
-  include {
-    # Allow users from engineering group
-    group = ["Engineering"]
-  }
-
-  require {
-    # Require Okta authentication
-    login_method = [cloudflare_access_identity_provider.okta.id]
-  }
+# Service token for CI/CD access
+resource "cloudflare_zero_trust_access_service_token" "ci_cd" {
+  account_id = var.cloudflare_account_id
+  name       = "CI/CD Pipeline"
 }
 
 # Access application for Kubernetes API
-resource "cloudflare_access_application" "k8s_api" {
+resource "cloudflare_zero_trust_access_application" "k8s_api" {
   account_id       = var.cloudflare_account_id
   name             = "Kubernetes API"
   domain           = "k8s-api.example.com"
@@ -333,43 +346,46 @@ resource "cloudflare_access_application" "k8s_api" {
 
   # Enable service token authentication for CI/CD
   service_auth_401_redirect = true
-}
 
-# Policy for K8s API - require MFA
-resource "cloudflare_access_policy" "k8s_api_admin" {
-  account_id     = var.cloudflare_account_id
-  application_id = cloudflare_access_application.k8s_api.id
-  name           = "Platform Admins"
-  precedence     = 1
-  decision       = "allow"
+  policies = [
+    {
+      name       = "Platform Admins"
+      precedence = 1
+      decision   = "allow"
 
-  include {
-    group = ["Platform-Admins"]
-  }
+      include = [{
+        okta = {
+          identity_provider_id = cloudflare_zero_trust_access_identity_provider.okta.id
+          name                 = "Platform-Admins"
+        }
+      }]
 
-  require {
-    login_method = [cloudflare_access_identity_provider.okta.id]
-    # Require MFA
-    auth_method = "mfa"
-  }
-}
+      require = [
+        {
+          login_method = {
+            id = cloudflare_zero_trust_access_identity_provider.okta.id
+          }
+        },
+        {
+          # Require MFA
+          auth_method = {
+            auth_method = "mfa"
+          }
+        }
+      ]
+    },
+    {
+      name       = "CI/CD Service"
+      precedence = 2
+      decision   = "non_identity"
 
-# Service token for CI/CD access
-resource "cloudflare_access_service_token" "ci_cd" {
-  account_id = var.cloudflare_account_id
-  name       = "CI/CD Pipeline"
-}
-
-resource "cloudflare_access_policy" "k8s_api_service" {
-  account_id     = var.cloudflare_account_id
-  application_id = cloudflare_access_application.k8s_api.id
-  name           = "CI/CD Service"
-  precedence     = 2
-  decision       = "non_identity"
-
-  include {
-    service_token = [cloudflare_access_service_token.ci_cd.id]
-  }
+      include = [{
+        service_token = {
+          token_id = cloudflare_zero_trust_access_service_token.ci_cd.id
+        }
+      }]
+    }
+  ]
 }
 ```
 
@@ -395,9 +411,6 @@ data:
       # SSH with browser rendering
       - hostname: ssh.example.com
         service: ssh://localhost:22
-        originRequest:
-          # Enable browser-based SSH
-          browserTTL: 3600
 
       - service: http_status:404
 ```
@@ -406,28 +419,31 @@ Configure Access for SSH:
 
 ```hcl
 # SSH Access application with short-lived certificates
-resource "cloudflare_access_application" "ssh" {
+resource "cloudflare_zero_trust_access_application" "ssh" {
   account_id       = var.cloudflare_account_id
   name             = "SSH Access"
   domain           = "ssh.example.com"
-  type             = "ssh"
+  type             = "self_hosted"
   session_duration = "4h"
-}
 
-resource "cloudflare_access_policy" "ssh_sre" {
-  account_id     = var.cloudflare_account_id
-  application_id = cloudflare_access_application.ssh.id
-  name           = "SRE Team"
-  precedence     = 1
-  decision       = "allow"
+  policies = [{
+    name       = "SRE Team"
+    precedence = 1
+    decision   = "allow"
 
-  include {
-    group = ["SRE"]
-  }
+    include = [{
+      okta = {
+        identity_provider_id = cloudflare_zero_trust_access_identity_provider.okta.id
+        name                 = "SRE"
+      }
+    }]
 
-  require {
-    auth_method = "mfa"
-  }
+    require = [{
+      auth_method = {
+        auth_method = "mfa"
+      }
+    }]
+  }]
 }
 ```
 
@@ -439,60 +455,79 @@ Require device security compliance:
 
 ```hcl
 # Device posture rules
-resource "cloudflare_device_posture_rule" "disk_encryption" {
+resource "cloudflare_zero_trust_device_posture_rule" "disk_encryption" {
   account_id = var.cloudflare_account_id
   name       = "Disk Encryption Required"
   type       = "disk_encryption"
   schedule   = "24h"
 
-  input {
+  input = {
     require_all = true
   }
 }
 
-resource "cloudflare_device_posture_rule" "firewall" {
+resource "cloudflare_zero_trust_device_posture_rule" "firewall" {
   account_id = var.cloudflare_account_id
   name       = "Firewall Enabled"
   type       = "firewall"
   schedule   = "24h"
 
-  input {
+  input = {
     enabled = true
   }
 }
 
-resource "cloudflare_device_posture_rule" "os_version" {
+resource "cloudflare_zero_trust_device_posture_rule" "os_version" {
   account_id = var.cloudflare_account_id
   name       = "Minimum OS Version"
   type       = "os_version"
   schedule   = "24h"
 
-  input {
-    os                  = "mac"
-    version             = "13.0"
-    operator            = ">="
+  input = {
+    os               = "mac"
+    version          = "13.0"
+    version_operator = ">="
   }
 }
 
 # Update access policy to require device posture
-resource "cloudflare_access_policy" "dashboard_secure" {
-  account_id     = var.cloudflare_account_id
-  application_id = cloudflare_access_application.dashboard.id
-  name           = "Secure Devices Only"
-  precedence     = 1
-  decision       = "allow"
+resource "cloudflare_zero_trust_access_application" "dashboard" {
+  account_id       = var.cloudflare_account_id
+  name             = "Internal Dashboard"
+  domain           = "dashboard.example.com"
+  type             = "self_hosted"
+  session_duration = "24h"
 
-  include {
-    group = ["Engineering"]
-  }
+  policies = [{
+    name       = "Secure Devices Only"
+    precedence = 1
+    decision   = "allow"
 
-  require {
-    login_method = [cloudflare_access_identity_provider.okta.id]
-    device_posture = [
-      cloudflare_device_posture_rule.disk_encryption.id,
-      cloudflare_device_posture_rule.firewall.id,
+    include = [{
+      okta = {
+        identity_provider_id = cloudflare_zero_trust_access_identity_provider.okta.id
+        name                 = "Engineering"
+      }
+    }]
+
+    require = [
+      {
+        login_method = {
+          id = cloudflare_zero_trust_access_identity_provider.okta.id
+        }
+      },
+      {
+        device_posture = {
+          integration_uid = cloudflare_zero_trust_device_posture_rule.disk_encryption.id
+        }
+      },
+      {
+        device_posture = {
+          integration_uid = cloudflare_zero_trust_device_posture_rule.firewall.id
+        }
+      }
     ]
-  }
+  }]
 }
 ```
 
@@ -505,12 +540,12 @@ Configure logging for audit and troubleshooting:
 ```hcl
 # Enable Access audit logs
 resource "cloudflare_logpush_job" "access_logs" {
-  account_id          = var.cloudflare_account_id
-  name                = "access-logs"
-  enabled             = true
-  dataset             = "access_requests"
-  destination_conf    = "s3://access-logs-bucket?region=us-east-1&access-key-id=${var.aws_access_key}&secret-access-key=${var.aws_secret_key}"
-  frequency           = "high"
+  account_id                  = var.cloudflare_account_id
+  name                        = "access-logs"
+  enabled                     = true
+  dataset                     = "access_requests"
+  destination_conf            = "s3://access-logs-bucket?region=us-east-1&access-key-id=${var.aws_access_key}&secret-access-key=${var.aws_secret_key}"
+  max_upload_interval_seconds = 30
 
   filter = jsonencode({
     where = {
@@ -533,25 +568,15 @@ Create monitoring dashboards:
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
-  name: cloudflare-access-alerts
+  name: cloudflare-tunnel-alerts
   namespace: monitoring
 spec:
   groups:
-  - name: cloudflare-access
+  - name: cloudflare-tunnel
     rules:
-    - alert: AccessAuthenticationFailures
-      expr: |
-        sum(rate(cloudflare_access_auth_failures_total[5m])) > 5
-      for: 2m
-      labels:
-        severity: warning
-      annotations:
-        summary: "High rate of Access authentication failures"
-        description: "More than 5 authentication failures per minute"
-
     - alert: TunnelDisconnected
       expr: |
-        cloudflared_tunnel_connections_active == 0
+        cloudflared_tunnel_ha_connections == 0
       for: 2m
       labels:
         severity: critical

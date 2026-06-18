@@ -230,27 +230,43 @@ interface ErrorResponse {
 type ApiResponse = SuccessResponse | ErrorResponse;
 
 // Type guard with thorough validation
-function isSuccessResponse(response: ApiResponse): response is SuccessResponse {
+function isSuccessResponse(response: unknown): response is SuccessResponse {
+    if (typeof response !== "object" || response === null) {
+        return false;
+    }
+
+    const candidate = response as Record<string, unknown>;
+    const data = candidate.data as Record<string, unknown> | undefined;
+
     return (
-        response.status === "success" &&
-        "data" in response &&
-        typeof response.data.id === "number" &&
-        typeof response.data.name === "string" &&
-        typeof response.data.email === "string"
+        candidate.status === "success" &&
+        typeof data === "object" &&
+        data !== null &&
+        typeof data.id === "number" &&
+        typeof data.name === "string" &&
+        typeof data.email === "string"
     );
 }
 
-function isErrorResponse(response: ApiResponse): response is ErrorResponse {
+function isErrorResponse(response: unknown): response is ErrorResponse {
+    if (typeof response !== "object" || response === null) {
+        return false;
+    }
+
+    const candidate = response as Record<string, unknown>;
+    const error = candidate.error as Record<string, unknown> | undefined;
+
     return (
-        response.status === "error" &&
-        "error" in response &&
-        typeof response.error.code === "number" &&
-        typeof response.error.message === "string"
+        candidate.status === "error" &&
+        typeof error === "object" &&
+        error !== null &&
+        typeof error.code === "number" &&
+        typeof error.message === "string"
     );
 }
 
 // Usage
-async function handleApiResponse(response: ApiResponse): Promise<void> {
+async function handleApiResponse(response: unknown): Promise<void> {
     if (isSuccessResponse(response)) {
         // TypeScript knows this is SuccessResponse
         console.log(`User: ${response.data.name}`);
@@ -598,6 +614,19 @@ function handleStatus(status: Status): string {
 ### Don't: Overuse Type Assertions
 
 ```typescript
+interface User {
+    name: string;
+}
+
+function isUser(data: unknown): data is User {
+    return (
+        typeof data === "object" &&
+        data !== null &&
+        "name" in data &&
+        typeof (data as { name: unknown }).name === "string"
+    );
+}
+
 // Bad: Using assertion instead of guard
 function processData(data: unknown): void {
     // Unsafe - no runtime check

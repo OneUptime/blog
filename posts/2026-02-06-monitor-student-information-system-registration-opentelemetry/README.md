@@ -25,11 +25,11 @@ Each step interacts with different backend systems: the identity provider, the S
 ## Instrumenting the Registration API
 
 ```java
+import io.opentelemetry.api.GlobalOpenTelemetry;
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.StatusCode;
-import io.opentelemetry.api.common.Attributes;
-import io.opentelemetry.api.common.AttributeKey;
+import io.opentelemetry.context.Scope;
 
 public class RegistrationService {
     private static final Tracer tracer = GlobalOpenTelemetry
@@ -42,18 +42,22 @@ public class RegistrationService {
             .setAttribute("sis.term_id", termId)
             .startSpan();
 
-        try {
+        try (Scope scope = span.makeCurrent()) {
             // Step 1: Check enrollment eligibility
             Span eligibilitySpan = tracer.spanBuilder("sis.check_eligibility")
                 .setAttribute("sis.student_id", studentId)
                 .startSpan();
 
-            EligibilityResult eligibility = checkEligibility(studentId, termId);
-            eligibilitySpan.setAttribute("sis.has_holds", eligibility.hasHolds());
-            eligibilitySpan.setAttribute("sis.credit_hours_current", eligibility.getCurrentCredits());
-            eligibilitySpan.setAttribute("sis.credit_hours_max", eligibility.getMaxCredits());
-            eligibilitySpan.setAttribute("sis.eligible", eligibility.isEligible());
-            eligibilitySpan.end();
+            EligibilityResult eligibility;
+            try (Scope eligibilityScope = eligibilitySpan.makeCurrent()) {
+                eligibility = checkEligibility(studentId, termId);
+                eligibilitySpan.setAttribute("sis.has_holds", eligibility.hasHolds());
+                eligibilitySpan.setAttribute("sis.credit_hours_current", eligibility.getCurrentCredits());
+                eligibilitySpan.setAttribute("sis.credit_hours_max", eligibility.getMaxCredits());
+                eligibilitySpan.setAttribute("sis.eligible", eligibility.isEligible());
+            } finally {
+                eligibilitySpan.end();
+            }
 
             if (!eligibility.isEligible()) {
                 span.setAttribute("sis.enrollment_result", "ineligible");
@@ -67,10 +71,14 @@ public class RegistrationService {
                 .setAttribute("sis.student_id", studentId)
                 .startSpan();
 
-            PrereqResult prereqs = checkPrerequisites(studentId, courseId);
-            prereqSpan.setAttribute("sis.prereqs_met", prereqs.allMet());
-            prereqSpan.setAttribute("sis.missing_prereqs", prereqs.getMissingCount());
-            prereqSpan.end();
+            PrereqResult prereqs;
+            try (Scope prereqScope = prereqSpan.makeCurrent()) {
+                prereqs = checkPrerequisites(studentId, courseId);
+                prereqSpan.setAttribute("sis.prereqs_met", prereqs.allMet());
+                prereqSpan.setAttribute("sis.missing_prereqs", prereqs.getMissingCount());
+            } finally {
+                prereqSpan.end();
+            }
 
             if (!prereqs.allMet()) {
                 span.setAttribute("sis.enrollment_result", "prereqs_not_met");
@@ -82,12 +90,16 @@ public class RegistrationService {
                 .setAttribute("sis.course_id", courseId)
                 .startSpan();
 
-            SeatResult seat = reserveSeat(courseId, studentId);
-            seatSpan.setAttribute("sis.seats_total", seat.getTotalSeats());
-            seatSpan.setAttribute("sis.seats_remaining", seat.getRemainingSeats());
-            seatSpan.setAttribute("sis.seat_reserved", seat.isReserved());
-            seatSpan.setAttribute("sis.waitlisted", seat.isWaitlisted());
-            seatSpan.end();
+            SeatResult seat;
+            try (Scope seatScope = seatSpan.makeCurrent()) {
+                seat = reserveSeat(courseId, studentId);
+                seatSpan.setAttribute("sis.seats_total", seat.getTotalSeats());
+                seatSpan.setAttribute("sis.seats_remaining", seat.getRemainingSeats());
+                seatSpan.setAttribute("sis.seat_reserved", seat.isReserved());
+                seatSpan.setAttribute("sis.waitlisted", seat.isWaitlisted());
+            } finally {
+                seatSpan.end();
+            }
 
             if (!seat.isReserved() && !seat.isWaitlisted()) {
                 span.setAttribute("sis.enrollment_result", "course_full");
@@ -113,6 +125,15 @@ public class RegistrationService {
 Course search is the most frequent operation during registration and often the first bottleneck:
 
 ```java
+import io.opentelemetry.api.GlobalOpenTelemetry;
+import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.api.common.AttributeKey;
+import io.opentelemetry.api.metrics.LongHistogram;
+import io.opentelemetry.api.metrics.Meter;
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.context.Scope;
+
 public class CourseSearchService {
     private static final Tracer tracer = GlobalOpenTelemetry
         .getTracer("sis.course_search");
@@ -138,7 +159,7 @@ public class CourseSearchService {
 
         long start = System.currentTimeMillis();
 
-        try {
+        try (Scope scope = span.makeCurrent()) {
             SearchResults results = executeSearch(query);
             long duration = System.currentTimeMillis() - start;
 
@@ -162,7 +183,10 @@ public class CourseSearchService {
 During registration day, you need real-time visibility into system health. Track concurrent users and request rates:
 
 ```python
+from typing import Iterable
+
 from opentelemetry import metrics
+from opentelemetry.metrics import CallbackOptions, Observation
 
 meter = metrics.get_meter("sis.registration")
 
@@ -179,9 +203,13 @@ enrollment_outcomes = meter.create_counter(
     description="Total enrollment attempts by outcome",
 )
 
+def observe_db_pool_usage(options: CallbackOptions) -> Iterable[Observation]:
+    yield Observation(get_active_db_connections())
+
 # Track database connection pool usage
-db_pool_usage = meter.create_observable_gauge(
+meter.create_observable_gauge(
     "sis.db_pool_active_connections",
+    callbacks=[observe_db_pool_usage],
     description="Active database connections from the SIS connection pool",
 )
 

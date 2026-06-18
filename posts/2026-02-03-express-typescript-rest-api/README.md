@@ -25,14 +25,14 @@ npm init -y
 ### Install Dependencies
 
 ```bash
-# Core dependencies (Express 4.x — the validate middleware shown below
+# Core dependencies (Express 4.x - the validate middleware shown below
 # reassigns req.query, which is a read-only getter in Express 5)
 npm install express@^4.21 cors helmet uuid
 
 # TypeScript and types
 npm install -D typescript ts-node @types/node @types/express@^4 @types/cors @types/uuid
 
-# Validation (Zod 3.x — the validate middleware uses AnyZodObject and
+# Validation (Zod 3.x - the validate middleware uses AnyZodObject and
 # error.errors, both removed/renamed in Zod 4)
 npm install zod@^3.23
 

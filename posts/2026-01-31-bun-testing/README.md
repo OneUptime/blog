@@ -485,7 +485,7 @@ Bun allows you to mock entire modules for complete isolation.
 import { test, expect, mock } from "bun:test";
 import { getUser, saveUser } from "./database";
 
-// Override the module's exports — live bindings ensure existing imports
+// Override the module's exports - live bindings ensure existing imports
 // see the mocked values. For mocks that must run before any module side
 // effects, use bun test --preload instead.
 mock.module("./database", () => ({

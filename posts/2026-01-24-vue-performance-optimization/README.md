@@ -55,18 +55,19 @@ Load components only when needed to reduce initial bundle size.
 // Route-based code splitting
 
 import { createRouter, createWebHistory } from 'vue-router'
+import Home from '../views/Home.vue'
 
 const routes = [
   {
     path: '/',
     name: 'Home',
     // Eager load - included in main bundle
-    component: () => import('../views/Home.vue')
+    component: Home
   },
   {
     path: '/dashboard',
     name: 'Dashboard',
-    // Lazy load with webpackChunkName for named chunks
+    // Lazy load (webpack uses webpackChunkName for named chunks)
     component: () => import(
       /* webpackChunkName: "dashboard" */
       '../views/Dashboard.vue'
@@ -83,7 +84,7 @@ const routes = [
     children: [
       {
         path: 'users',
-        // Same chunk as parent
+        // Same webpack chunk as parent
         component: () => import(
           /* webpackChunkName: "admin" */
           '../views/admin/Users.vue'
@@ -117,27 +118,25 @@ export default createRouter({
     </header>
 
     <!-- Lazy load modal only when needed -->
-    <Suspense v-if="showModal">
-      <template #default>
-        <AsyncModal @close="showModal = false" />
-      </template>
-      <template #fallback>
-        <div class="loading">Loading modal...</div>
-      </template>
-    </Suspense>
+    <AsyncModal
+      v-if="showModal"
+      @close="showModal = false"
+    />
   </div>
 </template>
 
 <script setup>
 import { ref, defineAsyncComponent } from 'vue'
+import ModalSkeleton from './components/ModalSkeleton.vue'
+import ModalError from './components/ModalError.vue'
 
 const showModal = ref(false)
 
 // Async component with loading and error states
 const AsyncModal = defineAsyncComponent({
   loader: () => import('./components/HeavyModal.vue'),
-  loadingComponent: () => import('./components/ModalSkeleton.vue'),
-  errorComponent: () => import('./components/ModalError.vue'),
+  loadingComponent: ModalSkeleton,
+  errorComponent: ModalError,
   delay: 200,  // Show loading after 200ms
   timeout: 10000  // Timeout after 10 seconds
 })
@@ -182,7 +181,7 @@ Render only visible items for large datasets.
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed } from 'vue'
 
 const props = defineProps({
   items: {
@@ -303,7 +302,7 @@ Leverage computed caching effectively.
 
 ```vue
 <script setup>
-import { ref, computed, shallowRef } from 'vue'
+import { ref, computed } from 'vue'
 
 const users = ref([
   { id: 1, name: 'John', role: 'admin', active: true },
@@ -481,7 +480,7 @@ onUpdated(() => {
 </template>
 
 <script setup>
-import { ref, shallowRef, computed } from 'vue'
+import { ref, shallowRef } from 'vue'
 import ExpensiveChild from './ExpensiveChild.vue'
 
 const searchQuery = ref('')
@@ -529,7 +528,7 @@ Limit expensive operations.
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
+import { ref } from 'vue'
 
 const searchQuery = ref('')
 const results = ref([])
@@ -565,7 +564,8 @@ const debouncedSearch = debounce(async () => {
 
   isSearching.value = true
   try {
-    const response = await fetch(`/api/search?q=${searchQuery.value}`)
+    const query = encodeURIComponent(searchQuery.value)
+    const response = await fetch(`/api/search?q=${query}`)
     results.value = await response.json()
   } finally {
     isSearching.value = false
@@ -583,7 +583,7 @@ const throttledScroll = throttle(() => {
 // composables/useDebounce.js
 // Reusable debounce composable
 
-import { ref, watch } from 'vue'
+import { ref, watch, onScopeDispose } from 'vue'
 
 export function useDebouncedRef(initialValue, delay = 300) {
   const value = ref(initialValue)
@@ -596,6 +596,10 @@ export function useDebouncedRef(initialValue, delay = 300) {
     timeoutId = setTimeout(() => {
       debouncedValue.value = newValue
     }, delay)
+  })
+
+  onScopeDispose(() => {
+    clearTimeout(timeoutId)
   })
 
   return { value, debouncedValue }
@@ -632,7 +636,7 @@ export default defineConfig({
   ],
 
   build: {
-    // Enable minification
+    // Enable Terser minification (requires terser installed)
     minify: 'terser',
     terserOptions: {
       compress: {
@@ -642,7 +646,7 @@ export default defineConfig({
     },
 
     // Code splitting configuration
-    rollupOptions: {
+    rolldownOptions: {
       output: {
         manualChunks: {
           // Separate vendor chunks
@@ -670,10 +674,10 @@ import debounce from 'lodash/debounce'
 const result = debounce(fn, 300)
 
 // BAD - imports all icons
-import * as Icons from '@heroicons/vue/solid'
+import * as Icons from '@heroicons/vue/24/solid'
 
 // GOOD - import specific icons
-import { HomeIcon, UserIcon } from '@heroicons/vue/solid'
+import { HomeIcon, UserIcon } from '@heroicons/vue/24/solid'
 ```
 
 ---
@@ -848,7 +852,7 @@ const dashboardData = await response.json()
   <div class="app">
     <Suspense>
       <template #default>
-        <!-- Multiple async components -->
+        <!-- Async component -->
         <AsyncDashboard />
       </template>
 
@@ -861,7 +865,7 @@ const dashboardData = await response.json()
       </template>
     </Suspense>
 
-    <!-- Error boundary -->
+    <!-- Track Suspense loading events -->
     <Suspense @pending="onPending" @resolve="onResolve" @fallback="onFallback">
       <template #default>
         <AsyncUserProfile :user-id="userId" />
@@ -913,7 +917,7 @@ export const performancePlugin = {
     }
 
     // Custom performance marks
-    app.config.globalProperties.$perf = {
+    const perf = {
       mark(name) {
         performance.mark(name)
       },
@@ -931,7 +935,7 @@ export const performancePlugin = {
           start: () => performance.mark(`${componentName}-start`),
           end: () => {
             performance.mark(`${componentName}-end`)
-            return this.measure(
+            return perf.measure(
               componentName,
               `${componentName}-start`,
               `${componentName}-end`
@@ -940,6 +944,8 @@ export const performancePlugin = {
         }
       }
     }
+
+    app.config.globalProperties.$perf = perf
 
     // Track route navigation
     app.mixin({
@@ -961,17 +967,22 @@ export const performancePlugin = {
 ```vue
 <!-- PerformanceTrackedComponent.vue -->
 <script setup>
-import { onMounted, onUpdated, getCurrentInstance } from 'vue'
+import { onBeforeMount, onMounted, onUpdated } from 'vue'
 
-const instance = getCurrentInstance()
 const componentName = 'PerformanceTrackedComponent'
 
 let renderCount = 0
-let lastRenderTime = 0
+let mountStart = 0
+let lastRenderTime = performance.now()
+
+onBeforeMount(() => {
+  mountStart = performance.now()
+})
 
 onMounted(() => {
-  const mountTime = performance.now()
-  console.log(`[${componentName}] Mounted in ${mountTime.toFixed(2)}ms`)
+  const mountDuration = performance.now() - mountStart
+  lastRenderTime = performance.now()
+  console.log(`[${componentName}] Mounted in ${mountDuration.toFixed(2)}ms`)
 })
 
 onUpdated(() => {

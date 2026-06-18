@@ -811,7 +811,7 @@ Access metrics on the management port (9000 by default):
 - Health: http://localhost:9000/health
 - Metrics: http://localhost:9000/metrics
 
-Make sure to expose port 9000 from the container (e.g., add `- "9000:9000"` to your ports list). Keep this port internal — do not expose it through your public reverse proxy.
+Make sure to expose port 9000 from the container (e.g., add `- "9000:9000"` to your ports list). Keep this port internal - do not expose it through your public reverse proxy.
 
 ### Configure Email
 

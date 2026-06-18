@@ -562,6 +562,12 @@ class WebSocketMetrics {
             registers: [this.registry]
         });
 
+        this.connectionsClosedTotal = new client.Counter({
+            name: `${this.prefix}_connections_closed_total`,
+            help: 'Total number of closed WebSocket connections',
+            registers: [this.registry]
+        });
+
         // Message metrics
         this.messagesTotal = new client.Counter({
             name: `${this.prefix}_messages_total`,
@@ -657,6 +663,7 @@ class WebSocketMetrics {
     // Record disconnection
     recordDisconnection(durationSeconds) {
         this.connectionsActive.dec();
+        this.connectionsClosedTotal.inc();
         this.connectionDuration.observe(durationSeconds);
     }
 
@@ -862,6 +869,7 @@ class MonitoredWebSocketServer {
             case 'ping':
                 this.send(ws, connectionId, {
                     action: 'pong',
+                    pingId: message.pingId,
                     timestamp: Date.now()
                 });
                 break;
@@ -1054,7 +1062,7 @@ Create a Grafana dashboard for visualizing WebSocket metrics.
       },
       {
         "title": "Connection Rate",
-        "type": "graph",
+        "type": "timeseries",
         "targets": [
           {
             "expr": "rate(websocket_connections_total{status=\"success\"}[5m])",
@@ -1068,7 +1076,7 @@ Create a Grafana dashboard for visualizing WebSocket metrics.
       },
       {
         "title": "Ping Latency",
-        "type": "graph",
+        "type": "timeseries",
         "targets": [
           {
             "expr": "histogram_quantile(0.5, rate(websocket_ping_latency_seconds_bucket[5m]))",
@@ -1086,7 +1094,7 @@ Create a Grafana dashboard for visualizing WebSocket metrics.
       },
       {
         "title": "Message Throughput",
-        "type": "graph",
+        "type": "timeseries",
         "targets": [
           {
             "expr": "rate(websocket_messages_total{direction=\"received\"}[5m])",
@@ -1100,7 +1108,7 @@ Create a Grafana dashboard for visualizing WebSocket metrics.
       },
       {
         "title": "Errors",
-        "type": "graph",
+        "type": "timeseries",
         "targets": [
           {
             "expr": "rate(websocket_errors_total[5m])",
@@ -1110,7 +1118,7 @@ Create a Grafana dashboard for visualizing WebSocket metrics.
       },
       {
         "title": "Heartbeat Timeouts",
-        "type": "graph",
+        "type": "timeseries",
         "targets": [
           {
             "expr": "rate(websocket_heartbeat_timeouts_total[5m])",
@@ -1147,7 +1155,7 @@ groups:
 
       # Connection drop rate
       - alert: WebSocketHighDisconnectRate
-        expr: rate(websocket_connections_total{status="success"}[5m]) > 0 and rate(websocket_connections_total{status="success"}[5m]) - rate(websocket_connections_active[5m]) > 10
+        expr: rate(websocket_connections_closed_total[5m]) > 10
         for: 5m
         labels:
           severity: warning
@@ -1207,6 +1215,7 @@ Implement client-side health monitoring that reports to the server.
 class WebSocketHealthReporter {
     constructor(ws, options = {}) {
         this.ws = ws;
+        this.connectedAt = Date.now();
         this.reportInterval = options.reportInterval || 60000;
         this.latencyHistory = [];
         this.maxLatencyHistory = 100;
@@ -1247,8 +1256,14 @@ class WebSocketHealthReporter {
     // Measure round-trip latency
     async measureLatency() {
         return new Promise((resolve) => {
+            if (this.ws.readyState !== WebSocket.OPEN) {
+                resolve(null);
+                return;
+            }
+
             const start = performance.now();
             const pingId = Math.random().toString(36).substring(7);
+            let timeoutId;
 
             const handler = (event) => {
                 try {
@@ -1256,6 +1271,7 @@ class WebSocketHealthReporter {
                     if (data.action === 'pong' && data.pingId === pingId) {
                         const latency = performance.now() - start;
                         this.recordLatency(latency);
+                        clearTimeout(timeoutId);
                         this.ws.removeEventListener('message', handler);
                         resolve(latency);
                     }
@@ -1273,7 +1289,7 @@ class WebSocketHealthReporter {
             }));
 
             // Timeout after 10 seconds
-            setTimeout(() => {
+            timeoutId = setTimeout(() => {
                 this.ws.removeEventListener('message', handler);
                 resolve(null);
             }, 10000);

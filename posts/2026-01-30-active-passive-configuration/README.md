@@ -229,7 +229,10 @@ kubectl scale deployment --all --replicas=3 -n production
 # Step 5: Run health checks
 echo "Running health checks..."
 for i in {1..30}; do
-  if kubectl get pods -n production | grep -v Running | grep -v Completed | grep -c .; then
+  NOT_READY=$(kubectl get pods -n production --no-headers \
+    | awk '$3 != "Running" && $3 != "Completed" { count++ } END { print count+0 }')
+
+  if [[ "${NOT_READY}" -gt 0 ]]; then
     echo "Waiting for pods to be ready... (attempt $i/30)"
     sleep 10
   else
@@ -723,6 +726,7 @@ PRIMARY_HOST="primary.example.com"
 REPLICATION_USER="replicator"
 REPLICATION_PASSWORD="secure_password"
 DATA_DIR="/var/lib/postgresql/data"
+export PGPASSWORD="${REPLICATION_PASSWORD}"
 
 # Stop PostgreSQL on standby
 sudo systemctl stop postgresql
@@ -786,13 +790,8 @@ data:
     log_connections = on
     log_disconnections = on
 
-  primary_conninfo: |
-    host=primary-db.example.com
-    port=5432
-    user=replicator
-    password=secure_password
-    application_name=standby1
-    sslmode=require
+    # Connection string used by the standby WAL receiver
+    primary_conninfo = 'host=primary-db.example.com port=5432 user=replicator password=secure_password application_name=standby1 sslmode=require'
 ```
 
 ### Database Failover Procedure
@@ -939,12 +938,8 @@ MYSQL_CMD="mysql -h ${REPLICA_HOST} -u ${MYSQL_USER} -p${MYSQL_PASS}"
 
 echo "Starting MySQL failover..."
 
-# Step 1: Stop replication
-echo "Step 1: Stopping replication..."
-${MYSQL_CMD} -e "STOP REPLICA;"
-
-# Step 2: Check for replication lag
-echo "Step 2: Checking replication status..."
+# Step 1: Check for replication lag before stopping replication
+echo "Step 1: Checking replication status..."
 SECONDS_BEHIND=$(${MYSQL_CMD} -N -e \
     "SHOW REPLICA STATUS\G" | grep "Seconds_Behind_Source" | awk '{print $2}')
 
@@ -957,6 +952,10 @@ if [[ "${SECONDS_BEHIND}" != "0" && "${SECONDS_BEHIND}" != "NULL" ]]; then
         exit 1
     fi
 fi
+
+# Step 2: Stop replication
+echo "Step 2: Stopping replication..."
+${MYSQL_CMD} -e "STOP REPLICA;"
 
 # Step 3: Reset replica configuration
 echo "Step 3: Resetting replica configuration..."
@@ -1118,7 +1117,7 @@ server {
 ### Kubernetes Service for Active-Passive
 
 ```yaml
-# Active-passive using Kubernetes Service with manual endpoint management
+# Active-passive using Kubernetes Service with manual EndpointSlice management
 apiVersion: v1
 kind: Service
 metadata:
@@ -1127,22 +1126,29 @@ metadata:
 spec:
   type: ClusterIP
   ports:
-    - port: 80
+    - name: http
+      port: 80
       targetPort: 8080
   # No selector - we manage endpoints manually for failover control
 ---
-# Endpoints pointing to active server
-apiVersion: v1
-kind: Endpoints
+# EndpointSlice pointing to active server
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
 metadata:
-  name: app-service
+  name: app-service-manual
   namespace: production
-subsets:
+  labels:
+    kubernetes.io/service-name: app-service
+addressType: IPv4
+ports:
+  - name: http
+    protocol: TCP
+    port: 8080
+endpoints:
   - addresses:
-      # Primary/active pod IP
-      - ip: 10.244.1.10
-    ports:
-      - port: 8080
+      - 10.244.1.10  # Primary/active pod IP
+    conditions:
+      ready: true
 ---
 # ConfigMap to store passive server info for failover
 apiVersion: v1
@@ -1158,12 +1164,13 @@ data:
 ```bash
 #!/bin/bash
 # kubernetes-failover.sh
-# Switch Kubernetes service endpoints from active to passive
+# Switch Kubernetes service EndpointSlice from active to passive
 
 set -euo pipefail
 
 NAMESPACE="production"
 SERVICE_NAME="app-service"
+ENDPOINT_SLICE_NAME="app-service-manual"
 
 # Get passive server details
 PASSIVE_IP=$(kubectl get configmap failover-endpoints -n "${NAMESPACE}" \
@@ -1172,19 +1179,24 @@ PASSIVE_PORT=$(kubectl get configmap failover-endpoints -n "${NAMESPACE}" \
     -o jsonpath='{.data.passive_port}')
 
 # Get current active IP for rollback
-CURRENT_IP=$(kubectl get endpoints "${SERVICE_NAME}" -n "${NAMESPACE}" \
-    -o jsonpath='{.subsets[0].addresses[0].ip}')
+CURRENT_IP=$(kubectl get endpointslice "${ENDPOINT_SLICE_NAME}" -n "${NAMESPACE}" \
+    -o jsonpath='{.endpoints[0].addresses[0]}')
 
 echo "Current active IP: ${CURRENT_IP}"
 echo "Switching to passive IP: ${PASSIVE_IP}"
 
-# Update endpoints to point to passive server
-kubectl patch endpoints "${SERVICE_NAME}" -n "${NAMESPACE}" --type='json' \
+# Update EndpointSlice to point to passive server
+kubectl patch endpointslice "${ENDPOINT_SLICE_NAME}" -n "${NAMESPACE}" --type='json' \
     -p='[
         {
             "op": "replace",
-            "path": "/subsets/0/addresses/0/ip",
+            "path": "/endpoints/0/addresses/0",
             "value": "'"${PASSIVE_IP}"'"
+        },
+        {
+            "op": "replace",
+            "path": "/ports/0/port",
+            "value": '"${PASSIVE_PORT}"'
         }
     ]'
 
@@ -1201,7 +1213,7 @@ kubectl patch configmap failover-endpoints -n "${NAMESPACE}" --type='json' \
 echo "Failover complete. Service now pointing to ${PASSIVE_IP}"
 
 # Verify
-kubectl get endpoints "${SERVICE_NAME}" -n "${NAMESPACE}" -o wide
+kubectl get endpointslice "${ENDPOINT_SLICE_NAME}" -n "${NAMESPACE}" -o wide
 ```
 
 ## Complete Active-Passive Architecture
@@ -1300,7 +1312,7 @@ log "Current active server: ${ACTIVE_SERVER}"
 # Step 2: Verify replication lag
 log "Step 2: Checking replication lag"
 LAG=$(psql -h standby-db.example.com -U monitor -t -c \
-    "SELECT EXTRACT(EPOCH FROM (now() - pg_last_xact_replay_timestamp()))::int;")
+    "SELECT COALESCE(EXTRACT(EPOCH FROM (now() - pg_last_xact_replay_timestamp()))::int, 0);")
 log "Database replication lag: ${LAG} seconds"
 
 if [[ "${LAG}" -gt 60 ]]; then
@@ -1350,7 +1362,7 @@ log "Step 8: Initiating failback..."
 # Calculate metrics
 END_TIME=$(date +%s)
 TOTAL_TIME=$((END_TIME - START_TIME))
-RTO=$((END_TIME - START_TIME - 60))  # Subtract intentional wait time
+RTO=$((END_TIME - START_TIME - 30))  # Subtract intentional wait time
 
 log "Drill completed"
 log "Total drill time: ${TOTAL_TIME} seconds"

@@ -1156,7 +1156,7 @@ Monitor your registry to catch issues before they affect deployments.
 
 ### Registry Metrics
 
-The Docker registry can expose Prometheus metrics, but only when the debug listener is enabled in the registry configuration. Metrics are not served on the main registry port — they require a separate listener configured via `http.debug.prometheus.enabled`.
+The Docker registry can expose Prometheus metrics, but only when the debug listener is enabled in the registry configuration. Metrics are not served on the main registry port - they require a separate listener configured via `http.debug.prometheus.enabled`.
 
 First, provide the registry with a config that enables the debug listener and Prometheus endpoint.
 

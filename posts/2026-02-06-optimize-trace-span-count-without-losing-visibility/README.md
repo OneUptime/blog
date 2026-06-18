@@ -31,17 +31,17 @@ Auto-instrumentation libraries are usually the biggest contributor. When you add
 
 The simplest way to reduce span volume is to not create traces for every request. Head-based sampling makes a decision at the start of a trace about whether to record it.
 
-The built-in TraceIdRatioBased sampler in OpenTelemetry works well for this. It uses the trace ID to deterministically decide whether to sample, which means all services in a distributed trace make the same decision.
+The built-in TraceIdRatioBased sampler in OpenTelemetry works well for this when it is wrapped in a parent-based sampler. It uses the trace ID to deterministically decide whether to sample root traces, and downstream spans follow the propagated parent sampling decision.
 
 ```python
 # Python SDK configuration with 10% sampling rate
 
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.sampling import TraceIdRatioBased
+from opentelemetry.sdk.trace.sampling import ParentBased, TraceIdRatioBased
 
 # Sample 10% of traces - the ratio is between 0.0 and 1.0
-sampler = TraceIdRatioBased(0.1)
+sampler = ParentBased(TraceIdRatioBased(0.1))
 
 provider = TracerProvider(sampler=sampler)
 trace.set_tracer_provider(provider)
@@ -108,21 +108,44 @@ flowchart TD
 
 Many auto-instrumentation libraries create spans that you do not actually need. Health check endpoints, internal DNS lookups, connection pool management calls - these add noise to your traces without adding insight.
 
-You can suppress these at the SDK level. In Java, for example:
+You can suppress these at the SDK level. In Java, for example, a custom sampler can drop root spans by the span name available at span creation time:
 
 ```java
-// Java SDK - Suppress spans for specific URL patterns
-// This prevents health check and readiness probe spans from being created
+// Java SDK - Suppress spans for specific names
+import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.api.trace.SpanKind;
+import io.opentelemetry.context.Context;
+import io.opentelemetry.sdk.trace.SdkTracerProvider;
+import io.opentelemetry.sdk.trace.data.LinkData;
+import io.opentelemetry.sdk.trace.samplers.Sampler;
+import io.opentelemetry.sdk.trace.samplers.SamplingResult;
+import java.util.List;
+
+Sampler dropHealthChecks = new Sampler() {
+    @Override
+    public SamplingResult shouldSample(
+            Context parentContext,
+            String traceId,
+            String name,
+            SpanKind spanKind,
+            Attributes attributes,
+            List<LinkData> parentLinks) {
+        if (name.contains("/health") ||
+                name.contains("/ready") ||
+                name.contains("/metrics")) {
+            return SamplingResult.drop();
+        }
+        return SamplingResult.recordAndSample();
+    }
+
+    @Override
+    public String getDescription() {
+        return "DropHealthCheckSampler";
+    }
+};
+
 SdkTracerProvider tracerProvider = SdkTracerProvider.builder()
-    .setSampler(Sampler.parentBased(
-        new FilteringSampler(
-            Sampler.alwaysOn(),
-            // Drop spans for health check endpoints
-            span -> !span.getName().contains("/health") &&
-                    !span.getName().contains("/ready") &&
-                    !span.getName().contains("/metrics")
-        )
-    ))
+    .setSampler(Sampler.parentBased(dropHealthChecks))
     .build();
 ```
 
@@ -138,23 +161,22 @@ processors:
         - 'attributes["http.target"] == "/ready"'
         - 'attributes["http.target"] == "/favicon.ico"'
         - 'attributes["http.target"] == "/robots.txt"'
-        - 'attributes["db.statement"] matches "^SELECT 1$"'
+        - 'IsMatch(attributes["db.statement"], "^SELECT 1$")'
 ```
 
 That last rule is particularly useful. Many database connection pools send `SELECT 1` as a heartbeat query, and the database instrumentation creates a span for every single one. Filtering these out can cut database span volume by 30% or more.
 
-## Strategy 4: Reduce Span Depth With Span Limits
+## Strategy 4: Reduce Span Payload and Span Depth
 
 Sometimes a single trace generates an unreasonable number of spans. A recursive function, a loop that makes HTTP calls, or a batch database operation can create thousands of child spans under a single parent. You do not need all of them.
 
-OpenTelemetry SDKs let you set a maximum number of spans per trace:
+OpenTelemetry SDK span limits do not cap the number of spans in a trace, but they do cap how much data each span can carry:
 
 ```python
-# Python SDK - Limit the number of spans per trace
+# Python SDK - Limit per-span attributes, events, and links
 from opentelemetry.sdk.trace import TracerProvider, SpanLimits
 
-# Cap each trace at 512 spans maximum
-# Also limit events and links per span to prevent memory bloat
+# Limit span payload size to prevent memory bloat
 limits = SpanLimits(
     max_span_attributes=128,
     max_events_per_span=128,
@@ -164,7 +186,7 @@ limits = SpanLimits(
 provider = TracerProvider(span_limits=limits)
 ```
 
-For the loop problem specifically, a better approach is to replace per-iteration spans with a single parent span that carries aggregate information:
+For the loop problem specifically, the better approach is to reduce span depth at the instrumentation source by replacing per-iteration spans with a single parent span that carries aggregate information:
 
 ```python
 # Instead of creating a span for each item in a batch...
@@ -190,19 +212,38 @@ The OpenTelemetry SDK has a span processor pipeline that lets you intercept span
 
 ```go
 // Go SDK - Custom span processor that drops short-lived internal spans
+import (
+    "context"
+    "time"
+
+    sdktrace "go.opentelemetry.io/otel/sdk/trace"
+)
+
 type FilteringSpanProcessor struct {
-    next trace.SpanProcessor
+    next sdktrace.SpanProcessor
     // Minimum duration to keep a span (in nanoseconds)
     minDuration time.Duration
 }
 
-func (f *FilteringSpanProcessor) OnEnd(s trace.ReadOnlySpan) {
+func (f *FilteringSpanProcessor) OnStart(ctx context.Context, s sdktrace.ReadWriteSpan) {
+    f.next.OnStart(ctx, s)
+}
+
+func (f *FilteringSpanProcessor) OnEnd(s sdktrace.ReadOnlySpan) {
     // Only forward spans that lasted longer than the minimum duration
     // This removes trivially fast operations that add no debugging value
     duration := s.EndTime().Sub(s.StartTime())
     if duration >= f.minDuration {
         f.next.OnEnd(s)
     }
+}
+
+func (f *FilteringSpanProcessor) Shutdown(ctx context.Context) error {
+    return f.next.Shutdown(ctx)
+}
+
+func (f *FilteringSpanProcessor) ForceFlush(ctx context.Context) error {
+    return f.next.ForceFlush(ctx)
 }
 ```
 

@@ -152,7 +152,7 @@ if __name__ == '__main__':
 
 ## Detecting Unused Elastic IPs
 
-Since February 2024, AWS charges $0.005 per hour for every public IPv4 address you own, whether attached or not. An attached EIP is at least doing something useful. An unattached EIP is pure waste — you pay the same hourly fee for an address that routes nowhere, and it adds up when you have dozens sitting idle.
+Since February 2024, AWS charges $0.005 per hour for every public IPv4 address you own, whether attached or not. An attached EIP is at least doing something useful. An unattached EIP is pure waste - you pay the same hourly fee for an address that routes nowhere, and it adds up when you have dozens sitting idle.
 
 ### AWS CLI Detection
 

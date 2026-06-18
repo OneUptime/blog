@@ -158,9 +158,8 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: myapp-primary
-  annotations:
-    kubernetes.io/ingress.class: nginx
 spec:
+  ingressClassName: nginx
   rules:
     - host: myapp.example.com
       http:
@@ -179,12 +178,12 @@ kind: Ingress
 metadata:
   name: myapp-canary
   annotations:
-    kubernetes.io/ingress.class: nginx
     # Enable canary mode for this ingress
     nginx.ingress.kubernetes.io/canary: "true"
     # Send 30% of traffic to this version
     nginx.ingress.kubernetes.io/canary-weight: "30"
 spec:
+  ingressClassName: nginx
   rules:
     - host: myapp.example.com
       http:
@@ -232,7 +231,7 @@ done | sort | uniq -c
 
 Sometimes you want specific users to always see the same version, which is essential for consistent user experience during testing. Header-based routing lets you target users by cookie, header, or other request attributes.
 
-This approach adds a cookie or header check that overrides the weight-based routing, ensuring users see a consistent experience throughout their session.
+This approach adds a header or cookie check that overrides the weight-based routing, ensuring users see a consistent experience throughout their session.
 
 ```yaml
 # ingress-header-based.yaml
@@ -241,16 +240,16 @@ kind: Ingress
 metadata:
   name: myapp-canary
   annotations:
-    kubernetes.io/ingress.class: nginx
     nginx.ingress.kubernetes.io/canary: "true"
-    # Route based on cookie value first
-    nginx.ingress.kubernetes.io/canary-by-cookie: "experiment-group"
-    # Fall back to header if no cookie
+    # Route based on header value first
     nginx.ingress.kubernetes.io/canary-by-header: "X-Experiment-Group"
     nginx.ingress.kubernetes.io/canary-by-header-value: "experiment"
+    # Then route based on cookie value ("always" routes to canary, "never" routes to primary)
+    nginx.ingress.kubernetes.io/canary-by-cookie: "experiment-group"
     # Use weight for users without cookie/header
     nginx.ingress.kubernetes.io/canary-weight: "30"
 spec:
+  ingressClassName: nginx
   rules:
     - host: myapp.example.com
       http:
@@ -272,19 +271,20 @@ function assignExperimentGroup(req, res, next) {
   // Check if user already has an experiment group assigned
   if (!req.cookies['experiment-group']) {
     // Randomly assign to control or experiment (30% experiment)
-    const group = Math.random() < 0.3 ? 'experiment' : 'control';
+    const cookieValue = Math.random() < 0.3 ? 'always' : 'never';
 
-    // Set cookie that persists for 30 days
-    res.cookie('experiment-group', group, {
+    // Set cookie that persists for 30 days. Nginx canary routing expects
+    // "always" for canary traffic and "never" for primary traffic.
+    res.cookie('experiment-group', cookieValue, {
       maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days in milliseconds
       httpOnly: true,
       secure: true,
       sameSite: 'strict'
     });
 
-    req.experimentGroup = group;
+    req.experimentGroup = cookieValue === 'always' ? 'experiment' : 'control';
   } else {
-    req.experimentGroup = req.cookies['experiment-group'];
+    req.experimentGroup = req.cookies['experiment-group'] === 'always' ? 'experiment' : 'control';
   }
 
   next();
@@ -425,6 +425,20 @@ helm upgrade -i flagger flagger/flagger \
 The Canary resource tells Flagger how to run your A/B test, including which metrics to check and what thresholds define success.
 
 ```yaml
+# metric-template.yaml - Custom conversion-rate metric
+apiVersion: flagger.app/v1beta1
+kind: MetricTemplate
+metadata:
+  name: conversion-rate
+spec:
+  provider:
+    type: prometheus
+    address: http://prometheus:9090
+  query: |
+    sum(rate(conversions_total{app="myapp",version="canary"}[{{ interval }}]))
+    /
+    sum(rate(page_views_total{app="myapp",version="canary"}[{{ interval }}]))
+---
 # canary.yaml - Automated A/B testing configuration
 apiVersion: flagger.app/v1beta1
 kind: Canary
@@ -467,20 +481,13 @@ spec:
           max: 500
         interval: 1m
 
-    # Custom metrics from Prometheus
-    webhooks:
+      # Business metric: conversion rate should not drop
       - name: conversion-rate
-        type: rollout
-        url: http://flagger-loadtester/
-        metadata:
-          type: prometheus
-          # Business metric: conversion rate should not drop
-          query: |
-            sum(rate(conversions_total{app="myapp",version="canary"}[5m]))
-            /
-            sum(rate(page_views_total{app="myapp",version="canary"}[5m]))
-          thresholdRange:
-            min: 0.05  # At least 5% conversion rate
+        templateRef:
+          name: conversion-rate
+        thresholdRange:
+          min: 0.05  # At least 5% conversion rate
+        interval: 5m
 ```
 
 ### Monitor Flagger Progress
@@ -670,7 +677,7 @@ sample_size = calculate_sample_size(
     minimum_effect=0.10
 )
 print(f"Required sample size per variant: {sample_size}")
-# Output: Required sample size per variant: 31234
+# Output: Required sample size per variant: 31200
 
 # With 1000 daily visitors, you need:
 daily_visitors = 1000
@@ -732,9 +739,9 @@ print(results)
 #   'control_rate': '5.00%',
 #   'experiment_rate': '5.50%',
 #   'relative_improvement': '10.0%',
-#   'p_value': 0.0412,
-#   'significant': True,
-#   'recommendation': 'Deploy experiment'
+#   'p_value': 0.1203,
+#   'significant': False,
+#   'recommendation': 'Keep control'
 # }
 ```
 
@@ -843,6 +850,7 @@ jobs:
               nginx.ingress.kubernetes.io/canary: "true"
               nginx.ingress.kubernetes.io/canary-weight: "${{ github.event.inputs.traffic_percentage }}"
           spec:
+            ingressClassName: nginx
             rules:
               - host: myapp.example.com
                 http:

@@ -65,7 +65,7 @@ Create separate environments:
     },
     {
       "key": "apiKey",
-      "value": "{{$vault:production-api-key}}",
+      "value": "{{vault:production-api-key}}",
       "enabled": true
     }
   ]
@@ -122,14 +122,9 @@ pm.environment.set("timestamp", Date.now());
 const randomEmail = `test${Date.now()}@example.com`;
 pm.environment.set("testEmail", randomEmail);
 
-// Calculate signature for authenticated requests
-const crypto = require('crypto-js');
+// Set a timestamp for authenticated requests
 const timestamp = Date.now().toString();
-const secretKey = pm.environment.get("secretKey");
-const signature = crypto.HmacSHA256(timestamp, secretKey).toString();
-
 pm.environment.set("requestTimestamp", timestamp);
-pm.environment.set("requestSignature", signature);
 ```
 
 ## Testing CRUD Operations
@@ -138,7 +133,7 @@ Create a complete test suite for user management:
 
 ### Create User (POST)
 
-```javascript
+```text
 // Request Body (raw JSON)
 {
     "name": "{{testUserName}}",
@@ -186,7 +181,7 @@ pm.test("Correct user returned", function () {
 
 ### Update User (PUT)
 
-```javascript
+```text
 // Request Body
 {
     "name": "Updated Name"
@@ -214,13 +209,15 @@ pm.test("User deleted successfully", function () {
 });
 
 // Verify deletion
-pm.test("User no longer exists", function () {
+pm.test("User no longer exists", function (done) {
     // This would be a separate request to verify
     pm.sendRequest({
         url: pm.environment.get("baseUrl") + "/api/users/" + pm.environment.get("createdUserId"),
         method: 'GET'
     }, function (err, response) {
+        pm.expect(err).to.equal(null);
         pm.expect(response.code).to.equal(404);
+        done();
     });
 });
 ```
@@ -258,7 +255,7 @@ pm.test("Token is valid JWT", function () {
 
 Use the token in subsequent requests:
 
-```javascript
+```text
 // In the Authorization header
 Authorization: Bearer {{accessToken}}
 ```
@@ -393,8 +390,7 @@ const userSchema = {
 
 // Validate response
 pm.test("Response matches schema", function () {
-    const jsonData = pm.response.json();
-    pm.expect(tv4.validate(jsonData, userSchema)).to.be.true;
+    pm.response.to.have.jsonSchema(userSchema);
 });
 ```
 

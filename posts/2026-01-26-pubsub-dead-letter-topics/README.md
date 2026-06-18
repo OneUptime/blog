@@ -12,7 +12,7 @@ When messages fail to process in Google Cloud Pub/Sub, they can clog up your sub
 
 ## What Is a Dead Letter Topic?
 
-A dead letter topic (DLT) is a secondary topic where Pub/Sub automatically routes messages that cannot be successfully delivered to a subscription after a specified number of attempts.
+A dead letter topic (DLT) is a secondary topic where Pub/Sub can route messages that cannot be successfully delivered to a subscription after an approximately configured number of attempts.
 
 ```mermaid
 flowchart LR
@@ -90,7 +90,7 @@ gcloud pubsub subscriptions update orders-subscription \
     --max-delivery-attempts=5
 ```
 
-The `max-delivery-attempts` parameter controls how many times Pub/Sub will try to deliver a message before sending it to the dead letter topic. Valid values range from 5 to 100.
+The `max-delivery-attempts` parameter controls approximately how many times Pub/Sub will try to deliver a message before sending it to the dead letter topic. Dead-letter forwarding is best effort, so Pub/Sub can forward a message after fewer or more attempts than configured. Valid values range from 5 to 100.
 
 ## Message Flow with Dead Letter Topics
 
@@ -115,7 +115,7 @@ sequenceDiagram
     S->>C: Deliver attempt 5
     C->>S: NACK (failure)
     S->>DLT: Forward to dead letter topic
-    Note over DLT: Message includes delivery<br/>attempt count attribute
+    Note over DLT: Message includes dead-letter<br/>metadata attributes
 ```
 
 ## Implementing Dead Letter Topics in Code
@@ -124,7 +124,6 @@ sequenceDiagram
 
 ```python
 from google.cloud import pubsub_v1
-from google.api_core import retry
 import json
 import logging
 
@@ -386,9 +385,12 @@ func main() {
 	log.Printf("Listening for messages on %s", subscriptionID)
 
 	err = sub.Receive(ctx, func(ctx context.Context, msg *pubsub.Message) {
-		// Get delivery attempt count
-		deliveryAttempt := msg.DeliveryAttempt
-		log.Printf("Received message %s, delivery attempt: %d", msg.ID, *deliveryAttempt)
+		// Get delivery attempt count. It is nil unless dead lettering is enabled.
+		deliveryAttempt := "unknown"
+		if msg.DeliveryAttempt != nil {
+			deliveryAttempt = fmt.Sprintf("%d", *msg.DeliveryAttempt)
+		}
+		log.Printf("Received message %s, delivery attempt: %s", msg.ID, deliveryAttempt)
 
 		// Parse the message
 		var order Order
@@ -427,6 +429,7 @@ Messages in the dead letter topic include additional attributes that help you di
 | `CloudPubSubDeadLetterSourceDeliveryCount` | Number of delivery attempts before the message was dead-lettered |
 | `CloudPubSubDeadLetterSourceSubscription` | The subscription that forwarded the message |
 | `CloudPubSubDeadLetterSourceSubscriptionProject` | Project containing the source subscription |
+| `CloudPubSubDeadLetterSourceTopicPublishTime` | Timestamp when the original message was published |
 
 ### Dead Letter Consumer for Investigation
 
@@ -446,7 +449,9 @@ bigquery_dataset = "monitoring"
 bigquery_table = "dead_letters"
 
 
-def log_to_bigquery(bq_client, message_data: dict, attributes: dict) -> None:
+def log_to_bigquery(
+    bq_client, message_id: str, message_data: dict, attributes: dict
+) -> None:
     """
     Store dead letter information in BigQuery for analysis.
 
@@ -459,7 +464,7 @@ def log_to_bigquery(bq_client, message_data: dict, attributes: dict) -> None:
 
     row = {
         "timestamp": datetime.utcnow().isoformat(),
-        "message_id": attributes.get("message_id", ""),
+        "message_id": message_id,
         "source_subscription": attributes.get(
             "CloudPubSubDeadLetterSourceSubscription", ""
         ),
@@ -504,7 +509,7 @@ def handle_dead_letter(message: pubsub_v1.subscriber.message.Message) -> None:
 
         # Store in BigQuery for analysis
         bq_client = bigquery.Client()
-        log_to_bigquery(bq_client, data, attributes)
+        log_to_bigquery(bq_client, message.message_id, data, attributes)
 
         # Acknowledge - we have stored the message for investigation
         message.ack()
@@ -847,12 +852,12 @@ Set up alerts to notify your team when messages are landing in the dead letter t
 displayName: "Pub/Sub Dead Letter Messages"
 combiner: OR
 conditions:
-  - displayName: "DLQ messages published"
+  - displayName: "Messages forwarded to DLQ"
     conditionThreshold:
       filter: >
-        resource.type="pubsub_topic"
-        AND resource.labels.topic_id="orders-dlq"
-        AND metric.type="pubsub.googleapis.com/topic/send_message_operation_count"
+        resource.type="pubsub_subscription"
+        AND resource.labels.subscription_id="orders-subscription"
+        AND metric.type="pubsub.googleapis.com/subscription/dead_letter_message_count"
       comparison: COMPARISON_GT
       thresholdValue: 0
       duration: 60s
@@ -866,7 +871,7 @@ notificationChannels:
 Create the alert with:
 
 ```bash
-gcloud alpha monitoring policies create --policy-from-file=alert-policy.yaml
+gcloud monitoring policies create --policy-from-file=alert-policy.yaml
 ```
 
 ### Metrics to Monitor
@@ -874,9 +879,9 @@ gcloud alpha monitoring policies create --policy-from-file=alert-policy.yaml
 ```mermaid
 graph TB
     subgraph "Key Metrics"
-        M1[topic/send_message_operation_count<br/>on DLQ topic]
+        M1[subscription/dead_letter_message_count<br/>on main subscription]
         M2[subscription/num_undelivered_messages<br/>on DLQ subscription]
-        M3[subscription/dead_letter_message_count<br/>on main subscription]
+        M3[subscription/dead_letter_message_count<br/>forwarded message count]
         M4[subscription/oldest_unacked_message_age<br/>on DLQ subscription]
     end
 
@@ -896,12 +901,12 @@ graph TB
 Use these queries in Cloud Monitoring dashboards:
 
 ```text
-# Dead letters per minute
-fetch pubsub_topic
-| metric 'pubsub.googleapis.com/topic/send_message_operation_count'
-| filter resource.topic_id == 'orders-dlq'
+# Dead letters forwarded per minute
+fetch pubsub_subscription
+| metric 'pubsub.googleapis.com/subscription/dead_letter_message_count'
+| filter resource.subscription_id == 'orders-subscription'
 | align rate(1m)
-| group_by [], [value_send_message_operation_count_aggregate: aggregate(value.send_message_operation_count)]
+| group_by [], [value_dead_letter_message_count_aggregate: aggregate(value.dead_letter_message_count)]
 
 # DLQ backlog size
 fetch pubsub_subscription
@@ -909,7 +914,7 @@ fetch pubsub_subscription
 | filter resource.subscription_id == 'orders-dlq-sub'
 | group_by 1m, [value_num_undelivered_messages_mean: mean(value.num_undelivered_messages)]
 
-# Main subscription delivery attempts
+# Main subscription forwarded messages
 fetch pubsub_subscription
 | metric 'pubsub.googleapis.com/subscription/dead_letter_message_count'
 | filter resource.subscription_id == 'orders-subscription'

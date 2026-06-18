@@ -18,8 +18,8 @@ Component registration errors occur when Vue cannot find a component you are try
 
 | Error Message | Likely Cause |
 |---------------|--------------|
-| `Unknown custom element: <my-component>` | Component not registered |
-| `Failed to resolve component: MyComponent` | Missing import or registration |
+| `Unknown custom element: <my-component>` | Component not registered (common in Vue 2) |
+| `Failed to resolve component: MyComponent` | Missing import or registration (common in Vue 3) |
 | `Component is missing template or render function` | Incomplete component definition |
 | `Invalid component name` | Naming convention violation |
 
@@ -29,10 +29,10 @@ Component registration errors occur when Vue cannot find a component you are try
 
 ```mermaid
 flowchart TD
-    A[Template Uses Component] --> B{Global Registration?}
-    B -->|Yes| C[Use Global Component]
-    B -->|No| D{Local Registration?}
-    D -->|Yes| E[Use Local Component]
+    A[Template Uses Component] --> B{Local Registration?}
+    B -->|Yes| C[Use Local Component]
+    B -->|No| D{Global Registration?}
+    D -->|Yes| E[Use Global Component]
     D -->|No| F{Auto-Import Enabled?}
     F -->|Yes| G[Resolve via Auto-Import]
     F -->|No| H[Error: Component Not Registered]
@@ -95,7 +95,7 @@ export default {
     return {
       user: { name: 'John' }
     }
-  }
+  },
   // Missing components registration!
 }
 ```
@@ -121,7 +121,7 @@ export default {
 
 ## Cause 3: Case Sensitivity Issues
 
-Vue component names are case-sensitive. Mismatched casing causes registration failures.
+Vue SFC component tags are case-sensitive. Mismatched casing causes registration failures, although Vue can resolve PascalCase registrations from their kebab-case equivalents.
 
 ```vue
 <!-- Component file: UserCard.vue -->
@@ -157,7 +157,7 @@ export default {
 
 ## Cause 4: Circular Dependencies
 
-Circular imports between components cause registration failures.
+Circular imports between components can cause registration failures.
 
 ```mermaid
 flowchart LR
@@ -220,7 +220,7 @@ Wrong import paths prevent component resolution.
 ```javascript
 // BAD: Various path issues
 import UserCard from './components/userCard.vue'    // Wrong case
-import UserCard from './components/UserCard'        // Missing extension
+import UserCard from './components/UserCard'        // Missing .vue extension in bundlers that do not resolve it
 import UserCard from 'components/UserCard.vue'      // Missing ./
 import UserCard from '../components/UserCard.vue'   // Wrong relative path
 ```
@@ -239,20 +239,20 @@ import UserCard from '@/components/UserCard.vue'
 // vite.config.js
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
-import path from 'path'
+import { fileURLToPath, URL } from 'node:url'
 
 export default defineConfig({
   plugins: [vue()],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src'),
-      '@components': path.resolve(__dirname, './src/components')
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
+      '@components': fileURLToPath(new URL('./src/components', import.meta.url))
     }
   }
 })
 ```
 
-```json
+```jsonc
 // tsconfig.json (for TypeScript support)
 {
   "compilerOptions": {
@@ -310,11 +310,14 @@ import App from './App.vue'
 const app = createApp(App)
 
 // Auto-register using Vite's glob import
-const components = import.meta.glob('./components/Base*.vue', { eager: true })
+const components = import.meta.glob('./components/Base*.vue', {
+  eager: true,
+  import: 'default'
+})
 
 for (const path in components) {
   const componentName = path.split('/').pop().replace('.vue', '')
-  app.component(componentName, components[path].default)
+  app.component(componentName, components[path])
 }
 
 app.mount('#app')
@@ -335,7 +338,8 @@ Dynamic components require special handling.
 <script setup>
 import { ref } from 'vue'
 
-// This is just a string, not a component!
+// This only works if UserCard is registered by name.
+// A <script setup> import alone does not register the string name.
 const currentComponent = ref('UserCard')
 </script>
 ```
@@ -347,7 +351,7 @@ const currentComponent = ref('UserCard')
 </template>
 
 <script setup>
-import { ref, shallowRef, markRaw } from 'vue'
+import { shallowRef, markRaw } from 'vue'
 import UserCard from './UserCard.vue'
 import UserProfile from './UserProfile.vue'
 

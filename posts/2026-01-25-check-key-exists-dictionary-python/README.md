@@ -81,7 +81,7 @@ age = user.get('age', 0)
 
 ### Distinguishing Missing from None Values
 
-`get()` cannot distinguish between a missing key and a key with `None` value.
+`get()` without a custom default cannot distinguish between a missing key and a key with `None` value.
 
 ```python
 data = {'a': 1, 'b': None}

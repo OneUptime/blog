@@ -173,7 +173,7 @@ Example response:
 
 ## Tokenization Key Rotation
 
-Rotate the underlying tokenization key periodically to limit exposure from potential key compromise. Vault rotates the transformation's key, not individual tokens — existing tokens remain decodable through retained prior key versions:
+Rotate the underlying tokenization key periodically to limit exposure from potential key compromise. Vault rotates the transformation's key, not individual tokens - existing tokens remain decodable through retained prior key versions:
 
 ```bash
 # Rotate the tokenization key for the credit-card transformation

@@ -453,7 +453,7 @@ executor_slots_available = Gauge(
 # Check Celery queue status
 airflow celery flower  # Opens Flower UI on port 5555
 
-# Check worker status (Airflow 2.7+ — Celery executor lives in the providers package)
+# Check worker status (Airflow 2.7+ - Celery executor lives in the providers package)
 celery -A airflow.providers.celery.executors.celery_executor.app inspect active
 
 # Check reserved tasks

@@ -32,17 +32,12 @@ flowchart LR
 
 ## Basic Async Component Definition
 
-Vue 3 provides `defineAsyncComponent` for creating async components:
+Vue 3 provides `defineAsyncComponent` for component-level lazy loading, while Vue Router uses dynamic imports for route-level code splitting:
 
 ```typescript
 // src/router/index.ts
 import { createRouter, createWebHistory } from 'vue-router';
-import { defineAsyncComponent } from 'vue';
-
-// Basic async component
-const AsyncUserProfile = defineAsyncComponent(() =>
-    import('../components/UserProfile.vue')
-);
+import Home from '../views/Home.vue';
 
 // Use in router for route-level code splitting
 const routes = [
@@ -50,7 +45,7 @@ const routes = [
         path: '/',
         name: 'Home',
         // Eagerly loaded
-        component: () => import('../views/Home.vue')
+        component: Home
     },
     {
         path: '/dashboard',
@@ -73,6 +68,16 @@ const router = createRouter({
 export default router;
 ```
 
+For non-route components, use `defineAsyncComponent` directly:
+
+```typescript
+import { defineAsyncComponent } from 'vue';
+
+const AsyncUserProfile = defineAsyncComponent(() =>
+    import('../components/UserProfile.vue')
+);
+```
+
 ## Async Component Loading States
 
 ```mermaid
@@ -92,7 +97,7 @@ Configure loading and error states for better user experience:
 
 ```typescript
 // src/components/async/AsyncDashboard.ts
-import { defineAsyncComponent, h } from 'vue';
+import { defineAsyncComponent } from 'vue';
 import LoadingSpinner from '../LoadingSpinner.vue';
 import ErrorDisplay from '../ErrorDisplay.vue';
 
@@ -113,7 +118,7 @@ export const AsyncDashboard = defineAsyncComponent({
     // Timeout before showing error (ms)
     timeout: 10000,
 
-    // Suspensible allows use with Suspense
+    // When true (the default), a parent Suspense controls loading/error state
     suspensible: true,
 
     // Called when loading fails
@@ -262,7 +267,9 @@ defineEmits<{
 
 ## Using Suspense with Async Components
 
-Vue 3's Suspense component provides built-in handling for async dependencies:
+Vue 3's Suspense component provides built-in handling for async dependencies. It is still marked as experimental in the Vue documentation, so verify behavior against your Vue version before relying on it as a core application boundary:
+
+When an async component is controlled by a parent Suspense, the Suspense fallback controls the loading state and the component's own loading, error, delay, and timeout options are ignored.
 
 ```vue
 <!-- src/views/DashboardPage.vue -->
@@ -316,12 +323,23 @@ sequenceDiagram
 
 ## Handling Errors with Suspense
 
-Use error boundaries with Suspense for comprehensive error handling:
+Use error boundaries with Suspense for comprehensive error handling. Suspense itself does not catch errors, so use `onErrorCaptured` in a parent component:
 
 ```vue
 <!-- src/components/AsyncBoundary.vue -->
 <template>
-    <Suspense @pending="onPending" @resolve="onResolve" @fallback="onFallback">
+    <div v-if="error">
+        <slot name="error" :error="error">
+            <ErrorDisplay :message="error.message" :showRetry="false" />
+        </slot>
+    </div>
+
+    <Suspense
+        v-else
+        @pending="onPending"
+        @resolve="onResolve"
+        @fallback="onFallback"
+    >
         <template #default>
             <slot />
         </template>
@@ -336,6 +354,7 @@ Use error boundaries with Suspense for comprehensive error handling:
 
 <script setup lang="ts">
 import { onErrorCaptured, ref } from 'vue';
+import ErrorDisplay from './ErrorDisplay.vue';
 import LoadingSpinner from './LoadingSpinner.vue';
 
 const emit = defineEmits<{
@@ -360,10 +379,11 @@ function onFallback() {
     emit('fallback');
 }
 
-// Capture errors from async components
-onErrorCaptured((err: Error) => {
-    error.value = err;
-    emit('error', err);
+// Capture errors from async dependencies rendered inside the boundary
+onErrorCaptured((err) => {
+    const capturedError = err instanceof Error ? err : new Error(String(err));
+    error.value = capturedError;
+    emit('error', capturedError);
     // Return false to stop propagation
     return false;
 });
@@ -419,7 +439,7 @@ function formatDate(dateString: string): string {
 
 ## Nested Async Components
 
-When dealing with nested async components, understand the loading behavior:
+When dealing with nested async components, understand the loading behavior. Nested Suspense boundaries require Vue 3.3 or later:
 
 ```vue
 <!-- src/views/UserDashboard.vue -->
@@ -488,7 +508,7 @@ Improve perceived performance by preloading components before they are needed:
 
 ```typescript
 // src/utils/preload.ts
-import { defineAsyncComponent, Component } from 'vue';
+import { defineAsyncComponent, type Component } from 'vue';
 
 // Create a preloadable async component
 export function createPreloadableComponent(
@@ -569,7 +589,7 @@ Load components conditionally based on user interaction:
 </template>
 
 <script setup lang="ts">
-import { ref, computed, defineAsyncComponent, shallowRef } from 'vue';
+import { ref, computed, defineAsyncComponent } from 'vue';
 import ProductDetails from '@/components/ProductDetails.vue';
 
 const props = defineProps<{
@@ -612,7 +632,7 @@ Track async component loading performance:
 
 ```typescript
 // src/utils/asyncComponentMonitor.ts
-import { defineAsyncComponent, Component } from 'vue';
+import { defineAsyncComponent, type Component } from 'vue';
 
 interface LoadMetrics {
     componentName: string;

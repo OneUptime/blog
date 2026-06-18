@@ -12,7 +12,7 @@ Hash indexes are one of the oldest indexing strategies in database systems. They
 
 ## How Hash Indexes Work
 
-A hash index stores keys in buckets determined by a hash function. When you insert a row, the database computes a hash of the indexed column value and places a pointer to that row in the corresponding bucket. When you query for an exact match, the database hashes your search value and jumps directly to the right bucket.
+A hash index stores hash values in buckets determined by a hash function. When you insert a row, the database computes a hash of the indexed column value and places the hash value and a pointer to that row in the corresponding bucket. When you query for an exact match, the database hashes your search value and jumps directly to the right bucket.
 
 ```mermaid
 flowchart TD
@@ -24,8 +24,8 @@ flowchart TD
 
     subgraph "Hash Table Buckets"
         B0["Bucket 0: empty"]
-        B17["Bucket 17: order_456 -> row_ptr"]
-        B42["Bucket 42: user_123 -> row_ptr, item_789 -> row_ptr"]
+        B17["Bucket 17: hash 17 -> row_ptr"]
+        B42["Bucket 42: hash 42 -> row_ptr, hash 42 -> row_ptr"]
         BN["Bucket N: ..."]
     end
 
@@ -34,7 +34,7 @@ flowchart TD
     H3 --> B42
 ```
 
-When multiple keys hash to the same bucket (a collision), the database stores them together and performs a linear scan within that bucket. A good hash function distributes keys evenly to minimize collisions.
+When multiple values hash to the same bucket (a collision), the database stores them together and scans the relevant bucket pages, rechecking matching heap rows because PostgreSQL hash index scans are lossy. A good hash function distributes values evenly to minimize collisions.
 
 ## Hash Index Bucket Structure
 
@@ -60,9 +60,13 @@ flowchart LR
             OF2["Overflow 2"]
         end
 
+        BITMAP["Bitmap pages
+        - reusable overflow pages"]
+
         META --> PB0
         META --> PB1
         META --> PB2
+        META --> BITMAP
         PB1 --> OF1
         OF1 --> OF2
     end
@@ -73,11 +77,13 @@ Each bucket page contains:
 - Item pointers (TIDs) to heap tuples
 - Links to overflow pages when the bucket fills up
 
+Hash indexes also include bitmap pages that track freed overflow pages that can be reused.
+
 PostgreSQL uses linear hashing, which means it splits buckets incrementally as the index grows rather than rehashing everything at once.
 
 ## Creating Hash Indexes in PostgreSQL
 
-PostgreSQL has supported hash indexes since version 10 with full WAL logging and crash safety. Here is how to create one:
+PostgreSQL has supported hash indexes for a long time, and version 10 added full WAL logging and crash safety. Here is how to create one:
 
 ```sql
 -- Create a hash index on a user lookup table
@@ -176,10 +182,10 @@ SELECT * FROM users ORDER BY email LIMIT 100;
 SELECT * FROM users WHERE email LIKE 'alice%';
 ```
 
-**4. No support for IS NULL / IS NOT NULL**
+**4. No support for IS NULL / IS NOT NULL scans**
 
 ```sql
--- Hash indexes do not index NULL values
+-- Hash indexes only support equality comparisons, not IS NULL scans
 SELECT * FROM users WHERE deleted_at IS NULL;
 ```
 
@@ -195,8 +201,9 @@ PostgreSQL hash indexes only support single-column indexing. If you need composi
 | Range (<, >, BETWEEN) | Not supported | Fully supported |
 | Sorting (ORDER BY) | Not supported | Fully supported |
 | Pattern matching (LIKE) | Not supported | Supported for prefix |
-| NULL handling | Not indexed | Indexed |
+| IS NULL / IS NOT NULL scans | Not supported | Supported |
 | Multi-column | Not supported | Supported |
+| Unique enforcement | Not supported | Supported |
 | Index size (long keys) | Smaller | Larger |
 | Crash recovery (PG 10+) | Full WAL support | Full WAL support |
 
@@ -264,8 +271,9 @@ CREATE TABLE processed_events (
     processed_at TIMESTAMP DEFAULT NOW()
 );
 
--- Check if event was already processed (always exact match)
-CREATE INDEX idx_events_id_hash ON processed_events USING hash (event_id);
+-- The PRIMARY KEY already creates a unique B-tree index for deduplication
+-- and exact event_id lookups. Do not add a duplicate hash index unless
+-- benchmarks show the extra index maintenance cost is worth it.
 ```
 
 **Pattern 3: Cache key lookup**
@@ -278,16 +286,9 @@ CREATE TABLE cache_entries (
     PRIMARY KEY (cache_key)
 );
 
--- Drop the default B-tree primary key index and use hash
--- (Requires creating the table without PK, then adding constraint)
-CREATE TABLE cache_entries (
-    cache_key TEXT NOT NULL,
-    cache_value JSONB,
-    expires_at TIMESTAMP
-);
-
+-- Keep the PRIMARY KEY for uniqueness; hash indexes cannot enforce it
+-- Add a hash index only if equality lookup benchmarks justify a second index
 CREATE INDEX idx_cache_key_hash ON cache_entries USING hash (cache_key);
-ALTER TABLE cache_entries ADD CONSTRAINT cache_entries_pkey UNIQUE (cache_key);
 ```
 
 ## Monitoring Hash Index Health
@@ -301,7 +302,7 @@ SELECT schemaname, relname, indexrelname,
 FROM pg_stat_user_indexes
 WHERE indexrelname LIKE '%hash%';
 
--- Check for bloat (overflow pages)
+-- Check hash index sizes
 SELECT c.relname,
        pg_size_pretty(pg_relation_size(c.oid)) as size
 FROM pg_class c
@@ -329,6 +330,7 @@ Use hash indexes when:
 Stick with B-tree when:
 - You need any flexibility beyond equality lookups
 - NULL values matter
+- You need a primary key or unique constraint
 - You might add range queries later
 - You need multi-column indexes
 

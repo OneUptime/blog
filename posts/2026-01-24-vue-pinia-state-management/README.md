@@ -313,11 +313,15 @@ export const useCartStore = defineStore('cart', {
     // Access other stores within getters
     cartWithDetails() {
       const productStore = useProductStore()
-      return this.items.map(item => ({
-        ...item,
-        product: productStore.getProductById(item.productId),
-        subtotal: productStore.getProductById(item.productId)?.price * item.quantity
-      }))
+      return this.items.map(item => {
+        const product = productStore.getProductById(item.productId)
+
+        return {
+          ...item,
+          product,
+          subtotal: (product?.price ?? 0) * item.quantity
+        }
+      })
     },
 
     totalPrice() {
@@ -504,7 +508,7 @@ flowchart LR
 
     subgraph Pinia
         E[state]
-        F[actions only]
+        F[direct updates or actions]
         G[getters]
     end
 
@@ -516,7 +520,7 @@ flowchart LR
 
 Key migration points:
 
-1. **No mutations**: Pinia removes mutations entirely. State changes happen directly in actions.
+1. **No mutations**: Pinia removes mutations entirely. State changes can happen through actions or by assigning directly to store state.
 2. **No modules**: Each store is a module. Use store composition for shared logic.
 3. **TypeScript support**: Pinia has first-class TypeScript support without additional configuration.
 4. **Simpler API**: No commit/dispatch - just call actions directly.

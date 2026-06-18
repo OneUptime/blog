@@ -16,10 +16,10 @@ The automated canary process follows a predictable pattern:
 
 ```mermaid
 flowchart TD
-    A[New Version Deployed] --> B[Route 5% Traffic to Canary]
+    A[New Version Deployed] --> B[Route 10% Traffic to Canary]
     B --> C{Metrics OK?}
     C -->|Yes| D[Increase Traffic 10%]
-    D --> E{Traffic at 100%?}
+    D --> E{Max Canary Traffic Reached?}
     E -->|No| C
     E -->|Yes| F[Promote Canary]
     C -->|No| G[Automatic Rollback]
@@ -35,12 +35,16 @@ Flagger is a Kubernetes operator that automates canary deployments. Install it w
 
 helm repo add flagger https://flagger.app
 
-# Install Flagger with Prometheus metrics support
+# Install Flagger's Canary CRD
+kubectl apply -f https://raw.githubusercontent.com/fluxcd/flagger/main/artifacts/flagger/crd.yaml
+
+# Install Flagger for Istio with Prometheus metrics support
 helm upgrade -i flagger flagger/flagger \
     --namespace=flagger-system \
     --create-namespace \
-    --set prometheus.install=true \
-    --set meshProvider=kubernetes
+    --set crd.create=false \
+    --set meshProvider=istio \
+    --set metricsServer=http://prometheus.istio-system:9090
 
 # Install the load tester for automated testing
 helm upgrade -i flagger-loadtester flagger/loadtester \
@@ -132,9 +136,9 @@ spec:
   service:
     port: 8080
     targetPort: 8080
-    # Gateway configuration for Istio or other service mesh
+    # Gateway configuration for Istio
     gateways:
-      - public-gateway.istio-system.svc.cluster.local
+      - istio-system/public-gateway
     hosts:
       - payment.example.com
 
@@ -142,7 +146,7 @@ spec:
   analysis:
     # Time between traffic weight increases
     interval: 1m
-    # Number of successful checks before promotion
+    # Maximum number of failed checks before rollback
     threshold: 10
     # Maximum traffic weight for canary
     maxWeight: 50
@@ -185,8 +189,12 @@ spec:
         url: http://flagger-loadtester.flagger-system/
         timeout: 5s
         metadata:
-          type: cmd
           cmd: "hey -z 1m -q 10 -c 2 http://payment-service-canary.production:8080/"
+
+      # Manual rollback gate
+      - name: rollback
+        type: rollback
+        url: http://flagger-loadtester.flagger-system/rollback/check
 ```
 
 ## Metric Templates
@@ -203,7 +211,7 @@ metadata:
 spec:
   provider:
     type: prometheus
-    address: http://prometheus.monitoring:9090
+    address: http://prometheus.istio-system:9090
   query: |
     sum(rate(
       http_requests_total{
@@ -227,7 +235,7 @@ metadata:
 spec:
   provider:
     type: prometheus
-    address: http://prometheus.monitoring:9090
+    address: http://prometheus.istio-system:9090
   query: |
     histogram_quantile(0.99,
       sum(rate(
@@ -253,7 +261,7 @@ metadata:
 spec:
   provider:
     type: prometheus
-    address: http://prometheus.monitoring:9090
+    address: http://prometheus.istio-system:9090
   query: |
     sum(rate(
       payment_transactions_total{
@@ -277,9 +285,9 @@ metadata:
 spec:
   provider:
     type: prometheus
-    address: http://prometheus.monitoring:9090
+    address: http://prometheus.istio-system:9090
   query: |
-    1 - (
+    (
       sum(rate(
         http_requests_total{
           namespace="{{ namespace }}",
@@ -311,20 +319,20 @@ spec:
   type: slack
   channel: deployments
   username: flagger
-  # Webhook URL stored in secret
+  # Webhook URL stored in a secret data field named address
   secretRef:
     name: slack-webhook
 ---
 apiVersion: flagger.app/v1beta1
 kind: AlertProvider
 metadata:
-  name: pagerduty
+  name: msteams
   namespace: flagger-system
 spec:
-  type: pagerduty
-  # PagerDuty routing key
+  type: msteams
+  # Teams webhook URL stored in a secret data field named address
   secretRef:
-    name: pagerduty-routing-key
+    name: msteams-webhook
 ```
 
 Reference alerts in your Canary resource:
@@ -338,10 +346,10 @@ spec:
         providerRef:
           name: slack
           namespace: flagger-system
-      - name: "PagerDuty alert"
+      - name: "Teams alert"
         severity: error
         providerRef:
-          name: pagerduty
+          name: msteams
           namespace: flagger-system
 ```
 
@@ -378,6 +386,10 @@ jobs:
         run: |
           # Flagger automatically detects the image change
           # and starts the canary analysis
+          until kubectl get canary/payment-service -n production | grep 'Progressing'; do
+            sleep 5
+          done
+
           kubectl wait canary/payment-service \
             --for=condition=promoted \
             -n production \
@@ -417,20 +429,21 @@ Sometimes you need to manually control canaries:
 
 ```bash
 # Pause a canary deployment
-kubectl annotate canary payment-service \
-    flagger.app/pause=true -n production
+kubectl patch canary payment-service -n production \
+    --type='merge' -p '{"spec":{"suspend":true}}'
 
 # Resume canary
-kubectl annotate canary payment-service \
-    flagger.app/pause- -n production
+kubectl patch canary payment-service -n production \
+    --type='merge' -p '{"spec":{"suspend":false}}'
 
-# Force rollback
-kubectl annotate canary payment-service \
-    flagger.app/rollback=true -n production
+# Start port-forwarding to the load tester in another terminal, then open rollback
+kubectl -n flagger-system port-forward svc/flagger-loadtester 8080:80
+curl -d '{"name":"payment-service","namespace":"production"}' \
+    http://localhost:8080/rollback/open
 
 # Skip remaining analysis and promote
-kubectl annotate canary payment-service \
-    flagger.app/promote=true -n production
+kubectl patch canary payment-service -n production \
+    --type='merge' -p '{"spec":{"skipAnalysis":true}}'
 ```
 
 ## Rollback Scenarios
@@ -439,10 +452,10 @@ Configure automatic rollback thresholds:
 
 | Metric | Threshold | Action |
 |--------|-----------|--------|
-| **Success rate** | Below 99% | Immediate rollback |
-| **P99 latency** | Above 500ms | Rollback after 3 failures |
-| **Error rate** | Above 1% | Immediate rollback |
-| **Custom metric** | Out of range | Rollback based on threshold setting |
+| **Success rate** | Below 99% | Rollback after failed checks reach `threshold` |
+| **P99 latency** | Above 500ms | Rollback after failed checks reach `threshold` |
+| **Error budget consumption** | Above your configured limit | Rollback after failed checks reach `threshold` |
+| **Custom metric** | Out of range | Rollback after failed checks reach `threshold` |
 
 ## Testing Rollback Behavior
 

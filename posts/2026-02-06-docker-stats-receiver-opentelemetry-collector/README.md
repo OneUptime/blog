@@ -49,30 +49,32 @@ processors:
 
 exporters:
   # Export to stdout for testing
-  logging:
-    loglevel: info
+  debug:
+    verbosity: basic
 
 service:
   pipelines:
     metrics:
       receivers: [docker_stats]
       processors: [batch]
-      exporters: [logging]
+      exporters: [debug]
 ```
 
 When you run this configuration, the collector will start gathering metrics from all running containers on the host. The metrics are collected at the specified interval and include CPU usage, memory consumption, network I/O, and block I/O statistics.
 
 ## Understanding Collected Metrics
 
-The Docker Stats receiver collects a comprehensive set of metrics for each container. Here are the key metric categories:
+The Docker Stats receiver collects a comprehensive set of metrics for each container. Some metrics are emitted by default, while others must be enabled explicitly with the receiver's `metrics` settings. Here are the key metric categories:
 
 ### CPU Metrics
 
 - `container.cpu.usage.total`: Total CPU time consumed
-- `container.cpu.usage.system`: CPU time in system mode
+- `container.cpu.usage.kernelmode`: CPU time in kernel mode
+- `container.cpu.usage.usermode`: CPU time in user mode
+- `container.cpu.usage.system`: System CPU usage as reported by Docker
 - `container.cpu.usage.percpu`: Per-CPU core usage
-- `container.cpu.throttling.periods`: Number of throttling periods
-- `container.cpu.throttling.throttled_periods`: Number of throttled periods
+- `container.cpu.throttling_data.periods`: Number of throttling periods
+- `container.cpu.throttling_data.throttled_periods`: Number of throttled periods
 
 ### Memory Metrics
 
@@ -110,17 +112,17 @@ receivers:
     endpoint: unix:///var/run/docker.sock
     collection_interval: 10s
 
-    # Include only specific containers
+    # Map labels from selected containers into metric attributes
     container_labels_to_metric_labels:
       # Map container labels to metric attributes
       env: environment
       app: application
       version: app.version
 
-    # Exclude containers by name pattern
+    # Exclude containers by image pattern
     excluded_images:
-      - ".*-sidecar:.*"
-      - "pause:.*"
+      - "/.*-sidecar:.*/"
+      - "/pause:.*/"
 
     # Only monitor containers with specific labels
     # This is done through the filter processor
@@ -133,7 +135,7 @@ Add resource detection to automatically enrich metrics with host and environment
 ```yaml
 processors:
   # Detect and add resource attributes
-  resourcedetection:
+  resource_detection:
     detectors: [env, system, docker]
     timeout: 5s
     override: false
@@ -159,11 +161,9 @@ processors:
 
   # Filter out unwanted metrics
   filter/docker:
-    metrics:
-      exclude:
-        match_type: regexp
-        metric_names:
-          - "container.cpu.usage.percpu.*"
+    error_mode: ignore
+    metric_conditions:
+      - IsMatch(metric.name, "^container\\.cpu\\.usage\\.percpu.*")
 ```
 
 ## Docker API Configuration
@@ -189,7 +189,7 @@ receivers:
       key_file: /etc/otel/docker-key.pem
 
     # API version to use (optional, auto-detected by default)
-    api_version: 1.41
+    api_version: "1.41"
 
     # Timeout for API calls
     timeout: 10s
@@ -296,7 +296,7 @@ processors:
     spike_limit_mib: 128
 
   # Detect resource attributes
-  resourcedetection:
+  resource_detection:
     detectors: [env, system, docker]
     timeout: 5s
 
@@ -312,14 +312,12 @@ processors:
 
   # Filter out noisy metrics
   filter/exclude_percpu:
-    metrics:
-      exclude:
-        match_type: regexp
-        metric_names:
-          - "container.cpu.usage.percpu.*"
+    error_mode: ignore
+    metric_conditions:
+      - IsMatch(metric.name, "^container\\.cpu\\.usage\\.percpu.*")
 
   # Transform metric names if needed
-  metricstransform:
+  metrics_transform:
     transforms:
       - include: container.memory.usage.total
         action: update
@@ -366,10 +364,10 @@ service:
       receivers: [docker_stats]
       processors:
         - memory_limiter
-        - resourcedetection
+        - resource_detection
         - resource
         - filter/exclude_percpu
-        - metricstransform
+        - metrics_transform
         - groupbyattrs
         - batch
       exporters: [otlp, prometheus]
@@ -379,8 +377,13 @@ service:
     logs:
       level: info
     metrics:
-      address: :8888
       level: detailed
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: "0.0.0.0"
+                port: 8888
 ```
 
 ## Monitoring Multiple Docker Hosts
@@ -450,8 +453,8 @@ Alert when containers are frequently throttled:
 ```yaml
 - alert: ContainerCPUThrottling
   expr: |
-    rate(container.cpu.throttling.throttled_periods[5m]) /
-    rate(container.cpu.throttling.periods[5m]) > 0.3
+    rate(container.cpu.throttling_data.throttled_periods[5m]) /
+    rate(container.cpu.throttling_data.periods[5m]) > 0.3
   for: 10m
   labels:
     severity: warning
@@ -511,8 +514,9 @@ Configure the collector to send Docker metrics to OneUptime:
 
 ```yaml
 exporters:
-  otlp:
-    endpoint: https://opentelemetry-collector.oneuptime.com:4317
+  otlp_http:
+    endpoint: https://oneuptime.com/otlp
+    encoding: json
     headers:
       x-oneuptime-token: "${env:ONEUPTIME_API_KEY}"
     compression: gzip
@@ -522,10 +526,10 @@ service:
     metrics:
       receivers: [docker_stats]
       processors: [batch]
-      exporters: [otlp]
+      exporters: [otlp_http]
 ```
 
-OneUptime will automatically create dashboards and alerts for your Docker container metrics. For more information on monitoring databases alongside containers, see our guides on [PostgreSQL receiver](https://oneuptime.com/blog/post/2026-02-06-postgresql-receiver-opentelemetry-collector/view) and [Redis receiver](https://oneuptime.com/blog/post/2026-02-06-redis-receiver-opentelemetry-collector/view).
+Once ingested, you can build dashboards and alerts for your Docker container metrics in OneUptime. For more information on monitoring databases alongside containers, see our guides on [PostgreSQL receiver](https://oneuptime.com/blog/post/2026-02-06-postgresql-receiver-opentelemetry-collector/view) and [Redis receiver](https://oneuptime.com/blog/post/2026-02-06-redis-receiver-opentelemetry-collector/view).
 
 ## Conclusion
 

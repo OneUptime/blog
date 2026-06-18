@@ -89,9 +89,9 @@ def generate_captions(video_id, video_path, target_languages=None):
         pipeline_start = time.time()
 
         span.set_attribute("video.id", video_id)
-        span.set_attribute("target_languages", str(target_languages or ["en"]))
+        span.set_attribute("caption.target_languages", target_languages or ["en"])
 
-        common_attrs = {"video_id": video_id}
+        common_attrs = {"video.id": video_id}
 
         try:
             # Stage 1: Extract audio from video
@@ -172,12 +172,15 @@ def generate_captions(video_id, video_path, target_languages=None):
                         trans_start = time.time()
 
                         translated = translate_segments(segments, lang)
-                        trans_span.set_attribute("target_language", lang)
-                        trans_span.set_attribute("segment_count", len(translated))
+                        trans_span.set_attribute("translation.source_language", asr_result.language)
+                        trans_span.set_attribute("translation.target_language", lang)
+                        trans_span.set_attribute("caption.segment_count", len(translated))
 
                         trans_elapsed = time.time() - trans_start
                         translation_latency.record(trans_elapsed, {
-                            **common_attrs, "target_language": lang,
+                            **common_attrs,
+                            "translation.source_language": asr_result.language,
+                            "translation.target_language": lang,
                         })
                         translations[lang] = translated
 
@@ -241,7 +244,6 @@ def generate_captions(video_id, video_path, target_languages=None):
             span.set_attribute("pipeline.total_duration_s", total_elapsed)
 
         except Exception as e:
-            span.record_exception(e)
             caption_jobs_failed.add(1, common_attrs)
             raise
 ```

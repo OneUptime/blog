@@ -400,6 +400,8 @@ builder.Services.AddRateLimiter(options =>
 
 Include rate limit information in response headers:
 
+The built-in middleware doesn't automatically add remaining-limit metadata to `HttpContext.Items`. If your policy or custom limiter records that data for the current request, a small middleware can emit it:
+
 ```csharp
 // Middleware/RateLimitHeadersMiddleware.cs
 public class RateLimitHeadersMiddleware
@@ -415,7 +417,7 @@ public class RateLimitHeadersMiddleware
     {
         await _next(context);
 
-        // The rate limiter middleware stores metadata in HttpContext.Items
+        // Populate this item from your own policy or custom limiter.
         if (context.Items.TryGetValue("RateLimitInfo", out var rateLimitInfo)
             && rateLimitInfo is RateLimitInfo info)
         {
@@ -478,20 +480,33 @@ public class RedisFixedWindowRateLimiter : RateLimiter
 
     protected override RateLimitLease AttemptAcquireCore(int permitCount)
     {
-        // Use Lua script for atomic increment and check
+        // Use Lua script for atomic check and increment
         var script = @"
-            local current = redis.call('INCR', KEYS[1])
-            if current == 1 then
+            local current = tonumber(redis.call('GET', KEYS[1]) or '0')
+            local requested = tonumber(ARGV[2])
+            local limit = tonumber(ARGV[3])
+
+            if current + requested > limit then
+                return 0
+            end
+
+            local updated = redis.call('INCRBY', KEYS[1], requested)
+            if updated == requested then
                 redis.call('EXPIRE', KEYS[1], ARGV[1])
             end
-            return current";
+            return 1";
 
-        var result = (long)_db.ScriptEvaluate(
+        var acquired = (long)_db.ScriptEvaluate(
             script,
             new RedisKey[] { _key },
-            new RedisValue[] { (int)_options.Window.TotalSeconds });
+            new RedisValue[]
+            {
+                (int)_options.Window.TotalSeconds,
+                permitCount,
+                _options.PermitLimit
+            });
 
-        if (result <= _options.PermitLimit)
+        if (acquired == 1)
         {
             return new SimpleRateLimitLease(true);
         }

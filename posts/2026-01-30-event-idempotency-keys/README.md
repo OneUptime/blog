@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Event-Driven, Idempotency, Distributed System, Reliability
 
-Description: Learn to create idempotency keys for events to ensure exactly-once processing semantics in distributed systems.
+Description: Learn to create idempotency keys for events to make duplicate deliveries safe in distributed systems.
 
 ---
 
-In distributed systems, events can be delivered more than once. Network failures, retries, and message broker redeliveries all cause duplicate events. Without idempotency, your system processes the same event multiple times - charging customers twice, sending duplicate emails, or corrupting data. Idempotency keys solve this by giving each event a unique identifier that allows receivers to detect and skip duplicates.
+In distributed systems, events can be delivered more than once. Network failures, retries, and message broker redeliveries all cause duplicate events. Without idempotency, your system processes the same event multiple times - charging customers twice, sending duplicate emails, or corrupting data. Idempotency keys solve this by giving each logical event a stable identifier that allows receivers to detect and skip duplicates.
 
 ## Why Events Get Duplicated
 
@@ -46,6 +46,8 @@ flowchart LR
 The event producer includes an idempotency key. This is the most reliable approach because the producer knows the business intent.
 
 ```typescript
+import crypto from 'crypto';
+
 // Producer side: Generate key before sending
 // Use a deterministic combination of business identifiers
 interface PaymentEvent {
@@ -56,11 +58,14 @@ interface PaymentEvent {
   timestamp: number;
 }
 
-function createPaymentEvent(orderId: string, amount: number, currency: string): PaymentEvent {
+function createPaymentEvent(
+  orderId: string,
+  amount: number,
+  currency: string,
+  requestId: string
+): PaymentEvent {
   // Key combines order ID with a client-side request ID
   // This ensures retries of the same payment use the same key
-  const requestId = crypto.randomUUID();
-
   return {
     idempotencyKey: `payment:${orderId}:${requestId}`,
     orderId,
@@ -69,6 +74,9 @@ function createPaymentEvent(orderId: string, amount: number, currency: string): 
     timestamp: Date.now(),
   };
 }
+
+const requestId = crypto.randomUUID();
+const paymentEvent = createPaymentEvent('ord-123', 99.99, 'USD', requestId);
 ```
 
 ### Strategy 2: Content-Based Hashing
@@ -77,6 +85,28 @@ Generate keys from event content. Useful when you cannot modify the producer.
 
 ```typescript
 import crypto from 'crypto';
+
+function stableStringify(value: unknown): string {
+  if (value === undefined) {
+    return 'null';
+  }
+
+  if (value === null || typeof value !== 'object') {
+    return JSON.stringify(value) ?? 'null';
+  }
+
+  if (Array.isArray(value)) {
+    return `[${value.map(stableStringify).join(',')}]`;
+  }
+
+  const entries = Object.entries(value as Record<string, unknown>)
+    .filter(([, entryValue]) => entryValue !== undefined)
+    .sort(([a], [b]) => a.localeCompare(b));
+
+  return `{${entries
+    .map(([key, entryValue]) => `${JSON.stringify(key)}:${stableStringify(entryValue)}`)
+    .join(',')}}`;
+}
 
 // Hash event content to create a deterministic key
 // Same content always produces the same key
@@ -90,7 +120,7 @@ function generateContentKey(event: Record<string, unknown>): string {
     payload: event.payload,
   };
 
-  const content = JSON.stringify(relevantFields, Object.keys(relevantFields).sort());
+  const content = stableStringify(relevantFields);
 
   return crypto
     .createHash('sha256')
@@ -126,7 +156,7 @@ function generateEntityOperationKey(
   version?: number
 ): string {
   // Version allows intentional re-processing
-  const versionSuffix = version ? `:v${version}` : '';
+  const versionSuffix = version !== undefined ? `:v${version}` : '';
   return `${entityType}:${entityId}:${operation}${versionSuffix}`;
 }
 
@@ -193,6 +223,7 @@ sequenceDiagram
 Redis provides fast lookups and automatic expiration for idempotency keys.
 
 ```typescript
+import crypto from 'crypto';
 import Redis from 'ioredis';
 
 interface IdempotencyResult {
@@ -225,24 +256,25 @@ class IdempotencyStore {
   }
 
   // Attempt to acquire processing lock
-  // Returns true if lock acquired, false if already locked
-  async tryLock(key: string, lockTtlMs: number = 30000): Promise<boolean> {
+  // Returns a lock token if acquired, or null if already locked
+  async tryLock(key: string, lockTtlMs: number = 30000): Promise<string | null> {
     const lockKey = `idempotency:lock:${key}`;
+    const token = crypto.randomUUID();
 
     // SET NX with expiration - atomic lock acquisition
     const acquired = await this.redis.set(
       lockKey,
-      'processing',
+      token,
       'PX',
       lockTtlMs,
       'NX'
     );
 
-    return acquired === 'OK';
+    return acquired === 'OK' ? token : null;
   }
 
   // Store processing result and release lock
-  async complete(key: string, result: unknown): Promise<void> {
+  async complete(key: string, token: string, result: unknown): Promise<void> {
     const multi = this.redis.multi();
 
     // Store result with TTL
@@ -253,15 +285,33 @@ class IdempotencyStore {
       this.ttlSeconds
     );
 
-    // Remove lock
-    multi.del(`idempotency:lock:${key}`);
+    // Remove lock only if this worker still owns it
+    multi.eval(
+      `if redis.call("get", KEYS[1]) == ARGV[1] then
+        return redis.call("del", KEYS[1])
+      else
+        return 0
+      end`,
+      1,
+      `idempotency:lock:${key}`,
+      token
+    );
 
     await multi.exec();
   }
 
   // Release lock without storing result (on failure)
-  async releaseLock(key: string): Promise<void> {
-    await this.redis.del(`idempotency:lock:${key}`);
+  async releaseLock(key: string, token: string): Promise<void> {
+    await this.redis.eval(
+      `if redis.call("get", KEYS[1]) == ARGV[1] then
+        return redis.call("del", KEYS[1])
+      else
+        return 0
+      end`,
+      1,
+      `idempotency:lock:${key}`,
+      token
+    );
   }
 }
 ```
@@ -293,8 +343,8 @@ class IdempotentEventProcessor<T extends { idempotencyKey: string }, R> {
     }
 
     // Step 2: Acquire lock
-    const locked = await this.store.tryLock(key);
-    if (!locked) {
+    const lockToken = await this.store.tryLock(key);
+    if (lockToken === null) {
       // Another processor is handling this event
       // Wait and retry or throw
       throw new Error(`Event ${key} is being processed by another worker`);
@@ -305,12 +355,12 @@ class IdempotentEventProcessor<T extends { idempotencyKey: string }, R> {
       const result = await this.handler(event);
 
       // Step 4: Store result
-      await this.store.complete(key, result);
+      await this.store.complete(key, lockToken, result);
 
       return result;
     } catch (error) {
       // Release lock on failure to allow retry
-      await this.store.releaseLock(key);
+      await this.store.releaseLock(key, lockToken);
       throw error;
     }
   }
@@ -339,6 +389,8 @@ await paymentProcessor.process(paymentEvent);
 For systems without Redis, use your database with unique constraints.
 
 ```typescript
+import { Pool } from 'pg';
+
 // PostgreSQL schema for idempotency tracking
 const createTableSQL = `
 CREATE TABLE IF NOT EXISTS idempotency_keys (
@@ -348,7 +400,7 @@ CREATE TABLE IF NOT EXISTS idempotency_keys (
   expires_at TIMESTAMP
 );
 
-CREATE INDEX idx_idempotency_expires ON idempotency_keys(expires_at);
+CREATE INDEX IF NOT EXISTS idx_idempotency_expires ON idempotency_keys(expires_at);
 `;
 
 // Database-based idempotency store
@@ -373,10 +425,10 @@ class DatabaseIdempotencyStore {
       // Try to insert key - fails if duplicate
       const insertResult = await client.query(
         `INSERT INTO idempotency_keys (key, expires_at)
-         VALUES ($1, NOW() + INTERVAL '${this.ttlHours} hours')
+         VALUES ($1, NOW() + ($2 * INTERVAL '1 hour'))
          ON CONFLICT (key) DO NOTHING
          RETURNING key`,
-        [key]
+        [key, this.ttlHours]
       );
 
       if (insertResult.rowCount === 0) {
@@ -394,7 +446,7 @@ class DatabaseIdempotencyStore {
 
       // Store result
       await client.query(
-        'UPDATE idempotency_keys SET result = $2 WHERE key = $1',
+        'UPDATE idempotency_keys SET result = $2::jsonb WHERE key = $1',
         [key, JSON.stringify(result)]
       );
 
@@ -431,6 +483,6 @@ class DatabaseIdempotencyStore {
 
 ## Summary
 
-Event idempotency keys transform at-least-once delivery into effectively exactly-once processing. The key generation strategy depends on your use case - client-provided keys for maximum control, content hashing for producer compatibility, or entity-operation keys for natural business semantics.
+Event idempotency keys transform at-least-once delivery into duplicate-safe processing for the side effects you protect with the key. The key generation strategy depends on your use case - client-provided keys for maximum control, content hashing for producer compatibility, or entity-operation keys for natural business semantics.
 
 Combine deterministic key generation with proper storage, locking, and TTL management to build event-driven systems that handle duplicates gracefully. Your users will never see double charges, duplicate notifications, or corrupted state from retry storms.

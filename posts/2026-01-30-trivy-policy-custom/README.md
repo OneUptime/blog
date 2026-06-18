@@ -99,7 +99,7 @@ deny contains res if {
 
 ## Severity Levels
 
-Trivy policies support five severity levels (UNKNOWN, LOW, MEDIUM, HIGH, CRITICAL) that you assign in policy metadata. By default Trivy exits 0 regardless of findings — you opt into failing the build with `--exit-code` combined with a `--severity` filter:
+Trivy policies support five severity levels (UNKNOWN, LOW, MEDIUM, HIGH, CRITICAL) that you assign in policy metadata. By default Trivy exits 0 regardless of findings - you opt into failing the build with `--exit-code` combined with a `--severity` filter:
 
 | Severity | Use Case |
 |----------|----------|

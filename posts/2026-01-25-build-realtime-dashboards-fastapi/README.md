@@ -21,7 +21,7 @@ Before writing code, you need to pick the right technology for your use case.
 | Feature | WebSocket | Server-Sent Events (SSE) |
 |---------|-----------|--------------------------|
 | Direction | Bidirectional | Server to client only |
-| Protocol | Custom binary/text | HTTP with text/event-stream |
+| Protocol | WebSocket over HTTP Upgrade with text/binary messages | HTTP with text/event-stream |
 | Reconnection | Manual | Automatic (built-in) |
 | Browser support | Universal | Universal (except IE) |
 | Proxy friendly | Sometimes issues | Works through HTTP |
@@ -32,7 +32,7 @@ For dashboards that only display data (no user input back to server), SSE is oft
 
 ## Server-Sent Events Dashboard
 
-SSE uses standard HTTP connections that stay open. The server pushes events as they occur. This example creates a metrics streaming endpoint that sends CPU, memory, and request counts every second.
+SSE uses standard HTTP connections that stay open. The server pushes events as they occur. This example creates a metrics streaming endpoint that sends CPU, memory, disk, and network metrics every second.
 
 ```python
 # sse_dashboard.py
@@ -43,7 +43,7 @@ from fastapi.responses import StreamingResponse
 import asyncio
 import json
 import psutil  # For system metrics
-from datetime import datetime
+from datetime import datetime, timezone
 
 app = FastAPI()
 
@@ -52,7 +52,7 @@ async def generate_metrics():
     while True:
         # Collect system metrics
         metrics = {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "cpu_percent": psutil.cpu_percent(),
             "memory_percent": psutil.virtual_memory().percent,
             "disk_percent": psutil.disk_usage('/').percent,
@@ -127,7 +127,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from typing import Dict, Set
 import asyncio
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 app = FastAPI()
 
@@ -214,6 +214,9 @@ async def dashboard_websocket(websocket: WebSocket, client_id: str):
                     "channel": channel
                 })
 
+            elif data.get("type") == "pong" and hasattr(manager, "record_pong"):
+                manager.record_pong(client_id)
+
     except WebSocketDisconnect:
         manager.disconnect(client_id)
 ```
@@ -230,13 +233,16 @@ The dashboard needs a background task that collects metrics and pushes them to c
 import asyncio
 import psutil
 import random
-from datetime import datetime
+from contextlib import asynccontextmanager
+from datetime import datetime, timezone
+from fastapi import FastAPI
+from websocket_dashboard import DashboardManager, manager
 
 async def publish_system_metrics(manager: DashboardManager):
     """Publish system metrics every second"""
     while manager.running:
         metrics = {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "cpu_percent": psutil.cpu_percent(interval=None),
             "memory_used_gb": psutil.virtual_memory().used / (1024**3),
             "memory_total_gb": psutil.virtual_memory().total / (1024**3)
@@ -256,7 +262,7 @@ async def publish_application_metrics(manager: DashboardManager):
         error_count += random.randint(0, 2)
 
         metrics = {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "requests_total": request_count,
             "errors_total": error_count,
             "error_rate": error_count / max(request_count, 1) * 100,
@@ -265,17 +271,26 @@ async def publish_application_metrics(manager: DashboardManager):
         await manager.broadcast_to_channel("application", metrics)
         await asyncio.sleep(1)
 
-@app.on_event("startup")
-async def start_publishers():
-    """Start background metric publishers"""
-    asyncio.create_task(publish_system_metrics(manager))
-    asyncio.create_task(publish_application_metrics(manager))
+publisher_tasks: set[asyncio.Task] = set()
 
-@app.on_event("shutdown")
-async def stop_publishers():
-    """Signal publishers to stop"""
-    manager.running = False
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Start and stop background metric publishers"""
+    publisher_tasks.add(asyncio.create_task(publish_system_metrics(manager)))
+    publisher_tasks.add(asyncio.create_task(publish_application_metrics(manager)))
+    try:
+        yield
+    finally:
+        # Signal publishers to stop and cancel any sleeping tasks
+        manager.running = False
+        for task in publisher_tasks:
+            task.cancel()
+        await asyncio.gather(*publisher_tasks, return_exceptions=True)
+
+app = FastAPI(lifespan=lifespan)
 ```
+
+If you keep the WebSocket endpoint and publishers in the same file, create the `FastAPI` app once with the `lifespan` handler instead of using `@app.on_event`.
 
 ---
 
@@ -324,8 +339,8 @@ For dashboards that need historical context, you can maintain a sliding window o
 # Maintain sliding window of metrics for trend display
 from collections import deque
 from dataclasses import dataclass, field
-from typing import List, Deque
-from datetime import datetime
+from typing import Dict, List, Deque
+from datetime import datetime, timezone
 import statistics
 
 @dataclass
@@ -339,7 +354,7 @@ class MetricWindow:
     def add(self, value: float):
         """Add new value, removing oldest if at capacity"""
         self.values.append(value)
-        self.timestamps.append(datetime.utcnow())
+        self.timestamps.append(datetime.now(timezone.utc))
 
         if len(self.values) > self.max_size:
             self.values.popleft()
@@ -400,6 +415,10 @@ class MetricsAggregator:
         }
 
 # Usage in publisher
+import asyncio
+import psutil
+from websocket_dashboard import DashboardManager
+
 aggregator = MetricsAggregator()
 
 async def collect_and_publish(manager: DashboardManager):
@@ -430,7 +449,11 @@ Production dashboards need to handle network issues gracefully. This heartbeat m
 # connection_health.py
 # Monitor WebSocket connection health with heartbeats
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from typing import Dict
+
+from fastapi import WebSocket
+from websocket_dashboard import DashboardManager
 
 class HealthyDashboardManager(DashboardManager):
     """Dashboard manager with connection health monitoring"""
@@ -442,7 +465,7 @@ class HealthyDashboardManager(DashboardManager):
 
     async def connect(self, websocket: WebSocket, client_id: str):
         await super().connect(websocket, client_id)
-        self.last_pong[client_id] = datetime.utcnow()
+        self.last_pong[client_id] = datetime.now(timezone.utc)
 
     def disconnect(self, client_id: str):
         super().disconnect(client_id)
@@ -451,13 +474,13 @@ class HealthyDashboardManager(DashboardManager):
 
     def record_pong(self, client_id: str):
         """Record that client responded to ping"""
-        self.last_pong[client_id] = datetime.utcnow()
+        self.last_pong[client_id] = datetime.now(timezone.utc)
 
     async def heartbeat_loop(self):
         """Send pings and check for stale connections"""
         while self.running:
             stale_clients = []
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
 
             for client_id, last_seen in self.last_pong.items():
                 # Check if client missed too many heartbeats
@@ -556,6 +579,16 @@ class DashboardClient {
                 this.updateDashboard(message);
             }
         };
+    }
+
+    subscribe(channel) {
+        if (this.ws.readyState === WebSocket.OPEN) {
+            this.ws.send(JSON.stringify({action: 'subscribe', channel}));
+        }
+    }
+
+    updateDashboard(message) {
+        // Update dashboard elements for the channel
     }
 }
 ```

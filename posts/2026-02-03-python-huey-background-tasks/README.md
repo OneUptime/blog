@@ -758,7 +758,7 @@ For production, configure the consumer with appropriate settings.
 
 ```bash
 # Production consumer with all options
-# (periodic tasks are scheduled by default — pass --no-periodic to opt out)
+# (periodic tasks are scheduled by default - pass --no-periodic to opt out)
 huey_consumer.py tasks.huey \
     --workers 4 \
     --worker-type thread \

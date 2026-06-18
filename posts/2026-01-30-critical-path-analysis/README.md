@@ -807,7 +807,11 @@ SELECT
   span_name,
   COUNT(*) AS critical_count,
   AVG(duration_ms) AS avg_duration,
-  COUNT(*) * 100.0 / (SELECT COUNT(*) FROM critical_path_analysis) AS critical_percentage
+  COUNT(*) * 100.0 / (
+    SELECT COUNT(*)
+    FROM critical_path_analysis
+    WHERE timestamp > NOW() - INTERVAL '24 hours'
+  ) AS critical_percentage
 FROM critical_spans
 WHERE timestamp > NOW() - INTERVAL '24 hours'
 GROUP BY service_name, span_name

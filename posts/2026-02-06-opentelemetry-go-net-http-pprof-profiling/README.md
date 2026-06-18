@@ -8,7 +8,7 @@ Description: Combine OpenTelemetry tracing with Go's pprof profiler to correlate
 
 Go's built-in `net/http/pprof` package provides powerful profiling capabilities that help you understand CPU usage, memory allocation, goroutine behavior, and blocking events. When combined with OpenTelemetry's distributed tracing, you can correlate performance bottlenecks in your traces with detailed profiling data, creating a complete picture of your application's behavior under load.
 
-This integration becomes particularly valuable when you notice slow spans in your traces but need deeper insights into what's happening at the runtime level. You can capture profiles during specific trace contexts and link them together for investigation.
+This integration becomes particularly valuable when you notice slow spans in your traces but need deeper insights into what's happening at the runtime level. You can capture process profiles when specific trace contexts trigger investigation and link them together for analysis.
 
 ## Why Combine OpenTelemetry with pprof
 
@@ -49,10 +49,11 @@ import (
     "fmt"
     "log"
     "net/http"
-    _ "net/http/pprof"
+    httppprof "net/http/pprof"
     "os"
     "runtime"
-    "runtime/pprof"
+    runtimepprof "runtime/pprof"
+    "sync"
     "time"
 
     "go.opentelemetry.io/otel"
@@ -60,12 +61,13 @@ import (
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
     "go.opentelemetry.io/otel/propagation"
     "go.opentelemetry.io/otel/sdk/resource"
-    "go.opentelemetry.io/otel/sdk/trace"
+    sdktrace "go.opentelemetry.io/otel/sdk/trace"
     semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
+    oteltrace "go.opentelemetry.io/otel/trace"
 )
 
 // Initialize OpenTelemetry with OTLP exporter
-func initTracer() (*trace.TracerProvider, error) {
+func initTracer() (*sdktrace.TracerProvider, error) {
     ctx := context.Background()
 
     exporter, err := otlptracegrpc.New(ctx,
@@ -87,10 +89,10 @@ func initTracer() (*trace.TracerProvider, error) {
         return nil, fmt.Errorf("creating resource: %w", err)
     }
 
-    tp := trace.NewTracerProvider(
-        trace.WithBatcher(exporter),
-        trace.WithResource(res),
-        trace.WithSampler(trace.AlwaysSample()),
+    tp := sdktrace.NewTracerProvider(
+        sdktrace.WithBatcher(exporter),
+        sdktrace.WithResource(res),
+        sdktrace.WithSampler(sdktrace.AlwaysSample()),
     )
 
     otel.SetTracerProvider(tp)
@@ -100,7 +102,7 @@ func initTracer() (*trace.TracerProvider, error) {
 }
 ```
 
-The tracer provider configuration includes resource attributes that will help you identify profiles in your observability backend. Setting up proper context propagation ensures trace IDs flow through your entire request lifecycle.
+The tracer provider configuration includes resource attributes that will help you identify traces and related profile metadata in your observability backend. Setting up proper context propagation ensures trace IDs flow through your entire request lifecycle.
 
 ## Creating a Profile-Aware Middleware
 
@@ -165,15 +167,15 @@ func (rw *responseWriter) WriteHeader(code int) {
 }
 ```
 
-This middleware monitors request duration and automatically triggers profiling for slow requests, attaching metadata to the span that links to the captured profiles.
+This middleware monitors request duration and automatically triggers profiling after slow requests, attaching metadata to the span that links to the captured profiles. CPU profiles are process-wide interval samples, so they are most useful when similar work is still running during the capture window.
 
 ## Capturing Profiles with Trace Context
 
-Implement profile capture functions that preserve trace context and store profile metadata.
+Implement profile capture functions that record trace context and store profile metadata.
 
 ```go
 // captureProfilesForSpan captures CPU and heap profiles linked to a span
-func captureProfilesForSpan(ctx context.Context, span trace.Span, config ProfileConfig) error {
+func captureProfilesForSpan(ctx context.Context, span oteltrace.Span, config ProfileConfig) error {
     spanCtx := span.SpanContext()
     traceID := spanCtx.TraceID().String()
     spanID := spanCtx.SpanID().String()
@@ -223,19 +225,24 @@ func captureProfilesForSpan(ctx context.Context, span trace.Span, config Profile
     return nil
 }
 
+var cpuProfileMu sync.Mutex
+
 func captureCPUProfile(path string, duration time.Duration) error {
+    cpuProfileMu.Lock()
+    defer cpuProfileMu.Unlock()
+
     f, err := os.Create(path)
     if err != nil {
         return err
     }
     defer f.Close()
 
-    if err := pprof.StartCPUProfile(f); err != nil {
+    if err := runtimepprof.StartCPUProfile(f); err != nil {
         return err
     }
 
+    defer runtimepprof.StopCPUProfile()
     time.Sleep(duration)
-    pprof.StopCPUProfile()
 
     return nil
 }
@@ -248,7 +255,7 @@ func captureHeapProfile(path string) error {
     defer f.Close()
 
     runtime.GC() // Get accurate heap stats
-    return pprof.WriteHeapProfile(f)
+    return runtimepprof.WriteHeapProfile(f)
 }
 
 func captureGoroutineProfile(path string) error {
@@ -258,7 +265,7 @@ func captureGoroutineProfile(path string) error {
     }
     defer f.Close()
 
-    profile := pprof.Lookup("goroutine")
+    profile := runtimepprof.Lookup("goroutine")
     if profile == nil {
         return fmt.Errorf("goroutine profile not found")
     }
@@ -313,11 +320,11 @@ func main() {
     // Set up pprof endpoints on a separate port for security
     go func() {
         pprofMux := http.NewServeMux()
-        pprofMux.HandleFunc("/debug/pprof/", pprof.Index)
-        pprofMux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
-        pprofMux.HandleFunc("/debug/pprof/profile", pprof.Profile)
-        pprofMux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
-        pprofMux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+        pprofMux.HandleFunc("/debug/pprof/", httppprof.Index)
+        pprofMux.HandleFunc("/debug/pprof/cmdline", httppprof.Cmdline)
+        pprofMux.HandleFunc("/debug/pprof/profile", httppprof.Profile)
+        pprofMux.HandleFunc("/debug/pprof/symbol", httppprof.Symbol)
+        pprofMux.HandleFunc("/debug/pprof/trace", httppprof.Trace)
 
         log.Println("pprof server listening on :6060")
         if err := http.ListenAndServe(":6060", pprofMux); err != nil {
@@ -422,7 +429,7 @@ go tool pprof -http=:8081 profiles/cpu-profile.prof
 go tool pprof profiles/goroutine-profile.prof
 ```
 
-The trace and span IDs embedded in profile filenames let you quickly find the exact profile corresponding to a slow trace you're investigating.
+The trace and span IDs embedded in profile filenames let you quickly find the profile captured for a slow trace you're investigating.
 
 ## Advanced Integration Patterns
 
@@ -435,7 +442,7 @@ type ProfileCollector struct {
     client         *http.Client
 }
 
-func (pc *ProfileCollector) UploadProfile(ctx context.Context, span trace.Span, profilePath string, profileType string) error {
+func (pc *ProfileCollector) UploadProfile(ctx context.Context, span oteltrace.Span, profilePath string, profileType string) error {
     spanCtx := span.SpanContext()
 
     // Read profile data
@@ -455,7 +462,7 @@ func (pc *ProfileCollector) UploadProfile(ctx context.Context, span trace.Span, 
 
     // Upload to storage backend (S3, GCS, etc.)
     // This is a simplified example
-    log.Printf("Uploading %s profile for trace %s", profileType, metadata["trace_id"])
+    log.Printf("Uploading %d bytes of %s profile data for trace %s", len(data), profileType, metadata["trace_id"])
 
     // Add profile URL to span attributes
     profileURL := fmt.Sprintf("%s/%s-%s-%s.prof",
@@ -480,7 +487,7 @@ For continuous profiling, capture periodic snapshots and correlate them with act
 type ContinuousProfiler struct {
     interval time.Duration
     storage  string
-    tracer   trace.Tracer
+    tracer   oteltrace.Tracer
 }
 
 func (cp *ContinuousProfiler) Start(ctx context.Context) {
@@ -529,7 +536,7 @@ Continuous profiling provides baseline performance data that you can compare aga
 
 ## Performance Considerations
 
-Profile capture itself consumes resources. CPU profiling adds 5-10% overhead during the capture period, and heap profiling triggers garbage collection. Only enable automatic profiling for requests that exceed meaningful thresholds to avoid impacting normal operations.
+Profile capture itself consumes resources. CPU profiling adds overhead during the capture period, and heap profiling triggers garbage collection. Only enable automatic profiling for requests that exceed meaningful thresholds to avoid impacting normal operations.
 
 Store profiles in fast local storage or stream them asynchronously to remote storage to minimize impact on request latency. Consider using a separate goroutine pool for profile uploads to prevent blocking request handlers.
 

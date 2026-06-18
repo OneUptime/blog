@@ -10,7 +10,7 @@ Description: Learn how to implement Binary Authorization in GKE to ensure only t
 
 ## Introduction
 
-Binary Authorization is a deploy-time security control in Google Kubernetes Engine (GKE) that ensures only trusted container images are deployed to your clusters. It works by requiring images to be signed by trusted authorities (attestors) before they can run in your production environment.
+Binary Authorization is a deploy-time security control in Google Kubernetes Engine (GKE) that ensures only trusted container images are deployed to your clusters. It works by requiring signed attestations from trusted authorities (attestors) before images can run in your production environment.
 
 This guide walks you through setting up Binary Authorization from scratch, including policy configuration, attestor creation, Cloud Build integration, and emergency breakglass procedures.
 
@@ -44,7 +44,7 @@ flowchart TD
 
     subgraph "Emergency"
         O[Breakglass Request] --> P[Override Policy]
-        P --> Q[Pod Created with Annotation]
+        P --> Q[Pod Created with Breakglass Label]
         Q --> R[Audit Log Generated]
     end
 ```
@@ -70,11 +70,17 @@ gcloud services enable binaryauthorization.googleapis.com
 # Enable Container Analysis API for storing attestations
 gcloud services enable containeranalysis.googleapis.com
 
+# Enable Container Scanning API for Artifact Analysis vulnerability scanning
+gcloud services enable containerscanning.googleapis.com
+
 # Enable Cloud KMS for signing attestations
 gcloud services enable cloudkms.googleapis.com
 
 # Enable Artifact Registry if not already enabled
 gcloud services enable artifactregistry.googleapis.com
+
+# Enable Cloud Build for the CI/CD pipeline
+gcloud services enable cloudbuild.googleapis.com
 ```
 
 ## Step 2: Create a KMS Key for Signing
@@ -159,18 +165,8 @@ The policy defines which images are allowed to run and what attestations are req
 
 ```yaml
 # binary-auth-policy.yaml
-# This policy requires attestation from our build attestor
-# and allows specific system images to run without attestation
-
-admissionWhitelistPatterns:
-  # Allow GKE system images
-  - namePattern: gcr.io/google_containers/*
-  - namePattern: gcr.io/google-containers/*
-  - namePattern: k8s.gcr.io/*
-  - namePattern: gke.gcr.io/*
-  - namePattern: gcr.io/gke-release/*
-  # Allow Artifact Registry system images
-  - namePattern: us-docker.pkg.dev/google-samples/*
+# This policy requires attestation from our build attestor.
+# globalPolicyEvaluationMode allows Google-managed GKE system images.
 
 defaultAdmissionRule:
   # Default rule for all other images
@@ -312,7 +308,8 @@ steps:
     args:
       - '-c'
       - |
-        # Wait for the vulnerability scan to complete
+        # Wait briefly for the vulnerability scan metadata to become available.
+        # Production pipelines should poll the scan/discovery status before enforcing results.
         IMAGE_DIGEST=$(cat /workspace/image-digest.txt)
         IMAGE_URL="${_REGION}-docker.pkg.dev/${PROJECT_ID}/my-repo/my-app@${IMAGE_DIGEST}"
 
@@ -358,12 +355,16 @@ steps:
   # Step 6: Deploy to GKE
   - name: 'gcr.io/cloud-builders/gke-deploy'
     id: 'deploy'
+    entrypoint: 'bash'
     args:
-      - 'run'
-      - '--filename=k8s/'
-      - '--image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/my-repo/my-app:${SHORT_SHA}'
-      - '--cluster=${_GKE_CLUSTER}'
-      - '--location=${_GKE_ZONE}'
+      - '-c'
+      - |
+        IMAGE_DIGEST=$(cat /workspace/image-digest.txt)
+        gke-deploy run \
+          --filename=k8s/ \
+          --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/my-repo/my-app@${IMAGE_DIGEST} \
+          --cluster=${_GKE_CLUSTER} \
+          --location=${_GKE_ZONE}
 
 options:
   logging: CLOUD_LOGGING_ONLY
@@ -406,9 +407,9 @@ gcloud projects add-iam-policy-binding ${PROJECT_ID} \
 
 In emergency situations, you may need to deploy an unattested image. Binary Authorization provides a breakglass mechanism for this purpose.
 
-### Method 1: Breakglass Annotation
+### Method 1: Breakglass Label
 
-Add a special annotation to your pod to bypass Binary Authorization. This will be logged and audited.
+Add a special label to your pod to bypass Binary Authorization. This will be logged and audited.
 
 ```yaml
 # emergency-deployment.yaml
@@ -428,10 +429,9 @@ spec:
     metadata:
       labels:
         app: emergency-app
-      annotations:
-        # This annotation allows deployment without attestation
+        # This label allows deployment without attestation
         # IMPORTANT: This bypasses security controls and is audited
-        alpha.image-policy.k8s.io/break-glass: "true"
+        image-policy.k8s.io/break-glass: "true"
     spec:
       containers:
         - name: app
@@ -475,7 +475,7 @@ Set up alerts for breakglass usage to ensure proper follow-up.
 gcloud logging metrics create breakglass-usage \
     --description="Tracks Binary Authorization breakglass events" \
     --log-filter='resource.type="k8s_cluster"
-protoPayload.request.metadata.annotations."alpha.image-policy.k8s.io/break-glass"="true"'
+protoPayload.request.metadata.labels."image-policy.k8s.io/break-glass"="true"'
 
 # Create an alert policy (using gcloud or console)
 # Alert when breakglass is used more than 0 times in any 5-minute window
@@ -510,8 +510,7 @@ sequenceDiagram
     GKE->>BA: Verify image policy
     BA->>CA: Check attestations
     CA-->>BA: Return attestation
-    BA->>KMS: Verify signature
-    KMS-->>BA: Signature valid
+    BA->>BA: Verify signature with attestor public key
     BA-->>GKE: Allow deployment
     GKE->>GKE: Create pod
 ```
@@ -523,11 +522,6 @@ For more robust security, require attestations from multiple attestors represent
 ```yaml
 # multi-attestor-policy.yaml
 # Requires both build and security attestations
-
-admissionWhitelistPatterns:
-  - namePattern: gcr.io/google_containers/*
-  - namePattern: k8s.gcr.io/*
-  - namePattern: gke.gcr.io/*
 
 defaultAdmissionRule:
   evaluationMode: REQUIRE_ATTESTATION

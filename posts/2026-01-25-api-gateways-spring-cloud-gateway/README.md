@@ -35,11 +35,19 @@ Create a new Spring Boot project with the gateway starter:
 <!-- pom.xml -->
 <dependency>
     <groupId>org.springframework.cloud</groupId>
-    <artifactId>spring-cloud-starter-gateway</artifactId>
+    <artifactId>spring-cloud-starter-gateway-server-webflux</artifactId>
+</dependency>
+<dependency>
+    <groupId>org.springframework.cloud</groupId>
+    <artifactId>spring-cloud-starter-loadbalancer</artifactId>
 </dependency>
 <dependency>
     <groupId>org.springframework.boot</groupId>
     <artifactId>spring-boot-starter-actuator</artifactId>
+</dependency>
+<dependency>
+    <groupId>io.micrometer</groupId>
+    <artifactId>micrometer-registry-prometheus</artifactId>
 </dependency>
 <dependency>
     <groupId>org.springframework.cloud</groupId>
@@ -55,7 +63,7 @@ Add the Spring Cloud BOM:
         <dependency>
             <groupId>org.springframework.cloud</groupId>
             <artifactId>spring-cloud-dependencies</artifactId>
-            <version>2023.0.0</version>
+            <version>2025.1.2</version>
             <type>pom</type>
             <scope>import</scope>
         </dependency>
@@ -77,30 +85,32 @@ Define routes in your application configuration:
 spring:
   cloud:
     gateway:
-      routes:
-        # Route to user service
-        - id: user-service
-          uri: http://localhost:8081
-          predicates:
-            - Path=/api/users/**
-          filters:
-            - StripPrefix=1
+      server:
+        webflux:
+          routes:
+            # Route to user service
+            - id: user-service
+              uri: http://localhost:8081
+              predicates:
+                - Path=/api/users/**
+              filters:
+                - StripPrefix=1
 
-        # Route to order service
-        - id: order-service
-          uri: http://localhost:8082
-          predicates:
-            - Path=/api/orders/**
-          filters:
-            - StripPrefix=1
+            # Route to order service
+            - id: order-service
+              uri: http://localhost:8082
+              predicates:
+                - Path=/api/orders/**
+              filters:
+                - StripPrefix=1
 
-        # Route to product service
-        - id: product-service
-          uri: http://localhost:8083
-          predicates:
-            - Path=/api/products/**
-          filters:
-            - StripPrefix=1
+            # Route to product service
+            - id: product-service
+              uri: http://localhost:8083
+              predicates:
+                - Path=/api/products/**
+              filters:
+                - StripPrefix=1
 
 server:
   port: 8080
@@ -131,7 +141,7 @@ public class GatewayConfig {
                 .path("/api/users/**")
                 .filters(f -> f
                     .stripPrefix(1)
-                    .addRequestHeader("X-Gateway-Request-Id", java.util.UUID.randomUUID().toString())
+                    .addRequestHeader("X-Gateway", "spring-cloud-gateway")
                 )
                 .uri("http://localhost:8081")
             )
@@ -167,50 +177,52 @@ Spring Cloud Gateway provides many predicates for matching requests:
 spring:
   cloud:
     gateway:
-      routes:
-        # Match by path pattern
-        - id: path-route
-          uri: http://service:8080
-          predicates:
-            - Path=/api/**
+      server:
+        webflux:
+          routes:
+            # Match by path pattern
+            - id: path-route
+              uri: http://service:8080
+              predicates:
+                - Path=/api/**
 
-        # Match by HTTP method
-        - id: method-route
-          uri: http://service:8080
-          predicates:
-            - Method=GET,POST
+            # Match by HTTP method
+            - id: method-route
+              uri: http://service:8080
+              predicates:
+                - Method=GET,POST
 
-        # Match by header
-        - id: header-route
-          uri: http://service:8080
-          predicates:
-            - Header=X-Request-Type, premium
+            # Match by header
+            - id: header-route
+              uri: http://service:8080
+              predicates:
+                - Header=X-Request-Type, premium
 
-        # Match by query parameter
-        - id: query-route
-          uri: http://service:8080
-          predicates:
-            - Query=version, v2
+            # Match by query parameter
+            - id: query-route
+              uri: http://service:8080
+              predicates:
+                - Query=version, v2
 
-        # Match by host
-        - id: host-route
-          uri: http://service:8080
-          predicates:
-            - Host=**.example.com
+            # Match by host
+            - id: host-route
+              uri: http://service:8080
+              predicates:
+                - Host=**.example.com
 
-        # Match by time (useful for maintenance windows)
-        - id: time-route
-          uri: http://service:8080
-          predicates:
-            - After=2024-01-01T00:00:00.000-05:00[America/New_York]
+            # Match by time (useful for maintenance windows)
+            - id: time-route
+              uri: http://service:8080
+              predicates:
+                - After=2024-01-01T00:00:00.000-05:00[America/New_York]
 
-        # Combine multiple predicates
-        - id: combined-route
-          uri: http://service:8080
-          predicates:
-            - Path=/api/v2/**
-            - Method=GET
-            - Header=Accept, application/json
+            # Combine multiple predicates
+            - id: combined-route
+              uri: http://service:8080
+              predicates:
+                - Path=/api/v2/**
+                - Method=GET
+                - Header=Accept, application/json
 ```
 
 ### Custom Predicates
@@ -273,11 +285,13 @@ Use the custom predicate in configuration:
 spring:
   cloud:
     gateway:
-      routes:
-        - id: api-v2
-          uri: http://api-v2:8080
-          predicates:
-            - ApiVersion=2
+      server:
+        webflux:
+          routes:
+            - id: api-v2
+              uri: http://api-v2:8080
+              predicates:
+                - ApiVersion=2
 ```
 
 ---
@@ -293,35 +307,37 @@ Filters modify requests before they are sent and responses before they are retur
 spring:
   cloud:
     gateway:
-      routes:
-        - id: service-route
-          uri: http://service:8080
-          predicates:
-            - Path=/api/**
-          filters:
-            # Request modifications
-            - AddRequestHeader=X-Request-Source, gateway
-            - AddRequestParameter=gateway, true
-            - RemoveRequestHeader=Cookie
+      server:
+        webflux:
+          routes:
+            - id: service-route
+              uri: http://service:8080
+              predicates:
+                - Path=/api/**
+              filters:
+                # Request modifications
+                - AddRequestHeader=X-Request-Source, gateway
+                - AddRequestParameter=gateway, true
+                - RemoveRequestHeader=Cookie
 
-            # Response modifications
-            - AddResponseHeader=X-Response-Time, ${responseTime}
-            - RemoveResponseHeader=X-Powered-By
+                # Response modifications
+                - AddResponseHeader=X-Processed-By, spring-cloud-gateway
+                - RemoveResponseHeader=X-Powered-By
 
-            # Path modifications
-            - StripPrefix=1
-            - PrefixPath=/v1
+                # Path modifications
+                - StripPrefix=1
+                - PrefixPath=/v1
 
-            # Retry on failure
-            - name: Retry
-              args:
-                retries: 3
-                statuses: BAD_GATEWAY,SERVICE_UNAVAILABLE
-                methods: GET
-                backoff:
-                  firstBackoff: 100ms
-                  maxBackoff: 500ms
-                  factor: 2
+                # Retry on failure
+                - name: Retry
+                  args:
+                    retries: 3
+                    statuses: BAD_GATEWAY,SERVICE_UNAVAILABLE
+                    methods: GET
+                    backoff:
+                      firstBackoff: 100ms
+                      maxBackoff: 500ms
+                      factor: 2
 ```
 
 ### Custom Global Filter
@@ -415,25 +431,28 @@ Implement rate limiting with Redis:
 ```yaml
 # application.yml
 spring:
-  redis:
-    host: localhost
-    port: 6379
+  data:
+    redis:
+      host: localhost
+      port: 6379
   cloud:
     gateway:
-      routes:
-        - id: rate-limited-service
-          uri: http://service:8080
-          predicates:
-            - Path=/api/**
-          filters:
-            - name: RequestRateLimiter
-              args:
-                # Rate limit: 10 requests per second
-                redis-rate-limiter.replenishRate: 10
-                redis-rate-limiter.burstCapacity: 20
-                redis-rate-limiter.requestedTokens: 1
-                # Key resolver determines how to group requests
-                key-resolver: "#{@userKeyResolver}"
+      server:
+        webflux:
+          routes:
+            - id: rate-limited-service
+              uri: http://service:8080
+              predicates:
+                - Path=/api/**
+              filters:
+                - name: RequestRateLimiter
+                  args:
+                    # Rate limit: 10 requests per second
+                    redis-rate-limiter.replenishRate: 10
+                    redis-rate-limiter.burstCapacity: 20
+                    redis-rate-limiter.requestedTokens: 1
+                    # Key resolver determines how to group requests
+                    key-resolver: "#{@userKeyResolver}"
 ```
 
 Create a key resolver to determine rate limit buckets:
@@ -490,16 +509,18 @@ Add circuit breaker protection to prevent cascade failures:
 spring:
   cloud:
     gateway:
-      routes:
-        - id: service-with-circuit-breaker
-          uri: http://service:8080
-          predicates:
-            - Path=/api/**
-          filters:
-            - name: CircuitBreaker
-              args:
-                name: serviceCircuitBreaker
-                fallbackUri: forward:/fallback/service
+      server:
+        webflux:
+          routes:
+            - id: service-with-circuit-breaker
+              uri: http://service:8080
+              predicates:
+                - Path=/api/**
+              filters:
+                - name: CircuitBreaker
+                  args:
+                    name: serviceCircuitBreaker
+                    fallbackUri: forward:/fallback/service
 
 # Circuit breaker configuration
 resilience4j:
@@ -571,6 +592,29 @@ public class FallbackController {
 
 ### JWT Validation Filter
 
+Add JJWT for JWT parsing and signature verification:
+
+```xml
+<!-- pom.xml -->
+<dependency>
+    <groupId>io.jsonwebtoken</groupId>
+    <artifactId>jjwt-api</artifactId>
+    <version>0.13.0</version>
+</dependency>
+<dependency>
+    <groupId>io.jsonwebtoken</groupId>
+    <artifactId>jjwt-impl</artifactId>
+    <version>0.13.0</version>
+    <scope>runtime</scope>
+</dependency>
+<dependency>
+    <groupId>io.jsonwebtoken</groupId>
+    <artifactId>jjwt-jackson</artifactId>
+    <version>0.13.0</version>
+    <scope>runtime</scope>
+</dependency>
+```
+
 Create a filter to validate JWT tokens:
 
 ```java
@@ -620,11 +664,11 @@ public class JwtAuthenticationFilterFactory
             try {
                 // Parse and validate JWT
                 SecretKey key = Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8));
-                Claims claims = Jwts.parserBuilder()
-                    .setSigningKey(key)
+                Claims claims = Jwts.parser()
+                    .verifyWith(key)
                     .build()
-                    .parseClaimsJws(token)
-                    .getBody();
+                    .parseSignedClaims(token)
+                    .getPayload();
 
                 // Extract user information and add to headers
                 String userId = claims.getSubject();
@@ -661,20 +705,22 @@ Apply the filter to protected routes:
 spring:
   cloud:
     gateway:
-      routes:
-        # Public routes (no auth)
-        - id: public-api
-          uri: http://public-service:8080
-          predicates:
-            - Path=/api/public/**
+      server:
+        webflux:
+          routes:
+            # Public routes (no auth)
+            - id: public-api
+              uri: http://public-service:8080
+              predicates:
+                - Path=/api/public/**
 
-        # Protected routes (require JWT)
-        - id: protected-api
-          uri: http://protected-service:8080
-          predicates:
-            - Path=/api/**
-          filters:
-            - JwtAuthentication
+            # Protected routes (require JWT)
+            - id: protected-api
+              uri: http://protected-service:8080
+              predicates:
+                - Path=/api/**
+              filters:
+                - JwtAuthentication
 ```
 
 ---
@@ -698,20 +744,22 @@ Register with Eureka for dynamic service discovery:
 spring:
   cloud:
     gateway:
-      discovery:
-        locator:
-          # Automatically create routes for discovered services
-          enabled: true
-          # Convert service names to lowercase in paths
-          lower-case-service-id: true
-      routes:
-        # Use lb:// prefix for load-balanced routes
-        - id: user-service
-          uri: lb://USER-SERVICE
-          predicates:
-            - Path=/api/users/**
-          filters:
-            - StripPrefix=1
+      server:
+        webflux:
+          discovery:
+            locator:
+              # Automatically create routes for discovered services
+              enabled: true
+              # Convert service names to lowercase in paths
+              lower-case-service-id: true
+          routes:
+            # Use lb:// prefix for load-balanced routes
+            - id: user-service
+              uri: lb://USER-SERVICE
+              predicates:
+                - Path=/api/users/**
+              filters:
+                - StripPrefix=1
 
 eureka:
   client:
@@ -738,7 +786,7 @@ management:
         include: health,info,gateway,metrics,prometheus
   endpoint:
     gateway:
-      enabled: true
+      access: unrestricted
     health:
       show-details: always
 ```

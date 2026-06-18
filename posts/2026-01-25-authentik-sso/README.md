@@ -20,7 +20,7 @@ Authentik offers enterprise features without enterprise costs:
 - **MFA Support**: TOTP, WebAuthn, SMS, email
 - **User Self-Service**: Password reset, profile management
 - **Modern UI**: Clean interface for users and admins
-- **Open Source**: MIT licensed, self-hosted
+- **Open Source**: Open-source identity provider with self-hosted deployment options
 
 ## Architecture Overview
 
@@ -68,8 +68,6 @@ Create the docker-compose file:
 ```yaml
 # docker-compose.yml
 
-version: "3.8"
-
 services:
   postgresql:
     image: postgres:15-alpine
@@ -91,7 +89,7 @@ services:
       - redis:/data
 
   server:
-    image: ghcr.io/goauthentik/server:2024.1
+    image: ghcr.io/goauthentik/server:2026.5
     container_name: authentik-server
     restart: unless-stopped
     command: server
@@ -113,7 +111,7 @@ services:
       - redis
 
   worker:
-    image: ghcr.io/goauthentik/server:2024.1
+    image: ghcr.io/goauthentik/server:2026.5
     container_name: authentik-worker
     restart: unless-stopped
     command: worker
@@ -140,15 +138,14 @@ volumes:
 Create an environment file:
 
 ```bash
-# .env
-PG_PASS=your-secure-database-password
-AUTHENTIK_SECRET_KEY=$(openssl rand -base64 60 | tr -d '\n')
+echo "PG_PASS=$(openssl rand -base64 36 | tr -d '\n')" >> .env
+echo "AUTHENTIK_SECRET_KEY=$(openssl rand -base64 60 | tr -d '\n')" >> .env
 ```
 
 Start Authentik:
 
 ```bash
-docker-compose up -d
+docker compose up -d
 ```
 
 ### Initial Setup
@@ -231,6 +228,8 @@ const OAuth2Strategy = require('passport-oauth2');
 
 const app = express();
 
+app.use(passport.initialize());
+
 passport.use(new OAuth2Strategy({
     authorizationURL: 'https://authentik.example.com/application/o/authorize/',
     tokenURL: 'https://authentik.example.com/application/o/token/',
@@ -252,7 +251,7 @@ passport.use(new OAuth2Strategy({
 app.get('/auth/login', passport.authenticate('oauth2'));
 
 app.get('/auth/callback',
-  passport.authenticate('oauth2', { failureRedirect: '/login' }),
+  passport.authenticate('oauth2', { failureRedirect: '/login', session: false }),
   (req, res) => {
     res.redirect('/dashboard');
   }
@@ -292,7 +291,7 @@ gitlab_rails['omniauth_providers'] = [
       response_type: "code",
       issuer: "https://authentik.example.com/application/o/gitlab/",
       discovery: true,
-      client_auth_method: "query",
+      client_auth_method: "basic",
       client_options: {
         identifier: "gitlab-client-id",
         secret: "gitlab-client-secret",
@@ -345,7 +344,7 @@ Mode: Forward auth (single application)
 ```yaml
 # docker-compose.yml (add to existing)
   authentik-proxy:
-    image: ghcr.io/goauthentik/proxy:2024.1
+    image: ghcr.io/goauthentik/proxy:2026.5
     container_name: authentik-proxy
     restart: unless-stopped
     environment:
@@ -367,15 +366,21 @@ server {
 
     # Forward authentication to Authentik
     location /outpost.goauthentik.io {
-        proxy_pass https://authentik-proxy:9443/outpost.goauthentik.io;
+        proxy_pass http://authentik-proxy:9000;
         proxy_set_header Host $host;
         proxy_set_header X-Original-URL $scheme://$http_host$request_uri;
+        add_header Set-Cookie $auth_cookie;
+        auth_request_set $auth_cookie $upstream_http_set_cookie;
+        proxy_pass_request_body off;
+        proxy_set_header Content-Length "";
     }
 
     # Protected application
     location / {
         auth_request /outpost.goauthentik.io/auth/nginx;
         error_page 401 = @goauthentik_proxy_signin;
+        auth_request_set $auth_cookie $upstream_http_set_cookie;
+        add_header Set-Cookie $auth_cookie;
 
         # Pass user info to backend
         auth_request_set $authentik_username $upstream_http_x_authentik_username;
@@ -389,7 +394,7 @@ server {
     location @goauthentik_proxy_signin {
         internal;
         add_header Set-Cookie $auth_cookie;
-        return 302 /outpost.goauthentik.io/start?rd=$request_uri;
+        return 302 /outpost.goauthentik.io/start?rd=$scheme://$http_host$request_uri;
     }
 }
 ```
@@ -413,7 +418,7 @@ Authentik uses Flows (sequences of Stages) to define authentication processes:
 Create a flow for user self-registration:
 
 ```yaml
-# Export format for reference
+# Flow outline for reference
 stages:
   - name: enrollment-prompt
     type: prompt

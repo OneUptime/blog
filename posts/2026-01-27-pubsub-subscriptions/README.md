@@ -131,8 +131,7 @@ const subscriptionName = 'order-processing-sub';
 const subscription = pubsub.subscription(subscriptionName, {
   // Flow control settings prevent overwhelming your subscriber
   flowControl: {
-    maxMessages: 100,        // Max messages to process concurrently
-    allowExcessMessages: false, // Don't exceed maxMessages
+    maxOutstandingMessages: 100, // Max messages to process concurrently
   },
   // Stream settings for connection management
   streamingOptions: {
@@ -250,7 +249,7 @@ sequenceDiagram
     E->>PS: HTTP 200 OK (Ack)
     PS->>PS: Remove from Queue
 
-    Note over PS,E: If non-2xx response,<br/>Pub/Sub retries with backoff
+    Note over PS,E: If non-ack status code,<br/>Pub/Sub retries with backoff
 ```
 
 **When to use Push:**
@@ -349,8 +348,9 @@ app.post('/webhooks/orders', verifyPubSubToken, async (req, res) => {
 
   if (!pubsubMessage) {
     console.error('Invalid Pub/Sub message format');
-    // Return 400 to indicate bad request (won't be retried)
-    return res.status(400).send('Bad Request: No message');
+    // Return 204 to acknowledge and drop malformed push payloads.
+    // Pub/Sub retries any status code other than 102, 200, 201, 202, or 204.
+    return res.status(204).send();
   }
 
   try {
@@ -368,7 +368,7 @@ app.post('/webhooks/orders', verifyPubSubToken, async (req, res) => {
     // Process the order
     await processOrder(data);
 
-    // Return 200-299 to acknowledge the message
+    // Return 102, 200, 201, 202, or 204 to acknowledge the message
     // This tells Pub/Sub to remove it from the subscription
     res.status(200).send('OK');
 
@@ -453,7 +453,9 @@ For long-running processing, extend the deadline dynamically to prevent redelive
 const { PubSub } = require('@google-cloud/pubsub');
 
 const pubsub = new PubSub();
-const subscription = pubsub.subscription('batch-processor-sub');
+const subscription = pubsub.subscription('batch-processor-sub', {
+  maxAckDeadline: { seconds: 600 },
+});
 
 const messageHandler = async (message) => {
   console.log(`Starting processing for message ${message.id}`);
@@ -465,9 +467,9 @@ const messageHandler = async (message) => {
     // Start extending the deadline periodically
     // Extend every 30 seconds to stay well within the 120-second deadline
     extensionInterval = setInterval(() => {
-      // modifyAckDeadline extends the deadline from now
+      // modAck extends the deadline from now
       // Setting to 120 gives another 120 seconds from this moment
-      message.modifyAckDeadline(120);
+      message.modAck(120);
       console.log(`Extended deadline for message ${message.id}`);
     }, 30000); // Every 30 seconds
 
@@ -514,33 +516,35 @@ async function longRunningOperation(message) {
 
 ```javascript
 // exactly-once-processing.js
-// Enable exactly-once delivery for critical operations
+// Use a subscription that was created with exactly-once delivery enabled
+// (for example, with --enable-exactly-once-delivery)
 
-const subscription = pubsub.subscription('critical-payments-sub', {
-  // Enable exactly-once delivery semantics
-  enableExactlyOnceDelivery: true,
-});
+const { PubSub } = require('@google-cloud/pubsub');
+
+const pubsub = new PubSub();
+const subscription = pubsub.subscription('critical-payments-sub');
 
 const messageHandler = async (message) => {
   try {
     await processPayment(message);
 
-    // With exactly-once enabled, ack is guaranteed to succeed
-    // or return an error if the ack fails
-    const ackResponse = await message.ackWithResponse();
-
-    if (ackResponse === 'SUCCESS') {
-      console.log(`Message ${message.id} acknowledged successfully`);
-    }
+    // With exactly-once enabled, ackWithResponse resolves when the ack succeeds
+    // and rejects if the ack fails
+    await message.ackWithResponse();
+    console.log(`Message ${message.id} acknowledged successfully`);
   } catch (error) {
-    if (error.code === 'FAILED_PRECONDITION') {
-      // Another subscriber already acknowledged this message
-      console.log(`Message ${message.id} was already processed`);
+    if (error.code === 'INVALID_ARGUMENT') {
+      // The ack ID may have expired; expect redelivery and use idempotency checks
+      console.log(`Message ${message.id} ack ID expired before acknowledgment`);
     } else {
       message.nack();
     }
   }
 };
+
+async function processPayment(message) {
+  // Your payment processing logic here
+}
 ```
 
 ---
@@ -580,7 +584,7 @@ gcloud pubsub subscriptions create audit-log-sub \
     --expiration-period=never
 
 # Parameters explained:
-# --message-retention-duration: Keep unacked messages (min 10m, max 7d)
+# --message-retention-duration: Keep unacked messages (min 10m, max 31d)
 # --retain-acked-messages: Also retain messages after acknowledgment
 # --expiration-period: Subscription lifetime (never = permanent)
 ```
@@ -819,21 +823,21 @@ const filterExamples = {
 
   // Complex nested conditions
   complexFilter: `
-    (attributes.type = "payment" AND attributes.amount > "1000")
+    (attributes.type = "payment" AND hasPrefix(attributes.amountPadded, "01"))
     OR
     (attributes.type = "refund" AND attributes:manualReview)
   `.replace(/\s+/g, ' ').trim(),
 
-  // Note: Numeric comparisons treat values as strings
-  // "100" > "1000" evaluates to true (lexicographic)
-  // For numeric filtering, use padded strings: "00100", "01000"
+  // Note: Pub/Sub filters support exact matches, existence checks, boolean
+  // operators, and hasPrefix. They don't support numeric comparisons.
+  // For numeric-like routing, publish bucketed or padded string attributes.
 };
 
 // Filter limitations to be aware of:
 // 1. Filters only work on attributes, not message body
-// 2. Maximum filter length: 4096 characters
+// 2. Maximum filter length: 256 bytes
 // 3. Attribute values must be strings
-// 4. Numeric comparisons are lexicographic (string-based)
+// 4. Numeric comparison operators are not supported
 // 5. Filters cannot be updated - must recreate subscription
 ```
 
@@ -870,6 +874,15 @@ Configure dead letter topics to handle messages that repeatedly fail processing:
 # Create the dead letter topic first
 gcloud pubsub topics create orders-dlq
 
+# Grant the Pub/Sub service agent permission to publish to the DLQ topic
+# and acknowledge forwarded messages on the source subscription.
+PROJECT_NUMBER=$(gcloud projects describe PROJECT_ID --format='value(projectNumber)')
+PUBSUB_SERVICE_ACCOUNT="service-${PROJECT_NUMBER}@gcp-sa-pubsub.iam.gserviceaccount.com"
+
+gcloud pubsub topics add-iam-policy-binding orders-dlq \
+    --member="serviceAccount:${PUBSUB_SERVICE_ACCOUNT}" \
+    --role="roles/pubsub.publisher"
+
 # Create subscription for the dead letter topic
 gcloud pubsub subscriptions create orders-dlq-sub \
     --topic=orders-dlq \
@@ -880,6 +893,10 @@ gcloud pubsub subscriptions create orders-sub \
     --topic=orders \
     --dead-letter-topic=orders-dlq \
     --max-delivery-attempts=5
+
+gcloud pubsub subscriptions add-iam-policy-binding orders-sub \
+    --member="serviceAccount:${PUBSUB_SERVICE_ACCOUNT}" \
+    --role="roles/pubsub.subscriber"
 ```
 
 ```javascript
@@ -900,9 +917,10 @@ const dlqMessageHandler = async (message) => {
 
     // Extract delivery metadata
     const dlqInfo = {
-      originalMessageId: message.attributes.CloudPubSubDeadLetterSourceMessageId,
+      forwardedMessageId: message.id,
       originalSubscription: message.attributes.CloudPubSubDeadLetterSourceSubscription,
       deliveryAttempts: message.attributes.CloudPubSubDeadLetterSourceDeliveryCount,
+      originalPublishTime: message.attributes.CloudPubSubDeadLetterSourceTopicPublishTime,
       deadLetteredAt: new Date().toISOString(),
       messageData: data,
     };
@@ -914,9 +932,10 @@ const dlqMessageHandler = async (message) => {
       .dataset('pubsub_dlq')
       .table('failed_messages')
       .insert([{
-        message_id: dlqInfo.originalMessageId,
+        message_id: dlqInfo.forwardedMessageId,
         subscription: dlqInfo.originalSubscription,
         delivery_attempts: parseInt(dlqInfo.deliveryAttempts),
+        original_publish_time: dlqInfo.originalPublishTime,
         dead_lettered_at: dlqInfo.deadLetteredAt,
         payload: JSON.stringify(data),
       }]);
@@ -996,7 +1015,7 @@ terraform {
   required_providers {
     google = {
       source  = "hashicorp/google"
-      version = "~> 5.0"
+      version = "~> 7.0"
     }
   }
 }
@@ -1011,6 +1030,14 @@ variable "environment" {
   description = "Environment name (dev, staging, prod)"
   type        = string
   default     = "dev"
+}
+
+data "google_project" "current" {
+  project_id = var.project_id
+}
+
+locals {
+  pubsub_service_agent = "service-${data.google_project.current.number}@gcp-sa-pubsub.iam.gserviceaccount.com"
 }
 
 # Main orders topic
@@ -1041,8 +1068,10 @@ resource "google_pubsub_topic" "orders_dlq" {
 # Main pull subscription
 resource "google_pubsub_subscription" "orders_processor" {
   name    = "orders-processor-${var.environment}"
-  topic   = google_pubsub_topic.orders.name
+  topic   = google_pubsub_topic.orders.id
   project = var.project_id
+
+  depends_on = [google_pubsub_topic_iam_member.orders_dlq_publisher]
 
   # Acknowledgment deadline: 60 seconds
   ack_deadline_seconds = 60
@@ -1082,7 +1111,7 @@ resource "google_pubsub_subscription" "orders_processor" {
 # Push subscription for webhooks
 resource "google_pubsub_subscription" "orders_webhook" {
   name    = "orders-webhook-${var.environment}"
-  topic   = google_pubsub_topic.orders.name
+  topic   = google_pubsub_topic.orders.id
   project = var.project_id
 
   ack_deadline_seconds       = 30
@@ -1099,7 +1128,7 @@ resource "google_pubsub_subscription" "orders_webhook" {
 
     # Custom attributes to add to each request
     attributes = {
-      x-custom-header = "pubsub-push"
+      x-goog-version = "v1"
     }
   }
 
@@ -1117,7 +1146,7 @@ resource "google_pubsub_subscription" "orders_webhook" {
 # Filtered subscription for high-priority orders
 resource "google_pubsub_subscription" "orders_priority" {
   name    = "orders-priority-${var.environment}"
-  topic   = google_pubsub_topic.orders.name
+  topic   = google_pubsub_topic.orders.id
   project = var.project_id
 
   ack_deadline_seconds = 30
@@ -1134,7 +1163,7 @@ resource "google_pubsub_subscription" "orders_priority" {
 # DLQ subscription
 resource "google_pubsub_subscription" "orders_dlq" {
   name    = "orders-dlq-processor-${var.environment}"
-  topic   = google_pubsub_topic.orders_dlq.name
+  topic   = google_pubsub_topic.orders_dlq.id
   project = var.project_id
 
   ack_deadline_seconds       = 120
@@ -1152,6 +1181,20 @@ resource "google_service_account" "pubsub_invoker" {
   account_id   = "pubsub-invoker-${var.environment}"
   display_name = "Pub/Sub Push Invoker"
   project      = var.project_id
+}
+
+resource "google_pubsub_topic_iam_member" "orders_dlq_publisher" {
+  project = var.project_id
+  topic   = google_pubsub_topic.orders_dlq.name
+  role    = "roles/pubsub.publisher"
+  member  = "serviceAccount:${local.pubsub_service_agent}"
+}
+
+resource "google_pubsub_subscription_iam_member" "orders_processor_subscriber" {
+  project      = var.project_id
+  subscription = google_pubsub_subscription.orders_processor.name
+  role         = "roles/pubsub.subscriber"
+  member       = "serviceAccount:${local.pubsub_service_agent}"
 }
 
 # Output the subscription names
@@ -1218,7 +1261,8 @@ gcloud monitoring metrics list --filter="metric.type:pubsub"
 # - pubsub.googleapis.com/subscription/oldest_unacked_message_age
 # - pubsub.googleapis.com/subscription/num_undelivered_messages
 # - pubsub.googleapis.com/subscription/ack_message_count
-# - pubsub.googleapis.com/subscription/nack_message_count
+# - pubsub.googleapis.com/subscription/nack_requests
+# - pubsub.googleapis.com/subscription/expired_ack_deadlines_count
 # - pubsub.googleapis.com/subscription/dead_letter_message_count
 ```
 

@@ -125,7 +125,7 @@ Extracting the real client IP requires careful parsing:
 ```python
 # parse_xff.py - Safely extract client IP from X-Forwarded-For
 
-from typing import Optional, List, Set
+from typing import Optional, List
 import ipaddress
 
 class ClientIPExtractor:
@@ -134,7 +134,7 @@ class ClientIPExtractor:
         Initialize with list of trusted proxy CIDRs.
         Example: ['10.0.0.0/8', '172.16.0.0/12']
         """
-        self.trusted_networks: List[ipaddress.IPv4Network] = []
+        self.trusted_networks = []
         for cidr in trusted_proxies:
             self.trusted_networks.append(ipaddress.ip_network(cidr))
 
@@ -169,8 +169,13 @@ class ClientIPExtractor:
         # Add the direct connection IP
         ips.append(remote_addr)
 
-        # Walk backwards, find first untrusted IP
+        # Walk backwards, find first valid untrusted IP
         for ip in reversed(ips):
+            try:
+                ipaddress.ip_address(ip.strip())
+            except ValueError:
+                continue
+
             if not self.is_trusted(ip):
                 return ip
 
@@ -214,8 +219,8 @@ Clients can send fake X-Forwarded-For headers. Protect against this:
 # nginx-xff-security.conf - Prevent XFF spoofing
 
 http {
-    # Map to determine if we should trust incoming XFF
-    map $remote_addr $trusted_proxy {
+    # Determine if we should trust incoming XFF based on source CIDR
+    geo $trusted_proxy {
         default         0;
         10.0.0.0/8      1;
         172.16.0.0/12   1;
@@ -269,27 +274,43 @@ AWS services handle client IP preservation automatically:
 ```python
 # aws_client_ip.py - Extract client IP from AWS load balancers
 from flask import Flask, request
+import ipaddress
 
 app = Flask(__name__)
+
+def strip_optional_port(value):
+    """Return an IP address from IP, IP:port, or [IPv6]:port."""
+    value = value.strip()
+    try:
+        ipaddress.ip_address(value)
+        return value
+    except ValueError:
+        pass
+
+    if value.startswith('['):
+        return value[1:].split(']', 1)[0]
+    host, separator, port = value.rpartition(':')
+    if separator and port.isdigit():
+        return host
+    return value
 
 def get_client_ip_aws():
     """
     Extract client IP when behind AWS ALB/CloudFront.
 
-    ALB sets X-Forwarded-For with client IP first.
-    CloudFront adds CloudFront-Viewer-Address header.
+    ALB sets X-Forwarded-For with client IP first by default.
+    CloudFront can add CloudFront-Viewer-Address when configured.
     """
-    # CloudFront provides clean viewer IP
+    # CloudFront can provide viewer IP and port: "IP:port" or "[IPv6]:port"
     cloudfront_ip = request.headers.get('CloudFront-Viewer-Address')
     if cloudfront_ip:
-        # Format: IP:port
-        return cloudfront_ip.split(':')[0]
+        return strip_optional_port(cloudfront_ip)
 
     # ALB X-Forwarded-For (client is first)
     xff = request.headers.get('X-Forwarded-For')
     if xff:
         # First IP is the client
-        return xff.split(',')[0].strip()
+        return strip_optional_port(xff.split(',')[0])
 
     # Direct connection
     return request.remote_addr

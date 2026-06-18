@@ -195,12 +195,12 @@ class HeapAnalyzer {
         const filepath = path.join(this.snapshotDir, filename);
 
         // Write heap snapshot
-        const snapshotStream = v8.writeHeapSnapshot(filepath);
+        const snapshotPath = v8.writeHeapSnapshot(filepath);
 
-        console.log(`Heap snapshot written to: ${snapshotStream}`);
+        console.log(`Heap snapshot written to: ${snapshotPath}`);
         this.snapshotCount++;
 
-        return snapshotStream;
+        return snapshotPath;
     }
 
     // Schedule periodic snapshots
@@ -419,7 +419,7 @@ class LeakyMessageQueue {
 ```
 
 ```javascript
-// GOOD: Bounded buffer with backpressure
+// GOOD: Bounded buffer with drop policy
 class BoundedMessageQueue {
     constructor(options = {}) {
         this.maxSize = options.maxSize || 1000;
@@ -548,6 +548,7 @@ class MemorySafeWebSocketServer {
         this.rooms = new Map();
         this.memoryMonitor = new MemoryMonitor({ interval: 30000 });
         this.heapAnalyzer = new HeapAnalyzer();
+        this.cleanupIntervals = [];
 
         this.server = null;
         this.wss = null;
@@ -741,7 +742,7 @@ class MemorySafeWebSocketServer {
 
     startCleanupTasks() {
         // Ping/pong health check
-        setInterval(() => {
+        const pingInterval = setInterval(() => {
             for (const [id, connection] of this.connections) {
                 if (!connection.ws.isAlive) {
                     console.log(`Connection ${id} failed health check`);
@@ -754,9 +755,10 @@ class MemorySafeWebSocketServer {
                 connection.ws.ping();
             }
         }, 30000);
+        this.cleanupIntervals.push(pingInterval);
 
         // Idle timeout check
-        setInterval(() => {
+        const idleInterval = setInterval(() => {
             const now = Date.now();
             for (const [id, connection] of this.connections) {
                 if (now - connection.lastActivity > this.idleTimeout) {
@@ -766,9 +768,10 @@ class MemorySafeWebSocketServer {
                 }
             }
         }, 60000);
+        this.cleanupIntervals.push(idleInterval);
 
         // Memory pressure check
-        setInterval(() => {
+        const memoryInterval = setInterval(() => {
             const memUsage = process.memoryUsage();
             const heapUsedMB = memUsage.heapUsed / 1024 / 1024;
 
@@ -782,6 +785,7 @@ class MemorySafeWebSocketServer {
                 }
             }
         }, 60000);
+        this.cleanupIntervals.push(memoryInterval);
     }
 
     generateId() {
@@ -806,6 +810,11 @@ class MemorySafeWebSocketServer {
             }
             this.cleanupConnection(id);
         }
+
+        for (const interval of this.cleanupIntervals) {
+            clearInterval(interval);
+        }
+        this.cleanupIntervals = [];
 
         this.memoryMonitor.stop();
         this.wss.close();

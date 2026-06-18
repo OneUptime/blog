@@ -43,17 +43,21 @@ console.log(badStr.toUpperCase());  // Runtime error: toUpperCase is not a funct
 TypeScript has two syntaxes for type assertions:
 
 ```typescript
+declare const someValue: unknown;
+
 // Syntax 1: "as" keyword (preferred)
-const value = someValue as string;
+const valueAs = someValue as string;
 
 // Syntax 2: Angle bracket (does not work in JSX files)
-const value = <string>someValue;
+const valueAngle = <string>someValue;
+```
 
+```tsx
 // In React/JSX files, you must use "as" syntax
 function Component() {
     const element = document.getElementById('root') as HTMLDivElement;
     // <HTMLDivElement>document.getElementById('root');  // Syntax error in JSX!
-    return <div ref={element}>Content</div>;
+    return <div>{element.id}</div>;
 }
 ```
 
@@ -66,7 +70,12 @@ When you receive data of unknown type and have validated it:
 ```typescript
 function processApiResponse(data: unknown): string {
     // Validate first
-    if (typeof data === 'object' && data !== null && 'message' in data) {
+    if (
+        typeof data === 'object' &&
+        data !== null &&
+        'message' in data &&
+        typeof (data as { message?: unknown }).message === 'string'
+    ) {
         // Now assertion is safe
         const response = data as { message: string };
         return response.message;
@@ -82,8 +91,8 @@ The DOM API often returns generic types that you know more specifically:
 ```typescript
 // getElementById returns HTMLElement | null
 // But you know it is specifically an input
-const input = document.getElementById('email') as HTMLInputElement;
-input.value = 'test@example.com';
+const assumedInput = document.getElementById('email') as HTMLInputElement;
+assumedInput.value = 'test@example.com';
 
 // Better: Check if element exists first
 const input = document.getElementById('email');
@@ -162,8 +171,8 @@ function getElement(): HTMLElement | null {
 }
 
 // DANGEROUS: Asserting element exists
-const element = getElement()!;  // Removes null from type
-element.classList.add('active');  // Runtime error if element is null
+const assumedElement = getElement()!;  // Removes null from type
+assumedElement.classList.add('active');  // Runtime error if element is null
 
 // SAFE: Check for null first
 const element = getElement();
@@ -266,14 +275,14 @@ A special type of assertion that makes values more specific:
 
 ```typescript
 // Without const assertion
-const config = {
+const config1 = {
     endpoint: '/api/users',
     method: 'GET'
 };
 // Type: { endpoint: string; method: string }
 
 // With const assertion
-const config = {
+const config2 = {
     endpoint: '/api/users',
     method: 'GET'
 } as const;
@@ -299,19 +308,20 @@ interface Config {
     retries?: number;
 }
 
-// Using "as" - loses specific literal types
+// Using "as" - treats the value as Config
 const config1 = {
     endpoint: '/api',
     timeout: 5000
 } as Config;
-// Type of endpoint: string (lost the literal '/api')
+// Type: Config
 
-// Using "satisfies" - keeps literal types while validating
+// Using "satisfies" - validates without replacing the inferred type with Config
 const config2 = {
     endpoint: '/api',
     timeout: 5000
 } satisfies Config;
-// Type of endpoint: '/api' (literal type preserved)
+// Type: { endpoint: string; timeout: number }
+// config2.retries;  // Error: Property 'retries' does not exist
 
 // Error if it does not satisfy the type
 const badConfig = {

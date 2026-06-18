@@ -569,7 +569,7 @@ docker inspect my-container --format '{{.LogPath}}' | xargs sudo ls -lh
 docker inspect my-container --format '{{.LogPath}}' | xargs sudo truncate -s 0
 
 # Better approach: recreate the container with proper log limits.
-# Note: docker update cannot change logging configuration — the
+# Note: docker update cannot change logging configuration - the
 # container must be recreated for log-driver/log-opt changes to take effect.
 docker stop my-container
 docker rm my-container

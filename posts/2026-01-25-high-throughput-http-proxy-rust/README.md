@@ -48,6 +48,8 @@ http-body-util = "0.1"
 bytes = "1.5"
 tracing = "0.1"
 tracing-subscriber = "0.3"
+futures-util = "0.3"
+socket2 = "0.5"
 
 [profile.release]
 lto = true
@@ -135,7 +137,7 @@ use hyper_util::client::legacy::connect::HttpConnector;
 use std::sync::Arc;
 
 // Create a shared client with connection pooling
-fn create_client() -> Client<HttpConnector, BoxBody> {
+fn create_client() -> Client<HttpConnector, hyper::body::Incoming> {
     let mut connector = HttpConnector::new();
     connector.set_nodelay(true);  // Disable Nagle's algorithm
     connector.set_keepalive(Some(std::time::Duration::from_secs(60)));
@@ -159,7 +161,7 @@ Now let's actually forward requests to a backend:
 use hyper::Uri;
 
 async fn proxy_handler(
-    client: Arc<Client<HttpConnector, BoxBody>>,
+    client: Arc<Client<HttpConnector, hyper::body::Incoming>>,
     mut req: Request<hyper::body::Incoming>,
 ) -> Result<Response<BoxBody>, hyper::Error> {
     let backend = "http://127.0.0.1:3000";
@@ -267,11 +269,12 @@ sysctl -w net.core.somaxconn=65535
 
 ## Graceful Shutdown
 
-A production proxy needs to handle SIGTERM gracefully, draining existing connections before exiting:
+A production proxy needs to handle shutdown gracefully, draining existing connections before exiting:
 
 ```rust
 use tokio::signal;
 use tokio::sync::watch;
+use tokio::net::{TcpListener, TcpStream};
 
 async fn run_server() -> Result<(), Box<dyn std::error::Error>> {
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
@@ -284,6 +287,7 @@ async fn run_server() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     let listener = TcpListener::bind("0.0.0.0:8080").await?;
+    let mut shutdown_rx = shutdown_rx;
 
     loop {
         tokio::select! {
@@ -301,7 +305,7 @@ async fn run_server() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 });
             }
-            _ = shutdown_rx.clone().changed() => {
+            _ = shutdown_rx.changed() => {
                 tracing::info!("Stopping accept loop");
                 break;
             }
@@ -309,6 +313,10 @@ async fn run_server() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
+}
+
+async fn handle_connection(_stream: TcpStream) {
+    // Run your hyper serve_connection call here.
 }
 ```
 

@@ -84,8 +84,8 @@ invalid expression: Unexpected token in
     <!-- ERROR: Invalid JavaScript syntax -->
     <p>{{ if (user) user.name }}</p>
 
-    <!-- ERROR: Assignment in expression -->
-    <p>{{ count = count + 1 }}</p>
+    <!-- ERROR: Statements are not valid template expressions -->
+    <p>{{ user.name; user.lastName }}</p>
   </div>
 </template>
 ```
@@ -197,17 +197,24 @@ app.mount('#app')
 ### Custom Elements Warning
 
 ```javascript
-// main.js - Configure custom elements
-import { createApp } from 'vue'
+// vite.config.js - Configure custom elements with a build setup
+import { defineConfig } from 'vite'
+import vue from '@vitejs/plugin-vue'
 
-const app = createApp(App)
-
-// Tell Vue to ignore custom elements matching a pattern
-app.config.compilerOptions.isCustomElement = (tag) => {
-  return tag.startsWith('custom-') || tag.includes('-')
-}
-
-app.mount('#app')
+export default defineConfig({
+  plugins: [
+    vue({
+      template: {
+        compilerOptions: {
+          // Tell Vue to ignore custom elements matching a pattern
+          isCustomElement: (tag) => {
+            return tag.startsWith('custom-') || tag.includes('-')
+          }
+        }
+      }
+    })
+  ]
+})
 ```
 
 ---
@@ -227,7 +234,7 @@ flowchart TD
     B -->|Vue 3| D[v-if has higher priority]
 
     C --> E[Iterates then filters - inefficient]
-    D --> F[Checks condition before iteration]
+    D --> F[v-if evaluated before v-for scope exists]
 
     G[Best Practice] --> H[Use computed property]
     G --> I[Wrap with template]
@@ -309,7 +316,7 @@ const shouldShowList = computed(() => items.value.length > 0)
 
 ---
 
-## Error 4: Missing Root Element (Vue 2)
+## Error 4: Multiple Root Elements (Vue 2)
 
 ### The Error (Vue 2 only)
 
@@ -567,11 +574,11 @@ flowchart TD
     A[Vue Build Types] --> B[Runtime Only]
     A --> C[Runtime + Compiler]
 
-    B --> D[vue.runtime.esm.js]
+    B --> D[vue.runtime.esm-bundler.js]
     B --> E[Cannot compile templates at runtime]
     B --> F[Pre-compiled SFCs only]
 
-    C --> G[vue.esm.js]
+    C --> G[vue.esm-bundler.js]
     C --> H[Can compile templates at runtime]
     C --> I[Larger bundle size]
 
@@ -622,9 +629,9 @@ module.exports = {
 
 ```javascript
 // This requires the full build with compiler
-import { createApp } from 'vue'
+import { createApp, h } from 'vue'
 
-const app = createApp({
+const compilerApp = createApp({
   // Template string requires runtime compilation
   template: '<div>{{ message }}</div>',
   data() {
@@ -633,9 +640,7 @@ const app = createApp({
 })
 
 // This works with runtime-only build
-import { createApp, h } from 'vue'
-
-const app = createApp({
+const runtimeOnlyApp = createApp({
   // Render function does not need compiler
   render() {
     return h('div', this.message)
@@ -697,8 +702,8 @@ import { ref } from 'vue'
 const isActive = ref(true)
 const item = ref({ id: 1 })
 
-function handleClick(item) {
-  console.log('Clicked', item)
+function handleClick(event) {
+  console.log('Clicked', event)
 }
 
 function doSomething(item) {
@@ -744,7 +749,7 @@ app.mount('#app')
 // .eslintrc.js
 module.exports = {
   extends: [
-    'plugin:vue/vue3-recommended'  // or 'plugin:vue/vue3-essential'
+    'plugin:vue/recommended'  // or 'plugin:vue/essential'
   ],
   rules: {
     // Catch template errors during development
@@ -755,18 +760,19 @@ module.exports = {
     'vue/valid-v-if': 'error',
     'vue/valid-v-model': 'error',
     'vue/no-use-v-if-with-v-for': 'error',
-    'vue/require-v-for-key': 'error'
+    'vue/require-v-for-key': 'error',
+    'vue/no-reserved-props': 'error'
   }
 }
 ```
 
-### VS Code Vue Extension Settings
+### VS Code Vue Extension
 
 ```json
 {
-  "volar.validation.template": true,
-  "volar.validation.script": true,
-  "volar.validation.style": true
+  "extensions.recommendations": [
+    "Vue.volar"
+  ]
 }
 ```
 
@@ -785,4 +791,4 @@ module.exports = {
 | Runtime compilation | Missing compiler in build | Use full Vue build |
 | Expression expected | Incomplete expression | Complete the expression |
 
-Template compilation errors are caught during build time, making them easier to fix than runtime errors. Use ESLint with Vue plugin and proper IDE extensions to catch these errors early in development.
+Template compilation errors are often caught during build time when using Single-File Components and build tools, or at runtime when using runtime template strings. Use ESLint with Vue plugin and proper IDE extensions to catch these errors early in development.

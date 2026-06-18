@@ -84,17 +84,18 @@ Generating changelogs manually is tedious. Use conventional commits and automate
       # Generate changelog from conventional commits
       - name: Generate changelog
         id: changelog
-        uses: conventional-changelog/conventional-changelog-action@v4
+        uses: TriPSs/conventional-changelog-action@v6
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          output-file: false  # Don't write to file, use output
+          output-file: "false"  # Don't write to file, use output
           skip-version-file: true
           skip-commit: true
+          skip-tag: true
 
       # Alternative: Use git-cliff for more control
       - name: Generate changelog with git-cliff
         id: cliff
-        uses: orhun/git-cliff-action@v3
+        uses: orhun/git-cliff-action@v4
         with:
           config: cliff.toml
           args: --latest --strip header
@@ -169,7 +170,7 @@ Automatically publish your package to npm, PyPI, or other registries as part of 
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 ```
 
-For Python projects, use the official PyPI action:
+For Python projects, use the PyPA publishing action:
 
 ```yaml
       # Publish to PyPI
@@ -187,7 +188,7 @@ Tie everything together by creating a GitHub Release with your changelog, artifa
 ```yaml
       # Create GitHub Release with all artifacts
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           name: Release ${{ github.ref_name }}
           body: ${{ steps.changelog.outputs.changelog }}
@@ -213,18 +214,16 @@ on:
   push:
     branches:
       - main
-  pull_request:
-    types: [opened, reopened, synchronize]
 
 permissions:
-  contents: read
-  pull-requests: write
+  contents: write
+  pull-requests: read
 
 jobs:
   update_release_draft:
     runs-on: ubuntu-latest
     steps:
-      - uses: release-drafter/release-drafter@v5
+      - uses: release-drafter/release-drafter@v7
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
@@ -237,31 +236,40 @@ name-template: 'v$RESOLVED_VERSION'
 tag-template: 'v$RESOLVED_VERSION'
 categories:
   - title: 'New Features'
-    labels:
-      - 'feature'
-      - 'enhancement'
+    semver-increment: minor
+    when:
+      labels:
+        - 'feature'
+        - 'enhancement'
   - title: 'Bug Fixes'
-    labels:
-      - 'fix'
-      - 'bugfix'
+    when:
+      labels:
+        - 'fix'
+        - 'bugfix'
   - title: 'Maintenance'
-    labels:
-      - 'chore'
-      - 'dependencies'
+    when:
+      labels:
+        - 'chore'
+        - 'dependencies'
+  - type: 'version-resolver'
+    semver-increment: major
+    when:
+      label: 'major'
+  - type: 'version-resolver'
+    semver-increment: minor
+    when:
+      labels:
+        - 'minor'
+        - 'feature'
+  - type: 'version-resolver'
+    semver-increment: patch
+    when:
+      labels:
+        - 'patch'
+        - 'fix'
+  - type: 'version-resolver'
+    semver-increment: patch
 change-template: '- $TITLE @$AUTHOR (#$NUMBER)'
-version-resolver:
-  major:
-    labels:
-      - 'major'
-  minor:
-    labels:
-      - 'minor'
-      - 'feature'
-  patch:
-    labels:
-      - 'patch'
-      - 'fix'
-  default: patch
 ```
 
 ## Manual Release Trigger
@@ -287,8 +295,13 @@ on:
 jobs:
   release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v6
+        with:
+          # Use a PAT or GitHub App token if this tag push should trigger another workflow.
+          token: ${{ secrets.RELEASE_PAT }}
 
       # Create and push the tag
       - name: Create tag
@@ -298,7 +311,7 @@ jobs:
           git tag -a "v${{ inputs.version }}" -m "Release v${{ inputs.version }}"
           git push origin "v${{ inputs.version }}"
 
-      # The tag push will trigger the main release workflow
+      # With a PAT or GitHub App token, the tag push will trigger the main release workflow
 ```
 
 ## Multi-Platform Releases
@@ -328,7 +341,7 @@ jobs:
         run: cargo build --release --target ${{ matrix.target }}
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact }}
           path: target/${{ matrix.target }}/release/myapp*
@@ -338,10 +351,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
 
       - name: Create release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             myapp-linux-amd64/myapp

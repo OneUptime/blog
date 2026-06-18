@@ -23,36 +23,39 @@ npm install @opentelemetry/api @opentelemetry/sdk-trace-web
 npm install @opentelemetry/instrumentation @opentelemetry/instrumentation-fetch
 npm install @opentelemetry/exporter-trace-otlp-http
 npm install @opentelemetry/context-zone
+npm install @opentelemetry/resources @opentelemetry/semantic-conventions
 ```
 
 Initialize OpenTelemetry in your application entry point:
 
 ```typescript
 // src/instrumentation.ts - Browser OpenTelemetry setup
-import { WebTracerProvider } from '@opentelemetry/sdk-trace-web';
+import { WebTracerProvider, BatchSpanProcessor } from '@opentelemetry/sdk-trace-web';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
 import { ZoneContextManager } from '@opentelemetry/context-zone';
 import { registerInstrumentations } from '@opentelemetry/instrumentation';
 import { FetchInstrumentation } from '@opentelemetry/instrumentation-fetch';
-import { Resource } from '@opentelemetry/resources';
-import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
-
-const provider = new WebTracerProvider({
-  resource: new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: 'react-frontend',
-    [SemanticResourceAttributes.SERVICE_VERSION]: '1.0.0',
-  }),
-});
+import { defaultResource, resourceFromAttributes } from '@opentelemetry/resources';
+import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from '@opentelemetry/semantic-conventions';
 
 const exporter = new OTLPTraceExporter({
   url: 'http://localhost:4318/v1/traces',
 });
 
-provider.addSpanProcessor(new BatchSpanProcessor(exporter, {
-  maxQueueSize: 100,
-  scheduledDelayMillis: 2000,
-}));
+const provider = new WebTracerProvider({
+  resource: defaultResource().merge(
+    resourceFromAttributes({
+      [ATTR_SERVICE_NAME]: 'react-frontend',
+      [ATTR_SERVICE_VERSION]: '1.0.0',
+    })
+  ),
+  spanProcessors: [
+    new BatchSpanProcessor(exporter, {
+      maxQueueSize: 100,
+      scheduledDelayMillis: 2000,
+    }),
+  ],
+});
 
 provider.register({
   contextManager: new ZoneContextManager(),
@@ -79,6 +82,7 @@ Create wrapper utilities that add tracing to SWR operations:
 
 ```typescript
 // src/lib/tracedSwr.ts - SWR with OpenTelemetry
+import React from 'react';
 import useSWR, { SWRConfiguration, SWRResponse } from 'swr';
 import { trace, context as otelContext, SpanStatusCode } from '@opentelemetry/api';
 
@@ -224,6 +228,7 @@ Create wrapper hooks for React Query operations:
 
 ```typescript
 // src/lib/tracedReactQuery.ts - React Query with OpenTelemetry
+import React from 'react';
 import {
   useQuery,
   UseQueryOptions,
@@ -247,9 +252,6 @@ export function useTracedQuery<T>(
   const {
     traceName = 'react-query.query',
     traceAttributes = {},
-    onSuccess,
-    onError,
-    onSettled,
     ...queryOptions
   } = options;
 
@@ -373,7 +375,7 @@ import { trace, SpanStatusCode } from '@opentelemetry/api';
 
 const tracer = trace.getTracer('react-query-mutation', '1.0.0');
 
-interface TracedMutationOptions<T, V> extends UseMutationOptions<T, Error, V> {
+interface TracedMutationOptions<T, V> extends Omit<UseMutationOptions<T, Error, V>, 'mutationFn'> {
   traceName?: string;
   traceAttributes?: Record<string, string | number | boolean>;
 }
@@ -442,22 +444,31 @@ export function useTracedMutation<T, V>(
 
       if (onMutate) return onMutate(variables);
     },
-    onSuccess: (data, variables, context) => {
+    onSuccess: (data, variables, onMutateResult, context) => {
       const span = tracer.startSpan(`${traceName}.on_success`);
       span.addEvent('mutation.success', {
         'result.size': JSON.stringify(data).length,
       });
       span.end();
 
-      if (onSuccess) onSuccess(data, variables, context);
+      if (onSuccess) return onSuccess(data, variables, onMutateResult, context);
     },
-    onError: (error, variables, context) => {
+    onError: (error, variables, onMutateResult, context) => {
       const span = tracer.startSpan(`${traceName}.on_error`);
       span.recordException(error);
       span.setStatus({ code: SpanStatusCode.ERROR });
       span.end();
 
-      if (onError) onError(error, variables, context);
+      if (onError) return onError(error, variables, onMutateResult, context);
+    },
+    onSettled: (data, error, variables, onMutateResult, context) => {
+      const span = tracer.startSpan(`${traceName}.on_settled`);
+      span.setAttributes({
+        'mutation.settled.success': !error,
+      });
+      span.end();
+
+      if (onSettled) return onSettled(data, error, variables, onMutateResult, context);
     },
     ...mutationOptions,
   });
@@ -480,7 +491,7 @@ export function createInstrumentedQueryClient(): QueryClient {
     defaultOptions: {
       queries: {
         staleTime: 5000,
-        cacheTime: 300000,
+        gcTime: 300000,
       },
     },
   });
@@ -619,6 +630,7 @@ export function UserProfile({ userId }: { userId: string }) {
 
   if (userQuery.isLoading) return <div>Loading...</div>;
   if (userQuery.isError) return <div>Error loading user</div>;
+  if (!userQuery.data) return null;
 
   return (
     <div>
@@ -626,7 +638,7 @@ export function UserProfile({ userId }: { userId: string }) {
       <p>{userQuery.data.email}</p>
       <button
         onClick={() => updateUser.mutate({ name: 'Updated Name' })}
-        disabled={updateUser.isLoading}
+        disabled={updateUser.isPending}
       >
         Update Name
       </button>

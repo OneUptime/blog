@@ -14,7 +14,7 @@ This guide covers how to build a robust action item tracking system that integra
 
 ## Why Action Item Tracking Matters
 
-Most teams conduct postmortems. Fewer teams follow through on the resulting action items. Studies show that 60% of post-incident action items never get completed. This creates a dangerous pattern where teams discuss improvements but never implement them.
+Most teams conduct postmortems. Fewer teams follow through on the resulting action items. In many organizations, post-incident action items never get completed. This creates a dangerous pattern where teams discuss improvements but never implement them.
 
 Effective tracking delivers three outcomes:
 
@@ -195,14 +195,16 @@ Action items should live in your existing issue tracking system, not in a separa
 # Integrates with Jira REST API
 
 import requests
+import base64
 from datetime import datetime, timedelta
-from typing import Dict, List
+from typing import Any, Dict, List
 
 class ActionItemJiraSync:
-    def __init__(self, jira_url: str, api_token: str, project_key: str):
+    def __init__(self, jira_url: str, email: str, api_token: str, project_key: str):
         self.jira_url = jira_url
+        auth_token = base64.b64encode(f"{email}:{api_token}".encode()).decode()
         self.headers = {
-            "Authorization": f"Bearer {api_token}",
+            "Authorization": f"Basic {auth_token}",
             "Content-Type": "application/json"
         }
         self.project_key = project_key
@@ -231,7 +233,7 @@ class ActionItemJiraSync:
                 "issuetype": {"name": "Task"},
                 "priority": {"name": self._map_priority(item["urgency"])},
                 "duedate": due_date,
-                "assignee": {"name": item["owner"]},
+                "assignee": {"accountId": item["owner_account_id"]},
                 "labels": [
                     "action-item",
                     f"incident-{item['incident_id']}",
@@ -243,7 +245,7 @@ class ActionItemJiraSync:
         }
 
         response = requests.post(
-            f"{self.jira_url}/rest/api/2/issue",
+            f"{self.jira_url}/rest/api/3/issue",
             headers=self.headers,
             json=payload
         )
@@ -251,29 +253,57 @@ class ActionItemJiraSync:
 
         return response.json()["key"]
 
-    def _format_description(self, item: Dict) -> str:
-        """Format the action item description for Jira."""
-        return f"""
-        h2. Background
-        This action item was generated from incident {item['incident_id']}.
+    def _format_description(self, item: Dict) -> Dict[str, Any]:
+        """Format the action item description as Atlassian Document Format."""
+        return {
+            "type": "doc",
+            "version": 1,
+            "content": [
+                self._heading("Background"),
+                self._paragraph(f"This action item was generated from incident {item['incident_id']}."),
+                self._heading("Description"),
+                self._paragraph(item["description"]),
+                self._heading("Acceptance Criteria"),
+                self._bullet_list(self._format_criteria(item.get("done_criteria", []))),
+                self._heading("Context"),
+                self._bullet_list([
+                    f"Category: {item['category']}",
+                    f"Urgency: {item['urgency']}",
+                    f"Estimated Effort: {item.get('estimated_effort', 'TBD')}",
+                ]),
+            ],
+        }
 
-        h2. Description
-        {item['description']}
+    def _heading(self, text: str) -> Dict[str, Any]:
+        return {
+            "type": "heading",
+            "attrs": {"level": 2},
+            "content": [{"type": "text", "text": text}],
+        }
 
-        h2. Acceptance Criteria
-        {self._format_criteria(item.get('done_criteria', []))}
+    def _paragraph(self, text: str) -> Dict[str, Any]:
+        return {
+            "type": "paragraph",
+            "content": [{"type": "text", "text": text}],
+        }
 
-        h2. Context
-        * Category: {item['category']}
-        * Urgency: {item['urgency']}
-        * Estimated Effort: {item.get('estimated_effort', 'TBD')}
-        """
+    def _bullet_list(self, items: List[str]) -> Dict[str, Any]:
+        return {
+            "type": "bulletList",
+            "content": [
+                {
+                    "type": "listItem",
+                    "content": [self._paragraph(item)],
+                }
+                for item in items
+            ],
+        }
 
-    def _format_criteria(self, criteria: List[str]) -> str:
-        """Format acceptance criteria as a checklist."""
+    def _format_criteria(self, criteria: List[str]) -> List[str]:
+        """Format acceptance criteria as list items."""
         if not criteria:
-            return "* Define acceptance criteria"
-        return "\n".join(f"* {c}" for c in criteria)
+            return ["Define acceptance criteria"]
+        return criteria
 
     def _map_priority(self, urgency: str) -> str:
         """Map internal urgency to Jira priority."""
@@ -290,6 +320,7 @@ class ActionItemJiraSync:
 if __name__ == "__main__":
     sync = ActionItemJiraSync(
         jira_url="https://company.atlassian.net",
+        email="automation@company.com",
         api_token="your-api-token",
         project_key="SRE"
     )
@@ -300,7 +331,7 @@ if __name__ == "__main__":
         "description": "Implement circuit breaker to prevent cascading failures",
         "category": "mitigation",
         "urgency": "high",
-        "owner": "jane.smith",
+        "owner_account_id": "712020:abcd1234-5678-90ef-abcd-1234567890ab",
         "done_criteria": [
             "Circuit breaker implemented with 5s timeout",
             "Fallback returns graceful error",
@@ -352,7 +383,7 @@ class ActionItemGitHubSync {
     const body = this.formatIssueBody(item);
     const labels = this.getLabels(item);
 
-    const response = await this.octokit.issues.create({
+    const response = await this.octokit.rest.issues.create({
       owner: this.owner,
       repo: this.repo,
       title: `[Action Item] ${item.title}`,
@@ -415,10 +446,15 @@ ${criteriaList}
 
 // Example usage
 async function main() {
+  const token = process.env.GITHUB_TOKEN;
+  if (!token) {
+    throw new Error("GITHUB_TOKEN is required");
+  }
+
   const sync = new ActionItemGitHubSync({
     owner: "company",
     repo: "infrastructure",
-    token: process.env.GITHUB_TOKEN || "",
+    token,
   });
 
   const item: ActionItem = {
@@ -439,6 +475,11 @@ async function main() {
   const issueNumber = await sync.createActionItem(item);
   console.log(`Created issue #${issueNumber}`);
 }
+
+main().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});
 ```
 
 ## Progress Monitoring and Reporting
@@ -454,7 +495,8 @@ Track these key metrics for your action item program:
 # These power your reporting dashboard
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
+from statistics import median
 from typing import List, Dict
 from enum import Enum
 
@@ -543,15 +585,17 @@ def calculate_metrics(items: List[Dict]) -> ActionItemMetrics:
             age = (now - created).days
             if age > 90:
                 aging_90 += 1
+                aging_60 += 1
+                aging_30 += 1
             elif age > 60:
                 aging_60 += 1
+                aging_30 += 1
             elif age > 30:
                 aging_30 += 1
 
     # Calculate averages
     avg_close = sum(time_to_close) / len(time_to_close) if time_to_close else 0
-    sorted_close = sorted(time_to_close)
-    median_close = sorted_close[len(sorted_close) // 2] if sorted_close else 0
+    median_close = median(time_to_close) if time_to_close else 0
 
     # Calculate completion rates
     rate_30d = (completed_within_sla_30d / total_completed_30d * 100) if total_completed_30d else 0
@@ -639,7 +683,7 @@ Generated: {report_date}
 | In Progress | {metrics['total_in_progress']} |
 | Blocked | {metrics['total_blocked']} |
 | Overdue | {metrics['total_overdue']} |
-| Completed (30d) | {metrics['total_complete']} |
+| Completed Items | {metrics['total_complete']} |
 | SLA Compliance | {metrics['completion_rate_30d']:.1f}% |
 
 ## Aging Analysis

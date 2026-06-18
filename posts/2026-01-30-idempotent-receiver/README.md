@@ -42,7 +42,7 @@ sequenceDiagram
 
 An idempotent receiver guarantees that:
 
-1. Each unique message is processed exactly once
+1. Each unique message produces the intended durable effect once
 2. Duplicate messages are detected and safely ignored
 3. The system state remains consistent regardless of delivery count
 
@@ -212,6 +212,7 @@ class IdempotentReceiver {
         handler: (payload: T, client: PoolClient) => Promise<R>
     ): Promise<ProcessingResult<R>> {
         const client = await this.pool.connect();
+        let transactionFinished = false;
 
         try {
             // Start a transaction for atomicity
@@ -224,6 +225,7 @@ class IdempotentReceiver {
             if (lockResult.alreadyProcessed) {
                 // Message was already processed, return cached result
                 await client.query('ROLLBACK');
+                transactionFinished = true;
 
                 this.logger.info('Duplicate message detected', {
                     messageId: message.id,
@@ -252,6 +254,7 @@ class IdempotentReceiver {
 
                 // Commit the transaction
                 await client.query('COMMIT');
+                transactionFinished = true;
 
                 this.logger.info('Message processed successfully', {
                     messageId: message.id,
@@ -267,11 +270,14 @@ class IdempotentReceiver {
                 // Processing failed, mark as failed and rethrow
                 await this.markAsFailed(client, message.id);
                 await client.query('COMMIT');
+                transactionFinished = true;
                 throw processingError;
             }
         } catch (error) {
-            // Something went wrong, rollback the transaction
-            await client.query('ROLLBACK');
+            if (!transactionFinished) {
+                // Something went wrong, rollback the transaction
+                await client.query('ROLLBACK');
+            }
 
             this.logger.error('Error processing message', {
                 messageId: message.id,
@@ -358,8 +364,8 @@ class IdempotentReceiver {
         }
 
         // Status is 'processing', another instance is handling this message
-        // Treat as duplicate to avoid concurrent processing
-        return { alreadyProcessed: true, cachedResult: null };
+        // Let the queue retry instead of acknowledging and losing the message
+        throw new Error(`Message ${message.id} is already being processed`);
     }
 
     // Mark a message as successfully processed
@@ -545,7 +551,7 @@ For high-throughput systems, adding a Redis cache layer improves performance by 
 // redis-cached-receiver.ts
 // Adds Redis caching to the idempotent receiver for better performance
 
-import { createClient, RedisClientType } from 'redis';
+import { RedisClientType } from 'redis';
 import { Pool, PoolClient } from 'pg';
 
 interface CachedReceiverConfig {
@@ -612,25 +618,44 @@ class RedisCachedIdempotentReceiver {
             );
 
             if (insertResult.rowCount === 0) {
-                // Record exists, check if completed
+                // Record exists, lock it before deciding what to do
                 const existing = await client.query(
-                    `SELECT status, result_payload FROM processed_messages WHERE message_id = $1`,
+                    `SELECT status, result_payload
+                     FROM processed_messages
+                     WHERE message_id = $1
+                     FOR UPDATE`,
                     [messageId]
                 );
+                const existingRecord = existing.rows[0];
 
-                if (existing.rows[0]?.status === 'completed') {
+                if (!existingRecord) {
+                    throw new Error(`Idempotency record for ${messageId} disappeared`);
+                }
+
+                if (existingRecord.status === 'completed') {
                     await client.query('ROLLBACK');
 
-                    const result = existing.rows[0].result_payload as R;
+                    const result = existingRecord.result_payload as R;
 
                     // Update Redis cache for future lookups
-                    await this.redis.setEx(
+                    await this.redis.set(
                         cacheKey,
-                        this.cacheTtlSeconds,
-                        JSON.stringify(result)
+                        JSON.stringify(result),
+                        { EX: this.cacheTtlSeconds }
                     );
 
                     return { isDuplicate: true, result };
+                }
+
+                if (existingRecord.status === 'failed') {
+                    await client.query(
+                        `UPDATE processed_messages
+                         SET status = 'processing', processed_at = CURRENT_TIMESTAMP
+                         WHERE message_id = $1`,
+                        [messageId]
+                    );
+                } else {
+                    throw new Error(`Message ${messageId} is already being processed`);
                 }
             }
 
@@ -648,10 +673,10 @@ class RedisCachedIdempotentReceiver {
             await client.query('COMMIT');
 
             // Cache the result in Redis
-            await this.redis.setEx(
+            await this.redis.set(
                 cacheKey,
-                this.cacheTtlSeconds,
-                JSON.stringify(result)
+                JSON.stringify(result),
+                { EX: this.cacheTtlSeconds }
             );
 
             return { isDuplicate: false, result };
@@ -720,8 +745,8 @@ When the producer does not generate unique IDs, derive them from the message con
 
 import crypto from 'crypto';
 
-// Generate a deterministic ID from message content
-// This ensures the same message always produces the same ID
+// Generate a deterministic ID from the serialized message content
+// This ensures the same JSON-serializable message always produces the same ID
 function generateContentBasedId(message: unknown): string {
     // Stringify the message to create a consistent representation
     const content = JSON.stringify(message);
@@ -763,7 +788,7 @@ const messageId = createOrderMessageId('order-123', 'charge', 1);
 
 // This allows you to:
 // 1. Process the same order for different operations
-// 2. Retry an operation with a new version number
+// 2. Reprocess an operation intentionally by using a new version number
 // 3. Debug issues by parsing the message ID
 ```
 
@@ -867,7 +892,7 @@ Instead of random UUIDs, use business-meaningful keys:
 ```typescript
 // Good: Natural key that represents the operation
 // This survives retries and makes debugging easier
-const messageId = `order-${orderId}-payment-${attemptNumber}`;
+const messageId = `order-${orderId}-payment-${paymentOperationId}`;
 
 // Less ideal: Random UUID with no business meaning
 // Hard to correlate with business events
@@ -979,7 +1004,7 @@ cron.schedule('0 * * * *', async () => {
 | TTL shorter than processing time | Message marked as new while still processing | Set TTL longer than max processing time |
 | No locking for concurrent access | Race condition leads to duplicate processing | Use database locks or Redis SETNX |
 | Keeping records forever | Storage grows unbounded | Implement TTL and cleanup jobs |
-| Not handling "processing" state | Crashed handlers leave messages stuck | Set short TTL on processing state |
+| Not handling "processing" state | Crashed handlers leave messages stuck | Retry or expire stale processing records |
 
 ## Conclusion
 

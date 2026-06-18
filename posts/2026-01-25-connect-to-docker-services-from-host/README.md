@@ -60,8 +60,6 @@ For multi-container setups, define ports in your compose file:
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   web:
     image: nginx:alpine
@@ -103,12 +101,10 @@ This approach eliminates the network translation overhead but has tradeoffs:
 
 - No port isolation between containers
 - Port conflicts with host services
-- Not available on Docker Desktop for Mac/Windows (only Linux)
+- Supported on Docker Engine for Linux and Docker Desktop 4.34 or later when host networking is enabled
 
 ```yaml
 # docker-compose.yml with host network
-version: '3.8'
-
 services:
   prometheus:
     image: prom/prometheus
@@ -123,8 +119,6 @@ When services need to talk to each other and you need to connect from the host, 
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   redis:
     image: redis:7
@@ -293,8 +287,6 @@ When exposing services to your host, keep these points in mind:
 
 ```yaml
 # Production compose file - no host ports for database
-version: '3.8'
-
 services:
   api:
     build: ./api

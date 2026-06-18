@@ -278,7 +278,10 @@ response = s3_client.list_object_versions(
 print(f"Versions for '{object_key}':")
 print("-" * 60)
 
-versions = response.get('Versions', [])
+versions = [
+    version for version in response.get('Versions', [])
+    if version['Key'] == object_key
+]
 for idx, version in enumerate(versions, 1):
     version_id = version['VersionId']
     is_latest = version['IsLatest']
@@ -329,7 +332,10 @@ versions_response = s3_client.list_object_versions(
     Prefix=object_key
 )
 
-versions = versions_response.get('Versions', [])
+versions = [
+    version for version in versions_response.get('Versions', [])
+    if version['Key'] == object_key
+]
 
 # Retrieve each version and display its content
 for version in versions:
@@ -455,7 +461,10 @@ response = s3_client.list_object_versions(
 )
 
 # Find and delete a specific version (e.g., the oldest one)
-versions = response.get('Versions', [])
+versions = [
+    version for version in response.get('Versions', [])
+    if version['Key'] == object_key
+]
 if versions:
     # Get the oldest version (last in the list, sorted by newest first)
     oldest_version = versions[-1]
@@ -499,7 +508,10 @@ response = s3_client.list_object_versions(
 )
 
 # Find the delete marker (if it is the latest)
-delete_markers = response.get('DeleteMarkers', [])
+delete_markers = [
+    marker for marker in response.get('DeleteMarkers', [])
+    if marker['Key'] == object_key
+]
 for marker in delete_markers:
     if marker['IsLatest']:
         delete_marker_version_id = marker['VersionId']
@@ -545,7 +557,10 @@ response = s3_client.list_object_versions(
 # Build the delete request for all versions except the latest
 objects_to_delete = []
 
-versions = response.get('Versions', [])
+versions = [
+    version for version in response.get('Versions', [])
+    if version['Key'] == object_key
+]
 for version in versions:
     if not version['IsLatest']:  # Keep the current version
         objects_to_delete.append({
@@ -554,7 +569,10 @@ for version in versions:
         })
 
 # Include delete markers if any
-delete_markers = response.get('DeleteMarkers', [])
+delete_markers = [
+    marker for marker in response.get('DeleteMarkers', [])
+    if marker['Key'] == object_key
+]
 for marker in delete_markers:
     objects_to_delete.append({
         'Key': marker['Key'],
@@ -657,6 +675,7 @@ print("Lifecycle configuration applied successfully")
 import boto3
 from botocore.client import Config
 import json
+from botocore.exceptions import ClientError
 
 s3_client = boto3.client(
     's3',
@@ -696,7 +715,7 @@ try:
 
         print()
 
-except s3_client.exceptions.ClientError as e:
+except ClientError as e:
     if e.response['Error']['Code'] == 'NoSuchLifecycleConfiguration':
         print("No lifecycle configuration exists for this bucket")
     else:
@@ -779,7 +798,7 @@ Track changes to application configuration files with full history.
 import boto3
 from botocore.client import Config
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 class ConfigVersionManager:
     def __init__(self, endpoint, access_key, secret_key, bucket):
@@ -800,7 +819,7 @@ class ConfigVersionManager:
         # Add metadata about this version
         metadata = {
             'comment': comment,
-            'saved-at': datetime.utcnow().isoformat()
+            'saved-at': datetime.now(timezone.utc).isoformat()
         }
 
         response = self.s3.put_object(
@@ -841,6 +860,9 @@ class ConfigVersionManager:
 
         versions = []
         for v in response.get('Versions', []):
+            if v['Key'] != key:
+                continue
+
             # Get metadata for each version
             obj = self.s3.head_object(
                 Bucket=self.bucket,
@@ -914,7 +936,6 @@ Maintain audit trails for document modifications.
 ```python
 import boto3
 from botocore.client import Config
-from datetime import datetime
 import hashlib
 
 def create_audit_trail(s3_client, bucket, object_key):
@@ -929,6 +950,9 @@ def create_audit_trail(s3_client, bucket, object_key):
 
     # Process all versions
     for version in response.get('Versions', []):
+        if version['Key'] != object_key:
+            continue
+
         # Get detailed metadata
         head = s3_client.head_object(
             Bucket=bucket,
@@ -958,6 +982,9 @@ def create_audit_trail(s3_client, bucket, object_key):
 
     # Process delete markers
     for marker in response.get('DeleteMarkers', []):
+        if marker['Key'] != object_key:
+            continue
+
         audit_entries.append({
             'action': 'DELETE',
             'version_id': marker['VersionId'],
@@ -1008,7 +1035,7 @@ A script to clean up old versions while keeping a minimum number.
 ```python
 import boto3
 from botocore.client import Config
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from collections import defaultdict
 
 def cleanup_old_versions(
@@ -1043,8 +1070,7 @@ def cleanup_old_versions(
     # Calculate cutoff date
     cutoff = datetime.now(timezone.utc).replace(
         hour=0, minute=0, second=0, microsecond=0
-    )
-    cutoff = cutoff.replace(day=cutoff.day - older_than_days)
+    ) - timedelta(days=older_than_days)
 
     to_delete = []
 

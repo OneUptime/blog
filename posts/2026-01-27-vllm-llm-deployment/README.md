@@ -402,7 +402,7 @@ VLLM_HOST_IP=<head-node-ip> ray start --head --port=6379
 # On each worker node, join the Ray cluster:
 VLLM_HOST_IP=<worker-node-ip> ray start --address=<head-node-ip>:6379
 
-# Then launch vLLM on the head node — it will use the full Ray cluster.
+# Then launch vLLM on the head node - it will use the full Ray cluster.
 # Set tensor-parallel-size to GPUs per node, pipeline-parallel-size to number of nodes.
 python -m vllm.entrypoints.openai.api_server \
     --model meta-llama/Llama-2-70b-chat-hf \

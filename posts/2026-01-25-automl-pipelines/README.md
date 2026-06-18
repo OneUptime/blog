@@ -57,7 +57,7 @@ from optuna.samplers import TPESampler
 from optuna.pruners import MedianPruner
 import numpy as np
 from sklearn.model_selection import cross_val_score
-from typing import Dict, Any, Callable
+from typing import Dict, Any
 import logging
 
 logging.getLogger('optuna').setLevel(logging.WARNING)
@@ -103,7 +103,7 @@ class HyperparameterOptimizer:
                 'reg_lambda': trial.suggest_float('reg_lambda', 1e-8, 10.0, log=True),
             }
 
-            model = xgb.XGBClassifier(**params, use_label_encoder=False, eval_metric='logloss')
+            model = xgb.XGBClassifier(**params, eval_metric='logloss')
 
             scores = cross_val_score(model, X, y, cv=cv, scoring='accuracy', n_jobs=self.n_jobs)
 
@@ -218,7 +218,6 @@ import numpy as np
 from sklearn.model_selection import cross_val_score
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 from sklearn.linear_model import LogisticRegression
-from sklearn.svm import SVC
 import xgboost as xgb
 import lightgbm as lgb
 import time
@@ -248,7 +247,7 @@ class AlgorithmSelector:
             'logistic_regression': LogisticRegression(max_iter=1000),
             'random_forest': RandomForestClassifier(n_estimators=100, n_jobs=-1),
             'gradient_boosting': GradientBoostingClassifier(n_estimators=100),
-            'xgboost': xgb.XGBClassifier(n_estimators=100, use_label_encoder=False, eval_metric='logloss'),
+            'xgboost': xgb.XGBClassifier(n_estimators=100, eval_metric='logloss'),
             'lightgbm': lgb.LGBMClassifier(n_estimators=100, verbosity=-1),
         }
 
@@ -346,7 +345,7 @@ from typing import List, Tuple, Optional
 from dataclasses import dataclass
 
 @dataclass
-class FeatureEngineering Result:
+class FeatureEngineeringResult:
     original_features: int
     engineered_features: int
     selected_features: int
@@ -455,8 +454,14 @@ from typing import Dict, Any, List, Optional
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
+from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
 import mlflow
 import time
+
+from automl.algorithm_selection import AlgorithmResult, AlgorithmSelector
+from automl.feature_engineering import AutoFeatureEngineer, FeatureEngineeringResult
+from automl.hyperparameter_search import HyperparameterOptimizer
 
 @dataclass
 class AutoMLResult:
@@ -490,7 +495,11 @@ class AutoMLPipeline:
 
         self.feature_engineer = AutoFeatureEngineer()
         self.algorithm_selector = AlgorithmSelector(cv=cv_folds, scoring=metric)
-        self.hyperopt = HyperparameterOptimizer(n_trials=n_trials)
+        self.hyperopt = HyperparameterOptimizer(
+            n_trials=n_trials,
+            timeout_seconds=self.max_time
+        )
+        self.result = None
 
     def fit(
         self,
@@ -528,6 +537,7 @@ class AutoMLPipeline:
 
             best_algo = leaderboard[0].name
             remaining_time = self.max_time - (time.time() - start_time)
+            self.hyperopt.timeout = max(1, int(remaining_time))
 
             if best_algo == 'xgboost':
                 tune_result = self.hyperopt.optimize_xgboost(X_engineered, y)
@@ -546,11 +556,11 @@ class AutoMLPipeline:
             # Log final results
             mlflow.log_params(tune_result['best_params'])
             mlflow.log_metric("best_score", tune_result['best_score'])
-            mlflow.sklearn.log_model(final_model, "model")
+            mlflow.sklearn.log_model(final_model, name="model")
 
             total_time = time.time() - start_time
 
-            return AutoMLResult(
+            self.result = AutoMLResult(
                 best_algorithm=best_algo,
                 best_params=tune_result['best_params'],
                 best_score=tune_result['best_score'],
@@ -560,23 +570,33 @@ class AutoMLPipeline:
                 model=final_model
             )
 
+            return self.result
+
     def _create_model(self, algo_name: str, params: Dict[str, Any]):
         """Create model with optimized parameters."""
         import xgboost as xgb
         import lightgbm as lgb
-        from sklearn.ensemble import RandomForestClassifier
+        from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
+        from sklearn.linear_model import LogisticRegression
 
         if algo_name == 'xgboost':
-            return xgb.XGBClassifier(**params, use_label_encoder=False, eval_metric='logloss')
+            return xgb.XGBClassifier(**params, eval_metric='logloss')
         elif algo_name == 'lightgbm':
             return lgb.LGBMClassifier(**params, verbosity=-1)
         elif algo_name == 'random_forest':
             return RandomForestClassifier(**params, n_jobs=-1)
+        elif algo_name == 'gradient_boosting':
+            return GradientBoostingClassifier(**params)
+        elif algo_name == 'logistic_regression':
+            return LogisticRegression(**params, max_iter=1000)
         else:
             raise ValueError(f"Unknown algorithm: {algo_name}")
 
     def predict(self, X: pd.DataFrame) -> np.ndarray:
         """Make predictions with the trained model."""
+        if self.result is None:
+            raise ValueError("AutoMLPipeline must be fitted before calling predict().")
+
         X_engineered = self.feature_engineer.transform(X)
         return self.result.model.predict(X_engineered)
 
@@ -600,6 +620,7 @@ print(f"Total time: {result.total_time_seconds/60:.1f} minutes")
 # automl/nas.py
 import optuna
 from typing import Dict, Any
+import numpy as np
 import tensorflow as tf
 from tensorflow import keras
 

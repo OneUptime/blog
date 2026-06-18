@@ -63,7 +63,7 @@ Each span has a real cost:
 
 - **Memory**: Each span object consumes a few hundred bytes in the SDK
 - **CPU**: Context propagation, attribute serialization, and export processing
-- **Network**: Every span is transmitted to the Collector
+- **Network**: Every sampled span is exported to your configured backend or Collector
 - **Storage**: Your tracing backend stores and indexes every span
 - **Visual noise**: Engineers scrolling through a waterfall chart to find the slow operation amid dozens of sub-millisecond spans
 
@@ -86,7 +86,7 @@ Skip spans for:
 1. **Pure computation**: String formatting, JSON parsing, math
 2. **Simple getters/setters**: Property access, configuration lookups
 3. **Utility functions**: Logging, formatting, type conversions
-4. **Sub-millisecond operations**: Anything faster than 1ms is noise
+4. **Sub-millisecond operations**: Anything faster than 1ms is usually noise unless it is business-critical
 
 ## The Right Approach
 
@@ -131,17 +131,14 @@ def handle_order(request):
         span.set_attribute("request.valid", True)
         span.set_attribute("order.item_count", len(data["items"]))
 
-        # Record timing of sub-steps as events
-        import time
-        start = time.time()
-        result = payment_gateway.charge(data["payment"])
-        duration_ms = (time.time() - start) * 1000
-        span.add_event("payment_completed", {
-            "payment.duration_ms": duration_ms,
-            "payment.method": data["payment"]["method"],
+        # Record meaningful points in time as events
+        discount = calculate_discount(data["items"])
+        span.add_event("discount_calculated", {
+            "order.discount": discount,
+            "order.item_count": len(data["items"]),
         })
 
-        return result
+        return {"discount": discount}
 ```
 
 ## A Decision Tree

@@ -266,7 +266,8 @@ public class InProcessBatchExecutor
         try
         {
             // Get the request delegate and execute
-            var routeEndpoint = await ResolveEndpoint(subContext, request.Path);
+            var routeEndpoint = ResolveEndpoint(
+                subContext.Request.Path.Value ?? request.Path);
             if (routeEndpoint == null)
             {
                 return new BatchResponse
@@ -318,9 +319,7 @@ public class InProcessBatchExecutor
         }
     }
 
-    private async Task<RouteEndpoint?> ResolveEndpoint(
-        HttpContext context,
-        string path)
+    private RouteEndpoint? ResolveEndpoint(string path)
     {
         var endpointDataSource = _serviceProvider
             .GetRequiredService<EndpointDataSource>();
@@ -331,7 +330,10 @@ public class InProcessBatchExecutor
             if (endpoint is RouteEndpoint routeEndpoint)
             {
                 // Check if route pattern matches
-                if (routeEndpoint.RoutePattern.RawText == path.TrimStart('/'))
+                if (string.Equals(
+                    routeEndpoint.RoutePattern.RawText,
+                    path.TrimStart('/'),
+                    StringComparison.OrdinalIgnoreCase))
                 {
                     return routeEndpoint;
                 }
@@ -458,7 +460,10 @@ public class DependentBatchExecutor
     {
         if (body == null) return string.Empty;
 
-        var element = (JsonElement)body;
+        var element = body is JsonElement jsonElement
+            ? jsonElement
+            : JsonSerializer.SerializeToElement(body);
+
         foreach (var part in propertyPath.Split('.'))
         {
             if (element.TryGetProperty(part, out var child))
@@ -498,7 +503,20 @@ public class DependentBatchExecutor
         }
 
         var response = await client.SendAsync(httpRequest);
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var bodyText = await response.Content.ReadAsStringAsync();
+        object? body = null;
+
+        if (!string.IsNullOrEmpty(bodyText))
+        {
+            try
+            {
+                body = JsonSerializer.Deserialize<JsonElement>(bodyText);
+            }
+            catch
+            {
+                body = bodyText;
+            }
+        }
 
         return new BatchResponse
         {
@@ -536,6 +554,11 @@ public class ODataBatchController : ControllerBase
     public async Task<IActionResult> Post()
     {
         var boundary = GetBoundary(Request.ContentType);
+        if (string.IsNullOrWhiteSpace(boundary))
+        {
+            return BadRequest("Missing multipart boundary");
+        }
+
         var reader = new MultipartReader(boundary, Request.Body);
         var responses = new List<string>();
 
@@ -602,6 +625,7 @@ public class ODataBatchController : ControllerBase
         {
             sb.AppendLine($"--{boundary}");
             sb.AppendLine("Content-Type: application/http");
+            sb.AppendLine("Content-Transfer-Encoding: binary");
             sb.AppendLine();
             sb.AppendLine(response);
         }
@@ -639,7 +663,9 @@ public class BatchingHttpClient
 
     public async Task<T?> GetAsync<T>(string path)
     {
-        var tcs = new TaskCompletionSource<BatchResponse>();
+        var tcs = new TaskCompletionSource<BatchResponse>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var flushNow = false;
 
         await _lock.WaitAsync();
         try
@@ -666,12 +692,17 @@ public class BatchingHttpClient
             if (_pendingRequests.Count >= _maxBatchSize)
             {
                 _windowCts?.Cancel();
-                await FlushBatch();
+                flushNow = true;
             }
         }
         finally
         {
             _lock.Release();
+        }
+
+        if (flushNow)
+        {
+            await FlushBatch();
         }
 
         var response = await tcs.Task;

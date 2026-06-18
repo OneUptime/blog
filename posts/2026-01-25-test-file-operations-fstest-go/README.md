@@ -24,7 +24,7 @@ The `testing/fstest` package gives you an in-memory file system that implements 
 
 ## Basic Usage
 
-The core type is `fstest.MapFS`, which is simply a map from file paths to file contents. Here's a minimal example:
+The core type is `fstest.MapFS`, which is a map from file paths to information about the files or directories they represent. Here's a minimal example:
 
 ```go
 package main
@@ -379,7 +379,7 @@ func TestApp(t *testing.T) {
 
 ## Limitations
 
-The `fstest.MapFS` type is read-only. You cannot write files to it during tests. If your code needs to write files, you have a few options:
+The `fs.FS` interface is read-only, and `fstest.MapFS` does not provide file-writing operations through that interface. You can populate or edit the map as part of test setup, but if your code needs to write files through normal file-system APIs, you have a few options:
 
 1. Use `os.MkdirTemp` for integration tests that need real writes
 2. Abstract writes behind an interface and mock that separately

@@ -133,7 +133,7 @@ scrape_configs:
 
 ### Discovering Across All Zones in a Project
 
-The `zone` parameter is **required** in `gce_sd_configs` — Prometheus rejects the configuration if it is missing. To cover multiple zones you must enumerate them, one `gce_sd_configs` entry per zone:
+The `zone` parameter is **required** in `gce_sd_configs` - Prometheus rejects the configuration if it is missing. To cover multiple zones you must enumerate them, one `gce_sd_configs` entry per zone:
 
 ```yaml
 scrape_configs:

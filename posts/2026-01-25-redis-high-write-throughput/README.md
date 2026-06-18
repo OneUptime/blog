@@ -8,7 +8,7 @@ Description: A comprehensive guide to tuning Redis for maximum write throughput.
 
 ---
 
-> Redis is famous for its speed, but achieving maximum write throughput requires careful tuning. Default configurations prioritize data safety over raw performance. This guide shows you how to configure Redis for write-heavy workloads while understanding the tradeoffs.
+> Redis is famous for its speed, but achieving maximum write throughput requires careful tuning. Default configurations balance durability, safety, and performance rather than optimizing for raw write throughput. This guide shows you how to configure Redis for write-heavy workloads while understanding the tradeoffs.
 
 When your application needs to ingest millions of events per second, store real-time metrics, or handle high-velocity data streams, Redis configuration becomes critical. The difference between default settings and optimized configuration can be 10x or more in write throughput.
 
@@ -56,8 +56,8 @@ Redis offers two persistence mechanisms:
 # RDB (snapshotting) - periodic full dumps
 
 # Good for backups, minimal write impact
-save 900 1      # Save if 1 key changed in 900 seconds
-save 300 10     # Save if 10 keys changed in 300 seconds
+save 3600 1     # Save if 1 key changed in 3600 seconds
+save 300 100    # Save if 100 keys changed in 300 seconds
 save 60 10000   # Save if 10000 keys changed in 60 seconds
 
 # AOF (Append Only File) - logs every write
@@ -135,7 +135,7 @@ activedefrag yes
 active-defrag-ignore-bytes 100mb
 active-defrag-threshold-lower 10
 
-# Stop defrag when fragmentation is below 5%
+# Use maximum defrag effort when fragmentation reaches 100%
 active-defrag-threshold-upper 100
 
 # CPU usage limits for defrag
@@ -209,6 +209,7 @@ Maintain persistent connections to avoid connection overhead:
 ```python
 import redis
 from redis.connection import ConnectionPool
+import time
 
 # Create a connection pool with enough connections for your load
 pool = ConnectionPool(

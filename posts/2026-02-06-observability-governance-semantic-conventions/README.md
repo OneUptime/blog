@@ -14,8 +14,8 @@ OpenTelemetry semantic conventions define standard attribute names for common co
 
 - `service.name`, `service.version` for service identity
 - `http.request.method`, `http.response.status_code` for HTTP
-- `db.system`, `db.statement` for databases
-- `rpc.system`, `rpc.method` for RPC calls
+- `db.system.name`, `db.query.text` for databases
+- `rpc.system.name`, `rpc.method` for RPC calls
 - `messaging.system`, `messaging.destination.name` for messaging
 
 ## Defining Your Organization's Standards
@@ -37,9 +37,9 @@ required_resource_attributes:
     type: string
     pattern: "^\\d+\\.\\d+\\.\\d+$"
     description: "Semantic version"
-  - name: deployment.environment
+  - name: deployment.environment.name
     type: string
-    allowed_values: [production, staging, development, canary]
+    allowed_values: [production, staging, development, test]
   - name: team.name
     type: string
     description: "Owning team identifier"
@@ -56,7 +56,7 @@ required_span_attributes:
       type: string
 
   database:
-    - name: db.system
+    - name: db.system.name
       type: string
       allowed_values: [postgresql, mysql, redis, mongodb, elasticsearch]
     - name: db.operation.name
@@ -75,6 +75,15 @@ deprecated_attributes:
   - name: http.url
     replacement: url.full
     deadline: "2026-06-01"
+  - name: db.system
+    replacement: db.system.name
+    deadline: "2026-06-01"
+  - name: db.statement
+    replacement: db.query.text
+    deadline: "2026-06-01"
+  - name: deployment.environment
+    replacement: deployment.environment.name
+    deadline: "2026-06-01"
 
 # Custom organization attributes
 custom_attributes:
@@ -90,8 +99,8 @@ custom_attributes:
 
 # Naming rules
 naming_rules:
-  # All attributes must use dot notation
-  pattern: "^[a-z][a-z0-9]*(\\.[a-z][a-z0-9]*)*$"
+  # All attributes must use dot-separated lowercase components
+  pattern: "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$"
   # Maximum key length
   max_key_length: 64
   # Maximum value length
@@ -115,41 +124,42 @@ receivers:
 processors:
   # Transform deprecated attributes to new conventions
   transform/migrate:
+    error_mode: ignore
     trace_statements:
-      - context: span
-        statements:
-          # Migrate deprecated HTTP attributes
-          - set(attributes["http.request.method"],
-              attributes["http.method"])
-            where attributes["http.method"] != nil
-          - delete_key(attributes, "http.method")
+      # Migrate deprecated HTTP attributes
+      - set(span.attributes["http.request.method"], span.attributes["http.method"]) where span.attributes["http.method"] != nil
+      - delete_key(span.attributes, "http.method") where span.attributes["http.method"] != nil
 
-          - set(attributes["http.response.status_code"],
-              attributes["http.status_code"])
-            where attributes["http.status_code"] != nil
-          - delete_key(attributes, "http.status_code")
+      - set(span.attributes["http.response.status_code"], span.attributes["http.status_code"]) where span.attributes["http.status_code"] != nil
+      - delete_key(span.attributes, "http.status_code") where span.attributes["http.status_code"] != nil
 
-          - set(attributes["url.full"], attributes["http.url"])
-            where attributes["http.url"] != nil
-          - delete_key(attributes, "http.url")
+      - set(span.attributes["url.full"], span.attributes["http.url"]) where span.attributes["http.url"] != nil
+      - delete_key(span.attributes, "http.url") where span.attributes["http.url"] != nil
 
-  # Drop non-compliant attributes
+      # Migrate deprecated database attributes
+      - set(span.attributes["db.system.name"], span.attributes["db.system"]) where span.attributes["db.system"] != nil
+      - delete_key(span.attributes, "db.system") where span.attributes["db.system"] != nil
+      - set(span.attributes["db.query.text"], span.attributes["db.statement"]) where span.attributes["db.statement"] != nil
+      - delete_key(span.attributes, "db.statement") where span.attributes["db.statement"] != nil
+
+      # Migrate deprecated deployment resource attribute
+      - set(resource.attributes["deployment.environment.name"], resource.attributes["deployment.environment"]) where resource.attributes["deployment.environment"] != nil
+      - delete_key(resource.attributes, "deployment.environment") where resource.attributes["deployment.environment"] != nil
+
+  # Drop non-compliant spans
   filter/attribute_compliance:
-    traces:
-      span:
-        # Drop spans with non-standard attribute patterns
-        - 'IsMatch(resource.attributes["service.name"], "^[A-Z]")'
+    error_mode: ignore
+    trace_conditions:
+      # Drop spans with service names that do not follow the required pattern
+      - 'resource.attributes["service.name"] != nil and IsMatch(resource.attributes["service.name"], "^[a-z][a-z0-9-]+$") == false'
 
   # Enforce resource attribute requirements
   transform/enforce:
+    error_mode: ignore
     trace_statements:
-      - context: resource
-        statements:
-          # Set default values for missing required attributes
-          - set(attributes["deployment.environment"], "unknown")
-            where attributes["deployment.environment"] == nil
-          - set(attributes["team.name"], "unowned")
-            where attributes["team.name"] == nil
+      # Set default values for missing required attributes
+      - set(resource.attributes["deployment.environment.name"], "unknown") where resource.attributes["deployment.environment.name"] == nil
+      - set(resource.attributes["team.name"], "unowned") where resource.attributes["team.name"] == nil
 
   batch:
     send_batch_size: 4096
@@ -159,17 +169,11 @@ exporters:
   otlphttp:
     endpoint: https://backend:4318
 
-  # Send non-compliant telemetry to a separate dead-letter queue
-  kafka/non_compliant:
-    brokers: ["kafka:9092"]
-    topic: otel-non-compliant
-    encoding: otlp_json
-
 service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [transform/migrate, transform/enforce, batch]
+      processors: [transform/migrate, transform/enforce, filter/attribute_compliance, batch]
       exporters: [otlphttp]
 ```
 

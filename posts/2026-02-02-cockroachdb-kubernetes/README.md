@@ -205,7 +205,7 @@ storage:
 tls:
   enabled: true
   # Use cert-manager for automatic certificate management.
-  # Use a self-signed CA Issuer for internal cluster certs —
+  # Use a self-signed CA Issuer for internal cluster certs -
   # public CAs like Let's Encrypt cannot sign internal *.svc.cluster.local names.
   certs:
     provided: false

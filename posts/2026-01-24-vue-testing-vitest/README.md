@@ -37,6 +37,9 @@ npm install -D vitest @vue/test-utils happy-dom
 
 # For TypeScript support
 npm install -D @types/node
+
+# For coverage and UI support
+npm install -D @vitest/coverage-v8 @vitest/ui
 ```
 
 ## Basic Configuration
@@ -45,7 +48,7 @@ Create or update your `vite.config.ts` to include Vitest configuration:
 
 ```typescript
 // vite.config.ts
-import { defineConfig } from 'vite';
+import { defineConfig } from 'vitest/config';
 import vue from '@vitejs/plugin-vue';
 
 export default defineConfig({
@@ -264,14 +267,17 @@ When testing components that use a store, you need to provide the store to the c
 // src/components/__tests__/UserProfile.spec.ts
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
-import { createPinia, setActivePinia } from 'pinia';
+import { createPinia, setActivePinia, type Pinia } from 'pinia';
 import UserProfile from '../UserProfile.vue';
 import { useUserStore } from '@/stores/user';
 
 describe('UserProfile.vue with Pinia', () => {
+    let pinia: Pinia;
+
     beforeEach(() => {
         // Create a fresh Pinia instance for each test
-        setActivePinia(createPinia());
+        pinia = createPinia();
+        setActivePinia(pinia);
     });
 
     it('displays user name from store', async () => {
@@ -285,7 +291,7 @@ describe('UserProfile.vue with Pinia', () => {
 
         const wrapper = mount(UserProfile, {
             global: {
-                plugins: [createPinia()]
+                plugins: [pinia]
             }
         });
 
@@ -301,7 +307,7 @@ describe('UserProfile.vue with Pinia', () => {
 
         const wrapper = mount(UserProfile, {
             global: {
-                plugins: [createPinia()]
+                plugins: [pinia]
             }
         });
 

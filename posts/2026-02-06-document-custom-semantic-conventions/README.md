@@ -36,44 +36,64 @@ Each attribute definition should include:
 ```yaml
 # conventions/commerce/order.yaml
 
-group: commerce.order
-prefix: order
-brief: "Attributes describing a customer order"
+groups:
+  - id: commerce.order
+    type: attribute_group
+    brief: "Attributes describing a customer order"
+    attributes:
+      - id: order.id
+        type: string
+        stability: development
+        requirement_level: required
+        brief: "Unique identifier for the order"
+        examples: ["ord_2kf9d8s", "ord_x8j3m1p"]
+        note: "Must be the external order ID, not the database primary key"
 
-attributes:
-  - id: order.id
-    type: string
-    requirement_level: required
-    brief: "Unique identifier for the order"
-    examples: ["ord_2kf9d8s", "ord_x8j3m1p"]
-    note: "Must be the external order ID, not the database primary key"
+      - id: order.status
+        type:
+          members:
+            - id: pending
+              value: "pending"
+              stability: development
+            - id: confirmed
+              value: "confirmed"
+              stability: development
+            - id: shipped
+              value: "shipped"
+              stability: development
+            - id: delivered
+              value: "delivered"
+              stability: development
+            - id: cancelled
+              value: "cancelled"
+              stability: development
+        stability: development
+        requirement_level: required
+        brief: "Current status of the order"
+        examples: ["pending", "confirmed", "shipped", "delivered", "cancelled"]
 
-  - id: order.status
-    type: string
-    requirement_level: required
-    brief: "Current status of the order"
-    examples: ["pending", "confirmed", "shipped", "delivered", "cancelled"]
-    note: "Must be one of the allowed values listed in examples"
+      - id: order.total_amount
+        type: double
+        stability: development
+        requirement_level: recommended
+        brief: "Total order amount in the major currency unit"
+        examples: [29.99, 149.00, 1250.50]
+        note: "Always in the currency specified by order.currency. Use the major currency unit (e.g., dollars, not cents)"
 
-  - id: order.total_amount
-    type: double
-    requirement_level: recommended
-    brief: "Total order amount in the base currency unit"
-    examples: [29.99, 149.00, 1250.50]
-    note: "Always in the currency specified by order.currency. Use the smallest common denomination (e.g., dollars, not cents)"
+      - id: order.currency
+        type: string
+        stability: development
+        requirement_level:
+          conditionally_required: "Required when order.total_amount is set"
+        brief: "ISO 4217 currency code"
+        examples: ["USD", "EUR", "GBP"]
 
-  - id: order.currency
-    type: string
-    requirement_level:
-      conditionally_required: "Required when order.total_amount is set"
-    brief: "ISO 4217 currency code"
-    examples: ["USD", "EUR", "GBP"]
-
-  - id: order.item_count
-    type: int
-    requirement_level: recommended
-    brief: "Number of distinct items in the order"
-    examples: [1, 3, 12]
+      - id: order.item_count
+        type: int
+        stability: development
+        requirement_level: recommended
+        brief: "Number of distinct items in the order"
+        examples: [1, 3, 12]
 ```
 
 ## Requirement Levels
@@ -83,9 +103,9 @@ Follow the same requirement levels as upstream OpenTelemetry conventions:
 - **Required**: Must always be set. Missing this attribute indicates a bug.
 - **Conditionally Required**: Must be set when a specific condition is met. Document the condition.
 - **Recommended**: Should be set when the information is available. Omission is acceptable.
-- **Optional**: Set only when it adds value to a specific debugging scenario.
+- **Opt-In**: Set only when the user or instrumentation configuration explicitly enables it.
 
-These levels help teams prioritize. When instrumenting a new feature under time pressure, engineers know they must add required attributes and can skip optional ones.
+These levels help teams prioritize. When instrumenting a new feature under time pressure, engineers know they must add required attributes and can skip opt-in ones.
 
 ## Code Examples Per Language
 
@@ -181,12 +201,13 @@ Attributes will change over time. Document your deprecation process:
 1. Mark the old attribute as deprecated with a note pointing to the replacement
 2. Emit both old and new attributes for one release cycle (minimum 30 days)
 3. After the migration window, stop emitting the old attribute
-4. Remove the old attribute from the convention document after 90 days
+4. Keep the deprecated attribute in the convention document so legacy telemetry remains understandable
 
 ```yaml
 # Example of a deprecated attribute
 - id: order.amount
   type: double
+  stability: development
   deprecated: "Use order.total_amount instead. Deprecated in v2.0.0, removal in v3.0.0"
   brief: "Legacy order amount field"
 ```

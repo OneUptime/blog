@@ -74,7 +74,7 @@ The quantile labels contain pre-calculated values. The sum and count let you com
 
 ## Implementing Summaries in Code
 
-Here is a Go implementation using the Prometheus client library. The key configuration is the quantile objectives and the time window for calculation. The Python `prometheus_client` does not compute quantiles on the client — it only exposes `_sum` and `_count` — so configurable summaries are a Go-client feature.
+Here is a Go implementation using the Prometheus client library. The key configuration is the quantile objectives and the time window for calculation. The Python `prometheus_client` does not compute quantiles on the client - it only exposes `_sum` and `_count` - so configurable summaries are a Go-client feature.
 
 ```go
 // metrics.go

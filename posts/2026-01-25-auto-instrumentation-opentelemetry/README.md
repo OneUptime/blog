@@ -50,23 +50,25 @@ const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumenta
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
 const { OTLPMetricExporter } = require('@opentelemetry/exporter-metrics-otlp-http');
 const { PeriodicExportingMetricReader } = require('@opentelemetry/sdk-metrics');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } = require('@opentelemetry/semantic-conventions');
 
 // Define service metadata
-const resource = new Resource({
-  [SemanticResourceAttributes.SERVICE_NAME]: process.env.OTEL_SERVICE_NAME || 'my-service',
-  [SemanticResourceAttributes.SERVICE_VERSION]: process.env.npm_package_version || '1.0.0',
-  [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV || 'development'
+const resource = resourceFromAttributes({
+  [ATTR_SERVICE_NAME]: process.env.OTEL_SERVICE_NAME || 'my-service',
+  [ATTR_SERVICE_VERSION]: process.env.npm_package_version || '1.0.0',
+  'deployment.environment.name': process.env.NODE_ENV || 'development'
 });
+
+const otlpEndpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4318';
 
 // Configure exporters
 const traceExporter = new OTLPTraceExporter({
-  url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT + '/v1/traces'
+  url: `${otlpEndpoint}/v1/traces`
 });
 
 const metricExporter = new OTLPMetricExporter({
-  url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT + '/v1/metrics'
+  url: `${otlpEndpoint}/v1/metrics`
 });
 
 // Initialize the SDK with auto-instrumentation
@@ -130,14 +132,17 @@ const instrumentations = getNodeAutoInstrumentations({
     },
     // Add custom attributes to HTTP spans
     requestHook: (span, request) => {
-      span.setAttribute('http.request_id', request.headers['x-request-id']);
+      const requestId = request.headers['x-request-id'];
+      if (requestId) {
+        span.setAttribute('http.request_id', requestId);
+      }
     }
   },
 
   '@opentelemetry/instrumentation-express': {
     // Capture route parameters
     requestHook: (span, info) => {
-      if (info.layerType === 'request_handler') {
+      if (info.layerType === 'request_handler' && info.route) {
         span.setAttribute('express.route', info.route);
       }
     }
@@ -169,6 +174,7 @@ The simplest way to use auto-instrumentation in Python:
 # Set environment variables
 export OTEL_SERVICE_NAME=payment-service
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4317
+export OTEL_EXPORTER_OTLP_PROTOCOL=grpc
 export OTEL_TRACES_EXPORTER=otlp
 export OTEL_METRICS_EXPORTER=otlp
 
@@ -214,14 +220,16 @@ def configure_telemetry():
     # Configure tracing
     trace_provider = TracerProvider(resource=resource)
     trace_exporter = OTLPSpanExporter(
-        endpoint=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "localhost:4317")
+        endpoint=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4317"),
+        insecure=True
     )
     trace_provider.add_span_processor(BatchSpanProcessor(trace_exporter))
     trace.set_tracer_provider(trace_provider)
 
     # Configure metrics
     metric_exporter = OTLPMetricExporter(
-        endpoint=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "localhost:4317")
+        endpoint=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4317"),
+        insecure=True
     )
     metric_reader = PeriodicExportingMetricReader(metric_exporter)
     meter_provider = MeterProvider(resource=resource, metric_readers=[metric_reader])
@@ -283,7 +291,7 @@ curl -L -o opentelemetry-javaagent.jar \
 ```bash
 java -javaagent:opentelemetry-javaagent.jar \
   -Dotel.service.name=order-service \
-  -Dotel.exporter.otlp.endpoint=http://collector:4317 \
+  -Dotel.exporter.otlp.endpoint=http://collector:4318 \
   -jar myapp.jar
 ```
 
@@ -291,12 +299,13 @@ java -javaagent:opentelemetry-javaagent.jar \
 
 ```bash
 export OTEL_SERVICE_NAME=order-service
-export OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4317
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4318
 export OTEL_TRACES_EXPORTER=otlp
 export OTEL_METRICS_EXPORTER=otlp
 export OTEL_LOGS_EXPORTER=otlp
 
-# Disable specific instrumentations
+# Enable only specific instrumentations
+export OTEL_INSTRUMENTATION_COMMON_DEFAULT_ENABLED=false
 export OTEL_INSTRUMENTATION_JDBC_ENABLED=true
 export OTEL_INSTRUMENTATION_SERVLET_ENABLED=true
 export OTEL_INSTRUMENTATION_SPRING_WEB_ENABLED=true
@@ -318,7 +327,7 @@ COPY target/myapp.jar /app/myapp.jar
 
 ENV JAVA_TOOL_OPTIONS="-javaagent:/app/opentelemetry-javaagent.jar"
 ENV OTEL_SERVICE_NAME=order-service
-ENV OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4317
+ENV OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4318
 
 ENTRYPOINT ["java", "-jar", "myapp.jar"]
 ```

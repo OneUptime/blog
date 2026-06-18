@@ -16,26 +16,19 @@ The first step is instrumenting your alerting pipeline to emit metrics through O
 # Instrument alert firing events as OTel metrics
 
 from opentelemetry import metrics
-from datetime import datetime
+from datetime import datetime, timezone
 
 meter = metrics.get_meter("alerting.pipeline")
 
 # Counter for total alerts fired
 alerts_fired = meter.create_counter(
-    "alerts.fired.total",
+    "alerts.fired",
     description="Total number of alerts that fired",
     unit="1"
 )
 
-# Histogram for time-of-day distribution analysis
-alert_hour_histogram = meter.create_histogram(
-    "alerts.fired.hour_of_day",
-    description="Hour of day when alerts fire",
-    unit="hour"
-)
-
 def on_alert_fired(alert):
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     # Record the alert with rich attributes for later analysis
     alerts_fired.add(1, attributes={
@@ -45,18 +38,13 @@ def on_alert_fired(alert):
         "oncall.engineer": alert.paged_engineer,
         "oncall.rotation": alert.rotation_name,
         "alert.day_of_week": now.strftime("%A"),
-    })
-
-    # Record the hour for time-distribution analysis
-    alert_hour_histogram.record(now.hour, attributes={
-        "alert.severity": alert.severity,
-        "oncall.rotation": alert.rotation_name,
+        "alert.hour_of_day": now.hour,
     })
 ```
 
 ## Collector Pipeline for Alert Analytics
 
-Configure the OpenTelemetry Collector to receive these alert metrics and route them to an analytics backend. The connector processor aggregates counts that you can query later.
+Configure the OpenTelemetry Collector to receive these alert metrics and route them to an analytics backend. The metrics transform processor reduces label cardinality before export, and PromQL performs the time-window aggregations you query later. This example uses the contrib Collector because `metrics_transform` is a contrib processor. If you send directly to Prometheus remote write, start Prometheus with `--web.enable-remote-write-receiver` so `/api/v1/write` accepts samples.
 
 ```yaml
 # otel-collector-alert-analytics.yaml
@@ -75,9 +63,9 @@ processors:
         action: upsert
 
   # Aggregate alert counts per rotation per hour
-  metricstransform:
+  metrics_transform:
     transforms:
-      - include: alerts.fired.total
+      - include: alerts.fired
         action: update
         operations:
           - action: aggregate_labels
@@ -86,21 +74,24 @@ processors:
               - oncall.rotation
               - alert.severity
               - alert.day_of_week
+              - alert.hour_of_day
 
   batch:
     send_batch_size: 256
     timeout: 10s
 
 exporters:
-  prometheusremotewrite:
+  prometheus_remote_write:
     endpoint: "http://prometheus:9090/api/v1/write"
+    tls:
+      insecure: true
 
 service:
   pipelines:
     metrics:
       receivers: [otlp]
-      processors: [resource, metricstransform, batch]
-      exporters: [prometheusremotewrite]
+      processors: [resource, metrics_transform, batch]
+      exporters: [prometheus_remote_write]
 ```
 
 ## Analyzing Alert Distribution Across Rotations
@@ -109,7 +100,7 @@ Once you have a few weeks of data, query the metrics to understand how alerts di
 
 ```promql
 # Total alerts per rotation in the last 30 days
-sum by (oncall.rotation) (
+sum by (oncall_rotation) (
   increase(alerts_fired_total[30d])
 )
 ```
@@ -117,9 +108,9 @@ sum by (oncall.rotation) (
 To see the hourly distribution and find peak paging windows:
 
 ```promql
-# Alert rate by hour of day, averaged over 30 days
-avg by (le) (
-  rate(alerts_fired_hour_of_day_bucket[30d])
+# Total alerts by hour of day in the last 30 days
+sum by (alert_hour_of_day) (
+  increase(alerts_fired_total[30d])
 )
 ```
 

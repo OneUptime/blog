@@ -377,7 +377,7 @@ class CoreWebVitalsMonitor {
 
             // Stop observing LCP after user interaction
             // LCP is only valid before first input
-            // Note: don't include 'scroll' here — it can fire before the
+            // Note: don't include 'scroll' here - it can fire before the
             // browser dispatches the final LCP entry, cutting LCP short
             ['keydown', 'click', 'pointerdown'].forEach(type => {
                 window.addEventListener(type, () => {

@@ -197,8 +197,9 @@ static_resources:
       outlier_detection:
         # Eject after 5 consecutive 5xx errors
         consecutive_5xx: 5
-        # Or 5 consecutive gateway errors
-        consecutive_gateway_failure: 5
+        # Or 3 consecutive gateway errors
+        consecutive_gateway_failure: 3
+        enforcing_consecutive_gateway_failure: 100
         # Check every 10 seconds
         interval: 10s
         # Eject for 30 seconds base time
@@ -207,10 +208,12 @@ static_resources:
         max_ejection_percent: 50
         # Eject after 100% failure rate
         enforcing_consecutive_5xx: 100
-        # Count local origin errors too
-        enforcing_local_origin_success_rate: 100
+        # Count locally originated failures separately
+        split_external_local_origin_errors: true
+        consecutive_local_origin_failure: 5
+        enforcing_consecutive_local_origin_failure: 100
         # Success rate threshold
-        success_rate_minimum_hosts: 3
+        success_rate_minimum_hosts: 2
         success_rate_request_volume: 100
         success_rate_stdev_factor: 1900
 
@@ -294,6 +297,7 @@ class CircuitBreaker:
                 elapsed = time.time() - self.stats.state_changed_at
                 if elapsed >= self.config.timeout:
                     self._transition_to(CircuitState.HALF_OPEN)
+                    self._half_open_calls = 1
                     return True
                 return False
 
@@ -517,15 +521,15 @@ spec:
     outlierDetection:
       # Eject after 5 consecutive 5xx errors
       consecutive5xxErrors: 5
-      # Or 5 consecutive gateway errors
-      consecutiveGatewayErrors: 5
+      # Or 3 consecutive gateway errors
+      consecutiveGatewayErrors: 3
       # Check interval
       interval: 10s
       # Base ejection time
       baseEjectionTime: 30s
       # Max ejection percentage
       maxEjectionPercent: 50
-      # Min ejection time
+      # Disable outlier detection below this healthy-host percentage
       minHealthPercent: 30
 
 ---

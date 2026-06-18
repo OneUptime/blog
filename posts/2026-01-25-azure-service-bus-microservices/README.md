@@ -181,51 +181,59 @@ public class BatchMessagePublisher
         CancellationToken cancellationToken = default)
     {
         // Create a batch for efficient sending
-        using var messageBatch = await _sender.CreateMessageBatchAsync(cancellationToken);
+        var messageBatch = await _sender.CreateMessageBatchAsync(cancellationToken);
 
         var processedCount = 0;
         var batchCount = 0;
 
-        foreach (var message in messages)
+        try
         {
-            var json = JsonSerializer.Serialize(message);
-            var serviceBusMessage = new ServiceBusMessage(json)
+            foreach (var message in messages)
             {
-                ContentType = "application/json"
-            };
-
-            // Try to add the message to the batch
-            if (!messageBatch.TryAddMessage(serviceBusMessage))
-            {
-                // Batch is full, send it and create a new one
-                if (messageBatch.Count > 0)
+                var json = JsonSerializer.Serialize(message);
+                var serviceBusMessage = new ServiceBusMessage(json)
                 {
-                    await _sender.SendMessagesAsync(messageBatch, cancellationToken);
-                    batchCount++;
-                    _logger.LogInformation("Sent batch {BatchNumber} with {Count} messages",
-                        batchCount, messageBatch.Count);
+                    ContentType = "application/json"
+                };
+
+                // Try to add the message to the batch
+                if (!messageBatch.TryAddMessage(serviceBusMessage))
+                {
+                    // Batch is full, send it and create a new one
+                    if (messageBatch.Count > 0)
+                    {
+                        await _sender.SendMessagesAsync(messageBatch, cancellationToken);
+                        batchCount++;
+                        _logger.LogInformation("Sent batch {BatchNumber} with {Count} messages",
+                            batchCount, messageBatch.Count);
+                    }
+
+                    messageBatch.Dispose();
+                    messageBatch = await _sender.CreateMessageBatchAsync(cancellationToken);
+
+                    if (!messageBatch.TryAddMessage(serviceBusMessage))
+                    {
+                        throw new InvalidOperationException("Message too large for Service Bus");
+                    }
                 }
 
-                // Start a new batch with the current message
-                using var newBatch = await _sender.CreateMessageBatchAsync(cancellationToken);
-                if (!newBatch.TryAddMessage(serviceBusMessage))
-                {
-                    throw new InvalidOperationException("Message too large for Service Bus");
-                }
+                processedCount++;
             }
 
-            processedCount++;
-        }
+            // Send remaining messages
+            if (messageBatch.Count > 0)
+            {
+                await _sender.SendMessagesAsync(messageBatch, cancellationToken);
+                batchCount++;
+            }
 
-        // Send remaining messages
-        if (messageBatch.Count > 0)
+            _logger.LogInformation("Published {Total} messages in {Batches} batches",
+                processedCount, batchCount);
+        }
+        finally
         {
-            await _sender.SendMessagesAsync(messageBatch, cancellationToken);
-            batchCount++;
+            messageBatch.Dispose();
         }
-
-        _logger.LogInformation("Published {Total} messages in {Batches} batches",
-            processedCount, batchCount);
     }
 }
 ```
@@ -428,6 +436,9 @@ public abstract record IntegrationEvent : IIntegrationEvent
 }
 
 public abstract record OrderEvent : IntegrationEvent;
+public abstract record InventoryEvent : IntegrationEvent;
+public abstract record PaymentEvent : IntegrationEvent;
+
 public record OrderPlacedEvent(Guid OrderId, string CustomerId, decimal Total) : OrderEvent;
 public record OrderShippedEvent(Guid OrderId, string TrackingNumber) : OrderEvent;
 ```
@@ -517,7 +528,7 @@ public class NotificationWorker : BackgroundService
 }
 ```
 
-## Message Scheduling and Deferral
+## Message Scheduling
 
 Schedule messages for future delivery:
 

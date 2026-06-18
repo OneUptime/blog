@@ -107,11 +107,11 @@ Different regulations require specific retention periods:
 
 | Regulation | Data Type | Minimum Retention |
 |------------|-----------|-------------------|
-| HIPAA | Medical records | 6 years |
-| SOX | Financial records | 7 years |
+| HIPAA | Security Rule documentation | 6 years |
+| SOX | Audit and review workpapers | 7 years |
 | GDPR | Personal data | Only as long as necessary |
-| PCI-DSS | Audit logs | 1 year |
-| IRS | Tax records | 7 years |
+| PCI-DSS | Audit logs | 12 months, with 3 months immediately available |
+| IRS | Tax records | Usually 3-7 years, depending on record type |
 
 Implement compliance-aware retention:
 
@@ -121,9 +121,9 @@ Implement compliance-aware retention:
 
 # Configuration per data type
 declare -A RETENTION_DAYS
-RETENTION_DAYS["financial"]=2555   # 7 years for SOX
-RETENTION_DAYS["medical"]=2190     # 6 years for HIPAA
-RETENTION_DAYS["audit"]=365        # 1 year for PCI-DSS
+RETENTION_DAYS["sox_audit"]=2555   # 7 years for SOX audit and review workpapers
+RETENTION_DAYS["hipaa_docs"]=2190  # 6 years for HIPAA Security Rule documentation
+RETENTION_DAYS["audit"]=365        # 12 months for PCI-DSS audit history
 RETENTION_DAYS["operational"]=90   # 90 days for general ops
 
 apply_retention() {
@@ -141,8 +141,8 @@ apply_retention() {
 }
 
 # Apply retention per data type
-apply_retention "financial" "/backups/financial"
-apply_retention "medical" "/backups/medical"
+apply_retention "sox_audit" "/backups/sox-audit"
+apply_retention "hipaa_docs" "/backups/hipaa-docs"
 apply_retention "audit" "/backups/audit"
 apply_retention "operational" "/backups/operational"
 ```
@@ -300,23 +300,25 @@ aws s3api put-bucket-lifecycle-configuration \
 
 ```ini
 # postgresql.conf
+archive_mode = on
 wal_keep_size = 1GB
 archive_command = 'test ! -f /archive/%f && cp %p /archive/%f'
 ```
 
 ```bash
-# Clean up old WAL archives
-find /archive -name "*.backup" -mtime +7 -delete
-find /archive -type f ! -name "*.backup" -mtime +1 -delete
+# Clean up WAL archives only after your backup tool identifies the oldest WAL still needed
+OLDEST_REQUIRED_WAL="0000000100000000000000A0"
+pg_archivecleanup /archive "$OLDEST_REQUIRED_WAL"
 ```
 
 ### MySQL Binary Log Retention
 
 ```ini
 # my.cnf
-expire_logs_days = 7
-# Or for MySQL 8.0+:
+# MySQL 8.0+:
 binlog_expire_logs_seconds = 604800
+# Older MySQL versions:
+# expire_logs_days = 7
 ```
 
 ```sql
@@ -333,23 +335,23 @@ Track that retention policies are being applied:
 # monitor_retention.py
 
 import boto3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 def check_s3_retention(bucket_name, prefix, max_age_days):
     """Check if old backups exist that should have been deleted."""
 
     s3 = boto3.client('s3')
-    cutoff_date = datetime.now() - timedelta(days=max_age_days)
+    cutoff_date = datetime.now(timezone.utc) - timedelta(days=max_age_days)
 
     paginator = s3.get_paginator('list_objects_v2')
     violations = []
 
     for page in paginator.paginate(Bucket=bucket_name, Prefix=prefix):
         for obj in page.get('Contents', []):
-            if obj['LastModified'].replace(tzinfo=None) < cutoff_date:
+            if obj['LastModified'] < cutoff_date:
                 violations.append({
                     'key': obj['Key'],
-                    'age_days': (datetime.now() - obj['LastModified'].replace(tzinfo=None)).days,
+                    'age_days': (datetime.now(timezone.utc) - obj['LastModified']).days,
                     'size': obj['Size']
                 })
 
@@ -394,20 +396,31 @@ ACTION="$1"  # enable or disable
 BUCKET="my-backup-bucket"
 PREFIX="$2"
 
+apply_legal_hold() {
+    local status="$1"
+
+    aws s3api list-objects-v2 \
+        --bucket "$BUCKET" \
+        --prefix "$PREFIX" \
+        --query 'Contents[].Key' \
+        --output text | tr '\t' '\n' | while read -r key; do
+            [ -z "$key" ] && continue
+
+            aws s3api put-object-legal-hold \
+                --bucket "$BUCKET" \
+                --key "$key" \
+                --legal-hold Status="$status"
+        done
+}
+
 case "$ACTION" in
     enable)
         echo "Enabling legal hold on $PREFIX"
-        aws s3api put-object-legal-hold \
-            --bucket "$BUCKET" \
-            --key "$PREFIX" \
-            --legal-hold Status=ON
+        apply_legal_hold "ON"
         ;;
     disable)
         echo "Disabling legal hold on $PREFIX"
-        aws s3api put-object-legal-hold \
-            --bucket "$BUCKET" \
-            --key "$PREFIX" \
-            --legal-hold Status=OFF
+        apply_legal_hold "OFF"
         ;;
     *)
         echo "Usage: $0 [enable|disable] <prefix>"
@@ -436,9 +449,9 @@ This document defines retention periods for all backup data.
 | Audit Data | 30 days | None | 12 months | 7 years | 7 years |
 
 ## Compliance Requirements
-- Financial data: 7 years (SOX)
-- Audit logs: 1 year minimum (PCI-DSS)
-- Personal data: Delete upon request (GDPR)
+- Audit and review workpapers: 7 years (SOX)
+- Audit logs: 12 months minimum, with 3 months immediately available (PCI-DSS)
+- Personal data: Keep only as long as necessary and honor erasure requests where applicable (GDPR)
 
 ## Exception Process
 1. Legal hold requests must be submitted to legal@example.com
@@ -461,7 +474,7 @@ Balance retention needs against storage costs:
 # retention_cost_analysis.py
 
 import boto3
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 
 def analyze_retention_costs(bucket_name):
     """Analyze storage costs by backup age."""
@@ -479,7 +492,7 @@ def analyze_retention_costs(bucket_name):
 
     for page in paginator.paginate(Bucket=bucket_name):
         for obj in page.get('Contents', []):
-            age = (datetime.now() - obj['LastModified'].replace(tzinfo=None)).days
+            age = (datetime.now(timezone.utc) - obj['LastModified']).days
             size_gb = obj['Size'] / (1024**3)
 
             if age <= 7:

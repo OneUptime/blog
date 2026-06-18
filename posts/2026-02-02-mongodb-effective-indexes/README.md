@@ -134,7 +134,7 @@ db.orders.createIndex(
 )
 ```
 
-The index above will only contain documents where `status` is one of the active workflow values. Queries that include this same filter condition can use the index efficiently. Note that `partialFilterExpression` only accepts a limited set of operators (equality, `$eq`, `$gt`, `$gte`, `$lt`, `$lte`, `$in`, `$exists`, `$type`, `$and`, `$or`) — operators like `$ne` and `$nin` are not allowed.
+The index above will only contain documents where `status` is one of the active workflow values. Queries that include this same filter condition can use the index efficiently. Note that `partialFilterExpression` only accepts a limited set of operators (equality, `$eq`, `$gt`, `$gte`, `$lt`, `$lte`, `$in`, `$exists`, `$type`, `$and`, `$or`) - operators like `$ne` and `$nin` are not allowed.
 
 Important: Your query filter must match or be more restrictive than the partial filter for MongoDB to use the index:
 

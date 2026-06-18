@@ -92,7 +92,10 @@ CORS trips people up constantly. The key things to remember: preflight requests 
 ```go
 package middleware
 
-import "net/http"
+import (
+    "fmt"
+    "net/http"
+)
 
 // CORSConfig holds CORS configuration
 type CORSConfig struct {
@@ -131,6 +134,7 @@ func CORS(config CORSConfig) func(http.Handler) http.Handler {
 
             if allowed && origin != "" {
                 w.Header().Set("Access-Control-Allow-Origin", origin)
+                w.Header().Add("Vary", "Origin")
 
                 if config.AllowCredentials {
                     w.Header().Set("Access-Control-Allow-Credentials", "true")
@@ -254,12 +258,8 @@ import (
 func NewJWTValidator(secret string) TokenValidator {
     return func(tokenString string) (*User, error) {
         token, err := jwt.Parse(tokenString, func(t *jwt.Token) (interface{}, error) {
-            // Validate signing method
-            if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-                return nil, errors.New("unexpected signing method")
-            }
             return []byte(secret), nil
-        })
+        }, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
 
         if err != nil || !token.Valid {
             return nil, errors.New("invalid token")
@@ -270,10 +270,25 @@ func NewJWTValidator(secret string) TokenValidator {
             return nil, errors.New("invalid claims")
         }
 
+        id, ok := claims["sub"].(string)
+        if !ok {
+            return nil, errors.New("missing subject claim")
+        }
+
+        email, ok := claims["email"].(string)
+        if !ok {
+            return nil, errors.New("missing email claim")
+        }
+
+        role, ok := claims["role"].(string)
+        if !ok {
+            return nil, errors.New("missing role claim")
+        }
+
         return &User{
-            ID:    claims["sub"].(string),
-            Email: claims["email"].(string),
-            Role:  claims["role"].(string),
+            ID:    id,
+            Email: email,
+            Role:  role,
         }, nil
     }
 }

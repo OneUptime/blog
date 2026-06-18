@@ -398,7 +398,7 @@ const total = filteredItems.reduce((sum, item) => sum + item.value, 0);
 
 ### Narrowing in Callbacks
 
-Be aware that narrowing does not persist across callbacks:
+Be aware that narrowing may not persist across callbacks when a variable can be reassigned:
 
 ```typescript
 function processAsync(value: string | null) {
@@ -406,9 +406,9 @@ function processAsync(value: string | null) {
     // value is string here
 
     setTimeout(() => {
-      // TypeScript cannot guarantee value is still string
-      // because the outer scope could have changed
-      console.log(value.toUpperCase());  // This works because value is captured
+      // value is still string here because it is captured
+      // and is not reassigned
+      console.log(value.toUpperCase());
     }, 100);
   }
 }
@@ -504,12 +504,12 @@ console.log(value.toFixed(2));
 
 ```typescript
 function processItems(items: string[] | null) {
-  // Bug: This creates a new reference
+  // This creates a new variable with the original union type
   let processedItems = items;
 
   if (items !== null) {
     // items is string[] here
-    // but processedItems is still string[] | null
+    // but processedItems is still string[] | null until it is reassigned
     processedItems = items.map(i => i.toUpperCase());
   }
 

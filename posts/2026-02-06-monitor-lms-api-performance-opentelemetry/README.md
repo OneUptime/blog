@@ -21,7 +21,9 @@ First, install the required packages for a Node.js-based LMS integration service
 ```bash
 npm install @opentelemetry/api @opentelemetry/sdk-node \
   @opentelemetry/auto-instrumentations-node \
-  @opentelemetry/exporter-otlp-grpc
+  @opentelemetry/exporter-trace-otlp-grpc \
+  @opentelemetry/exporter-metrics-otlp-grpc \
+  @opentelemetry/sdk-metrics
 ```
 
 Configure the SDK in your application entry point:
@@ -29,20 +31,27 @@ Configure the SDK in your application entry point:
 ```javascript
 // tracing.js - Initialize OpenTelemetry before any other imports
 const { NodeSDK } = require('@opentelemetry/sdk-node');
-const { OTLPTraceExporter } = require('@opentelemetry/exporter-otlp-grpc');
+const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
+const { OTLPMetricExporter } = require('@opentelemetry/exporter-metrics-otlp-grpc');
+const { PeriodicExportingMetricReader } = require('@opentelemetry/sdk-metrics');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } = require('@opentelemetry/semantic-conventions');
 
 const sdk = new NodeSDK({
-  resource: new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: 'lms-integration-service',
-    [SemanticResourceAttributes.SERVICE_VERSION]: '1.2.0',
+  resource: resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: 'lms-integration-service',
+    [ATTR_SERVICE_VERSION]: '1.2.0',
     // Tag which LMS this service connects to
     'lms.platform': 'canvas',
   }),
   traceExporter: new OTLPTraceExporter({
-    url: 'grpc://your-otel-collector:4317',
+    url: 'http://your-otel-collector:4317',
+  }),
+  metricReader: new PeriodicExportingMetricReader({
+    exporter: new OTLPMetricExporter({
+      url: 'http://your-otel-collector:4317',
+    }),
   }),
   instrumentations: [getNodeAutoInstrumentations()],
 });
@@ -79,7 +88,7 @@ async function getStudentGrades(courseId, studentId) {
       );
 
       // Record response metadata
-      span.setAttribute('http.status_code', response.status);
+      span.setAttribute('http.response.status_code', response.status);
       span.setAttribute('lms.response_time_ms', Date.now() - startTime);
       span.setAttribute('lms.rate_limit_remaining', response.headers.get('x-rate-limit-remaining'));
 
@@ -101,7 +110,7 @@ async function getStudentGrades(courseId, studentId) {
 
 ## Tracking Rate Limits Across LMS Platforms
 
-Each LMS has different rate limiting behavior. Canvas uses a token bucket approach, Moodle has per-function limits, and Blackboard throttles based on API keys. Tracking these as metrics helps you avoid hitting limits:
+Each LMS has different rate limiting behavior. Canvas uses a token bucket approach and exposes remaining quota in a response header, Moodle access is controlled by enabled web service functions and site configuration, and Blackboard documents site quotas and daily API request limits. Tracking these as metrics helps you avoid hitting limits:
 
 ```javascript
 const { metrics } = require('@opentelemetry/api');
@@ -119,12 +128,28 @@ const rateLimitRemaining = meter.createObservableGauge('lms.api.rate_limit_remai
   description: 'Remaining API calls before rate limit is hit',
 });
 
+const latestRateLimitRemaining = new Map();
+
+rateLimitRemaining.addCallback((observableResult) => {
+  for (const [key, remaining] of latestRateLimitRemaining) {
+    const [platform, endpoint] = key.split('|');
+    observableResult.observe(remaining, {
+      'lms.platform': platform,
+      'lms.endpoint': endpoint,
+    });
+  }
+});
+
 // Record metrics after each API call
 function recordApiMetrics(platform, endpoint, latencyMs, remaining) {
   apiLatency.record(latencyMs, {
     'lms.platform': platform,
     'lms.endpoint': endpoint,
   });
+
+  if (remaining !== null && remaining !== undefined) {
+    latestRateLimitRemaining.set(`${platform}|${endpoint}`, Number(remaining));
+  }
 }
 ```
 
@@ -137,9 +162,12 @@ For Moodle, the pattern is similar but the API structure differs since Moodle us
 
 from opentelemetry import trace
 from opentelemetry.trace import SpanKind
+import os
 import requests
 
 tracer = trace.get_tracer("moodle-integration")
+MOODLE_URL = os.environ["MOODLE_URL"].rstrip("/")
+MOODLE_TOKEN = os.environ["MOODLE_TOKEN"]
 
 def call_moodle_function(function_name, params):
     with tracer.start_as_current_span(
@@ -160,9 +188,9 @@ def call_moodle_function(function_name, params):
                 **params,
             }
         )
-        span.set_attribute("http.status_code", response.status_code)
+        span.set_attribute("http.response.status_code", response.status_code)
 
-        # Moodle returns errors in the JSON body, not HTTP status
+        # Moodle web service exceptions are returned in the JSON body
         data = response.json()
         if "exception" in data:
             span.set_status(trace.StatusCode.ERROR, data.get("message", "Unknown error"))

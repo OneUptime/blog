@@ -72,6 +72,13 @@ interface MetricDefinition {
     // For conversion metrics, the success event
     successEvent?: string;
 }
+
+type UserContext = Record<string, any>;
+
+interface AssignmentResult {
+    variant: Variant | null;
+    inExperiment: boolean;
+}
 ```
 
 ## Assignment Service
@@ -80,17 +87,17 @@ The assignment service determines which variant a user sees. Consistency is crit
 
 ```typescript
 // assignment.service.ts
-import crypto from 'crypto';
+import { createHash } from 'node:crypto';
 
 class AssignmentService {
     private experiments: Map<string, Experiment> = new Map();
     private assignmentCache: Map<string, string> = new Map();
 
-    // Generate deterministic assignment using consistent hashing
+    // Generate deterministic assignment using a stable hash
     // This ensures the same user always gets the same variant
     private hashAssignment(userId: string, experimentId: string): number {
         const input = `${userId}:${experimentId}`;
-        const hash = crypto.createHash('md5').update(input).digest('hex');
+        const hash = createHash('md5').update(input).digest('hex');
         // Convert first 8 hex chars to number between 0-99
         const hashInt = parseInt(hash.substring(0, 8), 16);
         return hashInt % 100;
@@ -112,7 +119,9 @@ class AssignmentService {
                     if (!String(userValue).includes(rule.value)) return false;
                     break;
                 case 'in':
-                    if (!rule.value.includes(userValue)) return false;
+                    if (!Array.isArray(rule.value) || !rule.value.includes(userValue)) {
+                        return false;
+                    }
                     break;
                 case 'gt':
                     if (userValue <= rule.value) return false;
@@ -141,8 +150,14 @@ class AssignmentService {
         const cacheKey = `${userId}:${experimentId}`;
         const cachedVariant = this.assignmentCache.get(cacheKey);
         if (cachedVariant) {
+            const variant = experiment.variants.find(v => v.id === cachedVariant);
+            if (!variant) {
+                this.assignmentCache.delete(cacheKey);
+                return { variant: null, inExperiment: false };
+            }
+
             return {
-                variant: experiment.variants.find(v => v.id === cachedVariant),
+                variant,
                 inExperiment: true,
             };
         }
@@ -172,9 +187,11 @@ class AssignmentService {
         }
 
         // Cache the assignment
-        if (assignedVariant) {
-            this.assignmentCache.set(cacheKey, assignedVariant.id);
+        if (!assignedVariant) {
+            return { variant: null, inExperiment: false };
         }
+
+        this.assignmentCache.set(cacheKey, assignedVariant.id);
 
         return {
             variant: assignedVariant,
@@ -325,7 +342,6 @@ Calculate statistical significance to determine experiment winners:
 import numpy as np
 from scipy import stats
 from dataclasses import dataclass
-from typing import List
 
 @dataclass
 class VariantStats:
@@ -374,9 +390,13 @@ def calculate_significance(
     # Two-tailed p-value
     p_value = 2 * (1 - stats.norm.cdf(abs(z_score)))
 
-    # Confidence interval for the difference
+    # Confidence interval for the difference uses the unpooled standard error
+    ci_se = np.sqrt(
+        control_rate * (1 - control_rate) / control_total +
+        treatment_rate * (1 - treatment_rate) / treatment_total
+    )
     z_critical = stats.norm.ppf(1 - alpha/2)
-    margin = z_critical * se
+    margin = z_critical * ci_se
     ci_lower = (treatment_rate - control_rate) - margin
     ci_upper = (treatment_rate - control_rate) + margin
 
@@ -436,14 +456,16 @@ def calculate_sample_size(
     z_alpha = stats.norm.ppf(1 - alpha/2)
     z_beta = stats.norm.ppf(power)
 
-    # Pooled standard deviation
+    # Standard error terms for the null and alternative proportions
     p1 = baseline_rate
     p2 = treatment_rate
-    pooled_var = p1 * (1 - p1) + p2 * (1 - p2)
+    pooled_p = (p1 + p2) / 2
+    se_null = np.sqrt(2 * pooled_p * (1 - pooled_p))
+    se_alt = np.sqrt(p1 * (1 - p1) + p2 * (1 - p2))
 
     # Sample size formula
     effect_size = abs(p2 - p1)
-    n = ((z_alpha + z_beta) ** 2 * pooled_var) / (effect_size ** 2)
+    n = ((z_alpha * se_null + z_beta * se_alt) ** 2) / (effect_size ** 2)
 
     return int(np.ceil(n))
 ```

@@ -8,7 +8,7 @@ Description: Learn how to use Arc (Atomic Reference Counting) for shared ownersh
 
 ---
 
-`Arc<T>` (Atomic Reference Counted) is Rust's thread-safe reference counting smart pointer. When you need multiple threads to share ownership of data, Arc provides safe concurrent access through atomic reference counting.
+`Arc<T>` (Atomic Reference Counted) is Rust's thread-safe reference counting smart pointer. When you need multiple threads to share ownership of data, Arc provides safe shared ownership through atomic reference counting, as long as the contained type can safely be shared between threads.
 
 ## Arc vs Rc
 
@@ -223,7 +223,7 @@ struct Worker {
 
 impl ThreadPool {
     fn new(size: usize) -> Self {
-        let (sender, receiver) = std::sync::mpsc::channel();
+        let (sender, receiver) = std::sync::mpsc::channel::<Job>();
         let receiver = Arc::new(Mutex::new(receiver));
 
         let mut workers = Vec::with_capacity(size);

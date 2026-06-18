@@ -36,11 +36,11 @@ flowchart LR
     end
 
     subgraph Cold Storage
-        C[Glacier / Archive]
+        C[Glacier Flexible / Coldline / Cold]
     end
 
     subgraph Deep Cold
-        D[Deep Archive / Cold]
+        D[Deep Archive / Archive]
     end
 
     A -->|30 days| B
@@ -48,15 +48,16 @@ flowchart LR
     C -->|365 days| D
 ```
 
-| Provider | Tier | Retrieval Time | Cost per GB/month |
+| Provider | Tier | Retrieval Time | Example cost per GB/month |
 |----------|------|----------------|-------------------|
 | AWS | S3 Standard | Instant | $0.023 |
 | AWS | S3 Glacier Instant | Instant | $0.004 |
-| AWS | S3 Glacier Flexible | 1-12 hours | $0.0036 |
+| AWS | S3 Glacier Flexible | 1-5 minutes to 12 hours | $0.0036 |
 | AWS | S3 Glacier Deep Archive | 12-48 hours | $0.00099 |
 | Azure | Hot | Instant | $0.0184 |
 | Azure | Cool | Instant | $0.01 |
-| Azure | Archive | Hours | $0.00099 |
+| Azure | Cold | Instant | Varies by region |
+| Azure | Archive | Up to 15 hours | $0.00099 |
 | GCP | Standard | Instant | $0.020 |
 | GCP | Nearline | Instant | $0.010 |
 | GCP | Coldline | Instant | $0.004 |
@@ -268,7 +269,7 @@ az storage account management-policy create \
 ### Rehydrating from Archive
 
 ```bash
-# Rehydrate blob (standard priority, up to 15 hours)
+# Rehydrate blob (standard priority, up to 15 hours for blobs under 10 GB)
 az storage blob set-tier \
     --account-name mystorageaccount \
     --container-name backups \
@@ -276,7 +277,7 @@ az storage blob set-tier \
     --tier Hot \
     --rehydrate-priority Standard
 
-# High priority rehydration (up to 1 hour)
+# High priority rehydration (may complete in under 1 hour for blobs under 10 GB)
 az storage blob set-tier \
     --account-name mystorageaccount \
     --container-name backups \
@@ -362,13 +363,13 @@ gsutil lifecycle set lifecycle.json gs://my-archive-bucket
 
 ### Retrieving from Archive
 
-GCP Archive storage has no retrieval delay, but early deletion incurs charges:
+GCP Archive storage has no retrieval delay, but retrieval fees and early deletion charges can apply:
 
 ```bash
 # Download directly (no restoration step needed)
 gsutil cp gs://my-archive-bucket/archive.tar.gz ./
 
-# Change to Standard for frequent access (avoids retrieval fees)
+# Change to Standard for future frequent access
 gsutil rewrite -s standard gs://my-archive-bucket/needed-backup.tar.gz
 ```
 
@@ -500,28 +501,70 @@ def estimate_retrieval_cost(bucket, prefix, tier='Standard'):
     paginator = s3.get_paginator('list_objects_v2')
 
     retrieval_costs = {
-        'Expedited': 0.03,    # per GB for Glacier
-        'Standard': 0.01,     # per GB for Glacier
-        'Bulk': 0.0025,       # per GB for Glacier
+        'GLACIER': {
+            'Expedited': 0.03,    # per GB for S3 Glacier Flexible Retrieval
+            'Standard': 0.01,     # per GB for S3 Glacier Flexible Retrieval
+            'Bulk': 0.00,         # per GB for S3 Glacier Flexible Retrieval
+        },
+        'DEEP_ARCHIVE': {
+            'Standard': 0.02,     # per GB for S3 Glacier Deep Archive
+            'Bulk': 0.0025,       # per GB for S3 Glacier Deep Archive
+        },
+    }
+
+    request_costs = {
+        'GLACIER': {
+            'Expedited': 10.00,   # per 1000 requests
+            'Standard': 0.05,     # per 1000 requests
+            'Bulk': 0.00,         # per 1000 requests
+        },
+        'DEEP_ARCHIVE': {
+            'Standard': 0.10,     # per 1000 requests
+            'Bulk': 0.025,        # per 1000 requests
+        },
     }
 
     total_size_gb = 0
     object_count = 0
+    totals_by_class = {
+        'GLACIER': {'size_gb': 0, 'count': 0},
+        'DEEP_ARCHIVE': {'size_gb': 0, 'count': 0},
+    }
 
     for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
         for obj in page.get('Contents', []):
-            if obj.get('StorageClass') in ['GLACIER', 'DEEP_ARCHIVE']:
-                total_size_gb += obj['Size'] / (1024**3)
+            storage_class = obj.get('StorageClass')
+            if storage_class in totals_by_class:
+                size_gb = obj['Size'] / (1024**3)
+                totals_by_class[storage_class]['size_gb'] += size_gb
+                totals_by_class[storage_class]['count'] += 1
+                total_size_gb += size_gb
                 object_count += 1
 
     # Calculate costs
-    retrieval_cost = total_size_gb * retrieval_costs.get(tier, 0.01)
-    request_cost = (object_count / 1000) * 0.05  # per 1000 requests
+    retrieval_cost = 0
+    request_cost = 0
+    eligible_size_gb = 0
+    eligible_object_count = 0
+
+    for storage_class, totals in totals_by_class.items():
+        class_retrieval_cost = retrieval_costs[storage_class].get(tier)
+        class_request_cost = request_costs[storage_class].get(tier)
+
+        if class_retrieval_cost is None or class_request_cost is None:
+            continue
+
+        eligible_size_gb += totals['size_gb']
+        eligible_object_count += totals['count']
+        retrieval_cost += totals['size_gb'] * class_retrieval_cost
+        request_cost += (totals['count'] / 1000) * class_request_cost
 
     print(f"=== Retrieval Cost Estimate ===")
     print(f"Prefix: {prefix}")
-    print(f"Objects: {object_count}")
-    print(f"Total Size: {total_size_gb:.2f} GB")
+    print(f"Archived Objects: {object_count}")
+    print(f"Archived Size: {total_size_gb:.2f} GB")
+    print(f"Objects with Selected Tier: {eligible_object_count}")
+    print(f"Size with Selected Tier: {eligible_size_gb:.2f} GB")
     print(f"Tier: {tier}")
     print(f"\nEstimated Costs:")
     print(f"  Retrieval: ${retrieval_cost:.2f}")
@@ -529,11 +572,11 @@ def estimate_retrieval_cost(bucket, prefix, tier='Standard'):
     print(f"  Total: ${retrieval_cost + request_cost:.2f}")
 
     if tier == 'Standard':
-        print(f"\nEstimated Time: 3-5 hours")
+        print(f"\nEstimated Time: 3-5 hours for S3 Glacier Flexible Retrieval, within 12 hours for Deep Archive")
     elif tier == 'Expedited':
-        print(f"\nEstimated Time: 1-5 minutes")
+        print(f"\nEstimated Time: 1-5 minutes for S3 Glacier Flexible Retrieval only")
     elif tier == 'Bulk':
-        print(f"\nEstimated Time: 5-12 hours")
+        print(f"\nEstimated Time: 5-12 hours for S3 Glacier Flexible Retrieval, within 48 hours for Deep Archive")
 
 if __name__ == "__main__":
     import sys
@@ -545,7 +588,7 @@ if __name__ == "__main__":
 
 ## Best Practices
 
-1. **Plan for retrieval time.** Cold storage is not instant. Build retrieval time into your recovery procedures.
+1. **Plan for retrieval time.** Some archive tiers are not instant. Build retrieval time into your recovery procedures.
 
 2. **Use lifecycle policies.** Automate transitions based on object age rather than manual moves.
 
@@ -559,4 +602,4 @@ if __name__ == "__main__":
 
 ## Wrapping Up
 
-Cold storage archival is essential for cost-effective long-term retention. The key is matching data access patterns to storage tiers and automating the transitions with lifecycle policies. Plan retrieval procedures before you need them since cold storage retrieval takes time and costs more than standard access. Regular testing ensures your archives are usable when compliance or disaster recovery demands them.
+Cold storage archival is essential for cost-effective long-term retention. The key is matching data access patterns to storage tiers and automating the transitions with lifecycle policies. Plan retrieval procedures before you need them since some cold storage retrieval takes time and can cost more than standard access. Regular testing ensures your archives are usable when compliance or disaster recovery demands them.

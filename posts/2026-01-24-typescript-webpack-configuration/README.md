@@ -155,8 +155,8 @@ The following diagram illustrates the complete build process.
 flowchart TD
     A[Source Files] --> B{File Type?}
     B -->|.ts/.tsx| C[ts-loader]
-    B -->|.css| D[css-loader]
-    B -->|.json| E[json-loader]
+    B -->|.css| D[css-loader<br/>if configured]
+    B -->|.json| E[Webpack built-in<br/>JSON handling]
     C --> F[TypeScript Compiler]
     F --> G[JavaScript Output]
     D --> H[CSS Processing]
@@ -167,12 +167,16 @@ flowchart TD
     J --> K[Output Files]
     K --> L[bundle.js]
     K --> M[bundle.js.map]
-    K --> N[styles.css]
 ```
 
 ## Development and Production Configurations
 
 For real-world projects, you need separate configurations for development and production.
+
+```bash
+# Install utilities used by the split configuration
+npm install --save-dev webpack-merge terser-webpack-plugin
+```
 
 ```javascript
 // webpack.common.js - Shared configuration
@@ -208,6 +212,7 @@ module.exports = {
 
 ```javascript
 // webpack.dev.js - Development configuration
+const path = require('path');
 const { merge } = require('webpack-merge');
 const common = require('./webpack.common.js');
 
@@ -239,6 +244,7 @@ module.exports = merge(common, {
 
 ```javascript
 // webpack.prod.js - Production configuration
+const path = require('path');
 const { merge } = require('webpack-merge');
 const common = require('./webpack.common.js');
 const TerserPlugin = require('terser-webpack-plugin');
@@ -297,6 +303,9 @@ For better browser compatibility, you can use Babel instead of ts-loader.
 ```bash
 # Install Babel and required presets
 npm install --save-dev @babel/core @babel/preset-env @babel/preset-typescript babel-loader
+
+# Install core-js when using useBuiltIns with @babel/preset-env
+npm install --save core-js@3
 ```
 
 ```javascript
@@ -306,9 +315,7 @@ module.exports = {
     // Handle modern JavaScript features
     ['@babel/preset-env', {
       // Target specific browsers
-      targets: {
-        browsers: ['last 2 versions', 'not dead', '> 0.2%'],
-      },
+      targets: ['last 2 versions', 'not dead', '> 0.2%'],
       // Use polyfills as needed
       useBuiltIns: 'usage',
       corejs: 3,
@@ -500,6 +507,8 @@ If TypeScript cannot find modules, ensure your paths are configured correctly.
 
 ```javascript
 // webpack.config.js
+const path = require('path');
+
 module.exports = {
   resolve: {
     // Add all necessary extensions
@@ -538,6 +547,8 @@ For large projects, optimize build performance.
 
 ```javascript
 // webpack.config.js
+const path = require('path');
+
 module.exports = {
   module: {
     rules: [

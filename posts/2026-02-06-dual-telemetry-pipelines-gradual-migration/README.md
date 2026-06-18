@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Migration, Telemetry Pipeline, Observability, Prometheus, Collector
 
-Description: Learn how to run parallel telemetry pipelines during a migration from legacy monitoring to OpenTelemetry, ensuring zero data loss and continuous observability throughout the transition.
+Description: Learn how to run parallel telemetry pipelines during a migration from legacy monitoring to OpenTelemetry, reducing the risk of data loss and maintaining observability throughout the transition.
 
 ---
 
-Migrating your observability stack is not something you do over a weekend. Whether you are moving from Prometheus, Jaeger, Zipkin, or a proprietary vendor to OpenTelemetry, the safest path is to run both systems in parallel until you have full confidence in the new pipeline. This approach, sometimes called dual-write or dual-pipeline, ensures you never lose visibility into your systems during the transition.
+Migrating your observability stack is not something you do over a weekend. Whether you are moving from Prometheus, Jaeger, Zipkin, or a proprietary vendor to OpenTelemetry, the safest path is to run both systems in parallel until you have full confidence in the new pipeline. This approach, sometimes called dual-write or dual-pipeline, helps you avoid losing visibility into your systems during the transition.
 
 This guide covers the architecture, configuration, and operational practices for running dual telemetry pipelines during a gradual migration.
 
@@ -78,7 +78,7 @@ exporters:
     tls:
       insecure: false
 
-  # Legacy Prometheus remote write
+  # Legacy Prometheus remote write-compatible backend
   prometheusremotewrite/legacy:
     endpoint: "http://prometheus.internal:9090/api/v1/write"
     resource_to_telemetry_conversion:
@@ -93,7 +93,7 @@ service:
       exporters: [otlp/new, prometheusremotewrite/legacy]
 ```
 
-The Collector receives metrics from both OTLP-instrumented services and Prometheus-scraped endpoints, then exports to both backends. This is the most common dual-pipeline pattern because it requires no changes to application code.
+The Collector receives metrics from both OTLP-instrumented services and Prometheus-scraped endpoints, then exports to both backends. If the legacy endpoint is a Prometheus server, enable Prometheus's remote write receiver with `--web.enable-remote-write-receiver`; otherwise, point this exporter at a remote write-compatible backend. This is the most common dual-pipeline pattern because it requires no changes to application code.
 
 ## Strategy 2: Application-Level Dual Instrumentation
 
@@ -220,9 +220,14 @@ sum(increase(http.server.request.count[1h]))
 service:
   telemetry:
     metrics:
-      # The collector exposes its own metrics on this address
-      address: 0.0.0.0:8888
       level: detailed
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                # The collector exposes its own metrics on this address
+                host: "0.0.0.0"
+                port: 8888
 ```
 
 Key metrics to watch include `otelcol_exporter_sent_metric_points` and `otelcol_exporter_send_failed_metric_points` for each exporter.
@@ -241,16 +246,16 @@ Once you have validated the new pipeline, the cutover process should be gradual:
 
 ## Handling Traces and Logs
 
-The same dual-pipeline approach works for traces and logs. Here is a configuration that exports traces to both Jaeger (legacy) and an OTLP backend (new):
+The same dual-pipeline approach works for traces and logs. Here is a configuration that exports traces to both Jaeger (legacy, via its OTLP endpoint) and an OTLP backend (new):
 
 ```yaml
 exporters:
   otlp/new:
     endpoint: "oneuptime.example.com:4317"
 
-  # Legacy Jaeger backend
-  jaeger:
-    endpoint: "jaeger-collector.internal:14250"
+  # Legacy Jaeger backend accepting OTLP/gRPC
+  otlp/jaeger:
+    endpoint: "jaeger-collector.internal:4317"
     tls:
       insecure: true
 
@@ -259,7 +264,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlp/new, jaeger]
+      exporters: [otlp/new, otlp/jaeger]
 ```
 
 The pattern is identical. The Collector acts as the fan-out point, sending the same data to multiple destinations.
@@ -268,8 +273,8 @@ The pattern is identical. The Collector acts as the fan-out point, sending the s
 
 Dual pipelines double your telemetry egress and storage costs. Here are ways to manage the impact:
 
-- **Use sampling for traces**: Apply tail sampling in the Collector to reduce trace volume in the new backend while keeping full fidelity in the legacy system (or vice versa).
-- **Reduce export frequency for the legacy path**: If your legacy system only needs data for fallback, you can batch more aggressively on that export path.
+- **Use sampling for traces**: Apply tail sampling in the Collector to reduce trace volume. If only one backend should receive sampled data, use separate trace pipelines so the sampling processor applies only to that path.
+- **Reduce export frequency for the legacy path**: If your legacy system only needs data for fallback, use a separate pipeline with a more aggressive batch processor for that path.
 - **Set a time limit**: Agree upfront on a migration timeline. Open-ended dual pipelines tend to become permanent, which defeats the purpose.
 - **Monitor Collector resource usage**: Dual export increases the Collector's CPU and memory consumption. Make sure your Collector instances are sized appropriately.
 

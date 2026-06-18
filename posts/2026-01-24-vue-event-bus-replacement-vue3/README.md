@@ -49,7 +49,7 @@ flowchart TD
 
 ## Solution 1: Mitt - Lightweight Event Emitter
 
-Mitt is a tiny (200 bytes) event emitter library that provides the same functionality.
+Mitt is a tiny (~200 bytes gzipped) event emitter library that provides the same functionality.
 
 ### Installation
 
@@ -73,10 +73,10 @@ export default emitter;
 
 ```typescript
 // eventBus.ts
-import mitt, { Emitter } from 'mitt';
+import mitt, { type Emitter } from 'mitt';
 
 // Define your event types
-type Events = {
+export type Events = {
   'user-logged-in': { id: string; name: string };
   'user-logged-out': void;
   'notification': { message: string; type: 'success' | 'error' };
@@ -400,7 +400,7 @@ For parent-child communication, use Vue's built-in emit:
 
 ```vue
 <!-- ChildComponent.vue -->
-<script setup>
+<script setup lang="ts">
 const emit = defineEmits<{
   'update': [value: string];
   'submit': [data: { name: string; email: string }];

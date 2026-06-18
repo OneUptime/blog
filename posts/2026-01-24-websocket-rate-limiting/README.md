@@ -159,8 +159,11 @@ function getConnectionLimiter(ip) {
 setInterval(() => {
     const now = Date.now();
     for (const [ip, limiter] of connectionLimiters) {
+        const idleTime = now - limiter.lastRefill;
+        limiter.refill();
+
         // Remove limiters that have been full for over an hour
-        if (now - limiter.lastRefill > 3600000 && limiter.tokens >= limiter.capacity) {
+        if (idleTime > 3600000 && limiter.tokens >= limiter.capacity) {
             connectionLimiters.delete(ip);
         }
     }
@@ -475,6 +478,8 @@ class MultiTierRateLimiter {
     // Get current limits status
     getStatus(messageType) {
         const typeLimiter = this.getTypeLimiter(messageType);
+        this.globalLimiter.refill();
+        typeLimiter.refill();
 
         return {
             global: {
@@ -504,6 +509,7 @@ Here is a complete WebSocket server implementation using multi-tier rate limitin
 // server-with-tiers.js
 // Production WebSocket server with multi-tier rate limiting
 
+const crypto = require('node:crypto');
 const WebSocket = require('ws');
 const { MultiTierRateLimiter } = require('./multi-tier-limiter');
 
@@ -795,7 +801,7 @@ class RedisRateLimiter {
 
             if count < max_requests then
                 -- Add new request
-                redis.call('ZADD', key, now, now .. '-' .. math.random())
+                redis.call('ZADD', key, now, now .. '-' .. count)
                 redis.call('PEXPIRE', key, window_ms)
                 return {1, max_requests - count - 1, 0}
             else
@@ -880,14 +886,14 @@ class RedisTokenBucket {
             if new_tokens >= tokens_needed then
                 -- Consume tokens
                 new_tokens = new_tokens - tokens_needed
-                redis.call('HMSET', key, 'tokens', new_tokens, 'last_refill', now)
+                redis.call('HSET', key, 'tokens', new_tokens, 'last_refill', now)
                 redis.call('EXPIRE', key, 3600)
                 return {1, new_tokens, 0}
             else
                 -- Calculate wait time
                 local tokens_missing = tokens_needed - new_tokens
                 local wait_time = (tokens_missing / refill_rate) * 1000
-                redis.call('HMSET', key, 'tokens', new_tokens, 'last_refill', now)
+                redis.call('HSET', key, 'tokens', new_tokens, 'last_refill', now)
                 redis.call('EXPIRE', key, 3600)
                 return {0, new_tokens, wait_time}
             end

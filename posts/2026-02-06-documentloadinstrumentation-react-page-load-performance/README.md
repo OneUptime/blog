@@ -6,7 +6,7 @@ Tags: OpenTelemetry, React, DocumentLoad, Page Load, Performance, RUM
 
 Description: Master DocumentLoadInstrumentation in React to track page load metrics, measure real user performance, and optimize initial render times.
 
-Page load performance directly impacts user experience and business metrics. Studies show that even a 100ms delay in page load can significantly reduce conversion rates. OpenTelemetry's DocumentLoadInstrumentation captures detailed timing data about how quickly your React application loads and becomes interactive, giving you the insights needed to optimize performance.
+Page load performance directly impacts user experience and business metrics. Studies show that even a 100ms delay in page load can significantly reduce conversion rates. OpenTelemetry's DocumentLoadInstrumentation captures detailed timing data about how quickly your React application loads and reaches key browser lifecycle milestones, giving you the insights needed to optimize performance.
 
 ## Understanding Document Load Timing
 
@@ -38,6 +38,7 @@ Start by installing the OpenTelemetry packages needed for document load instrume
 ```bash
 npm install @opentelemetry/api \
   @opentelemetry/sdk-trace-web \
+  @opentelemetry/instrumentation \
   @opentelemetry/instrumentation-document-load \
   @opentelemetry/exporter-trace-otlp-http \
   @opentelemetry/resources \
@@ -54,23 +55,22 @@ Set up DocumentLoadInstrumentation with a basic configuration that captures all 
 // src/instrumentation/documentLoad.js
 
 import { WebTracerProvider } from '@opentelemetry/sdk-trace-web';
-import { Resource } from '@opentelemetry/resources';
-import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import {
+  ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+} from '@opentelemetry/semantic-conventions';
 import { registerInstrumentations } from '@opentelemetry/instrumentation';
 import { DocumentLoadInstrumentation } from '@opentelemetry/instrumentation-document-load';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-web';
 
 // Define resource attributes to identify your application
-const resource = new Resource({
-  [SemanticResourceAttributes.SERVICE_NAME]: 'react-app-frontend',
-  [SemanticResourceAttributes.SERVICE_VERSION]: '1.0.0',
-  [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV,
-});
-
-// Initialize the tracer provider
-const provider = new WebTracerProvider({
-  resource: resource,
+const resource = resourceFromAttributes({
+  [ATTR_SERVICE_NAME]: 'react-app-frontend',
+  [ATTR_SERVICE_VERSION]: '1.0.0',
+  [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: process.env.NODE_ENV,
 });
 
 // Configure exporter to send traces to your observability backend
@@ -81,8 +81,14 @@ const exporter = new OTLPTraceExporter({
   },
 });
 
-// Add span processor to batch and send traces
-provider.addSpanProcessor(new BatchSpanProcessor(exporter));
+// Initialize the tracer provider
+const provider = new WebTracerProvider({
+  resource,
+  spanProcessors: [
+    new BatchSpanProcessor(exporter),
+  ],
+});
+
 provider.register();
 
 // Register document load instrumentation
@@ -110,50 +116,52 @@ registerInstrumentations({
   instrumentations: [
     new DocumentLoadInstrumentation({
       // Add custom attributes to every document load span
-      applyCustomAttributesOnSpan: (span) => {
-        // Capture page-specific information
-        span.setAttribute('page.url', window.location.href);
-        span.setAttribute('page.pathname', window.location.pathname);
-        span.setAttribute('page.title', document.title);
+      applyCustomAttributesOnSpan: {
+        documentLoad: (span) => {
+          // Capture page-specific information
+          span.setAttribute('page.url', window.location.href);
+          span.setAttribute('page.pathname', window.location.pathname);
+          span.setAttribute('page.title', document.title);
 
-        // Capture browser information
-        span.setAttribute('browser.userAgent', navigator.userAgent);
-        span.setAttribute('browser.language', navigator.language);
+          // Capture browser information
+          span.setAttribute('browser.userAgent', navigator.userAgent);
+          span.setAttribute('browser.language', navigator.language);
 
-        // Capture viewport information
-        span.setAttribute('viewport.width', window.innerWidth);
-        span.setAttribute('viewport.height', window.innerHeight);
+          // Capture viewport information
+          span.setAttribute('viewport.width', window.innerWidth);
+          span.setAttribute('viewport.height', window.innerHeight);
 
-        // Capture connection information if available
-        if (navigator.connection) {
-          span.setAttribute('connection.effectiveType',
-            navigator.connection.effectiveType);
-          span.setAttribute('connection.downlink',
-            navigator.connection.downlink);
-          span.setAttribute('connection.rtt',
-            navigator.connection.rtt);
-        }
+          // Capture connection information if available
+          if (navigator.connection) {
+            span.setAttribute('connection.effectiveType',
+              navigator.connection.effectiveType);
+            span.setAttribute('connection.downlink',
+              navigator.connection.downlink);
+            span.setAttribute('connection.rtt',
+              navigator.connection.rtt);
+          }
 
-        // Capture performance memory if available (Chrome only)
-        if (performance.memory) {
-          span.setAttribute('memory.usedJSHeapSize',
-            performance.memory.usedJSHeapSize);
-          span.setAttribute('memory.jsHeapSizeLimit',
-            performance.memory.jsHeapSizeLimit);
-        }
+          // Capture performance memory if available (Chrome only)
+          if (performance.memory) {
+            span.setAttribute('memory.usedJSHeapSize',
+              performance.memory.usedJSHeapSize);
+            span.setAttribute('memory.jsHeapSizeLimit',
+              performance.memory.jsHeapSizeLimit);
+          }
 
-        // Add custom application attributes
-        const userId = localStorage.getItem('userId');
-        if (userId) {
-          span.setAttribute('user.id', userId);
-        }
+          // Add custom application attributes
+          const userId = localStorage.getItem('userId');
+          if (userId) {
+            span.setAttribute('user.id', userId);
+          }
 
-        // Determine if this is the first visit
-        const isFirstVisit = !sessionStorage.getItem('visited');
-        span.setAttribute('session.isFirstVisit', isFirstVisit);
-        if (isFirstVisit) {
-          sessionStorage.setItem('visited', 'true');
-        }
+          // Determine if this is the first visit
+          const isFirstVisit = !sessionStorage.getItem('visited');
+          span.setAttribute('session.isFirstVisit', isFirstVisit);
+          if (isFirstVisit) {
+            sessionStorage.setItem('visited', 'true');
+          }
+        },
       },
     }),
   ],
@@ -294,7 +302,7 @@ export default PerformanceMonitor;
 
 ## Tracking Resource Loading Performance
 
-Document load timing includes initial HTML load, but you often want to track individual resource loading as well.
+DocumentLoadInstrumentation creates spans for the document load and resource fetches during the initial load, but you often want to track your own resource loading summary as well.
 
 ```javascript
 // src/instrumentation/resourceTiming.js
@@ -372,7 +380,7 @@ captureResourceMetrics();
 
 ## Measuring React-Specific Metrics
 
-Beyond standard document load timing, track React-specific metrics like time to interactive and first meaningful paint.
+Beyond standard document load timing, track React-specific metrics like initial render timing, paint metrics, and interaction latency.
 
 ```javascript
 // src/instrumentation/reactMetrics.js
@@ -381,13 +389,17 @@ import { trace } from '@opentelemetry/api';
 
 const tracer = trace.getTracer('react-app');
 
+const scheduleIdleCallback = window.requestIdleCallback || ((callback) => {
+  return window.setTimeout(callback, 0);
+});
+
 export function trackReactMetrics() {
-  // Track when React hydration completes
-  const hydrationSpan = tracer.startSpan('react.hydration');
+  // Track when React has had a chance to finish initial rendering work
+  const initialRenderSpan = tracer.startSpan('react.initial-render');
 
   // Use React's profiler or a simple timer
-  requestIdleCallback(() => {
-    hydrationSpan.end();
+  scheduleIdleCallback(() => {
+    initialRenderSpan.end();
   });
 
   // Track First Contentful Paint
@@ -406,32 +418,39 @@ export function trackReactMetrics() {
       const entries = list.getEntries();
       const lastEntry = entries[entries.length - 1];
 
+      const lcpTime = lastEntry.renderTime || lastEntry.loadTime || lastEntry.startTime;
       const lcpSpan = tracer.startSpan('paint.largest-contentful-paint', {
-        startTime: lastEntry.startTime,
+        startTime: lcpTime,
       });
       lcpSpan.setAttribute('lcp.size', lastEntry.size);
       lcpSpan.setAttribute('lcp.element', lastEntry.element?.tagName || 'unknown');
-      lcpSpan.end(lastEntry.startTime + lastEntry.renderTime);
+      lcpSpan.end(lcpTime);
     });
 
-    observer.observe({ entryTypes: ['largest-contentful-paint'] });
+    observer.observe({ type: 'largest-contentful-paint', buffered: true });
   }
 
-  // Track First Input Delay
+  // Track Interaction to Next Paint candidates
   if ('PerformanceObserver' in window) {
     const observer = new PerformanceObserver((list) => {
       const entries = list.getEntries();
       entries.forEach(entry => {
-        const fidSpan = tracer.startSpan('interaction.first-input-delay', {
+        if (!entry.interactionId) {
+          return;
+        }
+
+        const interactionSpan = tracer.startSpan('interaction.next-paint', {
           startTime: entry.startTime,
         });
-        fidSpan.setAttribute('fid.delay', entry.processingStart - entry.startTime);
-        fidSpan.setAttribute('fid.eventType', entry.name);
-        fidSpan.end(entry.startTime + entry.duration);
+        interactionSpan.setAttribute('inp.duration', entry.duration);
+        interactionSpan.setAttribute('inp.delay', entry.processingStart - entry.startTime);
+        interactionSpan.setAttribute('inp.eventType', entry.name);
+        interactionSpan.setAttribute('inp.interactionId', entry.interactionId);
+        interactionSpan.end(entry.startTime + entry.duration);
       });
     });
 
-    observer.observe({ entryTypes: ['first-input'] });
+    observer.observe({ type: 'event', durationThreshold: 16, buffered: true });
   }
 }
 ```
@@ -535,6 +554,10 @@ import { useLocation } from 'react-router-dom';
 
 const tracer = trace.getTracer('react-app');
 
+const scheduleIdleCallback = window.requestIdleCallback || ((callback) => {
+  return window.setTimeout(callback, 0);
+});
+
 export function useRoutePerformance() {
   const location = useLocation();
 
@@ -549,7 +572,7 @@ export function useRoutePerformance() {
     const startTime = performance.now();
 
     // End span after component tree stabilizes
-    requestIdleCallback(() => {
+    scheduleIdleCallback(() => {
       const duration = performance.now() - startTime;
       span.setAttribute('route.renderTime', duration);
       span.end();
@@ -583,6 +606,11 @@ export function checkPerformanceThresholds() {
       const navigation = performance.getEntriesByType('navigation')[0];
       const span = tracer.startSpan('performance.threshold-check');
 
+      if (!navigation) {
+        span.end();
+        return;
+      }
+
       const violations = [];
 
       const totalTime = navigation.loadEventEnd - navigation.fetchStart;
@@ -593,6 +621,11 @@ export function checkPerformanceThresholds() {
       const domInteractive = navigation.domInteractive - navigation.fetchStart;
       if (domInteractive > THRESHOLDS.domInteractive) {
         violations.push(`DOM interactive ${domInteractive.toFixed(0)}ms exceeds ${THRESHOLDS.domInteractive}ms`);
+      }
+
+      const firstContentfulPaint = performance.getEntriesByName('first-contentful-paint')[0];
+      if (firstContentfulPaint && firstContentfulPaint.startTime > THRESHOLDS.firstContentfulPaint) {
+        violations.push(`First contentful paint ${firstContentfulPaint.startTime.toFixed(0)}ms exceeds ${THRESHOLDS.firstContentfulPaint}ms`);
       }
 
       if (violations.length > 0) {
@@ -609,5 +642,4 @@ export function checkPerformanceThresholds() {
 }
 ```
 
-DocumentLoadInstrumentation provides comprehensive insights into page load performance, enabling you to identify bottlenecks and optimize the user experience. By combining automatic instrumentation with custom tracking for React-specific metrics, you build a complete picture of how quickly your application loads and becomes interactive for real users.
-
+DocumentLoadInstrumentation provides comprehensive insights into page load performance, enabling you to identify bottlenecks and optimize the user experience. By combining automatic instrumentation with custom tracking for React-specific metrics, you build a more complete picture of how quickly your application loads, renders, and responds to real users.

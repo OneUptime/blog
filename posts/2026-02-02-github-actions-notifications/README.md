@@ -191,7 +191,7 @@ jobs:
 
 For organizations using Microsoft Teams, the workflow-webhook approach works well with Teams incoming webhooks.
 
-Note: Microsoft retired Office 365 Connectors (the classic "Incoming Webhook" connector) for Teams on December 31, 2025. For new setups, create a workflow with the Microsoft Teams "Workflows" app (Power Automate) using the "Post to a channel when a webhook request is received" template — this gives you a workflow URL that accepts an Adaptive Card payload. The `MessageCard` example below still works against legacy connector URLs that were registered before retirement, but for the long term you should migrate to Adaptive Cards.
+Note: Microsoft retired Office 365 Connectors (the classic "Incoming Webhook" connector) for Teams on December 31, 2025. For new setups, create a workflow with the Microsoft Teams "Workflows" app (Power Automate) using the "Post to a channel when a webhook request is received" template - this gives you a workflow URL that accepts an Adaptive Card payload. The `MessageCard` example below still works against legacy connector URLs that were registered before retirement, but for the long term you should migrate to Adaptive Cards.
 
 Create the incoming webhook (or workflow) for your Teams channel and store the URL as a secret:
 

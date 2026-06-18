@@ -488,7 +488,7 @@ flowchart LR
 apiVersion: networking.istio.io/v1beta1
 kind: VirtualService
 metadata:
-  name: api-service
+  name: api-service-vs
   namespace: production
 spec:
   hosts:
@@ -548,14 +548,12 @@ class TrafficWeight:
 class TrafficShiftController:
     """Control traffic distribution during incidents."""
 
-    def __init__(self, namespace: str = "production"):
+    def __init__(self, namespace: str = "production", service_host: str = None):
         self.namespace = namespace
+        self.service_host = service_host
 
-    def get_current_weights(
-        self,
-        virtual_service: str
-    ) -> List[TrafficWeight]:
-        """Get current traffic weights."""
+    def _get_virtual_service(self, virtual_service: str) -> dict:
+        """Fetch a VirtualService as JSON."""
         cmd = [
             "kubectl", "get", "virtualservice",
             virtual_service,
@@ -564,10 +562,34 @@ class TrafficShiftController:
         ]
 
         result = subprocess.run(cmd, capture_output=True, text=True)
-        vs = json.loads(result.stdout)
+
+        if result.returncode != 0:
+            raise Exception(f"Failed to get VirtualService: {result.stderr}")
+
+        return json.loads(result.stdout)
+
+    def _default_route_index(self, http_routes: List[dict]) -> int:
+        """Find the route rule that handles general traffic."""
+        for index, http_route in enumerate(http_routes):
+            if "match" not in http_route:
+                return index
+        return 0
+
+    def get_current_weights(
+        self,
+        virtual_service: str
+    ) -> List[TrafficWeight]:
+        """Get current traffic weights."""
+        vs = self._get_virtual_service(virtual_service)
+        http_routes = vs.get("spec", {}).get("http", [])
+
+        if not http_routes:
+            return []
+
+        route_index = self._default_route_index(http_routes)
 
         weights = []
-        for route in vs.get("spec", {}).get("http", [{}])[0].get("route", []):
+        for route in http_routes[route_index].get("route", []):
             weights.append(TrafficWeight(
                 subset=route.get("destination", {}).get("subset", "unknown"),
                 weight=route.get("weight", 0)
@@ -578,7 +600,8 @@ class TrafficShiftController:
     def shift_traffic(
         self,
         virtual_service: str,
-        weights: Dict[str, int]
+        weights: Dict[str, int],
+        service_host: str = None
     ) -> dict:
         """
         Shift traffic to new weights.
@@ -586,27 +609,36 @@ class TrafficShiftController:
         Args:
             virtual_service: Name of the VirtualService
             weights: Dict mapping subset names to weights (must sum to 100)
+            service_host: Kubernetes service host used in route destinations
         """
         if sum(weights.values()) != 100:
             raise ValueError("Weights must sum to 100")
 
-        # Build the patch
+        host = service_host or self.service_host or virtual_service.removesuffix("-vs")
+        vs = self._get_virtual_service(virtual_service)
+        http_routes = vs.get("spec", {}).get("http", [])
+
+        if not http_routes:
+            raise ValueError("VirtualService has no HTTP routes to update")
+
+        route_index = self._default_route_index(http_routes)
+
+        # Build the updated default route while preserving header-specific routes.
         routes = [
             {
                 "destination": {
-                    "host": virtual_service.replace("-vs", ""),
+                    "host": host,
                     "subset": subset
                 },
                 "weight": weight
             }
             for subset, weight in weights.items()
         ]
+        http_routes[route_index]["route"] = routes
 
         patch = {
             "spec": {
-                "http": [{
-                    "route": routes
-                }]
+                "http": http_routes
             }
         }
 
@@ -732,6 +764,7 @@ flowchart TD
 from dataclasses import dataclass, field
 from typing import Dict, Optional, List, Any
 from datetime import datetime
+import hashlib
 import json
 import redis
 from functools import wraps
@@ -821,7 +854,10 @@ class FeatureFlagService:
         if flag.rollout_percentage < 100:
             # Use consistent hashing for user
             if user_id:
-                hash_value = hash(f"{flag_name}:{user_id}") % 100
+                digest = hashlib.sha256(
+                    f"{flag_name}:{user_id}".encode("utf-8")
+                ).hexdigest()
+                hash_value = int(digest, 16) % 100
                 if hash_value >= flag.rollout_percentage:
                     return False
 
@@ -873,7 +909,7 @@ class FeatureFlagService:
         flag_name: str,
         target_percentage: int,
         step: int = 10,
-        current_percentage: int = 0
+        current_percentage: Optional[int] = None
     ):
         """
         Gradually enable a feature after an incident.
@@ -884,6 +920,9 @@ class FeatureFlagService:
 
         if not flag:
             raise ValueError(f"Flag {flag_name} not found")
+
+        if current_percentage is None:
+            current_percentage = flag.rollout_percentage
 
         flag.rollout_percentage = min(current_percentage + step, target_percentage)
         flag.kill_switch = False
@@ -996,6 +1035,7 @@ flowchart TD
 ```python
 import subprocess
 import json
+import math
 from dataclasses import dataclass
 from typing import Optional
 import time
@@ -1043,6 +1083,7 @@ class EmergencyScaler:
         for hpa in hpas.get("items", []):
             if hpa.get("spec", {}).get("scaleTargetRef", {}).get("name") == deployment:
                 return {
+                    "name": hpa["metadata"]["name"],
                     "min": hpa["spec"].get("minReplicas", 1),
                     "max": hpa["spec"].get("maxReplicas", 10)
                 }
@@ -1063,7 +1104,7 @@ class EmergencyScaler:
         if hpa_limits:
             if replicas > hpa_limits["max"]:
                 # Need to update HPA first
-                self._update_hpa_max(deployment, replicas)
+                self._update_hpa_max(hpa_limits["name"], replicas)
 
         cmd = [
             "kubectl", "scale", "deployment", deployment,
@@ -1105,7 +1146,7 @@ class EmergencyScaler:
         Useful when you need more capacity immediately.
         """
         current = self.get_current_replicas(deployment)
-        target = min(int(current * multiplier), max_replicas)
+        target = min(max(current + 1, math.ceil(current * multiplier)), max_replicas)
 
         return self.scale_deployment(
             deployment,
@@ -1132,7 +1173,7 @@ class EmergencyScaler:
         current_replicas = self.get_current_replicas(deployment)
 
         # Calculate needed replicas with 20% headroom
-        needed_replicas = int((target_rps / rps_per_pod) * 1.2)
+        needed_replicas = math.ceil((target_rps / rps_per_pod) * 1.2)
 
         # Only scale if needed
         if needed_replicas <= current_replicas:
@@ -1150,12 +1191,12 @@ class EmergencyScaler:
             reason=f"Traffic scaling: {current_rps} -> {target_rps} RPS"
         )
 
-    def _update_hpa_max(self, deployment: str, new_max: int):
+    def _update_hpa_max(self, hpa_name: str, new_max: int):
         """Update HPA maximum replicas."""
         patch = {"spec": {"maxReplicas": new_max}}
 
         cmd = [
-            "kubectl", "patch", "hpa", deployment,
+            "kubectl", "patch", "hpa", hpa_name,
             "-n", self.namespace,
             "--type", "merge",
             "-p", json.dumps(patch)
@@ -1171,18 +1212,16 @@ class EmergencyScaler:
         reason: str
     ):
         """Add annotation for scaling audit trail."""
-        annotation = {
-            "scaling-event": json.dumps({
-                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                "from": from_replicas,
-                "to": to_replicas,
-                "reason": reason
-            })
-        }
+        annotation = json.dumps({
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "from": from_replicas,
+            "to": to_replicas,
+            "reason": reason
+        })
 
         cmd = [
             "kubectl", "annotate", "deployment", deployment,
-            f"oneuptime.com/last-scaling-event={json.dumps(annotation)}",
+            f"oneuptime.com/last-scaling-event={annotation}",
             "--overwrite",
             "-n", self.namespace
         ]

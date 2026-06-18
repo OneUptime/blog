@@ -36,7 +36,7 @@ B-Tree (Balanced Tree) is PostgreSQL's default index type. It works well for mos
 - Equality comparisons: `WHERE status = 'active'`
 - Range queries: `WHERE created_at > '2024-01-01'`
 - Sorting: `ORDER BY created_at DESC`
-- Pattern matching with left-anchored LIKE: `WHERE name LIKE 'John%'`
+- Pattern matching with left-anchored LIKE: `WHERE name LIKE 'John%'` (often with `text_pattern_ops`/`varchar_pattern_ops` for non-C collations)
 
 ### How B-Tree Works
 
@@ -97,7 +97,9 @@ SELECT * FROM products WHERE tags @> ARRAY['electronics'];
 -- NOT suitable for: full-text search
 SELECT * FROM articles WHERE body LIKE '%postgresql%';
 
--- NOT suitable for: JSONB field queries
+-- NOT suitable for: JSONB containment with a plain B-Tree index
+SELECT * FROM events WHERE data @> '{"type": "click"}';
+-- For extracted scalar values like this, use a B-Tree expression index instead
 SELECT * FROM events WHERE data->>'type' = 'click';
 ```
 
@@ -112,7 +114,7 @@ GIN (Generalized Inverted Index) is designed for values that contain multiple el
 - Array operations: `WHERE tags @> ARRAY['urgent']`
 - JSONB queries: `WHERE data @> '{"status": "active"}'`
 - Full-text search: `WHERE search_vector @@ to_tsquery('postgresql')`
-- Trigram similarity: `WHERE name % 'john'`
+- Trigram similarity: `WHERE name % 'john'` (with the `pg_trgm` extension and `gin_trgm_ops`)
 
 ### How GIN Works
 
@@ -156,6 +158,12 @@ SELECT * FROM events WHERE data @> '{"type": "purchase", "amount": 100}';
 
 -- GIN for specific JSONB paths (more selective)
 CREATE INDEX idx_events_type ON events USING GIN ((data->'type'));
+-- For data->>'type' = 'purchase', use a B-Tree expression index:
+CREATE INDEX idx_events_type_text ON events ((data->>'type'));
+
+-- GIN for trigram similarity
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE INDEX idx_products_name_trgm ON products USING GIN (name gin_trgm_ops);
 
 -- GIN for full-text search
 CREATE INDEX idx_articles_search ON articles USING GIN (
@@ -294,8 +302,9 @@ SELECT
 FROM pg_stat_user_indexes
 WHERE indexrelname LIKE '%brin%';
 
--- Re-cluster table if physical order is degraded
-CLUSTER sensor_readings USING sensor_readings_pkey;
+-- Re-cluster table by the timestamp if physical order is degraded
+CREATE INDEX idx_readings_time_btree ON sensor_readings (recorded_at);
+CLUSTER sensor_readings USING idx_readings_time_btree;
 
 -- Or use pg_repack for online clustering
 -- pg_repack -t sensor_readings -o recorded_at
@@ -382,7 +391,7 @@ CREATE INDEX idx_orders_time ON orders USING BRIN (created_at);
 Choosing the right index type is about matching the index to your query patterns:
 
 1. **B-Tree**: Default choice for most single-value queries and ranges
-2. **GIN**: Required for arrays, JSONB, and full-text search
+2. **GIN**: Best fit for arrays, JSONB containment, and full-text search
 3. **BRIN**: Excellent for large, sequentially-ordered datasets
 
 Test your indexes with EXPLAIN ANALYZE to verify they are being used effectively. And remember, the best index is one that matches how your application actually queries data.

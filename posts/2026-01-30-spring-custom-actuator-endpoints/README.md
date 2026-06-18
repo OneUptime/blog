@@ -302,7 +302,7 @@ public class TempFilesEndpoint {
 
 ## Web-Specific Endpoints
 
-Sometimes you need access to the underlying HTTP request and response objects. The `@WebEndpoint` annotation creates endpoints that only work over HTTP (using the standard operation annotations). When you need full Spring MVC features — `ResponseEntity`, request headers, `@GetMapping` with path patterns — use `@RestControllerEndpoint` instead. Note that `@RestControllerEndpoint` is deprecated since Spring Boot 3.3.0 in favor of `@Endpoint`/`@WebEndpoint`; it still works but plan a migration if you adopt it today.
+Sometimes you need access to the underlying HTTP request and response objects. The `@WebEndpoint` annotation creates endpoints that only work over HTTP (using the standard operation annotations). When you need full Spring MVC features - `ResponseEntity`, request headers, `@GetMapping` with path patterns - use `@RestControllerEndpoint` instead. Note that `@RestControllerEndpoint` is deprecated since Spring Boot 3.3.0 in favor of `@Endpoint`/`@WebEndpoint`; it still works but plan a migration if you adopt it today.
 
 ```java
 package com.example.actuator;

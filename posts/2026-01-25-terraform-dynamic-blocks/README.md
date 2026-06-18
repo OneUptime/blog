@@ -14,6 +14,8 @@ Dynamic blocks in Terraform let you generate repeated nested blocks within a res
 
 Consider a security group with multiple ingress rules. Without dynamic blocks, you write each rule separately.
 
+Note: the AWS provider currently recommends standalone `aws_vpc_security_group_ingress_rule` and `aws_vpc_security_group_egress_rule` resources for production security group rules. The inline `ingress` and `egress` blocks below are used to demonstrate Terraform dynamic block syntax with repeatable nested blocks.
+
 ```hcl
 # Without dynamic blocks - repetitive and hard to maintain
 
@@ -357,11 +359,11 @@ variable "s3_bucket_permissions" {
     actions     = list(string)
   }))
   default = {
-    read_data = {
+    ReadData = {
       bucket_name = "data-bucket"
       actions     = ["s3:GetObject", "s3:ListBucket"]
     }
-    write_logs = {
+    WriteLogs = {
       bucket_name = "logs-bucket"
       actions     = ["s3:PutObject"]
     }
@@ -407,7 +409,7 @@ variable "firewall_rules" {
     target_tags = list(string)
   }))
   default = {
-    allow-http = {
+    "allow-http" = {
       direction   = "INGRESS"
       priority    = 1000
       ranges      = ["0.0.0.0/0"]
@@ -419,7 +421,7 @@ variable "firewall_rules" {
       ]
       target_tags = ["web-server"]
     }
-    allow-ssh = {
+    "allow-ssh" = {
       direction   = "INGRESS"
       priority    = 1001
       ranges      = ["10.0.0.0/8"]

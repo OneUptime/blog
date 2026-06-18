@@ -30,10 +30,10 @@ Configure limits in your application SDK to prevent bad data at the source.
 
 ```javascript
 const { NodeSDK } = require('@opentelemetry/sdk-node');
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 
 const sdk = new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     'service.name': 'my-service',
   }),
 
@@ -73,10 +73,10 @@ from opentelemetry.sdk.resources import Resource
 
 span_limits = SpanLimits(
     # Maximum attributes per span
-    max_attributes=128,
+    max_span_attributes=128,
 
     # Maximum length of string attribute values
-    max_attribute_length=1024,
+    max_span_attribute_length=1024,
 
     # Maximum events per span
     max_events=128,
@@ -121,7 +121,7 @@ func initTracer() {
     spanLimits.AttributePerLinkCountLimit = 32
 
     tp := trace.NewTracerProvider(
-        trace.WithSpanLimits(spanLimits),
+        trace.WithRawSpanLimits(spanLimits),
     )
 
     otel.SetTracerProvider(tp)
@@ -183,7 +183,7 @@ OTEL_EVENT_ATTRIBUTE_COUNT_LIMIT=32
 OTEL_LINK_ATTRIBUTE_COUNT_LIMIT=32
 ```
 
-Environment variables provide a deployment-time configuration mechanism that works across all SDKs.
+Environment variables provide a deployment-time configuration mechanism for SDKs that implement the standard OpenTelemetry environment variables.
 
 ## Collector-Level Limits
 
@@ -194,15 +194,13 @@ The OpenTelemetry Collector can enforce limits as an additional safety net.
 ```yaml
 processors:
   transform:
+    error_mode: ignore
     trace_statements:
-      - context: span
-        statements:
-          # Truncate all attribute values to 1024 characters
-          - truncate_all(attributes, 1024)
+      # Truncate all span attribute values to 1024 characters
+      - truncate_all(span.attributes, 1024)
 
-      - context: spanevent
-        statements:
-          - truncate_all(attributes, 512)
+      # Truncate all span event attribute values to 512 characters
+      - truncate_all(spanevent.attributes, 512)
 ```
 
 ### Attributes Processor for Removal
@@ -228,13 +226,13 @@ processors:
 ```yaml
 processors:
   filter:
-    traces:
-      span:
-        # Drop spans with excessive attributes
-        - 'attributes["data.size"] > 1000000'  # > 1MB
+    error_mode: ignore
+    trace_conditions:
+      # Drop spans with excessive attributes
+      - 'span.attributes["data.size"] > 1000000'  # > 1MB
 
-        # Drop spans with specific problematic attributes
-        - 'IsMatch(attributes["query"], ".*SELECT \\* FROM large_table.*")'
+      # Drop spans with specific problematic attributes
+      - 'IsMatch(span.attributes["query"], ".*SELECT \\* FROM large_table.*")'
 ```
 
 ### Memory Limiter Processor
@@ -388,7 +386,7 @@ Here is a comprehensive setup combining SDK and collector limits.
 ```javascript
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 
 // Conservative limits for production
 const SPAN_LIMITS = {
@@ -401,7 +399,7 @@ const SPAN_LIMITS = {
 };
 
 const sdk = new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     'service.name': process.env.OTEL_SERVICE_NAME,
     'service.version': process.env.APP_VERSION,
   }),
@@ -434,13 +432,10 @@ processors:
 
   # Truncate oversized values
   transform:
+    error_mode: ignore
     trace_statements:
-      - context: span
-        statements:
-          - truncate_all(attributes, 512)
-      - context: spanevent
-        statements:
-          - truncate_all(attributes, 256)
+      - truncate_all(span.attributes, 512)
+      - truncate_all(spanevent.attributes, 256)
 
   # Remove known problematic attributes
   attributes:
@@ -454,9 +449,9 @@ processors:
 
   # Filter extreme outliers
   filter:
-    traces:
-      span:
-        - 'attributes["data.too_large"] == true'
+    error_mode: ignore
+    trace_conditions:
+      - 'span.attributes["data.too_large"] == true'
 
   batch:
     send_batch_size: 1024
@@ -512,10 +507,15 @@ service:
   telemetry:
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 ```
 
-Monitor `otelcol_processor_dropped_*` metrics for signs of limit violations.
+Monitor Collector logs for data-dropping messages and internal metrics such as `otelcol_processor_incoming_items`, `otelcol_processor_outgoing_items`, `otelcol_receiver_refused_spans`, and `otelcol_exporter_send_failed_spans` for signs of pipeline pressure or rejected telemetry.
 
 ## Conclusion
 

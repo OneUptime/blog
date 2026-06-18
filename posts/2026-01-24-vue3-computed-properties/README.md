@@ -297,7 +297,13 @@ const loading = ref(false)
 const error = ref(null)
 
 // Async data fetching with watchEffect
-watchEffect(async () => {
+watchEffect(async (onCleanup) => {
+  let canceled = false
+
+  onCleanup(() => {
+    canceled = true
+  })
+
   loading.value = true
   error.value = null
 
@@ -305,11 +311,18 @@ watchEffect(async () => {
     const response = await fetch(
       `https://api.example.com/users/${userId.value}`
     )
-    userData.value = await response.json()
+    const data = await response.json()
+    if (!canceled) {
+      userData.value = data
+    }
   } catch (e) {
-    error.value = e.message
+    if (!canceled) {
+      error.value = e.message
+    }
   } finally {
-    loading.value = false
+    if (!canceled) {
+      loading.value = false
+    }
   }
 })
 
@@ -599,21 +612,19 @@ const result = computed(() => {
 
 ```vue
 <script setup>
-import { ref, computed, onRenderTracked, onRenderTriggered } from 'vue'
+import { ref, computed } from 'vue'
 
 const count = ref(0)
 const doubled = computed(() => {
   console.log('Computing doubled...')
   return count.value * 2
-})
-
-// Debug reactivity
-onRenderTracked((e) => {
-  console.log('Tracked:', e)
-})
-
-onRenderTriggered((e) => {
-  console.log('Triggered:', e)
+}, {
+  onTrack(e) {
+    console.log('Tracked:', e)
+  },
+  onTrigger(e) {
+    console.log('Triggered:', e)
+  }
 })
 </script>
 ```

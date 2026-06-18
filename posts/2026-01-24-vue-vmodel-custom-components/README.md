@@ -328,6 +328,7 @@ Vue 3 allows custom modifiers on v-model. If not handled correctly, they will no
 const props = defineProps<{
     modelValue: string;
     modelModifiers?: {
+        trim?: boolean;
         capitalize?: boolean;
         uppercase?: boolean;
         lowercase?: boolean;
@@ -343,6 +344,10 @@ function handleInput(event: Event) {
     let value = target.value;
 
     // Apply modifiers
+    if (props.modelModifiers?.trim) {
+        value = value.trim();
+    }
+
     if (props.modelModifiers?.capitalize) {
         value = value.charAt(0).toUpperCase() + value.slice(1);
     }
@@ -390,7 +395,7 @@ Select elements require special handling:
 <template>
     <select
         :value="modelValue"
-        @change="$emit('update:modelValue', ($event.target as HTMLSelectElement).value)"
+        @change="handleChange"
         class="custom-select"
     >
         <option
@@ -409,14 +414,23 @@ interface Option {
     label: string;
 }
 
-defineProps<{
+const props = defineProps<{
     modelValue: string | number;
     options: Option[];
 }>();
 
-defineEmits<{
-    (e: 'update:modelValue', value: string): void;
+const emit = defineEmits<{
+    (e: 'update:modelValue', value: string | number): void;
 }>();
+
+function handleChange(event: Event) {
+    const target = event.target as HTMLSelectElement;
+    const selectedOption = props.options[target.selectedIndex];
+
+    if (selectedOption) {
+        emit('update:modelValue', selectedOption.value);
+    }
+}
 </script>
 ```
 
@@ -609,7 +623,7 @@ flowchart TD
 
 ## Best Practices
 
-1. **Always use computed properties** for internal v-model when using native inputs
+1. **Use computed properties or `defineModel`** for internal v-model when using native inputs
 2. **Never mutate props directly** as this violates Vue's one-way data flow
 3. **Emit new object references** when working with object values
 4. **Handle modifiers explicitly** if you need custom modifier behavior

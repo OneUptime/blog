@@ -477,7 +477,7 @@ class TimeBoundedDetector implements Detector {
       }
       return new Resource(await response.json());
     } catch {
-      // Timeout or network error — fall back to empty resource
+      // Timeout or network error - fall back to empty resource
       return Resource.empty();
     }
   }

@@ -724,7 +724,7 @@ SHOW POOLS;
 SHOW STATS;
 ```
 
-Note that PgBouncer's admin console accepts `SHOW` as a standalone command — it is not a regular SQL view, so you cannot wrap it in a `SELECT` subquery. To filter or aggregate the output, capture the rows from `SHOW POOLS` or `SHOW STATS` in your monitoring tool (for example, the Prometheus exporter shown below) and apply filtering there.
+Note that PgBouncer's admin console accepts `SHOW` as a standalone command - it is not a regular SQL view, so you cannot wrap it in a `SELECT` subquery. To filter or aggregate the output, capture the rows from `SHOW POOLS` or `SHOW STATS` in your monitoring tool (for example, the Prometheus exporter shown below) and apply filtering there.
 
 ### Prometheus Exporter Setup
 

@@ -110,7 +110,7 @@ ESLint can both lint and format. Use eslint-config-prettier to avoid conflicts:
 
 ```bash
 # Install ESLint and Prettier integration
-npm install --save-dev eslint eslint-config-prettier eslint-plugin-prettier
+npm install --save-dev eslint @eslint/js eslint-config-prettier eslint-plugin-prettier
 ```
 
 Configure ESLint in `eslint.config.js` (flat config):
@@ -143,7 +143,13 @@ export default [
 ];
 ```
 
-For TypeScript projects:
+For TypeScript projects, install the TypeScript parser and rules:
+
+```bash
+npm install --save-dev typescript @typescript-eslint/parser @typescript-eslint/eslint-plugin
+```
+
+Then configure ESLint:
 
 ```javascript
 // eslint.config.js
@@ -262,9 +268,6 @@ Create the pre-commit hook:
 
 ```bash
 # .husky/pre-commit
-#!/bin/sh
-. "$(dirname "$0")/_/husky.sh"
-
 npx lint-staged
 ```
 
@@ -366,22 +369,22 @@ Add pre-commit configuration:
 ```yaml
 # .pre-commit-config.yaml
 repos:
-  - repo: https://github.com/psf/black
-    rev: 24.1.0
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.17
+    hooks:
+      - id: ruff-check
+        args: ["--fix"]
+
+  - repo: https://github.com/psf/black-pre-commit-mirror
+    rev: 26.5.1
     hooks:
       - id: black
 
   - repo: https://github.com/pycqa/isort
-    rev: 5.13.0
+    rev: 6.1.0
     hooks:
       - id: isort
         args: ["--profile", "black"]
-
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.1.14
-    hooks:
-      - id: ruff
-        args: ["--fix"]
 ```
 
 ## Go Formatting
@@ -432,7 +435,7 @@ flowchart TD
     F --> G[Pre-commit hook runs]
     G --> H[lint-staged formats staged files]
     H --> I{Files changed?}
-    I -->|Yes| J[Add formatted files to commit]
+    I -->|Yes| J[lint-staged updates the index]
     I -->|No| K[Create commit]
     J --> K
     K --> L[Push to remote]

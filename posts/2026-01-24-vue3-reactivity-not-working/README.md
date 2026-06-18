@@ -51,7 +51,7 @@ const state = reactive({
 })
 
 // BROKEN: Destructuring loses reactivity
-const { count } = state
+let { count } = state
 
 function increment() {
   count++  // This does NOT update the UI
@@ -221,13 +221,11 @@ const user = reactive({
   preferences: {}
 })
 
-// For dynamic keys, consider using ref with Map
+// For dynamic keys, consider using a Map
 const dynamicData = ref(new Map())
 
 function setDynamicField(key, value) {
-  dynamicData.value.set(key, value)
-  // Force reactivity by creating new Map if needed
-  dynamicData.value = new Map(dynamicData.value)
+  dynamicData.value.set(key, value)  // Reactive in Vue 3
 }
 
 // Or use a ref object for fully dynamic structures
@@ -248,7 +246,7 @@ function updateFormData(key, value) {
 
 ### The Problem
 
-Some array mutations do not trigger reactivity as expected.
+Most array mutations trigger reactivity in Vue 3, but it is still easy to use the wrong API when working with refs.
 
 ```vue
 <script setup>
@@ -257,11 +255,11 @@ import { reactive, ref } from 'vue'
 const items = reactive([1, 2, 3])
 
 function brokenUpdate() {
-  // BROKEN: Direct index assignment (this actually works in Vue 3!)
+  // This works in Vue 3 (unlike Vue 2)
   items[0] = 100  // Works in Vue 3, broken in Vue 2
 
-  // BUT: Setting length does NOT trigger updates
-  items.length = 0  // Does NOT clear reactively
+  // This also works in Vue 3, but splice is often clearer
+  items.length = 0  // Clears reactively
 }
 
 // With ref
@@ -360,7 +358,7 @@ const items = ref([
   <p>{{ state.count }}</p>
 
   <!-- GOTCHA: refs in arrays are NOT auto-unwrapped -->
-  <p>{{ items[0] }}</p>  <!-- Shows RefImpl object, not 'item1' -->
+  <p>{{ items[0] + '!' }}</p>  <!-- Shows [object Object]!, not 'item1!' -->
   <p>{{ items[0].value }}</p>  <!-- Correct -->
 </template>
 ```
@@ -531,9 +529,9 @@ const user = reactive({
   }
 })
 
-// PROBLEM: Shallow watch does not detect deep changes
-watch(user, (newVal) => {
-  console.log('User changed')  // Does NOT fire for deep changes
+// PROBLEM: Getter that returns an object is shallow by default
+watch(() => user.profile, (newVal) => {
+  console.log('User profile changed')  // Does NOT fire for nested changes
 })
 
 // PROBLEM: Watching wrong thing
@@ -559,10 +557,14 @@ const user = reactive({
   }
 })
 
-// Solution 1: Deep watch
-watch(user, (newVal) => {
-  console.log('User changed (deep)')
-}, { deep: true })
+// Solution 1: Deep watch for a getter that returns an object
+watch(
+  () => user.profile,
+  (newVal) => {
+    console.log('User profile changed (deep)')
+  },
+  { deep: true }
+)
 
 // Solution 2: Watch specific property
 watch(
@@ -612,20 +614,19 @@ watchEffect(() => {
 
 ```vue
 <script setup>
-import { ref, reactive, computed } from 'vue'
+import { ref, computed } from 'vue'
 
 const items = ref([1, 2, 3])
 
-// PROBLEM: Computed caches incorrect value
+// This works: computed tracks the reactive array access
 const total = computed(() => {
-  // If items array is mutated (not replaced), this might not update
   return items.value.reduce((a, b) => a + b, 0)
 })
 
 // PROBLEM: Side effects in computed
 const fetchedData = computed(() => {
   fetch('/api/data')  // Side effect - bad practice
-  return someValue
+  return null
 })
 </script>
 ```
@@ -765,9 +766,9 @@ useReactivityDebug(state, 'state')
 |-------|-------|----------|
 | Destructuring breaks reactivity | Extracts primitive values | Use `toRefs()` or access directly |
 | Reassigning reactive | Loses proxy reference | Use `ref` or `Object.assign` |
-| Array length = 0 | Not tracked | Use `splice(0)` or reassign |
+| Array updates through wrong API | Ref wrapper not accessed with `.value` | Use `.value` for refs; mutation methods, index assignment, and `length` are reactive in Vue 3 |
 | refs in arrays not unwrapped | Template limitation | Use plain values or `.value` |
-| Watch not firing | Shallow by default | Add `{ deep: true }` |
+| Watch not firing | Invalid source or shallow getter | Watch a ref/getter; add `{ deep: true }` for nested changes from getters |
 | Computed not updating | Dependency not tracked | Ensure reactive access |
 | Async timing issues | Component unmounted | Check mounted state |
 

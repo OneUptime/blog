@@ -17,9 +17,9 @@ This post walks you through setting up the EDOT Collector, configuring it for di
 The Elastic distribution packages specific components optimized for the Elastic Stack:
 
 - **Elasticsearch Exporter** for sending data directly to Elasticsearch
-- **Elastic APM integration** for trace correlation with Elastic APM
-- **Pre-configured processors** for Elastic Common Schema (ECS) compatibility
-- **Elastic-specific resource detection** for cloud and container environments
+- **Elastic APM processor and connector** for trace enrichment and APM metrics
+- **OTel-native mapping and Elastic data stream routing** for Elasticsearch
+- **Resource detection and Kubernetes enrichment** for cloud and container environments
 
 ```mermaid
 flowchart LR
@@ -28,7 +28,7 @@ flowchart LR
     D[Log Files] --> B
     B --> E[Elasticsearch]
     B --> F[Elastic Cloud]
-    B --> G[Elastic APM]
+    B --> G[Elastic APM UI]
     B --> H[Other OTLP Backends]
 ```
 
@@ -46,7 +46,7 @@ docker run -d \
   -p 4317:4317 \
   -p 4318:4318 \
   -v ./otel-config.yaml:/etc/otelcol/config.yaml \
-  docker.elastic.co/beats/elastic-otel-collector:latest \
+  docker.elastic.co/elastic-agent/elastic-otel-collector:9.4.2 \
   --config /etc/otelcol/config.yaml
 ```
 
@@ -57,14 +57,14 @@ Download the binary directly from Elastic's releases:
 ```bash
 # Download the EDOT Collector for Linux
 curl -L -o edot-collector.tar.gz \
-  https://artifacts.elastic.co/downloads/beats/elastic-otel-collector/elastic-otel-collector-linux-amd64.tar.gz
+  https://artifacts.elastic.co/downloads/beats/elastic-agent/elastic-agent-9.4.2-linux-x86_64.tar.gz
 
 # Extract and move to a standard location
 tar -xzf edot-collector.tar.gz
-sudo mv elastic-otel-collector /usr/local/bin/
+sudo mv elastic-agent-9.4.2-linux-x86_64/otelcol /usr/local/bin/otelcol
 
 # Run with your config
-elastic-otel-collector --config /etc/otelcol/config.yaml
+otelcol --config /etc/otelcol/config.yaml
 ```
 
 ### On Kubernetes with Helm
@@ -72,15 +72,18 @@ elastic-otel-collector --config /etc/otelcol/config.yaml
 Deploy EDOT Collector on Kubernetes:
 
 ```bash
-# Add the Elastic Helm repository
-helm repo add elastic https://helm.elastic.co
+# Add the OpenTelemetry Helm repository
+helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
 helm repo update
 
 # Install the EDOT Collector
-helm install edot-collector elastic/elastic-otel-collector \
+helm install edot-collector open-telemetry/opentelemetry-collector \
   --namespace monitoring \
   --create-namespace \
-  --set config.exporters.elasticsearch.endpoints=["https://elasticsearch:9200"] \
+  --set mode=daemonset \
+  --set image.repository="docker.elastic.co/elastic-agent/elastic-otel-collector" \
+  --set image.tag="9.4.2" \
+  --set config.exporters.elasticsearch.endpoint="https://elasticsearch:9200" \
   --set config.exporters.elasticsearch.api_key="your-api-key"
 ```
 
@@ -125,7 +128,7 @@ processors:
     timeout: 5s
     send_batch_size: 1024
 
-  # Transform resource attributes to match Elastic Common Schema
+  # Add environment metadata to all telemetry
   resource:
     attributes:
       - key: deployment.environment
@@ -140,13 +143,10 @@ processors:
 exporters:
   # Send everything to Elasticsearch
   elasticsearch:
-    endpoints: ["https://your-elasticsearch:9200"]
-    api_key: "your-base64-encoded-api-key"
-    logs_index: "logs-otel-default"
-    traces_index: "traces-apm-default"
-    metrics_index: "metrics-otel-default"
+    endpoint: "https://your-elasticsearch:9200"
+    api_key: "your-api-key"
     mapping:
-      mode: ecs
+      mode: otel
 
 service:
   pipelines:
@@ -166,69 +166,93 @@ service:
 
 ## Sending to Elastic Cloud
 
-If you are using Elastic Cloud instead of a self-managed Elasticsearch cluster, the config is similar but uses the Cloud ID:
+If you are using Elastic Cloud instead of a self-managed Elasticsearch cluster, the config is similar but can use the Cloud ID:
 
 ```yaml
 # Configuration for Elastic Cloud
 exporters:
   elasticsearch:
-    # Use your Elastic Cloud endpoint directly
-    endpoints: ["https://my-deployment.es.us-central1.gcp.cloud.es.io:9243"]
+    cloudid: "your-elastic-cloud-id"
     api_key: "your-api-key-from-kibana"
     mapping:
-      mode: ecs
+      mode: otel
     # Adjust bulk indexing settings for cloud
-    flush:
-      bytes: 5000000
-      interval: 5s
+    sending_queue:
+      enabled: true
+      batch:
+        max_size: 5000000
+        flush_timeout: 5s
     retry:
       enabled: true
-      max_requests: 3
+      max_retries: 2
 ```
 
-## Elastic Common Schema Mapping
+## OpenTelemetry Mapping
 
-One of the key features of the EDOT Collector is automatic mapping to Elastic Common Schema (ECS). This means your OTel data gets translated into the field names that Elastic's pre-built dashboards and alerts expect.
+One of the key features of the EDOT Collector is OTel-native mapping for Elasticsearch. This means your OTel data is stored in Elastic's preferred OpenTelemetry schema and routed to Elastic data streams.
 
 ```mermaid
 flowchart LR
-    A["OTel Attribute: service.name"] --> B["ECS Field: service.name"]
-    C["OTel Attribute: http.method"] --> D["ECS Field: http.request.method"]
-    E["OTel Attribute: http.status_code"] --> F["ECS Field: http.response.status_code"]
-    G["OTel Attribute: host.name"] --> H["ECS Field: host.name"]
+    A["OTel Resource: service.name"] --> B["Elasticsearch: resource.attributes.service.name"]
+    C["OTel Attribute: http.request.method"] --> D["Elasticsearch: attributes.http.request.method"]
+    E["OTel Attribute: http.response.status_code"] --> F["Elasticsearch: attributes.http.response.status_code"]
+    G["OTel Resource: host.name"] --> H["Elasticsearch: resource.attributes.host.name"]
 ```
 
-The `mapping.mode: ecs` setting in the Elasticsearch exporter handles this translation. Without it, the raw OTel attributes would be indexed as-is, which works but means Elastic's built-in dashboards would not pick them up automatically.
+The `mapping.mode: otel` setting in the Elasticsearch exporter selects this mapping. It is the default in current Elasticsearch exporter versions used by EDOT. The exporter still supports `ecs`, but EDOT does not officially support configuring that mode and Elastic plans automatic mode selection in a future release.
 
 ## Advanced Configuration: APM Correlation
 
-To get full APM correlation in Kibana (where you can jump from a trace to related logs and metrics), you need to make sure certain attributes are present:
+To get full APM correlation in Kibana (where you can jump from a trace to related logs and metrics), include the Elastic APM processor and connector for traces, and make sure application logs include OpenTelemetry trace context:
 
 ```yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+connectors:
+  elasticapm: {}
+
 processors:
-  # Make sure all telemetry includes the fields Elastic APM needs for correlation
+  batch:
+    timeout: 5s
+    send_batch_size: 1024
+
+  # Enrich trace data for Elastic APM UI features
+  elasticapm: {}
+
+  # Make sure all telemetry includes the fields Elastic APM needs
   resource:
     attributes:
-      - key: service.name
-        from_attribute: service.name
-        action: upsert
-      - key: service.version
-        from_attribute: service.version
-        action: upsert
       - key: deployment.environment
         value: "production"
         action: upsert
 
-  # Add trace context to logs for trace-to-log correlation
-  # This adds trace_id and span_id to log records
-  attributes:
-    actions:
-      - key: trace.id
-        from_attribute: trace_id
-        action: upsert
-      - key: span.id
-        from_attribute: span_id
-        action: upsert
+exporters:
+  elasticsearch/otel:
+    endpoint: "https://elasticsearch:9200"
+    api_key: "${env:ELASTIC_API_KEY}"
+    mapping:
+      mode: otel
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch, elasticapm]
+      exporters: [elasticapm, elasticsearch/otel]
+    metrics/aggregated-otel-metrics:
+      receivers: [elasticapm]
+      processors: [batch]
+      exporters: [elasticsearch/otel]
+    logs:
+      receivers: [otlp]
+      processors: [resource, batch]
+      exporters: [elasticsearch/otel]
 ```
 
 ## Kubernetes DaemonSet Configuration
@@ -237,6 +261,37 @@ Here is a full DaemonSet setup for collecting telemetry from a Kubernetes cluste
 
 ```yaml
 # edot-collector-daemonset.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: edot-collector
+  namespace: monitoring
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: edot-collector
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "namespaces", "nodes"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["nodes/stats", "nodes/proxy"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: edot-collector
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: edot-collector
+subjects:
+  - kind: ServiceAccount
+    name: edot-collector
+    namespace: monitoring
+---
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -281,27 +336,36 @@ data:
       resourcedetection:
         detectors: [env, system]
 
+      elasticapm: {}
+
+    connectors:
+      elasticapm: {}
+
     exporters:
-      elasticsearch:
-        endpoints: ["https://elasticsearch:9200"]
+      elasticsearch/otel:
+        endpoint: "https://elasticsearch:9200"
         api_key: "${env:ELASTIC_API_KEY}"
         mapping:
-          mode: ecs
+          mode: otel
 
     service:
       pipelines:
         traces:
           receivers: [otlp]
-          processors: [memory_limiter, k8sattributes, resourcedetection, batch]
-          exporters: [elasticsearch]
+          processors: [memory_limiter, k8sattributes, resourcedetection, batch, elasticapm]
+          exporters: [elasticapm, elasticsearch/otel]
+        metrics/aggregated-otel-metrics:
+          receivers: [elasticapm]
+          processors: [memory_limiter, batch]
+          exporters: [elasticsearch/otel]
         metrics:
           receivers: [otlp, kubeletstats]
           processors: [memory_limiter, k8sattributes, resourcedetection, batch]
-          exporters: [elasticsearch]
+          exporters: [elasticsearch/otel]
         logs:
           receivers: [otlp]
           processors: [memory_limiter, k8sattributes, resourcedetection, batch]
-          exporters: [elasticsearch]
+          exporters: [elasticsearch/otel]
 ---
 apiVersion: apps/v1
 kind: DaemonSet
@@ -320,7 +384,7 @@ spec:
       serviceAccountName: edot-collector
       containers:
         - name: collector
-          image: docker.elastic.co/beats/elastic-otel-collector:latest
+          image: docker.elastic.co/elastic-agent/elastic-otel-collector:9.4.2
           args: ["--config", "/conf/config.yaml"]
           env:
             - name: NODE_NAME
@@ -359,10 +423,10 @@ You can send data to both Elastic and another OTLP backend:
 exporters:
   # Primary: Elasticsearch
   elasticsearch:
-    endpoints: ["https://elasticsearch:9200"]
+    endpoint: "https://elasticsearch:9200"
     api_key: "your-api-key"
     mapping:
-      mode: ecs
+      mode: otel
 
   # Secondary: Any OTLP-compatible backend
   otlphttp/secondary:
@@ -383,10 +447,10 @@ service:
 
 | Feature | EDOT Collector | Upstream Contrib |
 |---------|---------------|-----------------|
-| ECS mapping | Built-in and tested | Manual configuration |
-| Elastic APM correlation | Optimized | Requires manual setup |
-| Elasticsearch exporter | Pre-configured | Available in contrib |
-| Kibana dashboards | Compatible out of box | Manual mapping needed |
+| OTel mapping for Elastic | Default and tested | Available through exporter configuration |
+| Elastic APM enrichment | Elastic APM processor and connector included | Requires a custom build for Elastic-specific components |
+| Elasticsearch exporter | Included in the distribution | Available in contrib |
+| Kibana OTel assets | Automatic asset installation when available | Assets may require manual setup |
 | Release testing | Against Elastic Stack | Community testing |
 | Non-Elastic exporters | Limited set | Full contrib set |
 | Support | Elastic subscription | Community |
@@ -396,8 +460,8 @@ service:
 Choose the EDOT Collector when:
 
 - Elasticsearch or Elastic Cloud is your primary observability backend
-- You want ECS field mapping to work automatically
+- You want OTel-native mapping and Elastic data stream routing
 - You need Elastic APM correlation between traces, logs, and metrics in Kibana
 - You have an Elastic subscription and want vendor support
 
-If you are using Elasticsearch alongside other backends, the upstream contrib collector with the Elasticsearch exporter works fine too. You just need to configure ECS mapping manually.
+If you are using Elasticsearch alongside other backends, the upstream contrib collector with the Elasticsearch exporter works fine too. You just need to account for the Elastic-specific APM components and asset setup that EDOT includes.

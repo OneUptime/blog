@@ -95,7 +95,7 @@ The first layer of an active-active setup is intelligent traffic distribution. H
 ```hcl
 # Terraform configuration for multi-region active-active with AWS Route 53
 
-# This creates health checks and weighted routing across multiple regions
+# This creates health checks and latency-based routing across multiple regions
 
 # Health check for US East region
 resource "aws_route53_health_check" "us_east" {
@@ -349,8 +349,8 @@ graph TD
         C --> CP[CP Systems]
         A --> AP[AP Systems]
 
-        CP --> CP_EX["Examples: PostgreSQL, MySQL<br/>Strong consistency, may reject writes during partitions"]
-        AP --> AP_EX["Examples: Cassandra, DynamoDB<br/>Always available, eventual consistency"]
+        CP --> CP_EX["Examples: PostgreSQL/MySQL with synchronous replication<br/>Strong consistency, may reject writes during partitions"]
+        AP --> AP_EX["Examples: Cassandra, DynamoDB<br/>Favor availability with tunable or eventual consistency"]
     end
 ```
 
@@ -624,23 +624,22 @@ SELECT bdr.join_node_group(
     node_group_name := 'myapp-cluster'
 );
 
--- Configure conflict resolution for specific tables
--- Use last_update_wins based on a timestamp column
+-- Configure column-level conflict detection for specific tables
 ALTER TABLE orders
     ALTER COLUMN updated_at SET DEFAULT now(),
     REPLICA IDENTITY FULL;
 
 SELECT bdr.alter_table_conflict_detection(
-    relation := 'orders'::regclass,
-    detect_cid := true,
-    column_list := ARRAY['updated_at']
+    'orders'::regclass,
+    'column_modify_timestamp',
+    'conflict_timestamps'
 );
 
--- For append-only tables like audit logs, use origin-based resolution
--- This prevents duplicate insertions
+-- For append-only tables like audit logs, row-origin detection avoids
+-- adding a metadata column for conflict detection
 SELECT bdr.alter_table_conflict_detection(
-    relation := 'audit_log'::regclass,
-    detect_cid := false
+    'audit_log'::regclass,
+    'row_origin'
 );
 ```
 
@@ -663,7 +662,7 @@ spec:
 
   # CockroachDB version
   image:
-    name: cockroachdb/cockroach:v23.2.0
+    name: cockroachdb/cockroach:v26.2.2
 
   # Storage configuration
   dataStore:
@@ -685,22 +684,16 @@ spec:
       cpu: "8"
       memory: "32Gi"
 
-  # Multi-region topology configuration
-  topology:
-    # Define the localities for each region
-    localities:
-      - key: region
-        values:
-          - us-east
-          - us-west
-          - eu-west
-
-    # Node distribution across regions
-    # 3 nodes per region for optimal fault tolerance
-    nodeLocality:
-      - region=us-east:3
-      - region=us-west:3
-      - region=eu-west:3
+  # Spread pods across Kubernetes zones. Label Kubernetes nodes with
+  # topology.kubernetes.io/region and topology.kubernetes.io/zone so
+  # CockroachDB can derive locality from the operator defaults.
+  topologySpreadConstraints:
+    - maxSkew: 1
+      topologyKey: topology.kubernetes.io/zone
+      whenUnsatisfiable: DoNotSchedule
+      labelSelector:
+        matchLabels:
+          app.kubernetes.io/instance: cockroachdb
 
   # TLS configuration for secure inter-node communication
   tlsEnabled: true
@@ -862,7 +855,7 @@ def execute_with_consistency(
 def write_order(session, order_data: dict):
     """
     Write an order with strong consistency across all datacenters.
-    Uses EACH_QUORUM to ensure the order is replicated everywhere.
+    Uses EACH_QUORUM to require a quorum of replicas in every datacenter.
     """
 
     query = """
@@ -979,30 +972,26 @@ spec:
   # Participating clusters in active-active setup
   participatingClusters:
     - name: us-east-cluster
-      # API endpoint for cluster management
-      apiEndpoint: redis-api.us-east.internal:9443
+      namespace: redis
     - name: us-west-cluster
-      apiEndpoint: redis-api.us-west.internal:9443
+      namespace: redis
     - name: eu-west-cluster
-      apiEndpoint: redis-api.eu-west.internal:9443
+      namespace: redis
 
   # Global database configuration
-  globalDatabaseSpec:
+  globalConfigurations:
     # Memory limit per database instance
     memorySize: 10GB
 
-    # Enable active-active (CRDT-based) replication
-    activeActive:
-      enabled: true
-      # Causal consistency ensures read-your-writes
-      causalConsistency: true
+    # Enable OSS cluster API and sharding for Redis Cluster clients
+    ossCluster: true
+    shardingEnabled: true
 
     # Eviction policy for memory management
     evictionPolicy: volatile-lru
 
     # Persistence settings
-    persistence: aof
-    aofPolicy: everysec
+    persistence: aofEverySecond
 ```
 
 ```go
@@ -1045,8 +1034,8 @@ func NewSessionManager(
 	client := redis.NewClusterClient(&redis.ClusterOptions{
 		Addrs: redisAddrs,
 
-		// Route read queries to replicas for load distribution
-		// This is safe because Redis Enterprise CRDB ensures consistency
+		// Route read-only commands to lower-latency nodes for load distribution.
+		// RouteByLatency automatically enables ReadOnly in go-redis.
 		RouteByLatency: true,
 		RouteRandomly:  false,
 
@@ -1388,10 +1377,10 @@ spec:
       labelSelectors:
         site: us-east
 
-    # Simulate complete site isolation
+    # Block outbound traffic from this site to remote site endpoints
     action: partition
     mode: all
-    direction: both
+    direction: to
 
     # Run for 10 minutes
     duration: "10m"
@@ -1473,7 +1462,7 @@ spec:
 
 ## Best Practices for Active-Active
 
-1. **Design for eventual consistency** - Accept that perfect synchronization is impossible across WAN links. Design your application to handle temporary inconsistencies gracefully.
+1. **Design for explicit consistency trade-offs** - Strong synchronization across WAN links increases latency and can reduce availability during partitions. Design your application to handle the consistency model you choose.
 
 2. **Use idempotent operations** - Make writes idempotent so retries and replication do not create duplicates. Include unique request IDs in all mutations.
 

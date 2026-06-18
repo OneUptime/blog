@@ -290,7 +290,7 @@ helm install apisix apisix/apisix \
   --create-namespace \
   --set gateway.type=LoadBalancer \
   --set admin.enabled=true \
-  --set admin.allow.ipList="{0.0.0.0/0}" \
+  --set admin.allow.ipList="" \
   --set etcd.enabled=true
 ```
 
@@ -445,13 +445,8 @@ spec:
       authentication:
         enable: true
         type: jwtAuth
-      plugins:
-        - name: jwt-auth
-          enable: true
-          config:
-            key: "your-jwt-key"
-            secret: "your-jwt-secret"
-            algorithm: HS256
+        jwtAuth:
+          header: Authorization
 ```
 
 ## Rate Limiting Patterns
@@ -551,7 +546,7 @@ services:
         config:
           add:
             headers:
-              - "X-Response-Time:${latency}ms"
+              - "X-Gateway-Version:2.0"
           remove:
             headers:
               - "X-Internal-Id"
@@ -574,19 +569,19 @@ spec:
       type: http
       httpPath: /health
       healthy:
-        interval: 5
+        interval: 5s
         successes: 2
       unhealthy:
-        interval: 2
+        interval: 2s
         httpFailures: 3
     passive:
       healthy:
-        httpStatuses:
+        httpCodes:
           - 200
           - 201
         successes: 3
       unhealthy:
-        httpStatuses:
+        httpCodes:
           - 500
           - 502
           - 503
@@ -594,9 +589,9 @@ spec:
         tcpFailures: 3
   retries: 2
   timeout:
-    connect: 5
-    send: 30
-    read: 30
+    connect: 5s
+    send: 30s
+    read: 30s
 ```
 
 ## Monitoring and Logging
@@ -641,7 +636,7 @@ sum(rate(kong_http_requests_total{code=~"5.."}[5m])) by (service)
 / sum(rate(kong_http_requests_total[5m])) by (service)
 
 # Latency P99
-histogram_quantile(0.99, rate(kong_latency_bucket[5m]))
+histogram_quantile(0.99, sum(rate(kong_kong_latency_ms_bucket[5m])) by (service, le))
 ```
 
 ## Testing API Gateway

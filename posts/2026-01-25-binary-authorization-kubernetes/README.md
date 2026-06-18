@@ -18,7 +18,7 @@ Supply chain security has become critical for Kubernetes deployments. Binary Aut
 
 Binary Authorization works through three key concepts:
 
-**Attestations**: Cryptographic signatures that verify an image has passed specific checks (vulnerability scanning, code review, build verification).
+**Attestations**: Signed statements that verify an image has passed specific checks (vulnerability scanning, code review, build verification).
 
 **Attestors**: Authorities that create attestations. These can be your CI/CD system, security scanners, or human approvers.
 
@@ -87,11 +87,8 @@ cosign generate-key-pair
 For keyless signing using OIDC identity (recommended for CI/CD):
 
 ```bash
-# Enable keyless signing with Fulcio
-export COSIGN_EXPERIMENTAL=1
-
 # Sign using your OIDC identity (GitHub, Google, etc.)
-cosign sign --identity-token=$(gcloud auth print-identity-token) \
+cosign sign --yes --identity-token=$(gcloud auth print-identity-token) \
   gcr.io/my-project/my-image:v1.0.0
 ```
 
@@ -148,7 +145,7 @@ jobs:
 
     - name: Build and push image
       id: build
-      uses: docker/build-push-action@v5
+      uses: docker/build-push-action@v6
       with:
         context: .
         push: true
@@ -159,7 +156,7 @@ jobs:
         sbom: true
 
     - name: Install Cosign
-      uses: sigstore/cosign-installer@v3
+      uses: sigstore/cosign-installer@v4.0.0
 
     - name: Sign the container image
       env:
@@ -178,7 +175,7 @@ jobs:
     - name: Verify signature
       run: |
         cosign verify \
-          --certificate-identity-regexp="https://github.com/${{ github.repository }}/*" \
+          --certificate-identity-regexp="https://github.com/${{ github.repository }}/.github/workflows/build-and-sign.yaml@refs/(heads/main|tags/v.*)" \
           --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
           ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
 ```
@@ -209,28 +206,20 @@ create_vuln_attestation() {
     if [ "$CRITICAL" -eq 0 ] && [ "$HIGH" -eq 0 ]; then
         echo "Vulnerability scan passed"
 
-        # Create attestation payload
+        # Create attestation predicate
         cat <<EOF > vuln-attestation.json
 {
-    "_type": "https://in-toto.io/Statement/v0.1",
-    "predicateType": "https://example.com/vulnerability-scan/v1",
-    "subject": [{
-        "name": "${IMAGE}",
-        "digest": {"sha256": "${DIGEST#sha256:}"}
-    }],
-    "predicate": {
-        "scanner": "trivy",
-        "scanTime": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-        "result": "passed",
-        "criticalCount": 0,
-        "highCount": 0
-    }
+    "scanner": "trivy",
+    "scanTime": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+    "result": "passed",
+    "criticalCount": 0,
+    "highCount": 0
 }
 EOF
 
         # Sign and attach attestation
-        cosign attest --predicate vuln-attestation.json \
-          --type custom \
+        cosign attest --yes --predicate vuln-attestation.json \
+          --type https://example.com/vulnerability-scan/v1 \
           "${IMAGE}@${DIGEST}"
     else
         echo "Vulnerability scan failed: ${CRITICAL} critical, ${HIGH} high"
@@ -244,47 +233,44 @@ create_sbom_attestation() {
     syft "${IMAGE}@${DIGEST}" -o spdx-json > sbom.json
 
     # Create attestation
-    cosign attest --predicate sbom.json \
+    cosign attest --yes --predicate sbom.json \
       --type spdxjson \
       "${IMAGE}@${DIGEST}"
 }
 
 # Attestation for build provenance
 create_provenance_attestation() {
-    cat <<EOF > provenance.json
+    cat <<EOF > provenance-predicate.json
 {
-    "_type": "https://in-toto.io/Statement/v0.1",
-    "predicateType": "https://slsa.dev/provenance/v0.2",
-    "subject": [{
-        "name": "${IMAGE}",
-        "digest": {"sha256": "${DIGEST#sha256:}"}
-    }],
-    "predicate": {
-        "builder": {
-            "id": "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-        },
-        "buildType": "https://github.com/actions",
-        "invocation": {
-            "configSource": {
-                "uri": "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}",
-                "digest": {"sha1": "${GITHUB_SHA}"},
-                "entryPoint": ".github/workflows/build.yaml"
-            }
-        },
-        "metadata": {
-            "buildStartedOn": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-            "completeness": {
-                "parameters": true,
-                "environment": true,
-                "materials": true
-            }
+    "builder": {
+        "id": "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+    },
+    "buildType": "https://github.com/actions",
+    "invocation": {
+        "configSource": {
+            "uri": "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}",
+            "digest": {"sha1": "${GITHUB_SHA}"},
+            "entryPoint": ".github/workflows/build.yaml"
         }
-    }
+    },
+    "metadata": {
+        "buildStartedOn": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+        "completeness": {
+            "parameters": false,
+            "environment": false,
+            "materials": true
+        },
+        "reproducible": false
+    },
+    "materials": [{
+        "uri": "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}",
+        "digest": {"sha1": "${GITHUB_SHA}"}
+    }]
 }
 EOF
 
-    cosign attest --predicate provenance.json \
-      --type slsaprovenance \
+    cosign attest --yes --predicate provenance-predicate.json \
+      --type slsaprovenance02 \
       "${IMAGE}@${DIGEST}"
 }
 
@@ -308,7 +294,7 @@ Install Sigstore Policy Controller for Kubernetes admission:
 
 # Webhook configuration
 webhook:
-  replicas: 2
+  replicaCount: 2
   # Fail closed - deny pods if webhook is unavailable
   failurePolicy: Fail
 
@@ -320,17 +306,16 @@ webhook:
       cpu: 500m
       memory: 256Mi
 
-# Namespace selector - which namespaces to enforce
-namespaceSelector:
-  matchExpressions:
-  - key: policy.sigstore.dev/include
-    operator: In
-    values: ["true"]
+  # Namespace selector - which namespaces to enforce
+  namespaceSelector:
+    matchExpressions:
+    - key: policy.sigstore.dev/include
+      operator: In
+      values: ["true"]
 
-# Cosign verification settings
-cosign:
-  # Default to deny unsigned images
-  noMatchPolicy: deny
+  # Default to deny images that do not match a ClusterImagePolicy
+  configData:
+    no-match-policy: deny
 ```
 
 Install the controller:
@@ -441,14 +426,14 @@ kubectl run test-signed --image=ghcr.io/myorg/myapp:v1.0.0 -n production
 
 # Verify the signature manually
 cosign verify \
-  --certificate-identity-regexp="https://github.com/myorg/*" \
+  --certificate-identity-regexp="https://github.com/myorg/myapp/.github/workflows/build-and-sign.yaml@refs/(heads/main|tags/v.*)" \
   --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
   ghcr.io/myorg/myapp:v1.0.0
 
 # List attestations
 cosign verify-attestation \
-  --type custom \
-  --certificate-identity-regexp="https://github.com/myorg/*" \
+  --type https://example.com/vulnerability-scan/v1 \
+  --certificate-identity-regexp="https://github.com/myorg/myapp/.github/workflows/build-and-sign.yaml@refs/(heads/main|tags/v.*)" \
   --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
   ghcr.io/myorg/myapp:v1.0.0
 ```
@@ -472,11 +457,10 @@ spec:
   - glob: "gcr.io/google-containers/**"
   - glob: "quay.io/prometheus/**"
 
-  # No authorities required - images are allowed
-  authorities: []
-
-  # This is a permissive policy
-  mode: allow
+  # Static pass allows these images without signature verification
+  authorities:
+  - static:
+      action: pass
 ```
 
 ---
@@ -498,7 +482,7 @@ spec:
     # Alert on policy violations
     - alert: ImagePolicyViolation
       expr: |
-        sum(rate(policy_controller_requests_total{result="denied"}[5m])) > 0
+        sum(rate(apiserver_admission_webhook_rejection_count{name="policy.sigstore.dev",error_type="no_error"}[5m])) > 0
       for: 1m
       labels:
         severity: warning
@@ -509,7 +493,7 @@ spec:
     # Alert on webhook failures
     - alert: PolicyWebhookErrors
       expr: |
-        sum(rate(policy_controller_webhook_errors_total[5m])) > 0.1
+        sum(rate(apiserver_admission_webhook_rejection_count{name="policy.sigstore.dev",error_type="calling_webhook_error"}[5m])) > 0.1
       for: 5m
       labels:
         severity: critical

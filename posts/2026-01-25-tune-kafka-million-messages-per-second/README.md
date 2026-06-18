@@ -79,7 +79,7 @@ props.put(ProducerConfig.COMPRESSION_TYPE_CONFIG, "lz4");
 props.put(ProducerConfig.MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION, 5);
 
 // Acknowledgment level
-// acks=1 for speed, acks=all for durability
+// acks=1 for speed, acks=all for durability and idempotence
 props.put(ProducerConfig.ACKS_CONFIG, "1");
 
 // Request timeout
@@ -335,7 +335,7 @@ public class ParallelConsumer {
 - Use SSDs or NVMe for maximum I/O throughput
 - RAID-10 for redundancy with good write performance
 - Separate disks for data and OS/logs
-- Disable disk write caching only if you have battery-backed cache
+- Enable write-back caching only with battery-backed or power-loss-protected cache
 
 ```bash
 # XFS recommended for Kafka
@@ -381,11 +381,12 @@ kafka-producer-perf-test.sh \
     --num-records 10000000 \
     --record-size 1000 \
     --throughput -1 \
-    --bootstrap-server kafka1:9092,kafka2:9092,kafka3:9092 \
-    --command-property batch.size=131072 \
-    --command-property linger.ms=10 \
-    --command-property compression.type=lz4 \
-    --command-property acks=1
+    --producer-props \
+        bootstrap.servers=kafka1:9092,kafka2:9092,kafka3:9092 \
+        batch.size=131072 \
+        linger.ms=10 \
+        compression.type=lz4 \
+        acks=1
 
 # Consumer benchmark
 kafka-consumer-perf-test.sh \

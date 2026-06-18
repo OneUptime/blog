@@ -114,7 +114,7 @@ Collects alert firing history, acknowledgement rates, and ownership data.
 """
 
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass, asdict
 from typing import Optional
 import requests
@@ -150,7 +150,7 @@ class AlertUsageAnalyzer:
 
     def get_alert_history(self, alert_id: str, days: int = 90) -> dict:
         """Get firing history for a specific alert."""
-        since = (datetime.utcnow() - timedelta(days=days)).isoformat()
+        since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
         response = requests.get(
             f"{self.api_url}/alerts/{alert_id}/history",
             headers=self.headers,
@@ -167,7 +167,13 @@ class AlertUsageAnalyzer:
         )
         if response.status_code == 404:
             return "not_found"
+        response.raise_for_status()
         return response.json().get("status", "unknown")
+
+    @staticmethod
+    def _parse_datetime(value: str) -> datetime:
+        """Parse ISO 8601 timestamps, including common trailing-Z UTC values."""
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
     def analyze_alert(self, alert: dict) -> AlertUsageReport:
         """Analyze a single alert and generate a usage report."""
@@ -176,6 +182,8 @@ class AlertUsageAnalyzer:
 
         fires = history.get("fires", [])
         acks = [f for f in fires if f.get("acknowledged")]
+        last_fired_str = max((f["fired_at"] for f in fires), default=None)
+        service_status = self.get_service_status(alert["target_service"])
 
         fire_count = len(fires)
         ack_count = len(acks)
@@ -183,7 +191,10 @@ class AlertUsageAnalyzer:
 
         # Calculate average resolution time
         resolution_times = [
-            f["resolved_at"] - f["fired_at"]
+            (
+                self._parse_datetime(f["resolved_at"]) -
+                self._parse_datetime(f["fired_at"])
+            ).total_seconds()
             for f in fires
             if f.get("resolved_at")
         ]
@@ -197,22 +208,22 @@ class AlertUsageAnalyzer:
             fire_count=fire_count,
             ack_rate=ack_rate,
             owner_team=alert.get("owner_team"),
-            last_fired=fires[-1]["fired_at"] if fires else None,
-            service_status=self.get_service_status(alert["target_service"])
+            last_fired=last_fired_str,
+            service_status=service_status
         )
 
         return AlertUsageReport(
             alert_id=alert_id,
             alert_name=alert["name"],
             owner_team=alert.get("owner_team"),
-            created_date=datetime.fromisoformat(alert["created_at"]),
-            last_fired=datetime.fromisoformat(fires[-1]["fired_at"]) if fires else None,
+            created_date=self._parse_datetime(alert["created_at"]),
+            last_fired=self._parse_datetime(last_fired_str) if last_fired_str else None,
             fire_count_90d=fire_count,
             ack_count_90d=ack_count,
             ack_rate=round(ack_rate, 1),
             avg_resolution_time_minutes=round(avg_resolution, 1),
             target_service=alert["target_service"],
-            target_service_status=self.get_service_status(alert["target_service"]),
+            target_service_status=service_status,
             recommendation=recommendation
         )
 
@@ -393,7 +404,7 @@ Sends deprecation notices and manages the notification workflow.
 """
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 import requests
 import json
@@ -437,7 +448,7 @@ class AlertDeprecationNotifier:
         response.raise_for_status()
         alert = response.json()
 
-        retirement_date = datetime.utcnow() + timedelta(days=grace_period_days)
+        retirement_date = datetime.now(timezone.utc) + timedelta(days=grace_period_days)
 
         return DeprecationNotice(
             alert_id=alert_id,
@@ -458,7 +469,7 @@ class AlertDeprecationNotifier:
                 "tags": {
                     "deprecated": "true",
                     "retirement_date": retirement_date.isoformat(),
-                    "deprecation_notice_sent": datetime.utcnow().isoformat()
+                    "deprecation_notice_sent": datetime.now(timezone.utc).isoformat()
                 }
             }
         )
@@ -525,7 +536,8 @@ class AlertDeprecationNotifier:
             ]
         }
 
-        requests.post(self.slack_webhook, json=message)
+        response = requests.post(self.slack_webhook, json=message)
+        response.raise_for_status()
 
     def send_email_notification(self, notice: DeprecationNotice, recipients: list[str]):
         """Send deprecation notice via email."""
@@ -547,7 +559,7 @@ class AlertDeprecationNotifier:
         <p>After the retirement date, the alert will be archived and then deleted.</p>
         """
 
-        requests.post(
+        response = requests.post(
             self.email_api,
             headers=self.headers,
             json={
@@ -556,6 +568,7 @@ class AlertDeprecationNotifier:
                 "body_html": email_body
             }
         )
+        response.raise_for_status()
 
     def process_deprecation(self, alert_id: str, reason: str, grace_period_days: int = 30):
         """Full deprecation workflow for an alert."""
@@ -636,10 +649,9 @@ Implements gradual alert retirement with configurable stages.
 """
 
 from enum import Enum
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 from dataclasses import dataclass
 import requests
-import json
 
 class RetirementPhase(Enum):
     ACTIVE = "active"
@@ -695,6 +707,11 @@ class AlertPhaseOutManager:
         self.api_url = monitoring_api_url
         self.headers = {"Authorization": f"Bearer {api_token}"}
 
+    @staticmethod
+    def _parse_datetime(value: str) -> datetime:
+        """Parse ISO 8601 timestamps, including common trailing-Z UTC values."""
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
     def get_alert_phase(self, alert_id: str) -> RetirementPhase:
         """Get the current retirement phase of an alert."""
         response = requests.get(
@@ -718,8 +735,8 @@ class AlertPhaseOutManager:
 
         date_str = alert.get("tags", {}).get("phase_start_date")
         if date_str:
-            return datetime.fromisoformat(date_str)
-        return datetime.utcnow()
+            return self._parse_datetime(date_str)
+        return datetime.now(timezone.utc)
 
     def tag_deprecated(self, alert_id: str):
         """Mark alert as deprecated."""
@@ -729,21 +746,23 @@ class AlertPhaseOutManager:
     def reduce_severity(self, alert_id: str):
         """Reduce alert severity to lowest level."""
         # First, reduce the severity
-        requests.patch(
+        response = requests.patch(
             f"{self.api_url}/alerts/{alert_id}",
             headers=self.headers,
             json={"severity": "info", "priority": "low"}
         )
+        response.raise_for_status()
         self._update_phase(alert_id, RetirementPhase.SEVERITY_REDUCED)
         print(f"Alert {alert_id}: severity reduced to info/low")
 
     def disable_alert(self, alert_id: str):
         """Disable the alert from firing."""
-        requests.patch(
+        response = requests.patch(
             f"{self.api_url}/alerts/{alert_id}",
             headers=self.headers,
             json={"enabled": False}
         )
+        response.raise_for_status()
         self._update_phase(alert_id, RetirementPhase.DISABLED)
         print(f"Alert {alert_id}: disabled")
 
@@ -754,45 +773,49 @@ class AlertPhaseOutManager:
             f"{self.api_url}/alerts/{alert_id}",
             headers=self.headers
         )
+        response.raise_for_status()
         alert_config = response.json()
 
         # Store in archive
         archive_record = {
             "alert_id": alert_id,
-            "archived_at": datetime.utcnow().isoformat(),
+            "archived_at": datetime.now(timezone.utc).isoformat(),
             "config": alert_config,
             "retirement_reason": alert_config.get("tags", {}).get("retirement_reason", "unknown")
         }
 
-        requests.post(
+        response = requests.post(
             f"{self.api_url}/alert-archive",
             headers=self.headers,
             json=archive_record
         )
+        response.raise_for_status()
 
         self._update_phase(alert_id, RetirementPhase.ARCHIVED)
         print(f"Alert {alert_id}: archived")
 
     def delete_alert(self, alert_id: str):
         """Permanently delete the alert."""
-        requests.delete(
+        response = requests.delete(
             f"{self.api_url}/alerts/{alert_id}",
             headers=self.headers
         )
+        response.raise_for_status()
         print(f"Alert {alert_id}: deleted")
 
     def _update_phase(self, alert_id: str, phase: RetirementPhase):
         """Update the retirement phase tag."""
-        requests.patch(
+        response = requests.patch(
             f"{self.api_url}/alerts/{alert_id}",
             headers=self.headers,
             json={
                 "tags": {
                     "retirement_phase": phase.value,
-                    "phase_start_date": datetime.utcnow().isoformat()
+                    "phase_start_date": datetime.now(timezone.utc).isoformat()
                 }
             }
         )
+        response.raise_for_status()
 
     def process_transitions(self):
         """Process all alerts that are ready for phase transitions."""
@@ -803,6 +826,7 @@ class AlertPhaseOutManager:
             headers=self.headers,
             params={"tag": "deprecated:true"}
         )
+        response.raise_for_status()
         alerts = response.json().get("alerts", [])
 
         for alert in alerts:
@@ -816,7 +840,7 @@ class AlertPhaseOutManager:
                     continue
 
                 # Check if enough time has passed
-                days_in_phase = (datetime.utcnow() - phase_start).days
+                days_in_phase = (datetime.now(timezone.utc) - phase_start).days
                 if days_in_phase >= transition.wait_days:
                     # Execute the transition
                     action_method = getattr(self, transition.action)
@@ -923,7 +947,7 @@ Manages alert archival and restoration.
 
 import json
 import hashlib
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 import boto3  # For S3 storage
 from dataclasses import dataclass, asdict
@@ -963,7 +987,7 @@ class AlertArchiveManager:
         """Archive an alert configuration."""
 
         alert_id = alert_config["id"]
-        archived_at = datetime.utcnow().isoformat()
+        archived_at = datetime.now(timezone.utc).isoformat()
 
         record = ArchiveRecord(
             alert_id=alert_id,
@@ -983,7 +1007,7 @@ class AlertArchiveManager:
         self.s3.put_object(
             Bucket=self.bucket,
             Key=s3_key,
-            Body=json.dumps(asdict(record), indent=2),
+            Body=json.dumps(asdict(record), indent=2).encode("utf-8"),
             ContentType="application/json",
             Metadata={
                 "alert_name": alert_config.get("name", ""),
@@ -1009,7 +1033,11 @@ class AlertArchiveManager:
 
     def mark_deleted(self, alert_id: str):
         """Mark an archived alert as permanently deleted."""
-        deleted_at = datetime.utcnow().isoformat()
+        archive = self.get_archive(alert_id)
+        if not archive:
+            raise ValueError(f"No archive found for alert {alert_id}")
+
+        deleted_at = datetime.now(timezone.utc).isoformat()
 
         self.table.update_item(
             Key={"alert_id": alert_id},
@@ -1018,6 +1046,15 @@ class AlertArchiveManager:
                 ":d": True,
                 ":t": deleted_at
             }
+        )
+
+        archive.deleted_at = deleted_at
+        s3_key = f"alerts/{alert_id}/{archive.archived_at}.json"
+        self.s3.put_object(
+            Bucket=self.bucket,
+            Key=s3_key,
+            Body=json.dumps(asdict(archive), indent=2).encode("utf-8"),
+            ContentType="application/json"
         )
 
     def get_archive(self, alert_id: str) -> Optional[ArchiveRecord]:
@@ -1060,7 +1097,7 @@ class AlertArchiveManager:
         config["tags"] = config.get("tags", {})
         config["tags"]["restored_from_archive"] = "true"
         config["tags"]["original_alert_id"] = alert_id
-        config["tags"]["restored_at"] = datetime.utcnow().isoformat()
+        config["tags"]["restored_at"] = datetime.now(timezone.utc).isoformat()
         config["enabled"] = True  # Re-enable the alert
 
         response = requests.post(
@@ -1073,7 +1110,7 @@ class AlertArchiveManager:
 
         # Update archive with restoration history
         archive.restoration_history.append({
-            "restored_at": datetime.utcnow().isoformat(),
+            "restored_at": datetime.now(timezone.utc).isoformat(),
             "restored_by": restored_by,
             "reason": reason,
             "new_alert_id": new_alert["id"]
@@ -1084,7 +1121,7 @@ class AlertArchiveManager:
         self.s3.put_object(
             Bucket=self.bucket,
             Key=s3_key,
-            Body=json.dumps(asdict(archive), indent=2),
+            Body=json.dumps(asdict(archive), indent=2).encode("utf-8"),
             ContentType="application/json"
         )
 
@@ -1158,7 +1195,7 @@ post_retirement_monitor.py
 Monitors for incidents that retired alerts might have caught.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass
 from typing import Optional
 import requests
@@ -1188,9 +1225,14 @@ class PostRetirementMonitor:
         self.headers = {"Authorization": f"Bearer {api_token}"}
         self.monitoring_period_days = 30
 
+    @staticmethod
+    def _parse_datetime(value: str) -> datetime:
+        """Parse ISO 8601 timestamps, including common trailing-Z UTC values."""
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
     def get_recently_retired_alerts(self) -> list[dict]:
         """Get alerts retired within the monitoring period."""
-        since = datetime.utcnow() - timedelta(days=self.monitoring_period_days)
+        since = datetime.now(timezone.utc) - timedelta(days=self.monitoring_period_days)
 
         response = requests.get(
             f"{self.archive_api}/alerts",
@@ -1227,7 +1269,7 @@ class PostRetirementMonitor:
         """
 
         # Get metrics around incident time
-        incident_time = datetime.fromisoformat(incident["started_at"])
+        incident_time = self._parse_datetime(incident["started_at"])
         window_start = incident_time - timedelta(minutes=10)
         window_end = incident_time + timedelta(minutes=5)
 
@@ -1258,20 +1300,26 @@ class PostRetirementMonitor:
             return False, 0.0
 
         max_value = max(values)
-
+        min_value = min(values)
+        comparison_value = max_value
         would_fire = False
         if threshold_operator == "gt":
             would_fire = max_value > threshold_value
         elif threshold_operator == "lt":
-            would_fire = max_value < threshold_value
+            comparison_value = min_value
+            would_fire = min_value < threshold_value
         elif threshold_operator == "gte":
             would_fire = max_value >= threshold_value
         elif threshold_operator == "lte":
-            would_fire = max_value <= threshold_value
+            comparison_value = min_value
+            would_fire = min_value <= threshold_value
 
         # Confidence based on how clearly the threshold was breached
         if would_fire:
-            breach_margin = abs(max_value - threshold_value) / threshold_value
+            breach_margin = (
+                abs(comparison_value - threshold_value) / abs(threshold_value)
+                if threshold_value else 1.0
+            )
             confidence = min(0.5 + breach_margin, 1.0)
         else:
             confidence = 0.0
@@ -1287,7 +1335,7 @@ class PostRetirementMonitor:
         for archive in retired_alerts:
             alert_config = archive.get("config", {})
             target_service = alert_config.get("target_service")
-            deleted_at = datetime.fromisoformat(archive["deleted_at"])
+            deleted_at = self._parse_datetime(archive["deleted_at"])
 
             # Get incidents since deletion
             incidents = self.get_recent_incidents(target_service, deleted_at)
@@ -1306,7 +1354,7 @@ class PostRetirementMonitor:
                         retired_alert_id=archive["alert_id"],
                         incident_id=incident["id"],
                         incident_service=target_service,
-                        incident_time=datetime.fromisoformat(incident["started_at"]),
+                        incident_time=self._parse_datetime(incident["started_at"]),
                         would_have_fired=True,
                         confidence=confidence,
                         recommendation=recommendation
@@ -1336,7 +1384,7 @@ class PostRetirementMonitor:
         regressions = self.check_for_regressions()
 
         report = {
-            "generated_at": datetime.utcnow().isoformat(),
+            "generated_at": datetime.now(timezone.utc).isoformat(),
             "monitoring_period_days": self.monitoring_period_days,
             "total_regressions_detected": len(regressions),
             "regressions_by_recommendation": {},
@@ -1378,7 +1426,7 @@ if __name__ == "__main__":
 
     # Output full report
     with open("regression_report.json", "w") as f:
-        json.dump(report, f, indent=2)
+        json.dump(report, f, indent=2, default=str)
 ```
 
 ---
@@ -1428,13 +1476,12 @@ Main entry point for the alert retirement system.
 
 import os
 import argparse
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Import our modules
 from alert_usage_analyzer import AlertUsageAnalyzer
 from alert_deprecation_notifier import AlertDeprecationNotifier
 from alert_phase_out import AlertPhaseOutManager
-from alert_archive import AlertArchiveManager
 from post_retirement_monitor import PostRetirementMonitor
 
 def run_analysis():
@@ -1447,7 +1494,7 @@ def run_analysis():
     reports = analyzer.generate_full_report()
     candidates = analyzer.export_candidates(reports)
 
-    print(f"[{datetime.utcnow()}] Analysis complete")
+    print(f"[{datetime.now(timezone.utc)}] Analysis complete")
     print(f"  Total alerts: {len(reports)}")
     print(f"  Retirement candidates: {len(candidates)}")
 
@@ -1470,7 +1517,7 @@ def run_notifications(candidates: list):
                 grace_period_days=30
             )
 
-    print(f"[{datetime.utcnow()}] Notifications sent")
+    print(f"[{datetime.now(timezone.utc)}] Notifications sent")
 
 def run_phase_transitions():
     """Process scheduled phase transitions."""
@@ -1480,7 +1527,7 @@ def run_phase_transitions():
     )
 
     manager.process_transitions()
-    print(f"[{datetime.utcnow()}] Phase transitions processed")
+    print(f"[{datetime.now(timezone.utc)}] Phase transitions processed")
 
 def run_regression_monitoring():
     """Check for potential regressions from retired alerts."""
@@ -1493,7 +1540,7 @@ def run_regression_monitoring():
 
     report = monitor.generate_regression_report()
 
-    print(f"[{datetime.utcnow()}] Regression monitoring complete")
+    print(f"[{datetime.now(timezone.utc)}] Regression monitoring complete")
     print(f"  Potential regressions: {report['total_regressions_detected']}")
 
     # Alert if high-confidence regressions found

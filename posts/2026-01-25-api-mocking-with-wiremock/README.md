@@ -19,13 +19,13 @@ Download and run WireMock as a standalone server:
 ```bash
 # Download WireMock
 
-wget https://repo1.maven.org/maven2/org/wiremock/wiremock-standalone/3.3.1/wiremock-standalone-3.3.1.jar
+wget https://repo1.maven.org/maven2/org/wiremock/wiremock-standalone/3.13.2/wiremock-standalone-3.13.2.jar
 
 # Run WireMock
-java -jar wiremock-standalone-3.3.1.jar --port 8080
+java -jar wiremock-standalone-3.13.2.jar --port 8080
 
 # Run with verbose logging
-java -jar wiremock-standalone-3.3.1.jar --port 8080 --verbose
+java -jar wiremock-standalone-3.13.2.jar --port 8080 --verbose
 ```
 
 ### Docker
@@ -38,14 +38,14 @@ docker run -d \
   --name wiremock \
   -p 8080:8080 \
   -v $(pwd)/stubs:/home/wiremock \
-  wiremock/wiremock:3.3.1
+  wiremock/wiremock:3.13.2
 
 # With custom configuration
 docker run -d \
   --name wiremock \
   -p 8080:8080 \
   -v $(pwd)/stubs:/home/wiremock \
-  wiremock/wiremock:3.3.1 \
+  wiremock/wiremock:3.13.2 \
   --verbose \
   --global-response-templating
 ```
@@ -59,7 +59,7 @@ For Java projects:
 <dependency>
   <groupId>org.wiremock</groupId>
   <artifactId>wiremock</artifactId>
-  <version>3.3.1</version>
+  <version>3.13.2</version>
   <scope>test</scope>
 </dependency>
 ```
@@ -71,7 +71,6 @@ For Java projects:
 Create stub files in `mappings/` directory:
 
 ```json
-// mappings/get-user.json
 {
   "request": {
     "method": "GET",
@@ -92,7 +91,6 @@ Create stub files in `mappings/` directory:
 ```
 
 ```json
-// mappings/create-user.json
 {
   "request": {
     "method": "POST",
@@ -132,7 +130,6 @@ Create stub files in `mappings/` directory:
 Store large responses in `__files/` directory:
 
 ```json
-// __files/products.json
 [
   {
     "id": 1,
@@ -152,7 +149,6 @@ Store large responses in `__files/` directory:
 Reference in mapping:
 
 ```json
-// mappings/get-products.json
 {
   "request": {
     "method": "GET",
@@ -172,27 +168,23 @@ Reference in mapping:
 
 ### URL Matching
 
-```json
-{
-  "request": {
-    // Exact URL match
-    "url": "/api/users/123",
+```jsonc
+// Exact URL match
+{ "request": { "url": "/api/users/123" } }
 
-    // URL pattern with regex
-    "urlPathPattern": "/api/users/[0-9]+",
+// URL pattern with regex
+{ "request": { "urlPathPattern": "/api/users/[0-9]+" } }
 
-    // URL with query parameters
-    "urlPathTemplate": "/api/users/{userId}",
+// URL path template
+{ "request": { "urlPathTemplate": "/api/users/{userId}" } }
 
-    // Match any URL starting with
-    "urlPathPrefix": "/api/"
-  }
-}
+// Match any URL starting with
+{ "request": { "urlPathPattern": "/api/.*" } }
 ```
 
 ### Query Parameter Matching
 
-```json
+```jsonc
 {
   "request": {
     "method": "GET",
@@ -218,7 +210,7 @@ Reference in mapping:
 
 ### Header Matching
 
-```json
+```jsonc
 {
   "request": {
     "method": "GET",
@@ -240,7 +232,7 @@ Reference in mapping:
 
 ### Body Matching
 
-```json
+```jsonc
 {
   "request": {
     "method": "POST",
@@ -290,7 +282,7 @@ Enable dynamic responses using Handlebars templates:
       "id": "{{request.pathSegments.[2]}}",
       "requestedAt": "{{now}}",
       "requestId": "{{randomValue type='UUID'}}",
-      "userAgent": "{{request.headers.User-Agent}}"
+      "userAgent": "{{request.headers.[User-Agent]}}"
     },
     "transformers": ["response-template"]
   }
@@ -299,7 +291,7 @@ Enable dynamic responses using Handlebars templates:
 
 ### Template Helpers
 
-```json
+```jsonc
 {
   "response": {
     "jsonBody": {
@@ -316,7 +308,7 @@ Enable dynamic responses using Handlebars templates:
       "method": "{{request.method}}",
       "path": "{{request.path}}",
       "query": "{{request.query.param}}",
-      "header": "{{request.headers.X-Custom}}",
+      "header": "{{request.headers.[X-Custom]}}",
 
       // JSON body extraction
       "bodyField": "{{jsonPath request.body '$.fieldName'}}",
@@ -365,7 +357,6 @@ Enable dynamic responses using Handlebars templates:
 ### Error Responses
 
 ```json
-// mappings/server-error.json
 {
   "request": {
     "method": "GET",
@@ -408,8 +399,9 @@ Available faults:
 
 Simulate stateful behavior using scenarios:
 
+First call returns pending:
+
 ```json
-// First call returns pending
 {
   "scenarioName": "Order Status",
   "requiredScenarioState": "Started",
@@ -425,8 +417,9 @@ Simulate stateful behavior using scenarios:
 }
 ```
 
+Second call returns processing:
+
 ```json
-// Second call returns processing
 {
   "scenarioName": "Order Status",
   "requiredScenarioState": "Processing",
@@ -442,8 +435,9 @@ Simulate stateful behavior using scenarios:
 }
 ```
 
+Third call returns completed:
+
 ```json
-// Third call returns completed
 {
   "scenarioName": "Order Status",
   "requiredScenarioState": "Completed",
@@ -468,6 +462,7 @@ import com.github.tomakehurst.wiremock.junit5.WireMockTest;
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
+import java.util.concurrent.TimeoutException;
 
 @WireMockTest(httpPort = 8080)
 class UserServiceTest {
@@ -535,13 +530,13 @@ Set up WireMock with your test environment:
 version: '3.8'
 services:
   wiremock:
-    image: wiremock/wiremock:3.3.1
+    image: wiremock/wiremock:3.13.2
     ports:
       - "8080:8080"
     volumes:
       - ./wiremock/mappings:/home/wiremock/mappings
       - ./wiremock/__files:/home/wiremock/__files
-    command: --verbose --global-response-templating
+    entrypoint: ["/docker-entrypoint.sh", "--verbose", "--global-response-templating"]
 
   app:
     build: .

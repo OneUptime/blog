@@ -46,25 +46,35 @@ Add required crates to your `Cargo.toml`:
 [dependencies]
 # Tokio with metrics and tracing support
 
-tokio = { version = "1.35", features = ["full", "tracing"] }
-tokio-metrics = "0.3"
+tokio = { version = "1.52", features = ["full", "tracing"] }
+tokio-metrics = "0.5"
 
 # OpenTelemetry core
-opentelemetry = "0.22"
-opentelemetry_sdk = { version = "0.22", features = ["rt-tokio", "metrics"] }
-opentelemetry-otlp = { version = "0.15", features = ["metrics"] }
+opentelemetry = "0.32"
+opentelemetry_sdk = { version = "0.32", features = ["rt-tokio", "metrics"] }
+opentelemetry-otlp = { version = "0.32", features = ["grpc-tonic", "metrics"] }
 
 # Prometheus exporter (alternative to OTLP)
-opentelemetry-prometheus = "0.15"
-prometheus = "0.13"
+opentelemetry-prometheus = "0.32"
+prometheus = "0.14"
+warp = { version = "0.4", features = ["server"] }
 
 # Tracing integration
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-tracing-opentelemetry = "0.23"
+tracing-opentelemetry = "0.33"
 
 # Utilities
 serde = { version = "1.0", features = ["derive"] }
+```
+
+Many Tokio runtime metrics are available only when Tokio is compiled with `tokio_unstable`. Enable that configuration for builds that collect detailed runtime metrics:
+
+```toml
+# .cargo/config.toml
+[build]
+rustflags = ["--cfg", "tokio_unstable"]
+rustdocflags = ["--cfg", "tokio_unstable"]
 ```
 
 ## Initialize Metrics Pipeline
@@ -73,37 +83,28 @@ Set up OpenTelemetry metrics exporter for Tokio data:
 
 ```rust
 use opentelemetry::{global, KeyValue};
-use opentelemetry_sdk::{
-    metrics::{MeterProvider, PeriodicReader, SdkMeterProvider},
-    runtime,
-    Resource,
-};
+use opentelemetry_sdk::{metrics::SdkMeterProvider, Resource};
 use opentelemetry_otlp::WithExportConfig;
-use std::time::Duration;
 
 fn init_metrics() -> Result<SdkMeterProvider, Box<dyn std::error::Error>> {
     // Configure OTLP metrics exporter
-    let exporter = opentelemetry_otlp::new_exporter()
-        .tonic()
+    let exporter = opentelemetry_otlp::MetricExporter::builder()
+        .with_tonic()
         .with_endpoint("http://localhost:4317")
-        .build_metrics_exporter(
-            Box::new(opentelemetry_sdk::metrics::aggregation::DefaultAggregationSelector::new()),
-            Box::new(opentelemetry_sdk::metrics::data::Temporality::default()),
-        )?;
-
-    // Create periodic reader that exports metrics every 10 seconds
-    let reader = PeriodicReader::builder(exporter, runtime::Tokio)
-        .with_interval(Duration::from_secs(10))
-        .build();
+        .build()?;
 
     // Build meter provider with service identification
     let provider = SdkMeterProvider::builder()
-        .with_reader(reader)
-        .with_resource(Resource::new(vec![
-            KeyValue::new("service.name", "tokio-metrics-service"),
-            KeyValue::new("service.version", "1.0.0"),
-            KeyValue::new("runtime", "tokio"),
-        ]))
+        .with_periodic_exporter(exporter)
+        .with_resource(
+            Resource::builder()
+                .with_attributes([
+                    KeyValue::new("service.name", "tokio-metrics-service"),
+                    KeyValue::new("service.version", "1.0.0"),
+                    KeyValue::new("runtime", "tokio"),
+                ])
+                .build(),
+        )
         .build();
 
     global::set_meter_provider(provider.clone());
@@ -118,24 +119,24 @@ Create a monitor that tracks Tokio runtime statistics:
 
 ```rust
 use tokio_metrics::{RuntimeMonitor, RuntimeMetrics};
-use opentelemetry::metrics::{Meter, Counter, Histogram, ObservableGauge};
+use opentelemetry::metrics::{Counter, Histogram, Meter};
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::runtime::Handle;
 
 pub struct TokioMetricsCollector {
     monitor: RuntimeMonitor,
 
     // Counter metrics
-    tasks_spawned: Counter<u64>,
-    tasks_completed: Counter<u64>,
+    task_polls: Counter<u64>,
+    task_budget_forced_yields: Counter<u64>,
 
     // Histogram metrics
     task_poll_duration: Histogram<f64>,
-    task_scheduled_duration: Histogram<f64>,
 
     // Gauge metrics for current state
     active_tasks: Arc<std::sync::Mutex<u64>>,
-    idle_workers: Arc<std::sync::Mutex<u64>>,
+    idle_blocking_threads: Arc<std::sync::Mutex<u64>>,
 }
 
 impl TokioMetricsCollector {
@@ -144,70 +145,73 @@ impl TokioMetricsCollector {
         let monitor = RuntimeMonitor::new(runtime_handle);
 
         // Initialize counter metrics
-        let tasks_spawned = meter
-            .u64_counter("tokio.tasks.spawned")
-            .with_description("Total number of tasks spawned")
-            .init();
+        let task_polls = meter
+            .u64_counter("tokio.task.polls")
+            .with_description("Total number of task polls observed")
+            .build();
 
-        let tasks_completed = meter
-            .u64_counter("tokio.tasks.completed")
-            .with_description("Total number of tasks completed")
-            .init();
+        let task_budget_forced_yields = meter
+            .u64_counter("tokio.task.budget_forced_yields")
+            .with_description("Number of times tasks were forced to yield after exhausting their budget")
+            .build();
 
         // Initialize histogram metrics
         let task_poll_duration = meter
             .f64_histogram("tokio.task.poll.duration")
-            .with_description("Duration of task polls in seconds")
+            .with_description("Mean duration of task polls in seconds")
             .with_unit("s")
-            .init();
-
-        let task_scheduled_duration = meter
-            .f64_histogram("tokio.task.scheduled.duration")
-            .with_description("Time tasks spend waiting to be polled")
-            .with_unit("s")
-            .init();
+            .build();
 
         // Initialize gauge metrics
         let active_tasks = Arc::new(std::sync::Mutex::new(0));
-        let idle_workers = Arc::new(std::sync::Mutex::new(0));
+        let idle_blocking_threads = Arc::new(std::sync::Mutex::new(0));
 
         // Register observable gauges
         let active_tasks_clone = active_tasks.clone();
         meter
             .u64_observable_gauge("tokio.tasks.active")
-            .with_description("Number of currently active tasks")
+            .with_description("Number of currently live tasks")
             .with_callback(move |observer| {
                 let value = *active_tasks_clone.lock().unwrap();
                 observer.observe(value, &[]);
             })
-            .init();
+            .build();
 
-        let idle_workers_clone = idle_workers.clone();
+        let idle_blocking_threads_clone = idle_blocking_threads.clone();
         meter
-            .u64_observable_gauge("tokio.workers.idle")
-            .with_description("Number of idle worker threads")
+            .u64_observable_gauge("tokio.blocking_threads.idle")
+            .with_description("Number of idle blocking threads")
             .with_callback(move |observer| {
-                let value = *idle_workers_clone.lock().unwrap();
+                let value = *idle_blocking_threads_clone.lock().unwrap();
                 observer.observe(value, &[]);
             })
-            .init();
+            .build();
 
         Self {
             monitor,
-            tasks_spawned,
-            tasks_completed,
+            task_polls,
+            task_budget_forced_yields,
             task_poll_duration,
-            task_scheduled_duration,
             active_tasks,
-            idle_workers,
+            idle_blocking_threads,
         }
     }
 
     // Collect and record metrics from the runtime
-    pub async fn collect_metrics(&self) {
-        // Get current metrics snapshot
-        for metrics in self.monitor.intervals() {
+    pub async fn collect_metrics(
+        &self,
+        worker_collector: &WorkerMetricsCollector,
+        budget_collector: &BudgetMetricsCollector,
+        starvation_detector: &StarvationDetector,
+    ) {
+        let mut intervals = self.monitor.intervals();
+
+        loop {
+            let metrics = intervals.next().unwrap();
             self.record_metrics(&metrics);
+            worker_collector.record(&metrics);
+            budget_collector.record(&metrics);
+            starvation_detector.check_starvation(&metrics);
 
             // Sleep briefly to avoid busy-waiting
             tokio::time::sleep(Duration::from_millis(100)).await;
@@ -216,23 +220,17 @@ impl TokioMetricsCollector {
 
     fn record_metrics(&self, metrics: &RuntimeMetrics) {
         // Record counter metrics
-        self.tasks_spawned.add(metrics.total_spawned_tasks_count, &[]);
-
-        // Calculate completed tasks
-        let completed = metrics.total_spawned_tasks_count
-            .saturating_sub(*self.active_tasks.lock().unwrap());
-        self.tasks_completed.add(completed, &[]);
+        self.task_polls.add(metrics.total_polls_count, &[]);
+        self.task_budget_forced_yields
+            .add(metrics.budget_forced_yield_count, &[]);
 
         // Record timing histograms
         let poll_duration_secs = metrics.mean_poll_duration.as_secs_f64();
         self.task_poll_duration.record(poll_duration_secs, &[]);
 
-        let scheduled_duration_secs = metrics.mean_scheduled_duration.as_secs_f64();
-        self.task_scheduled_duration.record(scheduled_duration_secs, &[]);
-
         // Update gauge values
-        *self.active_tasks.lock().unwrap() = metrics.active_tasks_count;
-        *self.idle_workers.lock().unwrap() = metrics.num_idle_blocking_threads;
+        *self.active_tasks.lock().unwrap() = metrics.live_tasks_count as u64;
+        *self.idle_blocking_threads.lock().unwrap() = metrics.idle_blocking_threads_count as u64;
     }
 }
 ```
@@ -243,7 +241,7 @@ Monitor specific task performance with custom instrumentation:
 
 ```rust
 use tracing::{info, instrument};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 #[instrument(skip(work_fn))]
 async fn tracked_task<F, T>(task_name: &str, work_fn: F) -> T
@@ -312,11 +310,11 @@ Track worker thread activity and blocking operations:
 
 ```rust
 use tokio_metrics::RuntimeMetrics;
-use opentelemetry::metrics::Meter;
+use opentelemetry::metrics::{Counter, Histogram, Meter};
 
 pub struct WorkerMetricsCollector {
     worker_park_count: Counter<u64>,
-    worker_unpark_count: Counter<u64>,
+    worker_noop_count: Counter<u64>,
     blocking_queue_depth: Histogram<u64>,
 }
 
@@ -326,28 +324,28 @@ impl WorkerMetricsCollector {
             worker_park_count: meter
                 .u64_counter("tokio.worker.park.count")
                 .with_description("Number of times workers parked")
-                .init(),
+                .build(),
 
-            worker_unpark_count: meter
-                .u64_counter("tokio.worker.unpark.count")
-                .with_description("Number of times workers unparked")
-                .init(),
+            worker_noop_count: meter
+                .u64_counter("tokio.worker.noop.count")
+                .with_description("Number of times workers woke without finding work")
+                .build(),
 
             blocking_queue_depth: meter
                 .u64_histogram("tokio.blocking.queue.depth")
                 .with_description("Depth of blocking task queue")
-                .init(),
+                .build(),
         }
     }
 
     pub fn record(&self, metrics: &RuntimeMetrics) {
-        // Record worker park/unpark events
+        // Record worker park and no-op wake events
         self.worker_park_count.add(metrics.total_park_count, &[]);
-        self.worker_unpark_count.add(metrics.total_noop_count, &[]);
+        self.worker_noop_count.add(metrics.total_noop_count, &[]);
 
         // Record blocking queue depth
         self.blocking_queue_depth.record(
-            metrics.num_blocking_threads,
+            metrics.blocking_queue_depth as u64,
             &[],
         );
     }
@@ -360,31 +358,23 @@ Implement monitoring to detect when tasks are starved of execution time:
 
 ```rust
 use std::time::Duration;
+use tokio_metrics::RuntimeMetrics;
 use tracing::warn;
 
 pub struct StarvationDetector {
-    max_scheduled_duration: Duration,
     max_poll_duration: Duration,
+    max_queue_depth: usize,
 }
 
 impl StarvationDetector {
     pub fn new() -> Self {
         Self {
-            max_scheduled_duration: Duration::from_millis(100),
             max_poll_duration: Duration::from_millis(50),
+            max_queue_depth: 1000,
         }
     }
 
     pub fn check_starvation(&self, metrics: &RuntimeMetrics) {
-        // Check if tasks are waiting too long to be scheduled
-        if metrics.mean_scheduled_duration > self.max_scheduled_duration {
-            warn!(
-                scheduled_duration_ms = metrics.mean_scheduled_duration.as_millis(),
-                threshold_ms = self.max_scheduled_duration.as_millis(),
-                "Task starvation detected: high scheduling delay"
-            );
-        }
-
         // Check if polls are taking too long (blocking the executor)
         if metrics.mean_poll_duration > self.max_poll_duration {
             warn!(
@@ -395,10 +385,11 @@ impl StarvationDetector {
         }
 
         // Check for queue buildup
-        if metrics.active_tasks_count > 1000 {
+        let scheduled_queue_depth = metrics.global_queue_depth + metrics.total_local_queue_depth;
+        if scheduled_queue_depth > self.max_queue_depth {
             warn!(
-                active_tasks = metrics.active_tasks_count,
-                "High task count detected: possible overload"
+                scheduled_queue_depth = scheduled_queue_depth,
+                "High scheduler queue depth detected: possible overload"
             );
         }
     }
@@ -410,11 +401,12 @@ impl StarvationDetector {
 Track task budget consumption to identify compute-intensive operations:
 
 ```rust
-use opentelemetry::metrics::{Meter, Histogram};
+use opentelemetry::metrics::{Counter, Histogram, Meter};
+use tokio_metrics::RuntimeMetrics;
 
 pub struct BudgetMetricsCollector {
     budget_exhaustion_count: Counter<u64>,
-    polls_per_task: Histogram<u64>,
+    polls_per_interval: Histogram<u64>,
 }
 
 impl BudgetMetricsCollector {
@@ -423,22 +415,20 @@ impl BudgetMetricsCollector {
             budget_exhaustion_count: meter
                 .u64_counter("tokio.budget.exhausted")
                 .with_description("Number of times task budget was exhausted")
-                .init(),
+                .build(),
 
-            polls_per_task: meter
-                .u64_histogram("tokio.task.polls")
-                .with_description("Number of polls per task")
-                .init(),
+            polls_per_interval: meter
+                .u64_histogram("tokio.task.polls_per_interval")
+                .with_description("Number of task polls per collection interval")
+                .build(),
         }
     }
 
     pub fn record(&self, metrics: &RuntimeMetrics) {
-        // Calculate budget exhaustion from polling patterns
-        if metrics.mean_polls_count > 100 {
-            self.budget_exhaustion_count.add(1, &[]);
-        }
+        self.budget_exhaustion_count
+            .add(metrics.budget_forced_yield_count, &[]);
 
-        self.polls_per_task.record(metrics.mean_polls_count, &[]);
+        self.polls_per_interval.record(metrics.total_polls_count, &[]);
     }
 }
 ```
@@ -448,8 +438,10 @@ impl BudgetMetricsCollector {
 Assemble all components into a working monitoring system:
 
 ```rust
+use opentelemetry::global;
+use std::time::Duration;
 use tokio::runtime::Handle;
-use tracing::{info, error};
+use tracing::info;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -473,10 +465,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Spawn metrics collection task
     let metrics_handle = tokio::spawn(async move {
-        loop {
-            metrics_collector.collect_metrics().await;
-            tokio::time::sleep(Duration::from_secs(1)).await;
-        }
+        metrics_collector
+            .collect_metrics(&worker_collector, &budget_collector, &starvation_detector)
+            .await;
     });
 
     // Spawn example workload tasks
@@ -546,25 +537,37 @@ async fn spawn_example_workload() {
 Alternative approach using Prometheus exporter:
 
 ```rust
-use opentelemetry_prometheus::PrometheusExporter;
+use opentelemetry::global;
+use opentelemetry_sdk::{metrics::SdkMeterProvider, Resource};
 use prometheus::{Encoder, TextEncoder};
+use std::sync::Arc;
+use tracing::info;
 
-fn init_prometheus_metrics() -> Result<PrometheusExporter, Box<dyn std::error::Error>> {
+fn init_prometheus_metrics() -> Result<(SdkMeterProvider, prometheus::Registry), Box<dyn std::error::Error>> {
+    let registry = prometheus::Registry::new();
+
     let exporter = opentelemetry_prometheus::exporter()
-        .with_resource(Resource::new(vec![
-            KeyValue::new("service.name", "tokio-prometheus-service"),
-        ]))
+        .with_registry(registry.clone())
         .build()?;
 
-    global::set_meter_provider(exporter.meter_provider());
+    let provider = SdkMeterProvider::builder()
+        .with_reader(exporter)
+        .with_resource(
+            Resource::builder()
+                .with_service_name("tokio-prometheus-service")
+                .build(),
+        )
+        .build();
 
-    Ok(exporter)
+    global::set_meter_provider(provider.clone());
+
+    Ok((provider, registry))
 }
 
 // HTTP endpoint to expose Prometheus metrics
-async fn metrics_handler(exporter: Arc<PrometheusExporter>) -> Result<String, String> {
+async fn metrics_handler(registry: Arc<prometheus::Registry>) -> Result<String, String> {
     let encoder = TextEncoder::new();
-    let metric_families = exporter.registry().gather();
+    let metric_families = registry.gather();
 
     let mut buffer = vec![];
     encoder
@@ -576,13 +579,13 @@ async fn metrics_handler(exporter: Arc<PrometheusExporter>) -> Result<String, St
 }
 
 // Serve metrics on HTTP endpoint
-async fn serve_metrics(exporter: Arc<PrometheusExporter>) {
+async fn serve_metrics(registry: Arc<prometheus::Registry>) {
     use warp::Filter;
 
     let metrics_route = warp::path!("metrics")
-        .and(warp::any().map(move || exporter.clone()))
-        .and_then(|exp: Arc<PrometheusExporter>| async move {
-            metrics_handler(exp).await.map_err(|e| warp::reject::reject())
+        .and(warp::any().map(move || registry.clone()))
+        .and_then(|registry: Arc<prometheus::Registry>| async move {
+            metrics_handler(registry).await.map_err(|_| warp::reject::reject())
         });
 
     info!("Serving Prometheus metrics on http://0.0.0.0:9090/metrics");
@@ -595,9 +598,9 @@ async fn serve_metrics(exporter: Arc<PrometheusExporter>) {
 Create a Grafana dashboard to visualize Tokio metrics:
 
 **Panel 1: Task Throughput**
-- Metric: `rate(tokio_tasks_spawned[1m])`
+- Metric: `rate(tokio_task_polls_total[1m])`
 - Visualization: Time series graph
-- Shows tasks spawned per second
+- Shows task polls per second
 
 **Panel 2: Active Tasks**
 - Metric: `tokio_tasks_active`
@@ -610,14 +613,14 @@ Create a Grafana dashboard to visualize Tokio metrics:
 - Shows distribution of task poll times
 
 **Panel 4: Worker Utilization**
-- Metric: `tokio_workers_idle`
+- Metric: `tokio_blocking_threads_idle`
 - Visualization: Time series
-- Shows idle worker thread count
+- Shows idle blocking thread count
 
 **Panel 5: Scheduling Delay**
-- Metric: `tokio_task_scheduled_duration`
+- Metric: `tokio_blocking_queue_depth`
 - Visualization: Histogram
-- Shows time tasks wait before execution
+- Shows queued blocking tasks
 
 ## Production Best Practices
 

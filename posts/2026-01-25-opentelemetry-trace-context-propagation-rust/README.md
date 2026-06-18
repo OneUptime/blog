@@ -33,46 +33,50 @@ First, add the necessary dependencies to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-opentelemetry = "0.21"
-opentelemetry_sdk = { version = "0.21", features = ["rt-tokio"] }
-opentelemetry-otlp = { version = "0.14", features = ["tonic"] }
-opentelemetry-http = "0.10"
+opentelemetry = "0.32"
+opentelemetry_sdk = { version = "0.32", features = ["rt-tokio"] }
+opentelemetry-otlp = { version = "0.32", features = ["grpc-tonic"] }
+opentelemetry-http = "0.32"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-tracing-opentelemetry = "0.22"
-reqwest = { version = "0.11", features = ["json"] }
+tracing-opentelemetry = "0.33"
+reqwest = { version = "0.12", features = ["json"] }
+axum = "0.8"
 tokio = { version = "1", features = ["full"] }
 ```
 
 Initialize the tracer provider early in your application:
 
 ```rust
-use opentelemetry::global;
+use opentelemetry::{global, KeyValue};
+use opentelemetry::trace::TracerProvider as _;
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::{
-    runtime,
-    trace::{Config, TracerProvider},
-    Resource,
+    propagation::TraceContextPropagator,
+    resource::Resource,
+    trace::SdkTracerProvider,
 };
-use opentelemetry::KeyValue;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-fn init_tracer() -> TracerProvider {
-    let exporter = opentelemetry_otlp::new_exporter()
-        .tonic()
-        .with_endpoint("http://localhost:4317");
+fn init_tracer() -> Result<SdkTracerProvider, Box<dyn std::error::Error + Send + Sync>> {
+    global::set_text_map_propagator(TraceContextPropagator::new());
 
-    let tracer_provider = opentelemetry_otlp::new_pipeline()
-        .tracing()
-        .with_exporter(exporter)
-        .with_trace_config(
-            Config::default().with_resource(Resource::new(vec![
-                KeyValue::new("service.name", "my-rust-service"),
-                KeyValue::new("service.version", "1.0.0"),
-            ])),
+    let exporter = opentelemetry_otlp::SpanExporter::builder()
+        .with_tonic()
+        .with_endpoint("http://localhost:4317")
+        .build()?;
+
+    let tracer_provider = SdkTracerProvider::builder()
+        .with_resource(
+            Resource::builder()
+                .with_service_name("my-rust-service")
+                .with_attributes([
+                    KeyValue::new("service.version", "1.0.0"),
+                ])
+                .build(),
         )
-        .install_batch(runtime::Tokio)
-        .expect("Failed to initialize tracer");
+        .with_batch_exporter(exporter)
+        .build();
 
     // Set global tracer provider
     global::set_tracer_provider(tracer_provider.clone());
@@ -86,7 +90,7 @@ fn init_tracer() -> TracerProvider {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    tracer_provider
+    Ok(tracer_provider)
 }
 ```
 
@@ -141,16 +145,19 @@ async fn call_downstream(client: &reqwest::Client, url: &str) -> Result<String, 
 On the receiving side, extract the context from incoming headers:
 
 ```rust
+use opentelemetry::global;
 use opentelemetry::propagation::Extractor;
 use axum::{
     extract::Request,
+    http::HeaderMap,
     middleware::Next,
     response::Response,
 };
+use tracing::Span;
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 // Custom extractor for HTTP headers
-struct HeaderExtractor<'a>(&'a http::HeaderMap);
+struct HeaderExtractor<'a>(&'a HeaderMap);
 
 impl<'a> Extractor for HeaderExtractor<'a> {
     fn get(&self, key: &str) -> Option<&str> {
@@ -172,7 +179,7 @@ pub async fn trace_context_middleware(
     });
 
     // Set parent context on current span
-    Span::current().set_parent(parent_cx);
+    let _ = Span::current().set_parent(parent_cx);
 
     next.run(request).await
 }
@@ -182,27 +189,23 @@ pub async fn trace_context_middleware(
 
 ## Propagating Context Across Async Tasks
 
-Rust's async model requires explicit context handling when spawning tasks. The context does not automatically flow into spawned futures.
+Rust's async model requires explicit context handling when spawning tasks. The current `tracing` span does not automatically flow into spawned futures.
 
 ```rust
-use opentelemetry::Context;
-use tracing::{instrument, Span};
-use tracing_opentelemetry::OpenTelemetrySpanExt;
+use tracing::{instrument, Instrument};
 
 #[instrument(name = "process_order")]
 async fn process_order(order_id: &str) {
-    // Capture context before spawning
-    let cx = Span::current().context();
-
-    // Spawn background task with captured context
     let order_id = order_id.to_string();
-    tokio::spawn(async move {
-        // Attach parent context to this task
-        let _guard = cx.attach();
 
-        // Now any spans created here will be children of process_order
-        send_notification(&order_id).await;
-    });
+    // Spawn background task with the current tracing span attached
+    tokio::spawn(
+        async move {
+            // Spans created here will be children of process_order
+            send_notification(&order_id).await;
+        }
+        .in_current_span(),
+    );
 
     // Continue with main processing
     validate_inventory(order_id).await;
@@ -220,24 +223,21 @@ For more control, create a wrapper that preserves context:
 
 ```rust
 use std::future::Future;
-use opentelemetry::Context;
+use tracing::{Instrument, Span};
 
 // Wrapper to run futures with preserved context
-pub fn with_context<F>(cx: Context, f: F) -> impl Future<Output = F::Output>
+pub fn with_span<F>(span: Span, f: F) -> impl Future<Output = F::Output>
 where
     F: Future,
 {
-    async move {
-        let _guard = cx.attach();
-        f.await
-    }
+    f.instrument(span)
 }
 
 // Usage
 async fn dispatch_work() {
-    let cx = Context::current();
+    let span = Span::current();
 
-    tokio::spawn(with_context(cx.clone(), async {
+    tokio::spawn(with_span(span, async {
         // Work with preserved context
         do_work().await;
     }));
@@ -289,6 +289,10 @@ On the consumer side:
 
 ```rust
 use opentelemetry::propagation::Extractor;
+use opentelemetry::global;
+use std::collections::HashMap;
+use tracing::Span;
+use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 struct MessageHeaderExtractor<'a>(&'a HashMap<String, String>);
 
@@ -310,7 +314,7 @@ async fn consume_event(headers: &HashMap<String, String>, payload: &str) {
     });
 
     // Set as parent of current span
-    Span::current().set_parent(parent_cx);
+    let _ = Span::current().set_parent(parent_cx);
 
     // Process the message - this span is now connected to the publisher's trace
     tracing::info!(payload, "Processing consumed event");
@@ -325,18 +329,17 @@ If you're using Tower (common with Axum, Tonic), create reusable middleware:
 
 ```rust
 use axum::{
-    body::Body,
-    http::Request,
+    extract::Request,
     middleware::{self, Next},
     response::Response,
     Router,
 };
 use opentelemetry::global;
-use tracing::Span;
+use tracing::Instrument;
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 async fn propagate_trace_context(
-    request: Request<Body>,
+    request: Request,
     next: Next,
 ) -> Response {
     // Extract context from incoming request
@@ -350,12 +353,10 @@ async fn propagate_trace_context(
         method = %request.method(),
         uri = %request.uri(),
     );
-    span.set_parent(parent_cx);
+    let _ = span.set_parent(parent_cx);
 
-    // Enter the span for the duration of the request
-    let _enter = span.enter();
-
-    next.run(request).await
+    // Instrument the future so the span is entered on each poll
+    next.run(request).instrument(span).await
 }
 
 // Apply to router
@@ -372,7 +373,7 @@ fn create_router() -> Router {
 
 ### 1. Context Lost in Spawned Tasks
 
-The context does not automatically propagate into `tokio::spawn`. Always capture and reattach:
+The current tracing span does not automatically propagate into `tokio::spawn`. Always capture and reattach:
 
 ```rust
 // Wrong - context is lost
@@ -381,11 +382,11 @@ tokio::spawn(async {
 });
 
 // Correct - context is preserved
-let cx = Context::current();
+use tracing::Instrument;
+
 tokio::spawn(async move {
-    let _guard = cx.attach();
     do_work().await; // Properly connected to parent
-});
+}.in_current_span());
 ```
 
 ### 2. Missing Propagator Registration

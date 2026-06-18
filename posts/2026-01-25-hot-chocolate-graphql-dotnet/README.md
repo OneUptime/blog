@@ -54,6 +54,10 @@ Install the required NuGet packages:
 dotnet add package HotChocolate.AspNetCore
 dotnet add package HotChocolate.Data
 dotnet add package HotChocolate.Data.EntityFramework
+dotnet add package HotChocolate.AspNetCore.Authorization
+dotnet add package HotChocolate.PersistedOperations.FileSystem
+dotnet add package Microsoft.AspNetCore.Authentication.JwtBearer
+dotnet add package Microsoft.EntityFrameworkCore.SqlServer
 ```
 
 Set up a basic GraphQL server:
@@ -63,8 +67,8 @@ Set up a basic GraphQL server:
 var builder = WebApplication.CreateBuilder(args);
 
 // Add GraphQL services
-builder.Services
-    .AddGraphQLServer()
+builder
+    .AddGraphQL()
     .AddQueryType<Query>();
 
 var app = builder.Build();
@@ -123,19 +127,17 @@ Create query resolvers to fetch data:
 public class Query
 {
     // Simple query - returns all products
-    [UseDbContext(typeof(ApplicationDbContext))]
     [UseProjection]
     [UseFiltering]
     [UseSorting]
-    public IQueryable<Product> GetProducts([ScopedService] ApplicationDbContext context)
+    public IQueryable<Product> GetProducts(ApplicationDbContext context)
     {
         return context.Products;
     }
 
     // Query with parameter
-    [UseDbContext(typeof(ApplicationDbContext))]
     public async Task<Product?> GetProductById(
-        [ScopedService] ApplicationDbContext context,
+        ApplicationDbContext context,
         int id)
     {
         return await context.Products
@@ -144,9 +146,8 @@ public class Query
     }
 
     // Query with complex filtering
-    [UseDbContext(typeof(ApplicationDbContext))]
     public async Task<List<Product>> GetProductsByCategory(
-        [ScopedService] ApplicationDbContext context,
+        ApplicationDbContext context,
         int categoryId,
         decimal? minPrice = null,
         decimal? maxPrice = null)
@@ -164,11 +165,10 @@ public class Query
     }
 
     // Query with search
-    [UseDbContext(typeof(ApplicationDbContext))]
     [UseFiltering]
     [UseSorting]
     public IQueryable<Product> SearchProducts(
-        [ScopedService] ApplicationDbContext context,
+        ApplicationDbContext context,
         string searchTerm)
     {
         return context.Products
@@ -187,9 +187,8 @@ Handle create, update, and delete operations:
 public class Mutation
 {
     // Create operation
-    [UseDbContext(typeof(ApplicationDbContext))]
     public async Task<AddProductPayload> AddProduct(
-        [ScopedService] ApplicationDbContext context,
+        ApplicationDbContext context,
         AddProductInput input)
     {
         // Validate input
@@ -227,9 +226,8 @@ public class Mutation
     }
 
     // Update operation
-    [UseDbContext(typeof(ApplicationDbContext))]
     public async Task<UpdateProductPayload> UpdateProduct(
-        [ScopedService] ApplicationDbContext context,
+        ApplicationDbContext context,
         UpdateProductInput input)
     {
         var product = await context.Products.FindAsync(input.Id);
@@ -259,9 +257,8 @@ public class Mutation
     }
 
     // Delete operation
-    [UseDbContext(typeof(ApplicationDbContext))]
     public async Task<DeleteProductPayload> DeleteProduct(
-        [ScopedService] ApplicationDbContext context,
+        ApplicationDbContext context,
         int id)
     {
         var product = await context.Products.FindAsync(id);
@@ -318,7 +315,7 @@ public class CategoryBatchDataLoader : BatchDataLoader<int, Category>
     public CategoryBatchDataLoader(
         IDbContextFactory<ApplicationDbContext> contextFactory,
         IBatchScheduler batchScheduler,
-        DataLoaderOptions? options = null)
+        DataLoaderOptions options)
         : base(batchScheduler, options)
     {
         _contextFactory = contextFactory;
@@ -338,20 +335,20 @@ public class CategoryBatchDataLoader : BatchDataLoader<int, Category>
 }
 
 // GraphQL/DataLoaders/ReviewDataLoader.cs
-public class ReviewsByProductDataLoader : GroupedDataLoader<int, Review>
+public class ReviewsByProductDataLoader : BatchDataLoader<int, Review[]>
 {
     private readonly IDbContextFactory<ApplicationDbContext> _contextFactory;
 
     public ReviewsByProductDataLoader(
         IDbContextFactory<ApplicationDbContext> contextFactory,
         IBatchScheduler batchScheduler,
-        DataLoaderOptions? options = null)
+        DataLoaderOptions options)
         : base(batchScheduler, options)
     {
         _contextFactory = contextFactory;
     }
 
-    protected override async Task<ILookup<int, Review>> LoadGroupedBatchAsync(
+    protected override async Task<IReadOnlyDictionary<int, Review[]>> LoadBatchAsync(
         IReadOnlyList<int> keys,
         CancellationToken cancellationToken)
     {
@@ -361,7 +358,9 @@ public class ReviewsByProductDataLoader : GroupedDataLoader<int, Review>
             .Where(r => keys.Contains(r.ProductId))
             .ToListAsync(cancellationToken);
 
-        return reviews.ToLookup(r => r.ProductId);
+        return reviews
+            .GroupBy(r => r.ProductId)
+            .ToDictionary(g => g.Key, g => g.ToArray());
     }
 }
 ```
@@ -405,15 +404,15 @@ Enable advanced data operations:
 
 ```csharp
 // Program.cs
-builder.Services
-    .AddGraphQLServer()
+builder
+    .AddGraphQL()
     .AddQueryType<Query>()
     .AddMutationType<Mutation>()
     .AddTypeExtension<ProductTypeExtensions>()
     .AddFiltering()
     .AddSorting()
     .AddProjections()
-    .RegisterDbContext<ApplicationDbContext>(DbContextKind.Pooled);
+    .RegisterDbContextFactory<ApplicationDbContext>();
 ```
 
 ```csharp
@@ -421,21 +420,21 @@ builder.Services
 public class Query
 {
     // Cursor-based pagination
-    [UseDbContext(typeof(ApplicationDbContext))]
     [UsePaging(IncludeTotalCount = true)]
+    [UseProjection]
     [UseFiltering]
     [UseSorting]
-    public IQueryable<Product> GetProductsPaged([ScopedService] ApplicationDbContext context)
+    public IQueryable<Product> GetProductsPaged(ApplicationDbContext context)
     {
         return context.Products.Where(p => p.IsActive);
     }
 
     // Offset-based pagination
-    [UseDbContext(typeof(ApplicationDbContext))]
     [UseOffsetPaging(IncludeTotalCount = true)]
+    [UseProjection]
     [UseFiltering]
     [UseSorting]
-    public IQueryable<Product> GetProductsOffset([ScopedService] ApplicationDbContext context)
+    public IQueryable<Product> GetProductsOffset(ApplicationDbContext context)
     {
         return context.Products.Where(p => p.IsActive);
     }
@@ -519,10 +518,9 @@ Publish events from mutations:
 // GraphQL/Mutation.cs
 public class Mutation
 {
-    [UseDbContext(typeof(ApplicationDbContext))]
     public async Task<AddProductPayload> AddProduct(
-        [ScopedService] ApplicationDbContext context,
-        [Service] ITopicEventSender eventSender,
+        ApplicationDbContext context,
+        ITopicEventSender eventSender,
         AddProductInput input)
     {
         var product = new Product
@@ -550,8 +548,8 @@ Configure subscriptions in Program.cs:
 
 ```csharp
 // Program.cs
-builder.Services
-    .AddGraphQLServer()
+builder
+    .AddGraphQL()
     .AddQueryType<Query>()
     .AddMutationType<Mutation>()
     .AddSubscriptionType<Subscription>()
@@ -581,8 +579,8 @@ public class ProductNotFoundException : Exception
 }
 
 // Configure error filter
-builder.Services
-    .AddGraphQLServer()
+builder
+    .AddGraphQL()
     .AddErrorFilter<GraphQLErrorFilter>();
 
 // GraphQL/Errors/GraphQLErrorFilter.cs
@@ -628,10 +626,18 @@ public class GraphQLErrorFilter : IErrorFilter
 
 Secure your GraphQL API:
 
+Use `HotChocolate.Authorization.AuthorizeAttribute` for GraphQL fields so Hot Chocolate can apply the authorization directive during execution.
+
 ```csharp
 // Program.cs
 builder.Services
-    .AddGraphQLServer()
+    .AddAuthentication("Bearer")
+    .AddJwtBearer();
+
+builder.Services.AddAuthorization();
+
+builder
+    .AddGraphQL()
     .AddAuthorization()
     .AddQueryType<Query>();
 
@@ -648,7 +654,7 @@ public class Query
     // Requires specific role
     [Authorize(Roles = new[] { "Admin" })]
     public async Task<List<User>> GetAllUsers(
-        [Service] IUserService userService)
+        IUserService userService)
     {
         return await userService.GetAllAsync();
     }
@@ -656,7 +662,7 @@ public class Query
     // Requires specific policy
     [Authorize(Policy = "CanManageProducts")]
     public async Task<Product> UpdateProductStatus(
-        [Service] IProductService productService,
+        IProductService productService,
         int productId,
         bool isActive)
     {
@@ -667,21 +673,19 @@ public class Query
 
 ## Performance Optimization
 
-Configure caching and optimization:
+Configure persisted operations and query cost limits:
 
 ```csharp
 // Program.cs
-builder.Services
-    .AddGraphQLServer()
+builder
+    .AddGraphQL()
     .AddQueryType<Query>()
-    // Enable query complexity analysis
+    // Set a maximum execution depth
     .AddMaxExecutionDepthRule(10)
-    .AddQueryableCursorPagingProvider()
     // Add persisted queries for performance
-    .UsePersistedQueryPipeline()
-    .AddReadOnlyFileSystemQueryStorage("./persisted-queries")
-    // Enable response caching
-    .UseQueryCachePipeline();
+    .UsePersistedOperationPipeline()
+    .AddFileSystemOperationDocumentStorage("./persisted-queries");
+
 ```
 
 ## Complete Registration
@@ -690,26 +694,35 @@ builder.Services
 // Program.cs
 var builder = WebApplication.CreateBuilder(args);
 
+// Authentication and authorization
+builder.Services
+    .AddAuthentication("Bearer")
+    .AddJwtBearer();
+
+builder.Services.AddAuthorization();
+
 // Database
 builder.Services.AddPooledDbContextFactory<ApplicationDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("Default")));
 
+// DataLoaders
+builder.Services.AddDataLoader<CategoryBatchDataLoader>();
+builder.Services.AddDataLoader<ReviewsByProductDataLoader>();
+
 // GraphQL
-builder.Services
-    .AddGraphQLServer()
+builder
+    .AddGraphQL()
     .AddQueryType<Query>()
     .AddMutationType<Mutation>()
     .AddSubscriptionType<Subscription>()
     .AddTypeExtension<ProductTypeExtensions>()
-    .AddDataLoader<CategoryBatchDataLoader>()
-    .AddDataLoader<ReviewsByProductDataLoader>()
     .AddFiltering()
     .AddSorting()
     .AddProjections()
     .AddAuthorization()
     .AddErrorFilter<GraphQLErrorFilter>()
     .AddInMemorySubscriptions()
-    .RegisterDbContext<ApplicationDbContext>(DbContextKind.Pooled);
+    .RegisterDbContextFactory<ApplicationDbContext>();
 
 var app = builder.Build();
 
@@ -742,7 +755,7 @@ Hot Chocolate makes building GraphQL APIs in .NET straightforward:
 - Enable filtering, sorting, and pagination with attributes
 - Use subscriptions for real-time updates
 - Implement proper error handling and authorization
-- Optimize performance with caching and query analysis
+- Optimize performance with persisted operations and query analysis
 
 ---
 

@@ -84,10 +84,16 @@ az storage container create --name daily-backups
 az storage container create --name weekly-backups
 az storage container create --name monthly-backups
 
-# Create container with specific access tier
+# Create an encryption scope and use it as a container default
+az storage account encryption-scope create \
+    --account-name companybackups2026 \
+    --resource-group backup-resources \
+    --name backup-scope \
+    --key-source Microsoft.Storage
+
 az storage container create \
     --name archives \
-    --default-encryption-scope "\$account-encryption-key"
+    --default-encryption-scope backup-scope
 
 # List containers
 az storage container list --output table
@@ -154,7 +160,7 @@ Azure offers multiple access tiers with different pricing:
 | Hot | Higher | Lower | Instant |
 | Cool | Lower | Higher | Instant |
 | Cold | Lower than Cool | Higher than Cool | Instant |
-| Archive | Lowest | Highest | Hours |
+| Archive | Lowest | Highest | Up to 15 hours to rehydrate |
 
 Set blob tier on upload:
 
@@ -387,6 +393,10 @@ Enable immutability for regulatory compliance:
 
 ```bash
 # Create container with immutability policy
+az storage container create \
+    --name compliance-backups \
+    --account-name companybackups2026
+
 az storage container immutability-policy create \
     --container-name compliance-backups \
     --account-name companybackups2026 \
@@ -396,7 +406,7 @@ az storage container immutability-policy create \
 az storage container immutability-policy lock \
     --container-name compliance-backups \
     --account-name companybackups2026 \
-    --if-match "<etag>"
+    --if-match "*"
 ```
 
 ## Monitoring and Alerting
@@ -440,9 +450,9 @@ restic backup /var/www/app
 ```bash
 velero install \
     --provider azure \
-    --plugins velero/velero-plugin-for-microsoft-azure:v1.9.0 \
+    --plugins velero/velero-plugin-for-microsoft-azure:v1.13.0 \
     --bucket velero-backups \
-    --backup-location-config resourceGroup=backup-resources,storageAccount=companybackups2026 \
+    --backup-location-config useAAD="true",resourceGroup=backup-resources,storageAccount=companybackups2026 \
     --secret-file ./credentials-velero
 ```
 

@@ -12,7 +12,7 @@ Volume issues in Docker Compose manifest as missing data, permission errors, or 
 
 ## Understanding Volume Types in Compose
 
-Docker Compose supports three volume types with different behaviors.
+Docker Compose supports several mount types with different behaviors.
 
 ```yaml
 version: '3.8'
@@ -58,10 +58,10 @@ docker volume inspect myproject_app_data
 
 ### Common Causes
 
-**Anonymous volumes are recreated each time:**
+**Anonymous volumes are not reliably reattached after `docker compose down`:**
 
 ```yaml
-# Wrong: Anonymous volume doesn't persist across container recreation
+# Wrong: Anonymous volume doesn't have a stable name for later compose up runs
 services:
   db:
     image: postgres:15
@@ -145,7 +145,7 @@ services:
 
 ## Symptom: Bind Mount Path Not Found
 
-Container fails to start because the source path does not exist.
+Container fails to start because a required bind mount source path does not exist, or the wrong source path is mounted.
 
 ```bash
 # Error message
@@ -158,9 +158,9 @@ Error response from daemon: Bind mount failed: stat /path/to/source: no such fil
 # Check if path exists on host
 ls -la ./config
 
-# Docker Compose resolves paths relative to compose file location
-# Verify your working directory
-pwd
+# Docker Compose resolves relative host paths from the Compose file's parent directory
+# Verify the compose file and project directory being used
+docker compose ls
 
 # View resolved paths in config
 docker compose config
@@ -193,8 +193,7 @@ services:
 
 ```yaml
 # Docker Desktop requires paths under shared folders
-# Default: /Users, /Volumes, /tmp on macOS
-# Default: C:\Users on Windows
+# Default virtual file shares include /Users, /Volumes, /private, /tmp, and /var/folders
 
 # Paths outside shared folders fail silently or cause errors
 services:
@@ -234,13 +233,23 @@ docker volume inspect myproject_pgdata
 # Use project-specific volume names
 services:
   db:
+    image: postgres:15
     volumes:
-      - ${COMPOSE_PROJECT_NAME:-myapp}_pgdata:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql/data
 
 volumes:
-  ${COMPOSE_PROJECT_NAME:-myapp}_pgdata:
+  pgdata:
+    name: "${COMPOSE_PROJECT_NAME:-myapp}_pgdata"
+```
 
+```yaml
 # Or use external volumes with explicit names
+services:
+  db:
+    image: postgres:15
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
 volumes:
   pgdata:
     name: production_pgdata

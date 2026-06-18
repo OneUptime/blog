@@ -51,15 +51,17 @@ Connections that are not properly closed consume server resources indefinitely.
 ```javascript
 // BAD: No cleanup on disconnect
 // This leads to memory leaks and zombie connections
-const WebSocket = require('ws');
-const wss = new WebSocket.Server({ port: 8080 });
+{
+    const WebSocket = require('ws');
+    const wss = new WebSocket.Server({ port: 8080 });
 
-const clients = new Set();
+    const clients = new Set();
 
-wss.on('connection', (ws) => {
-    clients.add(ws);
-    // No cleanup when connection closes!
-});
+    wss.on('connection', (ws) => {
+        clients.add(ws);
+        // No cleanup when connection closes!
+    });
+}
 
 // GOOD: Proper connection lifecycle management
 const WebSocket = require('ws');
@@ -70,12 +72,23 @@ const clients = new Map();
 
 wss.on('connection', (ws, req) => {
     const clientId = generateUniqueId();
+    let cleanedUp = false;
     const clientInfo = {
         ws,
         connectedAt: Date.now(),
         lastActivity: Date.now(),
         ip: req.socket.remoteAddress
     };
+
+    function cleanup() {
+        if (cleanedUp) {
+            return;
+        }
+
+        cleanedUp = true;
+        clients.delete(clientId);
+        cleanupClientResources(clientId);
+    }
 
     clients.set(clientId, clientInfo);
     console.log(`Client connected: ${clientId}, total: ${clients.size}`);
@@ -88,16 +101,14 @@ wss.on('connection', (ws, req) => {
 
     // Clean up on close
     ws.on('close', (code, reason) => {
-        clients.delete(clientId);
+        cleanup();
         console.log(`Client disconnected: ${clientId}, code: ${code}, total: ${clients.size}`);
-        cleanupClientResources(clientId);
     });
 
     // Clean up on error
     ws.on('error', (error) => {
         console.error(`Client error: ${clientId}`, error);
-        clients.delete(clientId);
-        cleanupClientResources(clientId);
+        cleanup();
     });
 });
 
@@ -110,7 +121,6 @@ setInterval(() => {
         if (now - info.lastActivity > timeout) {
             console.log(`Terminating stale connection: ${clientId}`);
             info.ws.terminate();
-            clients.delete(clientId);
         }
     }
 }, 60000);
@@ -190,10 +200,10 @@ const wss = new WebSocket.Server({
     maxPayload: 64 * 1024  // 64KB max message size
 });
 
-// Use streaming for large data instead of buffering
+// Route large messages to a dedicated handler instead of processing them inline
 wss.on('connection', (ws) => {
     ws.on('message', (data, isBinary) => {
-        // Process message in chunks if large
+        // Process large messages outside the latency-sensitive path
         if (data.length > 10000) {
             processLargeMessage(data, ws);
         } else {
@@ -227,6 +237,8 @@ class ConnectionHandler:
 
     async def send_message(self, data: Any, priority: int = 0):
         """Queue message for sending with backpressure handling"""
+        should_start_sender = False
+
         async with self._lock:
             if len(self.message_queue) >= self.message_queue.maxlen:
                 # Queue full - drop lowest priority messages
@@ -234,35 +246,37 @@ class ConnectionHandler:
 
             msg = QueuedMessage(
                 data=data,
-                timestamp=asyncio.get_event_loop().time(),
+                timestamp=asyncio.get_running_loop().time(),
                 priority=priority
             )
             self.message_queue.append(msg)
 
-        # Start sender if not already running
-        if not self.is_sending:
+            # Start sender if not already running
+            if not self.is_sending:
+                self.is_sending = True
+                should_start_sender = True
+
+        if should_start_sender:
             asyncio.create_task(self._process_queue())
 
     async def _process_queue(self):
         """Process queued messages with rate limiting"""
-        self.is_sending = True
+        while True:
+            async with self._lock:
+                if not self.message_queue:
+                    self.is_sending = False
+                    return
+                msg = self.message_queue.popleft()
 
-        try:
-            while self.message_queue:
+            try:
+                await self.ws.send(msg.data)
+            except websockets.exceptions.ConnectionClosed:
                 async with self._lock:
-                    if not self.message_queue:
-                        break
-                    msg = self.message_queue.popleft()
+                    self.is_sending = False
+                return
 
-                try:
-                    await self.ws.send(msg.data)
-                except websockets.exceptions.ConnectionClosed:
-                    break
-
-                # Rate limit: small delay between messages
-                await asyncio.sleep(0.001)
-        finally:
-            self.is_sending = False
+            # Rate limit: small delay between messages
+            await asyncio.sleep(0.001)
 
     def _drop_low_priority_messages(self):
         """Remove lowest priority messages when queue is full"""
@@ -290,6 +304,7 @@ wss.on('connection', (ws) => {
 });
 
 // GOOD: Non-blocking processing with worker threads
+const crypto = require('crypto');
 const { Worker, isMainThread, parentPort } = require('worker_threads');
 const WebSocket = require('ws');
 
@@ -310,10 +325,14 @@ if (isMainThread) {
     });
 } else {
     // Worker thread code
-    parentPort.on('message', ({ task, data }) => {
-        if (task === 'heavyComputation') {
-            const result = heavyComputation(data);
-            parentPort.postMessage(result);
+    parentPort.on('message', ({ id, task, data }) => {
+        try {
+            if (task === 'heavyComputation') {
+                const result = heavyComputation(data);
+                parentPort.postMessage({ id, result });
+            }
+        } catch (error) {
+            parentPort.postMessage({ id, error: error.message });
         }
     });
 }
@@ -323,22 +342,36 @@ function createWorkerPool(size) {
     let nextWorker = 0;
 
     for (let i = 0; i < size; i++) {
-        workers.push(new Worker(__filename));
+        workers.push({
+            worker: new Worker(__filename),
+            callbacks: new Map()
+        });
+
+        workers[i].worker.on('message', ({ id, result, error }) => {
+            const callback = workers[i].callbacks.get(id);
+            if (!callback) {
+                return;
+            }
+
+            workers[i].callbacks.delete(id);
+
+            if (error) {
+                callback.reject(new Error(error));
+            } else {
+                callback.resolve(result);
+            }
+        });
     }
 
     return {
         execute(task, data) {
             return new Promise((resolve, reject) => {
-                const worker = workers[nextWorker];
+                const entry = workers[nextWorker];
                 nextWorker = (nextWorker + 1) % workers.length;
+                const id = crypto.randomUUID();
 
-                const handler = (result) => {
-                    worker.off('message', handler);
-                    resolve(result);
-                };
-
-                worker.on('message', handler);
-                worker.postMessage({ task, data });
+                entry.callbacks.set(id, { resolve, reject });
+                entry.worker.postMessage({ id, task, data });
             });
         }
     };
@@ -468,24 +501,30 @@ const subscriber = new Redis();
 
 // Channel for cross-server messaging
 const CHANNEL = 'ws:broadcast';
+const SERVER_ID = process.env.SERVER_ID || 'server-1';
+const DIRECT_CHANNEL = `ws:direct:${SERVER_ID}`;
 
 // Local WebSocket server
 const wss = new WebSocket.Server({ port: 8080 });
 const localClients = new Map();
 
 // Subscribe to Redis channel
-subscriber.subscribe(CHANNEL);
+subscriber.subscribe(CHANNEL, DIRECT_CHANNEL);
 subscriber.on('message', (channel, message) => {
     if (channel === CHANNEL) {
         // Broadcast to local clients
         const data = JSON.parse(message);
         broadcastToLocal(data);
+    } else if (channel === DIRECT_CHANNEL) {
+        const { targetUserId, payload } = JSON.parse(message);
+        sendToLocalUser(targetUserId, payload);
     }
 });
 
 wss.on('connection', (ws, req) => {
-    const clientId = generateId();
-    localClients.set(clientId, ws);
+    const userId = getUserIdFromRequest(req);
+    localClients.set(userId, ws);
+    publisher.hset('user:servers', userId, JSON.stringify({ serverId: SERVER_ID }));
 
     ws.on('message', async (data) => {
         const message = JSON.parse(data);
@@ -499,8 +538,9 @@ wss.on('connection', (ws, req) => {
         }
     });
 
-    ws.on('close', () => {
-        localClients.delete(clientId);
+    ws.on('close', async () => {
+        localClients.delete(userId);
+        await publisher.hdel('user:servers', userId);
     });
 });
 
@@ -511,6 +551,13 @@ function broadcastToLocal(data) {
             client.send(serialized);
         }
     });
+}
+
+function sendToLocalUser(userId, payload) {
+    const client = localClients.get(userId);
+    if (client && client.readyState === WebSocket.OPEN) {
+        client.send(JSON.stringify(payload));
+    }
 }
 
 // For direct messages, store user-to-server mapping in Redis
@@ -560,9 +607,9 @@ server {
         proxy_set_header Host $host;
 
         # Timeouts - important for long-lived connections
-        proxy_connect_timeout 7d;
-        proxy_send_timeout 7d;
-        proxy_read_timeout 7d;
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 3600s;
+        proxy_read_timeout 3600s;
 
         # Buffering settings
         proxy_buffering off;
@@ -587,6 +634,7 @@ class WebSocketClient {
         this.baseDelay = 1000;
         this.maxDelay = 30000;
         this.messageQueue = [];
+        this.onMessage = null;
     }
 
     connect() {
@@ -660,7 +708,9 @@ class WebSocketClient {
         try {
             const message = JSON.parse(data);
             // Handle different message types
-            this.emit('message', message);
+            if (this.onMessage) {
+                this.onMessage(message);
+            }
         } catch (error) {
             console.error('Failed to parse message:', error);
         }
@@ -686,7 +736,7 @@ const prometheus = require('prom-client');
 
 // Metrics
 const connectionsGauge = new prometheus.Gauge({
-    name: 'websocket_connections_total',
+    name: 'websocket_active_connections',
     help: 'Total active WebSocket connections'
 });
 

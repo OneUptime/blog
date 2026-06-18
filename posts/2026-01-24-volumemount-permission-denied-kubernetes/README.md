@@ -71,7 +71,7 @@ If the container runs as uid 1000 but files are owned by root (uid 0), you have 
 
 ## Solution 1: Use fsGroup in Security Context
 
-The most common fix is setting `fsGroup`. Kubernetes changes the group ownership of mounted volumes to this GID:
+The most common fix is setting `fsGroup`. For volume types that support ownership management, Kubernetes changes the group ownership and permissions of mounted volumes to this GID:
 
 ```yaml
 apiVersion: v1
@@ -136,7 +136,9 @@ spec:
 
 Options for `fsGroupChangePolicy`:
 - `Always` (default): Always change ownership recursively
-- `OnRootMismatch`: Only change if root directory permissions differ
+- `OnRootMismatch`: Only change if the root directory ownership or permissions differ
+
+`fsGroupChangePolicy` only applies to volume types that support `fsGroup`-controlled ownership and permissions. It has no effect on ephemeral volume types such as Secrets, ConfigMaps, and emptyDir.
 
 ## Solution 3: Use Init Container to Set Permissions
 
@@ -265,12 +267,12 @@ volumes:
 - name: creds
   secret:
     secretName: my-secret
-    defaultMode: 0400  # Read-only for owner
+    defaultMode: 0400  # Read-only for the file owner; use fsGroup or a matching user for non-root containers
 ```
 
 ## Solution 7: Handle EmptyDir with Medium Memory
 
-EmptyDir volumes with `medium: Memory` may have different default permissions:
+EmptyDir volumes with `medium: Memory` are backed by tmpfs and still support ownership management:
 
 ```yaml
 volumes:

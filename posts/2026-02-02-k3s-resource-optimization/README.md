@@ -234,7 +234,7 @@ Configure API server throttling through K3s startup arguments:
 
 ```bash
 # K3s server with API throttling configuration
-# Upstream defaults are 400 and 200 — lower values throttle harder for constrained nodes
+# Upstream defaults are 400 and 200 - lower values throttle harder for constrained nodes
 k3s server \
     --kube-apiserver-arg=max-requests-inflight=200 \
     --kube-apiserver-arg=max-mutating-requests-inflight=100 \
@@ -285,7 +285,7 @@ k3s server --kube-scheduler-arg="config=/etc/rancher/k3s/scheduler-config.yaml"
 
 ### Efficient etcd Configuration
 
-K3s uses SQLite (via kine) as its default datastore. Embedded etcd is not enabled by default — it must be opted into with `--cluster-init` on the first server node (and is required for HA multi-server clusters). Both backends can be tuned for better performance.
+K3s uses SQLite (via kine) as its default datastore. Embedded etcd is not enabled by default - it must be opted into with `--cluster-init` on the first server node (and is required for HA multi-server clusters). Both backends can be tuned for better performance.
 
 For embedded etcd, configure compaction and snapshot settings:
 

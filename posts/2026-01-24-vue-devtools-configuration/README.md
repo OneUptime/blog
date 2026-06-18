@@ -50,7 +50,7 @@ flowchart TB
 # Chrome Web Store
 
 # Search "Vue.js devtools" in Chrome Web Store
-# Or visit: https://chrome.google.com/webstore/detail/vuejs-devtools
+# Or visit: https://chromewebstore.google.com/detail/vuejs-devtools/nhdogjmejiglipccpnnnanhbledajbpd
 
 # Firefox Add-ons
 # Search "Vue.js devtools" in Firefox Add-ons
@@ -58,7 +58,7 @@ flowchart TB
 
 # Edge Add-ons
 # Search "Vue.js devtools" in Edge Add-ons
-# Or use Chrome extension compatibility
+# Or install the Chrome extension in Edge or another Chromium-based browser
 ```
 
 ### Standalone Installation
@@ -78,23 +78,19 @@ vue-devtools
 
 ## Enabling DevTools in Your Application
 
-DevTools must be enabled in your Vue application.
+DevTools is available automatically in Vue development builds when the browser extension or Vite plugin is installed.
 
 ```javascript
 // main.js
-// Basic DevTools configuration for Vue 3
+// Basic DevTools setup for Vue 3
 
 import { createApp } from 'vue'
 import App from './App.vue'
 
 const app = createApp(App)
 
-// DevTools is enabled by default in development
-// Vue automatically detects NODE_ENV
-
-// Explicitly control DevTools
-app.config.devtools = true  // Enable
-app.config.devtools = false  // Disable
+// DevTools works in development builds with the browser extension
+// or the Vite DevTools plugin installed.
 
 app.mount('#app')
 ```
@@ -108,18 +104,10 @@ import App from './App.vue'
 
 const app = createApp(App)
 
-// Enable only in development
+// Enable performance tracing only in development
 if (import.meta.env.DEV) {
-  app.config.devtools = true
-
-  // Enable performance tracking in DevTools
+  // Adds Vue performance markers to the browser performance timeline
   app.config.performance = true
-}
-
-// Disable in production for security
-if (import.meta.env.PROD) {
-  app.config.devtools = false
-  app.config.performance = false
 }
 
 app.mount('#app')
@@ -131,15 +119,24 @@ app.mount('#app')
 
 Configure Vite for optimal DevTools integration.
 
+```bash
+# Install the official Vue DevTools Vite plugin
+npm install --save-dev vite-plugin-vue-devtools
+```
+
 ```javascript
 // vite.config.js
 // Vite configuration for Vue DevTools
 
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
+import vueDevTools from 'vite-plugin-vue-devtools'
 
 export default defineConfig({
-  plugins: [vue()],
+  plugins: [
+    vue(),
+    vueDevTools()
+  ],
 
   // Enable source maps for better debugging
   build: {
@@ -154,10 +151,9 @@ export default defineConfig({
 
   // Define environment variables
   define: {
-    // Expose build info to DevTools
-    __VUE_OPTIONS_API__: true,
-    __VUE_PROD_DEVTOOLS__: false,  // Disable devtools in production build
-    __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: false
+    __VUE_OPTIONS_API__: 'true',
+    __VUE_PROD_DEVTOOLS__: 'false',  // Disable devtools in production build
+    __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: 'false'
   }
 })
 ```
@@ -175,7 +171,7 @@ export default defineConfig(({ mode }) => ({
   define: {
     // WARNING: Only enable for debugging production issues
     // Remove before deploying to real production
-    __VUE_PROD_DEVTOOLS__: mode === 'staging'
+    __VUE_PROD_DEVTOOLS__: mode === 'staging' ? 'true' : 'false'
   }
 }))
 ```
@@ -193,6 +189,7 @@ Connect DevTools to non-browser environments.
 // In your SSR application entry
 import { createSSRApp } from 'vue'
 import { devtools } from '@vue/devtools'
+import App from './App.vue'
 
 // Connect to standalone DevTools server
 if (process.env.NODE_ENV === 'development') {
@@ -336,6 +333,8 @@ Ensure components have meaningful names in DevTools.
 <!-- Method 1: File name is used by default (UserProfile) -->
 
 <script setup>
+import { ref } from 'vue'
+
 // Component name is automatically inferred from filename
 const user = ref({ name: 'John' })
 </script>
@@ -346,7 +345,7 @@ const user = ref({ name: 'John' })
 <!-- Method 2: Explicit name with defineOptions -->
 
 <script setup>
-import { defineOptions } from 'vue'
+import { ref } from 'vue'
 
 // Override the component name shown in DevTools
 defineOptions({
@@ -362,6 +361,8 @@ const user = ref({ name: 'John' })
 <!-- Method 3: Options API name -->
 
 <script>
+import { ref } from 'vue'
+
 export default {
   name: 'SpecificFeatureName',  // Shown in DevTools
   setup() {
@@ -460,11 +461,11 @@ app.mount('#app')
 
 ## Timeline and Events
 
-Track component events and lifecycle in the Timeline.
+Track application rendering and update activity in the Timeline.
 
 ```vue
 <!-- EventTracker.vue -->
-<!-- Component with events visible in DevTools Timeline -->
+<!-- Component with events and state changes to inspect while using DevTools -->
 
 <template>
   <div class="event-tracker">
@@ -485,7 +486,7 @@ const emit = defineEmits(['click', 'search', 'change'])
 const searchQuery = ref('')
 const selectedOption = ref('a')
 
-// These events appear in DevTools Timeline
+// These events are visible to parent components and can be inspected while debugging
 function handleClick() {
   emit('click', { timestamp: Date.now() })
 }
@@ -498,7 +499,7 @@ function handleChange() {
   emit('change', selectedOption.value)
 }
 
-// Lifecycle events appear in Timeline
+// Lifecycle logs help correlate component activity with Timeline updates
 onMounted(() => {
   console.log('EventTracker mounted')
 })
@@ -507,7 +508,7 @@ onUnmounted(() => {
   console.log('EventTracker unmounted')
 })
 
-// Watch changes appear in Timeline
+// Watch logs help correlate reactive changes with Timeline updates
 watch(searchQuery, (newQuery) => {
   console.log('Search query changed:', newQuery)
 })
@@ -557,7 +558,7 @@ const items = ref(Array.from({ length: 1000 }, (_, i) => ({
   value: Math.random()
 })))
 
-// Performance panel shows computed recalculation time
+// Browser console timing helps measure computed recalculation time
 const processedItems = computed(() => {
   console.time('processedItems')
   const result = items.value.map(item => ({
@@ -568,10 +569,10 @@ const processedItems = computed(() => {
   return result
 })
 
-// DevTools Performance tab shows:
+// DevTools Timeline and browser performance tools show:
 // - Component render time
-// - Computed recalculation time
-// - Watch callback execution time
+// - Component update time
+// - Time spent rendering and patching
 </script>
 ```
 
@@ -711,7 +712,7 @@ const router = createRouter({
   ]
 })
 
-// Navigation events appear in DevTools Timeline
+// Router integration appears in the DevTools Router tab
 router.beforeEach((to, from) => {
   console.log(`Navigating: ${from.path} -> ${to.path}`)
 })
@@ -728,19 +729,7 @@ Common problems and solutions.
 ```javascript
 // Check if DevTools is detected
 // Open browser console and run:
-console.log('Vue detected:', !!window.__VUE__)
 console.log('DevTools hook:', !!window.__VUE_DEVTOOLS_GLOBAL_HOOK__)
-
-// Force DevTools detection
-// Add to your main.js before app creation
-if (typeof window !== 'undefined') {
-  window.__VUE_DEVTOOLS_GLOBAL_HOOK__ =
-    window.__VUE_DEVTOOLS_GLOBAL_HOOK__ || {
-      Vue: null,
-      enabled: true,
-      _buffer: []
-    }
-}
 ```
 
 ```javascript
@@ -765,7 +754,6 @@ if (import.meta.env.DEV) {
   }
 
   // Enable all debugging features
-  app.config.devtools = true
   app.config.performance = true
 
   // Expose app instance globally for debugging
@@ -787,25 +775,25 @@ flowchart TB
         Theme[Theme: Light/Dark]
         Menu[Menu Position]
         Highlight[Highlight Updates]
-        Track[Track Mutations]
+        Integrations[Enabled Integrations]
         Filter[Component Filter]
     end
 
     subgraph Features["Feature Toggles"]
-        Timeline[Timeline Recording]
-        Performance[Performance Tab]
+        Timeline[Timeline]
+        Performance[Performance Markers]
         Router[Router Tab]
         Pinia[Pinia Tab]
     end
 ```
 
-Key DevTools settings to configure:
+Key DevTools settings to check:
 
-1. **Component filtering** - Hide or show specific components
-2. **Update highlighting** - Flash components when they re-render
-3. **Timeline recording** - Control what events are captured
+1. **Component filtering** - Hide or show specific components when the option is available
+2. **Update highlighting** - Flash components when they re-render when the option is available
+3. **Timeline** - Inspect rendering and update activity
 4. **Theme** - Match your IDE theme preference
-5. **Notification** - Get alerts for errors and warnings
+5. **Integrations** - Review enabled framework and plugin panels
 
 ---
 
@@ -817,16 +805,20 @@ Key DevTools settings to configure:
 // vite.config.js
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
+import vueDevTools from 'vite-plugin-vue-devtools'
 
 export default defineConfig(({ mode }) => ({
-  plugins: [vue()],
+  plugins: [
+    vue(),
+    vueDevTools()
+  ],
 
   define: {
     // Development: full DevTools support
     // Staging: DevTools enabled for debugging
     // Production: DevTools disabled
-    __VUE_PROD_DEVTOOLS__: mode === 'staging',
-    __VUE_OPTIONS_API__: true
+    __VUE_PROD_DEVTOOLS__: mode === 'staging' ? 'true' : 'false',
+    __VUE_OPTIONS_API__: 'true'
   },
 
   build: {
@@ -847,7 +839,6 @@ const app = createApp(App)
 
 // Development configuration
 if (import.meta.env.DEV) {
-  app.config.devtools = true
   app.config.performance = true
 
   // Global error handler visible in DevTools

@@ -578,7 +578,7 @@ interface PubSubEvents {
 export const pubsub = createPubSub<PubSubEvents>();
 ```
 
-Wire the pub/sub into your server. Because graphql-yoga uses SSE for subscriptions by default, the standard `Bun.serve` setup is all that is needed — clients can subscribe over the same `/graphql` endpoint.
+Wire the pub/sub into your server. Because graphql-yoga uses SSE for subscriptions by default, the standard `Bun.serve` setup is all that is needed - clients can subscribe over the same `/graphql` endpoint.
 
 ```typescript
 // src/index.ts (with subscriptions enabled via SSE)
@@ -607,7 +607,7 @@ const server = Bun.serve({
 console.log(`GraphQL API with subscriptions at http://localhost:${server.port}/graphql`);
 ```
 
-If you specifically need the `graphql-ws` WebSocket protocol instead of SSE, install `graphql-ws` and wire its Bun adapter into the `websocket` handler of `Bun.serve` separately — graphql-yoga itself does not expose a built-in WebSocket handler.
+If you specifically need the `graphql-ws` WebSocket protocol instead of SSE, install `graphql-ws` and wire its Bun adapter into the `websocket` handler of `Bun.serve` separately - graphql-yoga itself does not expose a built-in WebSocket handler.
 
 ## Error Handling
 

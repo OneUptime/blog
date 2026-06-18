@@ -35,7 +35,7 @@ fn main() {
 
 ## Temporary Lifetime Extension
 
-When you bind a reference to a temporary, Rust extends the temporary's lifetime to match the reference:
+When you bind a reference to a temporary in certain `let` statements, Rust extends the temporary's lifetime to the end of the enclosing block:
 
 ```rust
 fn main() {
@@ -128,7 +128,7 @@ fn main() {
 
 ## The Match Scrutinee Rule
 
-Temporaries in match expressions live until the end of the match:
+Temporaries in a `match` scrutinee live through the match expression:
 
 ```rust
 fn get_option() -> Option<String> {
@@ -142,15 +142,16 @@ fn main() {
         None => println!("None"),
     }
 
-    // Also works with if let
+    // Also works with if let; in Rust 2024, the temporary lives through
+    // the matched then-block and is dropped before any else block
     if let Some(s) = &get_option() {
         println!("Got: {}", s);
         // s is valid here
     }
 
-    // Compared to this which would fail:
-    // let opt = &get_option();  // This works
-    // But the reference in match is special
+    // Direct let bindings also get lifetime extension:
+    let opt = &get_option();
+    println!("Still valid: {:?}", opt);
 }
 ```
 
@@ -175,14 +176,12 @@ fn also_good() -> &'static str {
 }
 ```
 
-### Pitfall 2: Storing Temporaries in Struct Fields
+### Pitfall 2: Storing References to Temporaries in Struct Fields
 
 ```rust
-// This won't work
-// struct Bad<'a> {
-//     data: &'a str,
-// }
-// let bad = Bad { data: &String::from("temp") };
+struct Borrowed<'a> {
+    data: &'a str,
+}
 
 // Fix: store owned data
 struct Good {
@@ -190,6 +189,16 @@ struct Good {
 }
 
 fn main() {
+    // This works because the direct let initializer gets temporary lifetime extension
+    let borrowed = Borrowed { data: &String::from("temp") };
+    println!("{}", borrowed.data);
+
+    // But you cannot rely on a reference to a temporary for longer-lived storage
+    // or for assignments that do not get lifetime extension:
+    // let later;
+    // later = Borrowed { data: &String::from("temp") };  // Error!
+    // println!("{}", later.data);
+
     let good = Good { data: String::from("owned") };
     println!("{}", good.data);
 }
@@ -203,7 +212,7 @@ fn get_name() -> String {
 }
 
 fn main() {
-    // This works - temporary extended for the if expression
+    // This works - the temporary lives long enough for the condition
     if get_name().starts_with("A") {
         println!("Name starts with A");
     }
@@ -238,7 +247,7 @@ fn main() {
     };
     println!("{}", r2);
 
-    // Rule 3: Pattern matching extends temporaries
+    // Rule 3: Tuple and struct initializers in let statements can extend temporaries
     let (a, b): (&String, &String) = (&String::from("a"), &String::from("b"));
     println!("{} {}", a, b);
 
@@ -335,7 +344,7 @@ fn use_data(data: &Data) {
 | Function argument `f(&temp)` | Lives for function call |
 | Match scrutinee `match &temp {}` | Lives through match |
 | Method chain `temp.method()` | Statement only |
-| Stored in struct | Must be owned |
+| Stored in struct | Borrow works only within a valid scope; own the data for longer-lived storage |
 | Returned from function | Cannot borrow |
 
 Temporary lifetime extension makes Rust ergonomic for common patterns while the borrow checker prevents dangling references. When temporaries behave unexpectedly, bind them to named variables to make lifetimes explicit.

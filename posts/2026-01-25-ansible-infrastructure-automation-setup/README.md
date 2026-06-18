@@ -26,7 +26,7 @@ Before diving into setup, consider what makes Ansible a solid choice:
 
 The control node is where you run Ansible commands. It can be your laptop, a bastion host, or a CI/CD runner.
 
-### Installation on Ubuntu/Debian
+### Installation on Ubuntu
 
 ```bash
 # Update package index and install software-properties-common for add-apt-repository
@@ -44,6 +44,8 @@ sudo apt install -y ansible
 ansible --version
 ```
 
+For Debian, install from the default Debian repository or follow the official Ansible PPA instructions for your Debian release.
+
 ### Installation on macOS
 
 ```bash
@@ -57,10 +59,10 @@ pip3 install ansible
 ansible --version
 ```
 
-### Installation on RHEL/CentOS
+### Installation on CentOS Stream, AlmaLinux, Rocky Linux, or related distributions
 
 ```bash
-# Enable EPEL repository for CentOS/RHEL
+# Enable EPEL repository
 sudo dnf install -y epel-release
 
 # Install Ansible
@@ -299,7 +301,9 @@ ansible-project/
 ├── inventory/
 │   ├── hosts.ini            # Static inventory
 │   ├── group_vars/          # Variables by group
-│   │   ├── all.yml
+│   │   ├── all/
+│   │   │   ├── vars.yml
+│   │   │   └── vault.yml
 │   │   ├── webservers.yml
 │   │   └── databases.yml
 │   └── host_vars/           # Variables by host
@@ -321,6 +325,9 @@ ansible-project/
 Never commit plaintext secrets. Use Ansible Vault to encrypt sensitive data.
 
 ```bash
+# Create the group_vars/all directory if it does not exist yet
+mkdir -p inventory/group_vars/all
+
 # Create an encrypted variables file
 ansible-vault create inventory/group_vars/all/vault.yml
 

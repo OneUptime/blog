@@ -42,7 +42,7 @@ processor = BatchSpanProcessor(
     max_queue_size=2048,          # Maximum spans in the queue
     schedule_delay_millis=5000,    # How often batches are sent (ms)
     max_export_batch_size=512,     # Maximum spans per batch
-    export_timeout_millis=30000    # Timeout for each export call (ms)
+    export_timeout_millis=30000    # Processor export timeout setting (ms)
 )
 ```
 
@@ -73,7 +73,7 @@ exporter = OTLPSpanExporter(
 processor = BatchSpanProcessor(
     exporter,
     max_export_batch_size=256,     # Smaller batches export faster
-    export_timeout_millis=60000,   # Give more time per batch
+    export_timeout_millis=60000,   # Processor timeout setting for SDKs that enforce it
     schedule_delay_millis=3000     # Send more frequently
 )
 ```
@@ -97,7 +97,7 @@ const processor = new BatchSpanProcessor(exporter, {
 });
 ```
 
-The idea is to send smaller batches more frequently so each individual export completes faster, and to give a longer timeout so transient slowness does not cause failures.
+The idea is to send smaller batches more frequently so each individual export completes faster, and to give a longer exporter timeout so transient slowness does not cause failures.
 
 ## Error Type 2: Queue Overflow and Dropped Spans
 
@@ -162,9 +162,9 @@ Failed to export 512 spans: rpc error: code = Unavailable
 desc = connection error: desc = "transport: Error while dialing"
 ```
 
-This is a connectivity issue between your application and the collector. The batch processor will retry, but if the connection stays down, it keeps failing and eventually starts dropping spans when the queue fills up.
+This is a connectivity issue between your application and the collector. OTLP exporters are expected to retry transient failures, but if the connection stays down, exports keep failing and the batch processor eventually starts dropping spans when the queue fills up.
 
-The key thing to understand is that the batch processor has limited retry logic built in. For persistent connection issues, you need to fix the underlying network problem. But you can configure the exporter to handle transient issues better:
+The key thing to understand is that OTLP exporter retry logic is limited to transient errors. For persistent connection issues, you need to fix the underlying network problem. But you can configure the exporter to handle transient issues better:
 
 ```python
 # Python: Configure retry behavior for gRPC exporter
@@ -176,8 +176,8 @@ exporter = OTLPSpanExporter(
     timeout=30
 )
 
-# The batch processor will retry on failure
-# Increase the queue to buffer spans during temporary outages
+# The OTLP exporter handles transient retryable errors.
+# Increase the queue to buffer spans during temporary outages.
 processor = BatchSpanProcessor(
     exporter,
     max_queue_size=16384,          # Large queue to buffer during outages
@@ -188,12 +188,10 @@ processor = BatchSpanProcessor(
 ```
 
 ```java
-// Java: Configure retry with environment variables
-// These environment variables control OTLP exporter retry behavior
-// OTEL_EXPORTER_OTLP_RETRY_ENABLED=true
-// OTEL_EXPORTER_OTLP_RETRY_MAX_ATTEMPTS=5
-// OTEL_EXPORTER_OTLP_RETRY_INITIAL_BACKOFF=1000
-// OTEL_EXPORTER_OTLP_RETRY_MAX_BACKOFF=5000
+// Java: Configure retry with SDK autoconfiguration
+// Retry is enabled by default for transient OTLP errors.
+// Leave this false to keep retry enabled; set it to true only if you need to disable retry:
+// OTEL_JAVA_EXPORTER_OTLP_RETRY_DISABLED=false
 
 // Or configure programmatically
 OtlpGrpcSpanExporter exporter = OtlpGrpcSpanExporter.builder()
@@ -298,17 +296,17 @@ WARNING:opentelemetry.sdk.trace.export:BatchSpanProcessor: dropping spans, queue
 
 ## Monitoring Batch Processor Health
 
-You can monitor the health of your batch processor using internal metrics. OpenTelemetry SDKs emit metrics about the batch processor that you can scrape:
+You can monitor the health of your batch processor using internal SDK metrics where your SDK supports them. Current OpenTelemetry semantic conventions define metrics such as:
 
 ```text
 # Key metrics to watch
-otel.sdk.span.exported       - Number of successfully exported spans
-otel.sdk.span.dropped        - Number of dropped spans (queue overflow)
-otel.sdk.span.export_errors  - Number of failed export attempts
-otel.sdk.span.queue_size     - Current queue depth
+otel.sdk.processor.span.queue.size      - Current processor queue depth
+otel.sdk.processor.span.queue.capacity  - Processor queue capacity
+otel.sdk.processor.span.processed       - Number of spans processed by the processor, with error.type for failures
+otel.sdk.exporter.span.exported         - Number of spans whose export finished, with error.type for failures
 ```
 
-Set up alerts on `otel.sdk.span.dropped` and `otel.sdk.span.export_errors` so you get notified before the problem becomes severe.
+Set up alerts on sustained queue growth and on failed processed or exported spans, using the `error.type` attribute where your SDK emits it, so you get notified before the problem becomes severe.
 
 ## Best Practices for Avoiding Batch Export Errors
 

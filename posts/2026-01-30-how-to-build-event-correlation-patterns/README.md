@@ -131,7 +131,7 @@ class TemporalCorrelator {
   // Events within this window are candidates for correlation
   private windowMs: number;
 
-  // Buffer holds events that haven't been correlated yet
+  // Buffer holds recent events for sliding-window bookkeeping
   private eventBuffer: Event[] = [];
 
   // Active correlation groups
@@ -156,21 +156,22 @@ class TemporalCorrelator {
   // Add a new event and attempt correlation
   public addEvent(event: Event): CorrelatedGroup | null {
     const correlationKey = this.generateCorrelationKey(event);
-    const now = new Date();
+    const eventTime = event.timestamp.getTime();
 
     // Clean up expired events from buffer
     this.eventBuffer = this.eventBuffer.filter(
-      (e) => now.getTime() - e.timestamp.getTime() < this.windowMs
+      (e) => eventTime - e.timestamp.getTime() < this.windowMs
     );
+    this.eventBuffer.push(event);
 
     // Check if event belongs to an existing group
     const existingGroup = this.groups.get(correlationKey);
 
     if (existingGroup) {
       // Check if still within the correlation window
-      const timeSinceStart = now.getTime() - existingGroup.startTime.getTime();
+      const timeSinceStart = eventTime - existingGroup.startTime.getTime();
 
-      if (timeSinceStart < this.windowMs) {
+      if (timeSinceStart >= 0 && timeSinceStart < this.windowMs) {
         // Add to existing group
         existingGroup.events.push(event);
         existingGroup.endTime = event.timestamp;

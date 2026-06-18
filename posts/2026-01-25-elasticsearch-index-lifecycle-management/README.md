@@ -19,7 +19,7 @@ ILM is essential for time-series data like logs and metrics where older data is 
 Before starting, ensure you have:
 - Elasticsearch 8.x running
 - Understanding of index templates
-- Hot, warm, and cold node attributes configured (for tiered storage)
+- Hot, warm, and cold data tier roles configured (for tiered storage)
 
 ---
 
@@ -40,9 +40,8 @@ graph LR
     end
 
     subgraph "Cold Phase"
-        C1[Freeze]
-        C2[Move to Cold Nodes]
-        C3[Searchable Snapshot]
+        C1[Move to Cold Nodes]
+        C2[Searchable Snapshot]
     end
 
     subgraph "Delete Phase"
@@ -56,29 +55,28 @@ graph LR
     W3 --> W4
     W4 --> C1
     C1 --> C2
-    C2 --> C3
-    C3 --> D1
+    C2 --> D1
 ```
 
 ---
 
 ## Node Configuration for Tiered Storage
 
-First, configure node attributes to identify hot, warm, and cold nodes:
+First, configure data tier roles to identify hot, warm, and cold nodes:
 
 ```yaml
 # On hot nodes (fast SSDs, more RAM)
 
 # elasticsearch.yml
-node.attr.data: hot
+node.roles: ["data_hot", "data_content"]
 
 # On warm nodes (larger HDDs, less RAM)
 # elasticsearch.yml
-node.attr.data: warm
+node.roles: ["data_warm"]
 
 # On cold nodes (cheapest storage)
 # elasticsearch.yml
-node.attr.data: cold
+node.roles: ["data_cold"]
 ```
 
 ---
@@ -116,11 +114,6 @@ curl -X PUT "localhost:9200/_ilm/policy/logs_policy" \
             "forcemerge": {
               "max_num_segments": 1
             },
-            "allocate": {
-              "require": {
-                "data": "warm"
-              }
-            },
             "set_priority": {
               "priority": 50
             }
@@ -129,11 +122,6 @@ curl -X PUT "localhost:9200/_ilm/policy/logs_policy" \
         "cold": {
           "min_age": "30d",
           "actions": {
-            "allocate": {
-              "require": {
-                "data": "cold"
-              }
-            },
             "set_priority": {
               "priority": 0
             }
@@ -199,8 +187,7 @@ curl -X PUT "localhost:9200/_index_template/logs_template" \
     "template": {
       "settings": {
         "number_of_shards": 3,
-        "number_of_replicas": 1,
-        "index.routing.allocation.require.data": "hot"
+        "number_of_replicas": 1
       }
     }
   }'
@@ -251,7 +238,7 @@ curl -X POST "localhost:9200/logs/_rollover" \
   -H 'Content-Type: application/json'
 
 # After rollover, you'll have:
-# logs-000001: read-only, in warm/cold phase
+# logs-000001: previous write index, managed by ILM
 # logs-000002: write index (is_write_index: true)
 ```
 
@@ -383,10 +370,8 @@ curl -X PUT "localhost:9200/_ilm/policy/metrics_long_policy" \
         "cold": {
           "min_age": "30d",
           "actions": {
-            "allocate": {
-              "require": {
-                "data": "cold"
-              }
+            "set_priority": {
+              "priority": 0
             }
           }
         },
@@ -458,7 +443,6 @@ Here's a utility for managing ILM:
 from elasticsearch import Elasticsearch
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
-from datetime import datetime
 
 @dataclass
 class IndexILMStatus:
@@ -534,7 +518,7 @@ class ILMManager:
             }
         }
 
-        self.es.ilm.put_lifecycle(policy=policy_name, body=policy)
+        self.es.ilm.put_lifecycle(name=policy_name, policy=policy["policy"])
         return True
 
     def create_simple_policy(
@@ -567,7 +551,7 @@ class ILMManager:
             }
         }
 
-        self.es.ilm.put_lifecycle(policy=policy_name, body=policy)
+        self.es.ilm.put_lifecycle(name=policy_name, policy=policy["policy"])
         return True
 
     def get_index_status(self, index_pattern: str = "*") -> List[IndexILMStatus]:
@@ -641,13 +625,15 @@ class ILMManager:
                 "name": current["step"]
             },
             "next_step": {
-                "phase": target_phase,
-                "action": "complete",
-                "name": "complete"
+                "phase": target_phase
             }
         }
 
-        self.es.ilm.move_to_step(index=index_name, body=body)
+        self.es.ilm.move_to_step(
+            index=index_name,
+            current_step=body["current_step"],
+            next_step=body["next_step"]
+        )
         return True
 
     def list_policies(self) -> Dict[str, Dict[str, Any]]:
@@ -656,13 +642,13 @@ class ILMManager:
 
     def delete_policy(self, policy_name: str) -> bool:
         """Delete an ILM policy"""
-        self.es.ilm.delete_lifecycle(policy=policy_name)
+        self.es.ilm.delete_lifecycle(name=policy_name)
         return True
 
     def calculate_storage_savings(self) -> Dict[str, Any]:
         """Calculate storage across ILM phases"""
 
-        cat_indices = self.es.cat.indices(format="json")
+        cat_indices = self.es.cat.indices(format="json", bytes="b")
         explain = self.es.ilm.explain_lifecycle(index="*")
 
         phase_storage = {"hot": 0, "warm": 0, "cold": 0, "unmanaged": 0}
@@ -670,7 +656,7 @@ class ILMManager:
 
         for idx in cat_indices:
             index_name = idx["index"]
-            size_bytes = int(idx.get("pri.store.size", "0").replace("b", "") or 0)
+            size_bytes = int(idx.get("pri.store.size", "0") or 0)
 
             ilm_data = explain.get("indices", {}).get(index_name, {})
 

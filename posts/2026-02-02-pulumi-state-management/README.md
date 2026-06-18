@@ -303,7 +303,7 @@ Pulumi Cloud handles locking automatically. No configuration needed.
 Unlike Terraform, Pulumi DIY backends do not require a separate locking service such as DynamoDB. A file-based locking system is enabled by default for all DIY backends (S3, Azure Blob, GCS, and local filesystem). When you run an operation, Pulumi writes a lock object alongside the state at `.pulumi/locks/<stack>/$lock.json` in the same bucket; concurrent operations see the lock file and refuse to proceed.
 
 ```bash
-# No extra setup is required — locking is on by default for DIY backends.
+# No extra setup is required - locking is on by default for DIY backends.
 # To inspect locks, list the locks prefix in your state bucket:
 aws s3 ls s3://my-pulumi-state/.pulumi/locks/ --recursive
 ```

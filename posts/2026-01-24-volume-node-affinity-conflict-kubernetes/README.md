@@ -142,7 +142,7 @@ spec:
 
 ### Solution 3: Use Storage That Works Across Nodes
 
-For storage that needs to follow pods to any node, use network-attached storage:
+For storage that needs to follow pods across eligible nodes, use network-attached storage. Cloud block volumes such as AWS EBS, GCP Persistent Disk, and Azure Disk are still usually constrained to a zone or topology, so make sure your nodes and StorageClass topology match:
 
 ```yaml
 # Use a StorageClass that provisions network storage
@@ -160,16 +160,16 @@ spec:
 ```
 
 Network storage options:
-- AWS EBS (gp2, gp3)
-- GCP Persistent Disk
-- Azure Disk
-- Ceph RBD
+- AWS EBS CSI (gp2, gp3)
+- GCP Persistent Disk CSI
+- Azure Disk CSI
+- Ceph RBD CSI
 - NFS
 - iSCSI
 
 ### Solution 4: Delete and Recreate PVC with WaitForFirstConsumer
 
-Use `WaitForFirstConsumer` binding mode so the PV is created on the same node where the pod runs:
+Use `WaitForFirstConsumer` binding mode so Kubernetes delays binding, and dynamic provisioning when a provisioner supports it, until a pod using the PVC is scheduled. For local volumes with `kubernetes.io/no-provisioner`, you still need to create the local PersistentVolumes ahead of time:
 
 ```yaml
 # StorageClass with WaitForFirstConsumer
@@ -232,7 +232,7 @@ kubectl exec -it data-migration -- sh -c "cp -av /old/* /new/"
 
 ### Solution 6: Fix StatefulSet Volume Affinity Issues
 
-StatefulSets create one PVC per replica. If a pod moves nodes, the old PVC may have node affinity:
+StatefulSets create one PVC per replica for each `volumeClaimTemplates` entry. If a pod moves nodes, the existing PVC's PV may have node affinity:
 
 ```bash
 # List PVCs for the StatefulSet
@@ -241,13 +241,13 @@ kubectl get pvc -l app=my-statefulset
 # Check each PV's node affinity
 for pv in $(kubectl get pvc -l app=my-statefulset -o jsonpath='{.items[*].spec.volumeName}'); do
   echo "PV: $pv"
-  kubectl get pv $pv -o jsonpath='{.spec.nodeAffinity}' | jq .
+  kubectl get pv "$pv" -o json | jq '.spec.nodeAffinity'
 done
 ```
 
 Options:
 1. Schedule StatefulSet pods to specific nodes using nodeSelector
-2. Use network storage that works across nodes
+2. Use network storage that works across eligible nodes
 3. Delete the StatefulSet, PVCs, and start fresh (data loss)
 
 ## Diagnostic Script
@@ -277,8 +277,8 @@ kubectl get pvc $PVC -n $NAMESPACE
 echo -e "\n=== PV Node Affinity ==="
 PV=$(kubectl get pvc $PVC -n $NAMESPACE -o jsonpath='{.spec.volumeName}')
 echo "PV: $PV"
-kubectl get pv $PV -o jsonpath='{.spec.nodeAffinity}' | jq . 2>/dev/null || \
-  kubectl get pv $PV -o yaml | grep -A 20 nodeAffinity
+kubectl get pv "$PV" -o json | jq '.spec.nodeAffinity' 2>/dev/null || \
+  kubectl get pv "$PV" -o yaml | grep -A 20 nodeAffinity
 
 echo -e "\n=== Node Status ==="
 REQUIRED_NODE=$(kubectl get pv $PV -o jsonpath='{.spec.nodeAffinity.required.nodeSelectorTerms[0].matchExpressions[0].values[0]}')

@@ -539,7 +539,7 @@ ws.on('stock-update', (data) => {
 
 ## Network Status Detection
 
-Use the browser's Network Information API to detect connectivity changes and adjust reconnection behavior.
+Use the browser's online/offline events to detect connectivity changes, and optionally use the Network Information API to adjust reconnection behavior when it is available.
 
 ```javascript
 // network-aware.js
@@ -735,6 +735,7 @@ class ProductionWebSocket {
 
     // Recover state
     this.recoverSubscriptions();
+    this.requestMissedEvents();
 
     // Flush message queue
     this.flushQueue();
@@ -788,6 +789,11 @@ class ProductionWebSocket {
     // Emit typed event if available
     if (data && data.type) {
       this.emit(data.type, data);
+    }
+
+    // Emit channel event if available
+    if (data && data.channel) {
+      this.emit(data.channel, data);
     }
   }
 
@@ -854,13 +860,15 @@ class ProductionWebSocket {
       this.socket.send(JSON.stringify({ type: 'subscribe', channel }));
     });
 
-    // Request missed events if we have a last event ID
-    if (this.lastEventId) {
-      this.socket.send(JSON.stringify({
-        type: 'replay',
-        afterEventId: this.lastEventId,
-      }));
-    }
+  }
+
+  requestMissedEvents() {
+    if (!this.lastEventId) return;
+
+    this.socket.send(JSON.stringify({
+      type: 'replay',
+      afterEventId: this.lastEventId,
+    }));
   }
 
   flushQueue() {

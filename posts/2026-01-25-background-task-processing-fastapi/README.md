@@ -36,7 +36,7 @@ FastAPI includes a simple mechanism for running tasks after a response is sent. 
 
 # Using FastAPI's built-in BackgroundTasks for simple async work
 from fastapi import FastAPI, BackgroundTasks
-from datetime import datetime
+from datetime import datetime, timezone
 import time
 
 app = FastAPI()
@@ -46,7 +46,7 @@ def write_audit_log(user_id: str, action: str):
     Write an audit log entry to a file.
     This runs after the response is sent to the client.
     """
-    timestamp = datetime.utcnow().isoformat()
+    timestamp = datetime.now(timezone.utc).isoformat()
     log_entry = f"{timestamp} - User {user_id}: {action}\n"
 
     # Simulate some I/O work
@@ -93,8 +93,9 @@ You can add multiple tasks, and they will run sequentially after the response is
 ```python
 # background_tasks_chain.py
 # Chaining multiple background tasks with dependencies
-from fastapi import FastAPI, BackgroundTasks, Depends
+from fastapi import FastAPI, BackgroundTasks
 from typing import List
+import time
 
 app = FastAPI()
 
@@ -168,12 +169,24 @@ When your background work is I/O bound and you want it to run concurrently with 
 from fastapi import FastAPI
 import asyncio
 import httpx
-from datetime import datetime
-
-app = FastAPI()
+from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 
 # Store for tracking running tasks
 running_tasks: set = set()
+
+async def shutdown_background_tasks():
+    """Wait for background tasks to complete on shutdown"""
+    if running_tasks:
+        print(f"Waiting for {len(running_tasks)} background tasks...")
+        await asyncio.gather(*running_tasks, return_exceptions=True)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
+    await shutdown_background_tasks()
+
+app = FastAPI(lifespan=lifespan)
 
 async def fetch_and_cache_data(url: str, cache_key: str):
     """
@@ -188,7 +201,7 @@ async def fetch_and_cache_data(url: str, cache_key: str):
             # Cache the result (using a simple dict for demo)
             cache[cache_key] = {
                 "data": data,
-                "fetched_at": datetime.utcnow().isoformat()
+                "fetched_at": datetime.now(timezone.utc).isoformat()
             }
             print(f"Cached data for {cache_key}")
 
@@ -240,12 +253,6 @@ async def update_user_settings(user_id: str, settings: dict):
     # Response returns immediately
     return {"status": "updated", "user_id": user_id}
 
-@app.on_event("shutdown")
-async def shutdown():
-    """Wait for background tasks to complete on shutdown"""
-    if running_tasks:
-        print(f"Waiting for {len(running_tasks)} background tasks...")
-        await asyncio.gather(*running_tasks, return_exceptions=True)
 ```
 
 ---
@@ -491,9 +498,10 @@ Sometimes you need more control than BackgroundTasks provides but do not want th
 # custom_task_queue.py
 # Custom async task queue with worker pool and graceful shutdown
 import asyncio
-from typing import Callable, Any
+import itertools
+from typing import Callable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 
 @dataclass
@@ -519,6 +527,7 @@ class TaskQueue:
         self.workers: list = []
         self.shutdown_event: asyncio.Event = None
         self.results: dict = {}  # Store task results
+        self._counter = itertools.count()
 
     async def start(self):
         """Initialize the queue and start worker tasks"""
@@ -535,18 +544,17 @@ class TaskQueue:
     async def stop(self, timeout: float = 30.0):
         """Gracefully shutdown the queue and workers"""
         print("Shutting down task queue...")
-        self.shutdown_event.set()
 
-        # Wait for workers to finish with timeout
+        # Wait for queued tasks to finish with timeout
         try:
-            await asyncio.wait_for(
-                asyncio.gather(*self.workers, return_exceptions=True),
-                timeout=timeout
-            )
+            await asyncio.wait_for(self.queue.join(), timeout=timeout)
         except asyncio.TimeoutError:
             print("Timeout waiting for workers, cancelling...")
-            for worker in self.workers:
-                worker.cancel()
+
+        self.shutdown_event.set()
+        for worker in self.workers:
+            worker.cancel()
+        await asyncio.gather(*self.workers, return_exceptions=True)
 
     async def enqueue(
         self,
@@ -565,7 +573,7 @@ class TaskQueue:
             func=func,
             args=args,
             kwargs=kwargs,
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
             priority=-priority  # Negative because PriorityQueue is min-heap
         )
 
@@ -573,7 +581,7 @@ class TaskQueue:
         self.results[task_id] = {"status": "queued"}
 
         # Add to queue (blocks if queue is full)
-        await self.queue.put((task.priority, task))
+        await self.queue.put((task.priority, next(self._counter), task))
 
         return task_id
 
@@ -586,7 +594,7 @@ class TaskQueue:
         while not self.shutdown_event.is_set():
             try:
                 # Wait for a task with timeout so we can check shutdown
-                priority, task = await asyncio.wait_for(
+                priority, _, task = await asyncio.wait_for(
                     self.queue.get(),
                     timeout=1.0
                 )
@@ -602,7 +610,7 @@ class TaskQueue:
                     result = await task.func(*task.args, **task.kwargs)
                 else:
                     # Run sync functions in thread pool
-                    result = await asyncio.get_event_loop().run_in_executor(
+                    result = await asyncio.get_running_loop().run_in_executor(
                         None,
                         lambda: task.func(*task.args, **task.kwargs)
                     )
@@ -611,7 +619,7 @@ class TaskQueue:
                 self.results[task.id] = {
                     "status": "complete",
                     "result": result,
-                    "completed_at": datetime.utcnow().isoformat()
+                    "completed_at": datetime.now(timezone.utc).isoformat()
                 }
 
             except Exception as e:
@@ -619,7 +627,7 @@ class TaskQueue:
                 self.results[task.id] = {
                     "status": "failed",
                     "error": str(e),
-                    "failed_at": datetime.utcnow().isoformat()
+                    "failed_at": datetime.now(timezone.utc).isoformat()
                 }
 
             finally:
@@ -631,6 +639,8 @@ class TaskQueue:
 # FastAPI integration with custom task queue
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
+import asyncio
+from datetime import datetime, timezone
 from custom_task_queue import TaskQueue
 
 # Create the task queue instance
@@ -648,7 +658,7 @@ app = FastAPI(lifespan=lifespan)
 async def expensive_computation(data: dict) -> dict:
     """Simulate an expensive async computation"""
     await asyncio.sleep(5)  # Simulate work
-    return {"processed": data, "timestamp": datetime.utcnow().isoformat()}
+    return {"processed": data, "timestamp": datetime.now(timezone.utc).isoformat()}
 
 @app.post("/compute/")
 async def queue_computation(data: dict):

@@ -121,7 +121,7 @@ fn main() {
     let length = calculate_length(&message);
 
     // message is still valid because we only borrowed it
-    println!("'{}' has {} characters", message, length);
+    println!("'{}' has {} bytes", message, length);
 }
 ```
 

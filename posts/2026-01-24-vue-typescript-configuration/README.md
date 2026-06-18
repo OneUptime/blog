@@ -298,9 +298,9 @@ import type { Ref, ComputedRef } from 'vue'
 import type { User, ApiResponse } from '@/types'
 
 interface UseUserReturn {
-  user: Ref<User | null>
-  loading: Ref<boolean>
-  error: Ref<string | null>
+  user: Readonly<Ref<User | null>>
+  loading: Readonly<Ref<boolean>>
+  error: Readonly<Ref<string | null>>
   fullName: ComputedRef<string>
   fetchUser: (id: number) => Promise<void>
   updateUser: (data: Partial<User>) => Promise<void>
@@ -359,7 +359,7 @@ export function useUser(): UseUserReturn {
   }
 
   return {
-    user: readonly(user) as Ref<User | null>,
+    user: readonly(user) as Readonly<Ref<User | null>>,
     loading: readonly(loading),
     error: readonly(error),
     fullName,
@@ -523,6 +523,14 @@ const routes: RouteRecordRaw[] = [
       requiresAuth: true,
       roles: ['admin', 'user'],
       title: 'Dashboard'
+    }
+  },
+  {
+    path: '/login',
+    name: 'Login',
+    component: () => import('@/views/Login.vue'),
+    meta: {
+      title: 'Login'
     }
   },
   {
@@ -726,8 +734,7 @@ import { fileURLToPath, URL } from 'node:url'
 export default defineConfig({
   plugins: [
     vue({
-      script: {
-        defineModel: true,
+      features: {
         propsDestructure: true
       }
     })
@@ -834,7 +841,7 @@ module.exports = {
   },
   extends: [
     'eslint:recommended',
-    'plugin:vue/vue3-recommended',
+    'plugin:vue/recommended',
     '@vue/eslint-config-typescript',
     '@vue/eslint-config-prettier'
   ],

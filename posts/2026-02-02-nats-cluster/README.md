@@ -775,7 +775,7 @@ if __name__ == "__main__":
 
 ### Prometheus Metrics
 
-NATS exposes its HTTP monitoring endpoints (`/varz`, `/connz`, `/routez`, `/subsz`, `/jsz`, `/healthz`) as JSON on the monitoring port. To scrape these into Prometheus, run the `prometheus-nats-exporter` alongside each NATS server — it converts the JSON endpoints into Prometheus-format metrics on port 7777.
+NATS exposes its HTTP monitoring endpoints (`/varz`, `/connz`, `/routez`, `/subsz`, `/jsz`, `/healthz`) as JSON on the monitoring port. To scrape these into Prometheus, run the `prometheus-nats-exporter` alongside each NATS server - it converts the JSON endpoints into Prometheus-format metrics on port 7777.
 
 ```hcl
 # /etc/nats/nats-monitoring.conf

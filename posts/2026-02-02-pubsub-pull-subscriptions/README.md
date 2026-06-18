@@ -425,7 +425,7 @@ class PullSubscriptionConsumer {
     });
 
     // Low-level client is required for synchronous batch pull, ack,
-    // and modifyAckDeadline — the high-level Subscription class does
+    // and modifyAckDeadline - the high-level Subscription class does
     // not expose these RPCs directly.
     this.subClient = new v1.SubscriberClient();
     this.subscriptionPath = this.subClient.subscriptionPath(

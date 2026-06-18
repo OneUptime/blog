@@ -316,7 +316,7 @@ class VectorSearch:
                 id,
                 title,
                 content,
-                -- Convert cosine distance to similarity score (0 to 1)
+                -- Convert cosine distance to a similarity-style score
                 1 - (embedding <=> %s::vector) as score
             FROM documents
             WHERE embedding IS NOT NULL
@@ -655,7 +655,7 @@ The optimal keyword vs vector weight depends on your use case.
 ```python
 import hashlib
 from dataclasses import dataclass
-from typing import List, Dict, Any, Callable
+from typing import List, Dict, Any, Callable, Optional
 import json
 from datetime import datetime
 
@@ -665,7 +665,7 @@ class SearchExperiment:
     experiment_id: str
     control_config: SearchConfig
     treatment_config: SearchConfig
-    traffic_percentage: float  # Percentage getting treatment
+    traffic_percentage: float  # Fraction getting treatment, from 0.0 to 1.0
 
 
 class ExperimentalHybridSearch(HybridSearch):
@@ -711,7 +711,8 @@ class ExperimentalHybridSearch(HybridSearch):
                 hashlib.sha256(assignment_key.encode("utf-8")).hexdigest(),
                 16
             )
-            in_treatment = (hash_value % 100) < (self.experiment.traffic_percentage * 100)
+            bucket = (hash_value % 10000) / 10000
+            in_treatment = bucket < self.experiment.traffic_percentage
 
             if in_treatment:
                 config = self.experiment.treatment_config
@@ -870,7 +871,6 @@ SET hnsw.ef_search = 100;  -- Higher = better recall, slower queries
 Generating embeddings is expensive. Cache aggressively.
 
 ```python
-import hashlib
 from functools import lru_cache
 from typing import List, Tuple
 
@@ -978,7 +978,7 @@ class AsyncHybridSearch:
         limit: int
     ) -> List[Dict[str, Any]]:
         """Async vector search."""
-        # Get embedding (this could also be async with httpx)
+        # Get embedding asynchronously
         embedding = await self._get_embedding_async(query)
         embedding_str = f"[{','.join(map(str, embedding))}]"
 

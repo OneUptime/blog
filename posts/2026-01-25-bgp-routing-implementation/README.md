@@ -58,14 +58,20 @@ log "/var/log/bird.log" { debug, trace, info, remote, warning, error, auth, fata
 # Define your networks
 define MY_AS = 65001;
 define MY_PREFIXES = [ 203.0.113.0/24 ];
+define BOGON_PREFIXES = [ 0.0.0.0/8+, 10.0.0.0/8+, 127.0.0.0/8+,
+                         169.254.0.0/16+, 172.16.0.0/12+,
+                         192.168.0.0/16+, 224.0.0.0/4+ ];
+define PRIVATE_ASNS = [ 64512..65534, 4200000000..4294967294 ];
 
 # Protocol for kernel routing table
 protocol kernel {
     scan time 60;
-    import none;
-    export filter {
-        if proto = "static_bgp" then accept;
-        reject;
+    ipv4 {
+        import none;
+        export filter {
+            if proto = "static_bgp" then accept;
+            reject;
+        };
     };
 }
 
@@ -76,6 +82,7 @@ protocol device {
 
 # Static routes for your prefixes
 protocol static static_bgp {
+    ipv4;
     route 203.0.113.0/24 blackhole;
 }
 
@@ -88,14 +95,30 @@ filter export_filter {
 # Filter for incoming routes
 filter import_filter {
     # Reject private AS numbers in path
-    if bgp_path ~ [64512..65534] then reject;
+    if bgp_path ~ PRIVATE_ASNS then reject;
 
     # Reject bogon prefixes
-    if net ~ [ 0.0.0.0/8+, 10.0.0.0/8+, 127.0.0.0/8+,
-               169.254.0.0/16+, 172.16.0.0/12+,
-               192.168.0.0/16+, 224.0.0.0/4+ ] then reject;
+    if net ~ BOGON_PREFIXES then reject;
 
     # Accept everything else
+    accept;
+}
+
+filter import_isp1 {
+    if bgp_path ~ PRIVATE_ASNS then reject;
+    if net ~ BOGON_PREFIXES then reject;
+
+    # Prefer this path (higher local pref = more preferred)
+    bgp_local_pref = 200;
+    accept;
+}
+
+filter import_isp2 {
+    if bgp_path ~ PRIVATE_ASNS then reject;
+    if net ~ BOGON_PREFIXES then reject;
+
+    # Lower preference for backup path
+    bgp_local_pref = 100;
     accept;
 }
 
@@ -112,13 +135,9 @@ protocol bgp isp1 {
     # Graceful restart
     graceful restart on;
 
-    import filter import_filter;
-    export filter export_filter;
-
-    # Prefer this path (higher local pref = more preferred)
-    import filter {
-        bgp_local_pref = 200;
-        accept;
+    ipv4 {
+        import filter import_isp1;
+        export filter export_filter;
     };
 }
 
@@ -132,13 +151,9 @@ protocol bgp isp2 {
     keepalive time 30;
     graceful restart on;
 
-    import filter import_filter;
-    export filter export_filter;
-
-    # Lower preference for backup path
-    import filter {
-        bgp_local_pref = 100;
-        accept;
+    ipv4 {
+        import filter import_isp2;
+        export filter export_filter;
     };
 }
 ```
@@ -191,8 +206,10 @@ protocol bgp isp1_engineered {
     local 192.0.2.2 as MY_AS;
     neighbor 192.0.2.1 as 1234;
 
-    import filter import_with_communities;
-    export filter export_with_med;
+    ipv4 {
+        import filter import_with_communities;
+        export filter export_with_med;
+    };
 }
 ```
 
@@ -218,8 +235,10 @@ router bgp 65001
  # Neighbors
  neighbor 192.0.2.1 remote-as 1234
  neighbor 192.0.2.1 description ISP1-Primary
+ neighbor 192.0.2.1 bfd
  neighbor 198.51.100.1 remote-as 5678
  neighbor 198.51.100.1 description ISP2-Backup
+ neighbor 198.51.100.1 bfd
 
  # Address family IPv4
  address-family ipv4 unicast
@@ -254,7 +273,7 @@ bfd
  peer 192.0.2.1
   receive-interval 300
   transmit-interval 300
-  echo-interval 100
+  echo receive-interval 100
  !
  peer 198.51.100.1
   receive-interval 300
@@ -273,23 +292,19 @@ define ANYCAST_IP = 192.0.2.100/32;
 
 # Health check integration
 protocol static anycast_routes {
-    # Only announce if service is healthy
+    disabled yes;
+    ipv4;
     route 192.0.2.100/32 blackhole;
 }
 
-# Watch file for health status
 protocol bfd {
     # BFD for fast failover
 }
 
-# Conditional announcement based on health
+# Export only the anycast route; the health script enables or disables
+# the static protocol to announce or withdraw it.
 filter export_anycast {
-    # Check if local service is healthy
-    if net = 192.0.2.100/32 then {
-        # Only announce if health check passes
-        if defined(health_check_ok) then accept;
-        else reject;
-    }
+    if proto = "anycast_routes" && net = ANYCAST_IP then accept;
     reject;
 }
 ```
@@ -311,13 +326,13 @@ check_health() {
 
 announce_route() {
     birdc -s "$BIRD_SOCKET" << EOF
-configure soft "static_anycast"
+enable anycast_routes
 EOF
 }
 
 withdraw_route() {
     birdc -s "$BIRD_SOCKET" << EOF
-disable static_anycast
+disable anycast_routes
 EOF
 }
 
@@ -379,8 +394,10 @@ protocol bgp isp1_secure {
     neighbor 192.0.2.1 as 1234;
     password "shared-secret-key";
 
-    import filter import_filter;
-    export filter export_filter;
+    ipv4 {
+        import filter import_filter;
+        export filter export_filter;
+    };
 }
 ```
 

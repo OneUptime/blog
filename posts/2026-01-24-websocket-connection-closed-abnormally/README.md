@@ -43,8 +43,9 @@ The most common cause is network connectivity loss. Mobile networks, WiFi handof
 const socket = new WebSocket('wss://api.example.com/ws');
 
 // Track connection state
-let isConnecting = false;
+let isConnecting = true;
 let lastPongTime = Date.now();
+let reconnectAfterClose = false;
 
 socket.onopen = () => {
   console.log('WebSocket connected');
@@ -56,9 +57,10 @@ socket.onopen = () => {
 socket.onclose = (event) => {
   console.log(`WebSocket closed: code=${event.code}, reason=${event.reason}`);
 
-  if (event.code === 1006) {
+  if (event.code === 1006 || reconnectAfterClose) {
     // Abnormal closure - connection dropped without close handshake
     console.error('Connection closed abnormally - likely network issue');
+    reconnectAfterClose = false;
 
     // Check if we were in the middle of connecting
     if (isConnecting) {
@@ -90,7 +92,8 @@ function startHeartbeat() {
       const timeSinceLastPong = Date.now() - lastPongTime;
       if (timeSinceLastPong > HEARTBEAT_INTERVAL + PONG_TIMEOUT) {
         console.error('No pong received - connection may be dead');
-        socket.close(); // Force close to trigger reconnection
+        reconnectAfterClose = true;
+        socket.close(4000, 'Pong timeout'); // Close and trigger reconnection
       }
     }
   }, HEARTBEAT_INTERVAL);
@@ -102,6 +105,10 @@ socket.onmessage = (event) => {
     lastPongTime = Date.now();
   }
 };
+
+function scheduleReconnect() {
+  // Implement exponential backoff reconnection here
+}
 ```
 
 ### 2. Server-Side Timeout
@@ -113,13 +120,14 @@ Servers often close idle connections to free resources. If your client does not 
 // Node.js WebSocket server with proper timeout handling
 
 const WebSocket = require('ws');
+const allowedOrigins = new Set(['https://app.example.com']);
 
 const wss = new WebSocket.Server({
   port: 8080,
   // Verify client origin to prevent CSRF
   verifyClient: (info) => {
     const origin = info.origin;
-    return allowedOrigins.includes(origin);
+    return allowedOrigins.has(origin);
   }
 });
 
@@ -196,6 +204,10 @@ const heartbeatInterval = setInterval(() => {
 wss.on('close', () => {
   clearInterval(heartbeatInterval);
 });
+
+function handleMessage(ws, data) {
+  // Implement application-specific message handling here
+}
 ```
 
 ### 3. Proxy or Load Balancer Timeout
@@ -280,9 +292,10 @@ When connecting to `wss://` endpoints, TLS issues can cause abnormal closures be
 ```javascript
 // Check for TLS-related connection issues
 const socket = new WebSocket('wss://api.example.com/ws');
+let wasEverOpen = false;
 
 socket.onclose = (event) => {
-  if (event.code === 1006 && !socket.wasEverOpen) {
+  if (event.code === 1006 && !wasEverOpen) {
     // Connection failed before establishing
     console.error('Connection failed - possible causes:');
     console.error('- Invalid SSL certificate');
@@ -293,7 +306,6 @@ socket.onclose = (event) => {
 };
 
 // Track if connection was ever successfully established
-let wasEverOpen = false;
 socket.onopen = () => {
   wasEverOpen = true;
 };
@@ -480,6 +492,7 @@ class RobustWebSocket {
     this.pongTimer = null;
     this.socket = null;
     this.isClosing = false;
+    this.reconnectAfterClose = false;
 
     // Event handlers (to be set by user)
     this.onopen = null;
@@ -512,7 +525,8 @@ class RobustWebSocket {
       if (this.onclose) this.onclose(event);
 
       // Attempt reconnection for abnormal closures
-      if (!this.isClosing && event.code === 1006) {
+      if (!this.isClosing && (event.code === 1006 || this.reconnectAfterClose)) {
+        this.reconnectAfterClose = false;
         this.scheduleReconnect();
       }
     };
@@ -554,9 +568,11 @@ class RobustWebSocket {
   }
 
   startPongTimer() {
+    this.stopPongTimer();
     this.pongTimer = setTimeout(() => {
       console.error('Pong timeout - connection appears dead');
-      this.socket.close(); // This will trigger reconnection
+      this.reconnectAfterClose = true;
+      this.socket.close(4000, 'Pong timeout'); // This will trigger reconnection
     }, this.options.heartbeatTimeout);
   }
 

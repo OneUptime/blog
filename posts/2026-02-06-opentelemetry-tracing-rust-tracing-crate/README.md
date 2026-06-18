@@ -22,10 +22,10 @@ Start with these dependencies in your `Cargo.toml`:
 [dependencies]
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
-tracing-opentelemetry = "0.23"
-opentelemetry = { version = "0.22", features = ["trace"] }
-opentelemetry_sdk = { version = "0.22", features = ["rt-tokio", "trace"] }
-opentelemetry-otlp = { version = "0.15", features = ["tokio"] }
+tracing-opentelemetry = "0.33"
+opentelemetry = { version = "0.32", features = ["trace"] }
+opentelemetry_sdk = { version = "0.32", features = ["trace"] }
+opentelemetry-otlp = { version = "0.32", features = ["grpc-tonic"] }
 tokio = { version = "1.35", features = ["full"] }
 ```
 
@@ -37,28 +37,35 @@ Here's a minimal working example:
 
 ```rust
 use opentelemetry::global;
-use opentelemetry_sdk::trace::{self, RandomIdGenerator, Sampler};
-use opentelemetry_sdk::{runtime, Resource};
-use opentelemetry::KeyValue;
+use opentelemetry::trace::TracerProvider as _;
+use opentelemetry_sdk::propagation::TraceContextPropagator;
+use opentelemetry_sdk::trace::{RandomIdGenerator, Sampler, SdkTracerProvider};
+use opentelemetry_sdk::Resource;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
-fn init_tracing() -> Result<(), Box<dyn std::error::Error>> {
-    // Initialize OpenTelemetry tracer
-    let tracer = opentelemetry_otlp::new_pipeline()
-        .tracing()
-        .with_exporter(opentelemetry_otlp::new_exporter().tonic())
-        .with_trace_config(
-            trace::config()
-                .with_sampler(Sampler::AlwaysOn)
-                .with_id_generator(RandomIdGenerator::default())
-                .with_resource(Resource::new(vec![
-                    KeyValue::new("service.name", "my-rust-service"),
-                ]))
+fn init_tracing() -> Result<SdkTracerProvider, Box<dyn std::error::Error + Send + Sync + 'static>> {
+    // Initialize OpenTelemetry exporter and tracer provider
+    let exporter = opentelemetry_otlp::SpanExporter::builder()
+        .with_tonic()
+        .build()?;
+
+    let tracer_provider = SdkTracerProvider::builder()
+        .with_batch_exporter(exporter)
+        .with_sampler(Sampler::AlwaysOn)
+        .with_id_generator(RandomIdGenerator::default())
+        .with_resource(
+            Resource::builder()
+                .with_service_name("my-rust-service")
+                .build(),
         )
-        .install_batch(runtime::Tokio)?;
+        .build();
+
+    global::set_tracer_provider(tracer_provider.clone());
+    global::set_text_map_propagator(TraceContextPropagator::new());
 
     // Create OpenTelemetry tracing layer
+    let tracer = tracer_provider.tracer("my-rust-service");
     let telemetry_layer = tracing_opentelemetry::layer()
         .with_tracer(tracer);
 
@@ -69,12 +76,12 @@ fn init_tracing() -> Result<(), Box<dyn std::error::Error>> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    Ok(())
+    Ok(tracer_provider)
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    init_tracing()?;
+async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
+    let tracer_provider = init_tracing()?;
 
     // Your application code here
     tracing::info!("Application started");
@@ -82,12 +89,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     do_work().await?;
 
     // Shutdown to flush remaining spans
-    global::shutdown_tracer_provider();
+    tracer_provider.shutdown()?;
 
     Ok(())
 }
 
-async fn do_work() -> Result<(), Box<dyn std::error::Error>> {
+async fn do_work() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
     tracing::info!("Starting work");
     Ok(())
 }
@@ -146,43 +153,50 @@ async fn update_user_profile(user: &User, data: ProfileData) -> Result<(), Updat
 }
 ```
 
-The `#[instrument]` macro automatically creates a span that starts when the function is called and ends when it returns, capturing function arguments and return values.
+The `#[instrument]` macro automatically creates a span that starts when the function is called and ends when it returns, capturing function arguments by default. Use `ret` or `err` when you want return values or errors recorded as events.
 
 ## Creating Manual Spans
 
 For more control, create spans manually:
 
 ```rust
-use tracing::{info_span, warn, error};
+use tracing::{info, info_span, warn, Instrument};
 
 async fn process_orders(orders: Vec<Order>) -> Result<(), ProcessError> {
-    let _span = info_span!("process_orders", order_count = orders.len()).entered();
+    let order_count = orders.len();
 
-    info!("Starting order processing");
+    async move {
+        info!("Starting order processing");
 
-    for order in orders {
-        // Create a child span for each order
-        let order_span = info_span!(
-            "process_single_order",
-            order.id = %order.id,
-            order.amount = order.amount
-        ).entered();
+        for order in orders {
+            // Create a child span for each order
+            let order_span = info_span!(
+                "process_single_order",
+                order.id = %order.id,
+                order.amount = order.amount
+            );
 
-        match validate_order(&order) {
-            Ok(_) => {
-                info!("Order validated successfully");
-                process_payment(&order).await?;
+            async {
+                match validate_order(&order) {
+                    Ok(_) => {
+                        info!("Order validated successfully");
+                        process_payment(&order).await?;
+                    }
+                    Err(e) => {
+                        warn!("Order validation failed: {}", e);
+                    }
+                }
+
+                Ok::<(), ProcessError>(())
             }
-            Err(e) => {
-                warn!("Order validation failed: {}", e);
-                continue;
-            }
+            .instrument(order_span)
+            .await?;
         }
 
-        drop(order_span);  // Explicitly end the span
+        Ok(())
     }
-
-    Ok(())
+    .instrument(info_span!("process_orders", order_count = order_count))
+    .await
 }
 ```
 
@@ -193,7 +207,7 @@ Manual spans give you fine-grained control over span boundaries and attributes.
 Use events to record structured data within spans:
 
 ```rust
-use tracing::{info, warn, error, debug};
+use tracing::{debug, error, info, instrument};
 
 #[instrument]
 async fn handle_api_request(req: ApiRequest) -> ApiResponse {
@@ -240,7 +254,7 @@ Events become span events in OpenTelemetry, giving you detailed timeline informa
 Rust's async runtime requires explicit context propagation:
 
 ```rust
-use tracing::{Instrument, info_span};
+use tracing::{info_span, instrument, Instrument};
 
 async fn fetch_and_process() -> Result<(), Error> {
     let data = fetch_data().await?;
@@ -279,11 +293,13 @@ The `.instrument()` combinator ensures spawned tasks maintain the correct span c
 Combine multiple subscriber layers for different outputs:
 
 ```rust
-use tracing_subscriber::{fmt, EnvFilter, Layer};
+use opentelemetry::trace::TracerProvider as _;
+use opentelemetry_sdk::trace::SdkTracerProvider;
+use tracing_subscriber::{fmt, EnvFilter};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
-fn init_layered_tracing() -> Result<(), Box<dyn std::error::Error>> {
+fn init_layered_tracing() -> Result<SdkTracerProvider, Box<dyn std::error::Error + Send + Sync + 'static>> {
     // Environment-based filtering
     let env_filter = EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| EnvFilter::new("info"));
@@ -302,10 +318,15 @@ fn init_layered_tracing() -> Result<(), Box<dyn std::error::Error>> {
         .with_writer(std::io::stderr);
 
     // OpenTelemetry layer
-    let tracer = opentelemetry_otlp::new_pipeline()
-        .tracing()
-        .with_exporter(opentelemetry_otlp::new_exporter().tonic())
-        .install_batch(runtime::Tokio)?;
+    let exporter = opentelemetry_otlp::SpanExporter::builder()
+        .with_tonic()
+        .build()?;
+
+    let tracer_provider = opentelemetry_sdk::trace::SdkTracerProvider::builder()
+        .with_batch_exporter(exporter)
+        .build();
+
+    let tracer = tracer_provider.tracer("my-rust-service");
 
     let telemetry_layer = tracing_opentelemetry::layer()
         .with_tracer(tracer);
@@ -314,10 +335,11 @@ fn init_layered_tracing() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::registry()
         .with(env_filter)
         .with(fmt_layer)
+        .with(json_layer)
         .with(telemetry_layer)
         .init();
 
-    Ok(())
+    Ok(tracer_provider)
 }
 ```
 
@@ -328,16 +350,17 @@ This configuration sends formatted logs to stdout, JSON logs to stderr, and tele
 Enrich spans with domain-specific information:
 
 ```rust
-use tracing::{Span, info_span};
+use tracing::{info_span, instrument, Span};
+use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 #[instrument(skip(ctx))]
 async fn handle_user_request(ctx: RequestContext, user_id: u64) -> Result<(), Error> {
     let current_span = Span::current();
 
     // Add custom attributes to the current span
-    current_span.record("user.id", user_id);
-    current_span.record("user.tier", ctx.user_tier.as_str());
-    current_span.record("request.source", ctx.source_ip.to_string());
+    current_span.set_attribute("user.id", user_id as i64);
+    current_span.set_attribute("user.tier", ctx.user_tier.as_str().to_owned());
+    current_span.set_attribute("request.source", ctx.source_ip.to_string());
 
     // These attributes will appear in OpenTelemetry spans
     perform_action(user_id).await?;
@@ -368,8 +391,9 @@ Propagate trace context to downstream services:
 
 ```rust
 use opentelemetry::global;
-use opentelemetry::propagation::{Injector, TextMapPropagator};
+use opentelemetry::propagation::Injector;
 use tracing::instrument;
+use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 struct HeaderInjector<'a>(&'a mut reqwest::header::HeaderMap);
 
@@ -389,9 +413,7 @@ async fn call_downstream_service(url: &str) -> Result<String, reqwest::Error> {
     let mut headers = reqwest::header::HeaderMap::new();
 
     // Inject current span context into HTTP headers
-    let cx = tracing_opentelemetry::OpenTelemetrySpanExt::context(
-        &tracing::Span::current()
-    );
+    let cx = tracing::Span::current().context();
 
     global::get_text_map_propagator(|propagator| {
         propagator.inject_context(&cx, &mut HeaderInjector(&mut headers));
@@ -416,8 +438,9 @@ This ensures your distributed traces connect across service boundaries.
 Record errors as span events and status:
 
 ```rust
-use tracing::{error, warn, Span};
-use opentelemetry::trace::{Status, TraceContextExt};
+use opentelemetry::trace::Status;
+use tracing::{error, instrument, Span};
+use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 #[instrument]
 async fn risky_operation() -> Result<String, OperationError> {
@@ -431,13 +454,7 @@ async fn risky_operation() -> Result<String, OperationError> {
 
             // Also set OpenTelemetry span status
             let span = Span::current();
-            let cx = tracing_opentelemetry::OpenTelemetrySpanExt::context(&span);
-
-            if let Some(otel_span) = cx.span().span_context() {
-                cx.span().set_status(Status::Error {
-                    description: e.to_string().into(),
-                });
-            }
+            span.set_status(Status::error(e.to_string()));
 
             Err(e)
         }
@@ -459,32 +476,36 @@ The `err` parameter on `#[instrument]` automatically records error return values
 Control which spans are recorded and exported:
 
 ```rust
-use opentelemetry_sdk::trace::{Sampler, SamplingDecision, SamplingResult};
+use opentelemetry::trace::TracerProvider as _;
+use opentelemetry_sdk::trace::{Sampler, SamplingDecision, SamplingResult, SdkTracerProvider};
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
 
 // Sample based on trace ID (consistent across service boundaries)
-fn init_with_sampling() -> Result<(), Box<dyn std::error::Error>> {
+fn init_with_sampling() -> Result<SdkTracerProvider, Box<dyn std::error::Error + Send + Sync + 'static>> {
     let sampler = Sampler::TraceIdRatioBased(0.1);  // Sample 10% of traces
 
-    let tracer = opentelemetry_otlp::new_pipeline()
-        .tracing()
-        .with_exporter(opentelemetry_otlp::new_exporter().tonic())
-        .with_trace_config(
-            trace::config()
-                .with_sampler(sampler)
-        )
-        .install_batch(runtime::Tokio)?;
+    let exporter = opentelemetry_otlp::SpanExporter::builder()
+        .with_tonic()
+        .build()?;
+
+    let tracer_provider = SdkTracerProvider::builder()
+        .with_batch_exporter(exporter)
+        .with_sampler(sampler)
+        .build();
 
     let telemetry_layer = tracing_opentelemetry::layer()
-        .with_tracer(tracer);
+        .with_tracer(tracer_provider.tracer("my-rust-service"));
 
     tracing_subscriber::registry()
         .with(telemetry_layer)
         .init();
 
-    Ok(())
+    Ok(tracer_provider)
 }
 
 // Custom sampling logic
+#[derive(Clone, Debug)]
 struct CustomSampler;
 
 impl opentelemetry_sdk::trace::ShouldSample for CustomSampler {
@@ -533,6 +554,7 @@ Many Rust libraries already support tracing:
 ```rust
 // Database queries with sqlx
 use sqlx::postgres::PgPoolOptions;
+use tracing::instrument;
 
 #[instrument]
 async fn query_database() -> Result<Vec<User>, sqlx::Error> {
@@ -541,7 +563,8 @@ async fn query_database() -> Result<Vec<User>, sqlx::Error> {
         .connect("postgresql://localhost/mydb")
         .await?;
 
-    // sqlx automatically creates spans for queries when tracing is enabled
+    // SQLx emits tracing-based query logs when logging is enabled.
+    // Use a SQLx tracing/OpenTelemetry integration crate if you need per-query spans.
     let users = sqlx::query_as::<_, User>("SELECT * FROM users")
         .fetch_all(&pool)
         .await?;
@@ -588,6 +611,6 @@ Create child spans for distinct operations within a function to show detailed ex
 
 Record custom attributes that help you understand your specific domain. Generic attributes like timing are captured automatically, but business-specific data requires explicit recording.
 
-Always call `global::shutdown_tracer_provider()` before application exit to ensure buffered spans are flushed to your collector.
+Always shut down the `SdkTracerProvider` before application exit to ensure buffered spans are flushed to your collector.
 
 The combination of `tracing` and OpenTelemetry gives you observability that scales from development to production, with minimal overhead and maximum flexibility.

@@ -31,7 +31,7 @@ graph TD
 
 ## Monitoring Certificates with the HTTP Check Receiver
 
-The OpenTelemetry Collector's `httpcheck` receiver can connect to HTTPS endpoints and report TLS certificate information. When it performs health checks against HTTPS URLs, it captures the certificate's expiration date as part of the check.
+The OpenTelemetry Collector's HTTP Check receiver (`http_check`) can connect to HTTPS endpoints and report TLS certificate information. When TLS certificate metrics are enabled, it reports the number of seconds until the certificate's `NotAfter` time.
 
 Here is a configuration that monitors multiple endpoints:
 
@@ -39,7 +39,11 @@ Here is a configuration that monitors multiple endpoints:
 # config.yaml - Certificate expiration monitoring
 
 receivers:
-  httpcheck:
+  http_check:
+    metrics:
+      httpcheck.tls.cert_remaining:
+        enabled: true
+
     targets:
       # Public-facing websites
       - endpoint: "https://www.yourcompany.com"
@@ -88,16 +92,16 @@ exporters:
 service:
   pipelines:
     metrics:
-      receivers: [httpcheck]
+      receivers: [http_check]
       processors: [resource, batch]
       exporters: [otlp]
 ```
 
-The collection interval is set to one hour because certificate expiration dates change very rarely. Checking more frequently wastes resources without providing additional value. The `insecure_skip_verify` option is important for internal services that use self-signed certificates. Without it, the TLS handshake fails before the collector can read the certificate details.
+The collection interval is set to one hour because certificate expiration dates change very rarely. Checking more frequently wastes resources without providing additional value. The `insecure_skip_verify` option is important for internal services that use self-signed certificates. Without it, certificate verification can fail before the collector reports the certificate remaining-time metric.
 
-## Using a Custom Script Receiver for Detailed Certificate Metrics
+## Using a Custom Script with the File Log Receiver for Detailed Certificate Metrics
 
-For more detailed certificate monitoring, you can use a script that performs TLS handshakes and extracts certificate details, then feed those metrics into the collector. Here is a script-based approach using the `filelog` receiver to capture structured certificate data:
+For more detailed certificate monitoring, you can use a script that performs TLS handshakes and extracts certificate details, then feed that structured data into the collector as logs. Here is a script-based approach using the File Log receiver (`file_log`) to capture structured certificate data:
 
 ```bash
 #!/bin/bash
@@ -139,7 +143,7 @@ Configure the collector to read these results:
 
 ```yaml
 receivers:
-  filelog/certs:
+  file_log/certs:
     include:
       - "/var/log/cert-check/results.json"
     start_at: beginning
@@ -158,7 +162,7 @@ receivers:
 service:
   pipelines:
     logs/certs:
-      receivers: [filelog/certs]
+      receivers: [file_log/certs]
       processors: [resource, batch]
       exporters: [otlp]
 ```
@@ -200,7 +204,7 @@ Run this script on a cron schedule (daily is sufficient) and have the collector 
 
 When monitoring certificates, these are the metrics and attributes that matter:
 
-**Days until expiration** is the primary metric. Everything else is secondary. You need this number for every certificate in your infrastructure, both at the network endpoint level and at the file level.
+**Time until expiration** is the primary metric. Everything else is secondary. The HTTP Check receiver reports `httpcheck.tls.cert_remaining` in seconds, and scripts can emit a derived days-remaining value when that is easier for alerting. You need this number for every certificate in your infrastructure, both at the network endpoint level and at the file level.
 
 **Certificate subject and SANs** (Subject Alternative Names) tell you which domains a certificate covers. This is important for wildcard certificates and certificates with multiple SANs, because the same certificate might protect several different services.
 
@@ -216,25 +220,25 @@ Certificate alerts should use multiple thresholds with increasing urgency:
 # Certificate expiration alerting thresholds
 - alert: CertExpiring90Days
   # 90 days - informational, start planning renewal
-  condition: tls.days_remaining < 90
+  condition: httpcheck.tls.cert_remaining < 7776000
   severity: info
   description: "Certificate for {{ host }} expires in less than 90 days"
 
 - alert: CertExpiring30Days
   # 30 days - warning, renewal should be in progress
-  condition: tls.days_remaining < 30
+  condition: httpcheck.tls.cert_remaining < 2592000
   severity: warning
   description: "Certificate for {{ host }} expires in less than 30 days"
 
 - alert: CertExpiring7Days
   # 7 days - critical, immediate action required
-  condition: tls.days_remaining < 7
+  condition: httpcheck.tls.cert_remaining < 604800
   severity: critical
   description: "Certificate for {{ host }} expires in less than 7 days"
 
 - alert: CertExpired
   # 0 days - the certificate has expired
-  condition: tls.days_remaining <= 0
+  condition: httpcheck.tls.cert_remaining <= 0
   severity: critical
   description: "Certificate for {{ host }} has EXPIRED"
 ```
@@ -257,24 +261,23 @@ Not all certificates need the same monitoring approach.
 
 ## Tracking Renewal History
 
-Beyond just monitoring current expiration dates, it is useful to track when certificates were renewed. This helps you verify that automated renewal is working consistently. Create a simple log entry each time a certificate file changes:
+Beyond just monitoring current expiration dates, it is useful to track when certificates were renewed. This helps you verify that automated renewal is working consistently. Create a simple log entry from your renewal hook each time a certificate is deployed, and have the collector read that event log:
 
 ```yaml
 receivers:
-  filelog/cert_changes:
+  file_log/cert_changes:
     include:
-      - "/etc/letsencrypt/live/*/fullchain.pem"
-    # Only watch for file changes, do not parse content
+      - "/var/log/cert-check/renewals.json"
     start_at: end
-    poll_interval: 1h
     operators:
-      - type: add
-        field: attributes.event_type
-        value: "certificate_renewed"
+      - type: json_parser
+        timestamp:
+          parse_from: attributes.timestamp
+          layout: "%Y-%m-%dT%H:%M:%SZ"
 ```
 
-This creates a log entry every time a certificate file is modified, giving you a timeline of renewals in your observability platform.
+For example, a certbot deploy hook can append a JSON line containing the timestamp, domain, certificate path, and `"event_type":"certificate_renewed"`. This gives you a timeline of renewals in your observability platform.
 
 ## Conclusion
 
-Certificate expiration monitoring is one of the simplest and highest-value things you can add to your observability stack. The OpenTelemetry Collector gives you the building blocks through the `httpcheck` receiver for endpoint monitoring and the `filelog` receiver for file-based monitoring. Set up tiered alerts at 90, 30, and 7 days before expiration. Monitor both the certificates served by your endpoints and the certificate files on disk. And do not forget about client certificates, intermediate CAs, and internal CA certificates. The cost of monitoring is trivial compared to the cost of an outage caused by an expired certificate.
+Certificate expiration monitoring is one of the simplest and highest-value things you can add to your observability stack. The OpenTelemetry Collector gives you the building blocks through the `http_check` receiver for endpoint monitoring and the `file_log` receiver for file-based monitoring. Set up tiered alerts at 90, 30, and 7 days before expiration. Monitor both the certificates served by your endpoints and the certificate files on disk. And do not forget about client certificates, intermediate CAs, and internal CA certificates. The cost of monitoring is trivial compared to the cost of an outage caused by an expired certificate.

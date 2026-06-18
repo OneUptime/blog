@@ -43,20 +43,17 @@ The key design consideration for mobile is batching. You do not want to send a n
 
 ## Setting Up OpenTelemetry on Android
 
-First, add the OpenTelemetry dependencies to your Android project. The Android SDK provides mobile-optimized exporters that handle network interruptions gracefully.
+First, add the OpenTelemetry dependencies to your Android project. OpenTelemetry Android provides mobile-focused instrumentation, and the Java SDK and OTLP exporters can be used for manual database spans.
 
 ```kotlin
 // build.gradle.kts - Add OpenTelemetry dependencies
 dependencies {
     // OpenTelemetry API and SDK
-    implementation("io.opentelemetry:opentelemetry-api:1.40.0")
-    implementation("io.opentelemetry:opentelemetry-sdk:1.40.0")
+    implementation("io.opentelemetry:opentelemetry-api:1.62.0")
+    implementation("io.opentelemetry:opentelemetry-sdk:1.62.0")
 
     // OTLP exporter for sending spans to the collector
-    implementation("io.opentelemetry:opentelemetry-exporter-otlp:1.40.0")
-
-    // Provides semantic conventions for database spans
-    implementation("io.opentelemetry:opentelemetry-semconv:1.40.0-alpha")
+    implementation("io.opentelemetry:opentelemetry-exporter-otlp:1.62.0")
 }
 ```
 
@@ -67,28 +64,38 @@ Initialize the OpenTelemetry SDK early in your application lifecycle. The batch 
 import io.opentelemetry.api.OpenTelemetry
 import io.opentelemetry.api.trace.Tracer
 import io.opentelemetry.sdk.OpenTelemetrySdk
+import io.opentelemetry.sdk.metrics.SdkMeterProvider
+import io.opentelemetry.sdk.metrics.export.PeriodicMetricReader
 import io.opentelemetry.sdk.trace.SdkTracerProvider
+import io.opentelemetry.sdk.trace.samplers.Sampler
 import io.opentelemetry.sdk.trace.export.BatchSpanProcessor
+import io.opentelemetry.exporter.otlp.metrics.OtlpGrpcMetricExporter
 import io.opentelemetry.exporter.otlp.trace.OtlpGrpcSpanExporter
 import io.opentelemetry.sdk.resources.Resource
 import io.opentelemetry.api.common.AttributeKey
 import io.opentelemetry.api.common.Attributes
+import io.opentelemetry.api.metrics.Meter
 import java.time.Duration
 
 object OpenTelemetrySetup {
 
     private lateinit var openTelemetry: OpenTelemetrySdk
 
-    fun initialize(appVersion: String) {
+    fun initialize(appVersion: String, traceSampleRate: Double = 0.1) {
         // Configure the OTLP exporter to send spans to the collector
-        val exporter = OtlpGrpcSpanExporter.builder()
+        val spanExporter = OtlpGrpcSpanExporter.builder()
+            .setEndpoint("https://otel-collector.yourcompany.com:4317")
+            .setTimeout(Duration.ofSeconds(10))
+            .build()
+
+        val metricExporter = OtlpGrpcMetricExporter.builder()
             .setEndpoint("https://otel-collector.yourcompany.com:4317")
             .setTimeout(Duration.ofSeconds(10))
             .build()
 
         // Batch processor tuned for mobile - flush every 30 seconds
         // or when 50 spans accumulate, whichever comes first
-        val batchProcessor = BatchSpanProcessor.builder(exporter)
+        val batchProcessor = BatchSpanProcessor.builder(spanExporter)
             .setScheduleDelay(Duration.ofSeconds(30))
             .setMaxQueueSize(200)
             .setMaxExportBatchSize(50)
@@ -106,16 +113,33 @@ object OpenTelemetrySetup {
         val tracerProvider = SdkTracerProvider.builder()
             .addSpanProcessor(batchProcessor)
             .setResource(resource)
+            .setSampler(Sampler.parentBased(Sampler.traceIdRatioBased(traceSampleRate)))
+            .build()
+
+        val meterProvider = SdkMeterProvider.builder()
+            .registerMetricReader(
+                PeriodicMetricReader.builder(metricExporter)
+                    .setInterval(Duration.ofSeconds(60))
+                    .build()
+            )
+            .setResource(resource)
             .build()
 
         openTelemetry = OpenTelemetrySdk.builder()
             .setTracerProvider(tracerProvider)
+            .setMeterProvider(meterProvider)
             .build()
     }
 
     // Provide a tracer specifically for database operations
     fun getDbTracer(): Tracer {
         return openTelemetry.getTracer("sqlite-instrumentation", "1.0.0")
+    }
+
+    fun getMeter(): Meter {
+        return openTelemetry.meterBuilder("sqlite-health")
+            .setInstrumentationVersion("1.0.0")
+            .build()
     }
 }
 ```
@@ -148,17 +172,17 @@ class InstrumentedDatabase(private val db: SQLiteDatabase) {
         // Start a new span for this database query
         val span = tracer.spanBuilder("SELECT $table")
             .setSpanKind(SpanKind.CLIENT)
-            .setAttribute(AttributeKey.stringKey("db.system"), "sqlite")
-            .setAttribute(AttributeKey.stringKey("db.name"), db.path)
-            .setAttribute(AttributeKey.stringKey("db.operation"), "SELECT")
-            .setAttribute(AttributeKey.stringKey("db.sql.table"), table)
+            .setAttribute(AttributeKey.stringKey("db.system.name"), "sqlite")
+            .setAttribute(AttributeKey.stringKey("db.namespace"), db.path)
+            .setAttribute(AttributeKey.stringKey("db.operation.name"), "SELECT")
+            .setAttribute(AttributeKey.stringKey("db.collection.name"), table)
             .startSpan()
 
         return try {
             val cursor = db.query(table, columns, selection, selectionArgs,
                 null, null, orderBy, limit)
             // Record how many rows were returned
-            span.setAttribute(AttributeKey.longKey("db.row_count"),
+            span.setAttribute(AttributeKey.longKey("db.response.returned_rows"),
                 cursor.count.toLong())
             cursor
         } catch (e: Exception) {
@@ -175,9 +199,9 @@ class InstrumentedDatabase(private val db: SQLiteDatabase) {
     fun insert(table: String, values: android.content.ContentValues): Long {
         val span = tracer.spanBuilder("INSERT $table")
             .setSpanKind(SpanKind.CLIENT)
-            .setAttribute(AttributeKey.stringKey("db.system"), "sqlite")
-            .setAttribute(AttributeKey.stringKey("db.operation"), "INSERT")
-            .setAttribute(AttributeKey.stringKey("db.sql.table"), table)
+            .setAttribute(AttributeKey.stringKey("db.system.name"), "sqlite")
+            .setAttribute(AttributeKey.stringKey("db.operation.name"), "INSERT")
+            .setAttribute(AttributeKey.stringKey("db.collection.name"), table)
             .startSpan()
 
         return try {
@@ -200,9 +224,9 @@ class InstrumentedDatabase(private val db: SQLiteDatabase) {
 
         val span = tracer.spanBuilder("$operation sqlite")
             .setSpanKind(SpanKind.CLIENT)
-            .setAttribute(AttributeKey.stringKey("db.system"), "sqlite")
-            .setAttribute(AttributeKey.stringKey("db.operation"), operation)
-            .setAttribute(AttributeKey.stringKey("db.statement"), sql)
+            .setAttribute(AttributeKey.stringKey("db.system.name"), "sqlite")
+            .setAttribute(AttributeKey.stringKey("db.operation.name"), operation)
+            .setAttribute(AttributeKey.stringKey("db.query.text"), sql)
             .startSpan()
 
         try {
@@ -225,11 +249,14 @@ For iOS, the approach is similar. You wrap Core Data or direct SQLite calls with
 ```swift
 // Package.swift or SPM dependency
 // .package(url: "https://github.com/open-telemetry/opentelemetry-swift",
-//          from: "1.9.0")
+//          from: "2.2.0"),
+// .package(url: "https://github.com/open-telemetry/opentelemetry-swift-core.git",
+//          from: "2.2.0")
 
 import OpenTelemetryApi
 import OpenTelemetrySdk
 import GRPC
+import SQLite3
 
 // SQLiteTracer.swift - Wrapper for traced SQLite operations on iOS
 class SQLiteTracer {
@@ -249,10 +276,10 @@ class SQLiteTracer {
         // Build a span with database semantic conventions
         let span = tracer.spanBuilder(spanName: "SELECT \(table)")
             .setSpanKind(spanKind: .client)
-            .setAttribute(key: "db.system", value: "sqlite")
-            .setAttribute(key: "db.operation", value: "SELECT")
-            .setAttribute(key: "db.sql.table", value: table)
-            .setAttribute(key: "db.statement", value: sql)
+            .setAttribute(key: "db.system.name", value: "sqlite")
+            .setAttribute(key: "db.operation.name", value: "SELECT")
+            .setAttribute(key: "db.collection.name", value: table)
+            .setAttribute(key: "db.query.text", value: sql)
             .startSpan()
 
         defer { span.end() }
@@ -289,7 +316,7 @@ class SQLiteTracer {
         }
 
         // Record row count as a span attribute
-        span.setAttribute(key: "db.row_count", value: results.count)
+        span.setAttribute(key: "db.response.returned_rows", value: results.count)
         sqlite3_finalize(statement)
 
         return results
@@ -303,14 +330,14 @@ The semantic conventions for database spans are well-defined in OpenTelemetry. S
 
 | Attribute | Example | Purpose |
 |-----------|---------|---------|
-| `db.system` | `sqlite` | Identifies the database engine |
-| `db.name` | `/data/app/mydb.sqlite` | Path to the database file |
-| `db.operation` | `SELECT`, `INSERT`, `UPDATE` | The SQL operation type |
-| `db.sql.table` | `users` | Primary table being accessed |
-| `db.statement` | `SELECT * FROM users WHERE active=1` | The full SQL statement (be careful with PII) |
-| `db.row_count` | `42` | Number of rows returned or affected |
+| `db.system.name` | `sqlite` | Identifies the database engine |
+| `db.namespace` | `/data/app/mydb.sqlite` | Path to the database file |
+| `db.operation.name` | `SELECT`, `INSERT`, `UPDATE` | The SQL operation type |
+| `db.collection.name` | `users` | Primary table being accessed |
+| `db.query.text` | `SELECT * FROM users WHERE active=1` | The full SQL statement (be careful with PII) |
+| `db.response.returned_rows` | `42` | Number of rows returned |
 
-Be cautious about recording full SQL statements in production. If your queries contain user data in WHERE clauses, you may be sending PII to your observability backend. Consider parameterizing or sanitizing queries before setting the `db.statement` attribute.
+Be cautious about recording full SQL statements in production. If your queries contain user data in WHERE clauses, you may be sending PII to your observability backend. Consider parameterizing or sanitizing queries before setting the `db.query.text` attribute.
 
 ## Configuring the Collector
 
@@ -334,17 +361,6 @@ processors:
     timeout: 10s
     send_batch_size: 256
 
-  # Filter out spans with extremely short durations (noise)
-  filter:
-    spans:
-      # Only keep SQLite spans that took longer than 1ms
-      # Fast queries are rarely interesting for debugging
-      include:
-        match_type: regexp
-        attributes:
-          - key: db.system
-            value: "sqlite"
-
   # Add device metadata if not already present
   resource:
     attributes:
@@ -354,17 +370,19 @@ processors:
 
 exporters:
   # Send processed spans to OneUptime
-  otlp/oneuptime:
-    endpoint: "https://otlp.oneuptime.com:4317"
+  otlphttp/oneuptime:
+    endpoint: "https://oneuptime.com/otlp"
+    encoding: json
     headers:
+      "Content-Type": "application/json"
       "x-oneuptime-token": "${ONEUPTIME_TOKEN}"
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [batch, resource]
-      exporters: [otlp/oneuptime]
+      processors: [resource, batch]
+      exporters: [otlphttp/oneuptime]
 ```
 
 ## Monitoring Database Size and Health
@@ -375,6 +393,7 @@ Beyond query tracing, you should also emit metrics for SQLite database health. D
 // DatabaseHealthReporter.kt - Periodically report SQLite health metrics
 import io.opentelemetry.api.metrics.Meter
 import io.opentelemetry.api.common.Attributes
+import io.opentelemetry.api.common.AttributeKey
 import java.io.File
 
 class DatabaseHealthReporter(private val dbPath: String) {
@@ -392,7 +411,7 @@ class DatabaseHealthReporter(private val dbPath: String) {
                     measurement.record(
                         file.length().toDouble(),
                         Attributes.of(
-                            AttributeKey.stringKey("db.name"), dbPath
+                            AttributeKey.stringKey("db.namespace"), dbPath
                         )
                     )
                 }
@@ -409,7 +428,7 @@ class DatabaseHealthReporter(private val dbPath: String) {
                     measurement.record(
                         walFile.length().toDouble(),
                         Attributes.of(
-                            AttributeKey.stringKey("db.name"), dbPath
+                            AttributeKey.stringKey("db.namespace"), dbPath
                         )
                     )
                 }
@@ -432,7 +451,7 @@ Instrumenting database operations on mobile requires care. Each span object cons
 
 Once spans flow into your backend, look for these patterns:
 
-- **Slow queries by table**: Group spans by `db.sql.table` and sort by duration. This reveals which tables need index optimization.
+- **Slow queries by table**: Group spans by `db.collection.name` and sort by duration. This reveals which tables need index optimization.
 - **High row counts**: Queries returning thousands of rows on mobile are a red flag. The app is probably loading more data than needed.
 - **Error rates**: Track the ratio of failed spans to successful ones. Increasing errors often indicate database corruption or schema migration issues.
 - **Duration trends**: Plot P50 and P99 query durations over time. A gradual increase suggests the database is growing beyond what the device can handle efficiently.

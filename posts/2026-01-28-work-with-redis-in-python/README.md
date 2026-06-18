@@ -23,7 +23,7 @@ This guide covers Redis fundamentals with Python, from basic operations to advan
 
 pip install redis
 
-# For async support
+# For a faster parser
 pip install redis[hiredis]  # Includes C parser for better performance
 ```
 
@@ -130,7 +130,7 @@ r.delete('key1', 'key2', 'key3')  # Delete multiple
 
 # Set expiration
 r.expire('session:abc', 3600)  # Expire in 3600 seconds
-r.expireat('session:abc', 1735689600)  # Expire at Unix timestamp
+r.expireat('session:abc', 1893456000)  # Expire at Unix timestamp
 
 # Get time to live
 ttl = r.ttl('session:abc')  # Returns seconds until expiration
@@ -517,18 +517,22 @@ async def main():
         print(f"Results: {results}")
 
     # Pub/sub
-    pubsub = r.pubsub()
-    await pubsub.subscribe('channel')
+    async with r.pubsub() as pubsub:
+        await pubsub.subscribe('channel')
 
-    # Process messages
-    async def reader():
-        async for message in pubsub.listen():
-            if message['type'] == 'message':
-                print(f"Got: {message['data']}")
-                break
+        # Process messages
+        async def reader():
+            async for message in pubsub.listen():
+                if message['type'] == 'message':
+                    print(f"Got: {message['data']}")
+                    break
+
+        reader_task = asyncio.create_task(reader())
+        await r.publish('channel', 'hello')
+        await reader_task
 
     # Close connection
-    await r.close()
+    await r.aclose()
 
 asyncio.run(main())
 ```
@@ -554,11 +558,12 @@ class RedisLock:
         self.redis = redis_client
         self.name = f"lock:{name}"
         self.timeout = timeout
-        self.token = str(uuid.uuid4())
+        self.token = None
 
     def acquire(self, blocking: bool = True, blocking_timeout: float = None) -> bool:
         """Acquire the lock."""
         start = time.time()
+        self.token = str(uuid.uuid4())
 
         while True:
             # Try to set the lock
@@ -606,9 +611,10 @@ class RedisLock:
 # Usage
 lock = RedisLock(r, "my_resource", timeout=30)
 
-with lock():
-    # Critical section - only one process can run this at a time
-    print("Processing...")
+with lock() as acquired:
+    if acquired:
+        # Critical section - only one process can run this at a time
+        print("Processing...")
 ```
 
 ---
@@ -628,4 +634,3 @@ Use Redis when you need fast data access, caching, or real-time features.
 ---
 
 *Building Redis-powered applications? [OneUptime](https://oneuptime.com) helps you monitor Redis performance, track cache hit rates, and alert on connection issues.*
-

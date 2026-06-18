@@ -521,7 +521,7 @@ go test -v -timeout 30m -run TestVpcCreation
 go test -v -timeout 30m -parallel 4
 ```
 
-To skip destroy while iterating locally, wrap your stages with `test_structure.RunTestStage` and set `SKIP_<stage>=true` — see the Terratest [iterating locally using test stages](https://terratest.gruntwork.io/docs/testing-best-practices/iterating-locally-using-test-stages/) guide. A bare `defer terraform.Destroy(...)` is not affected by any `SKIP_*` environment variable.
+To skip destroy while iterating locally, wrap your stages with `test_structure.RunTestStage` and set `SKIP_<stage>=true` - see the Terratest [iterating locally using test stages](https://terratest.gruntwork.io/docs/testing-best-practices/iterating-locally-using-test-stages/) guide. A bare `defer terraform.Destroy(...)` is not affected by any `SKIP_*` environment variable.
 
 ## CI/CD Integration
 

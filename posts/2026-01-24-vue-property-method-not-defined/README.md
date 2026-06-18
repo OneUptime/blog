@@ -8,15 +8,15 @@ Description: Learn how to diagnose and fix the common Vue error 'Property or met
 
 ---
 
-> The "Property or method is not defined on the instance" error is one of the most common issues Vue developers encounter. This error occurs when you reference a property or method in your template that Vue cannot find in your component definition.
+> The "Property or method is not defined on the instance" warning is one of the most common issues Vue developers encounter. This warning occurs when you reference a property or method in your template that Vue cannot find in your component definition.
 
-Understanding why this error occurs and how to systematically debug it will save you hours of frustration. This guide covers all the common causes and their solutions for both Vue 2 and Vue 3.
+Understanding why this warning occurs and how to systematically debug it will save you hours of frustration. This guide covers all the common causes and their solutions for both Vue 2 and Vue 3.
 
 ---
 
 ## Understanding the Error
 
-When Vue compiles your template, it looks for properties and methods in specific locations within your component. If it cannot find what you are referencing, it throws this error.
+When Vue renders your template, it looks for properties and methods in specific locations within your component. If it cannot find what you are referencing, it logs this warning in development.
 
 ```mermaid
 flowchart TD
@@ -82,7 +82,11 @@ export default {
 }
 </script>
 
-<!-- Fix: Return all properties from data() -->
+```
+
+Fix: Return all properties from `data()`.
+
+```vue
 <script>
 export default {
   data() {

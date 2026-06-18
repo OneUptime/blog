@@ -32,7 +32,7 @@ WCAG is organized around four core principles:
 WCAG defines three levels of conformance:
 
 - **Level A:** Minimum accessibility. Must be met or some users cannot access content at all.
-- **Level AA:** Addresses the most common barriers. This is the standard most organizations target and what most laws require.
+- **Level AA:** Addresses the most common barriers. This is the standard most organizations target and what many laws and policies reference.
 - **Level AAA:** Highest level of accessibility. Not required for entire sites but useful for specific content.
 
 ### Key WCAG Success Criteria to Know
@@ -41,10 +41,9 @@ Here are the most commonly tested criteria:
 
 ```text
 Level A (Must Have):
-- 1.1.1 Non-text Content: All images need alt text
+- 1.1.1 Non-text Content: Meaningful images need text alternatives, and decorative images use empty alt text
 - 2.1.1 Keyboard: All functionality available via keyboard
 - 2.4.1 Bypass Blocks: Skip navigation links
-- 4.1.1 Parsing: Valid HTML markup
 - 4.1.2 Name, Role, Value: ARIA labels for custom components
 
 Level AA (Should Have):
@@ -215,7 +214,7 @@ describe("Dashboard Accessibility", () => {
       rules: {
         // Customize which rules to run
         "color-contrast": { enabled: true },
-        "focus-management": { enabled: true },
+        "aria-dialog-name": { enabled: true },
       },
     });
   });
@@ -480,9 +479,6 @@ accessibility_scan:
     when: always
     paths:
       - a11y-results.json
-    reports:
-      junit: a11y-junit.xml
-
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
     - if: '$CI_COMMIT_BRANCH == "main"'
@@ -490,20 +486,19 @@ accessibility_scan:
 
 ### Pre-commit Hook for Accessibility
 
-Catch issues before they even get committed:
+Catch issues before they even get committed. Assuming your ESLint configuration already enables `eslint-plugin-jsx-a11y`, add it to your pre-commit hook:
 
 ```json
-// package.json
 {
-  "husky": {
-    "hooks": {
-      "pre-commit": "npm run lint:a11y"
-    }
-  },
   "scripts": {
-    "lint:a11y": "eslint --ext .jsx,.tsx src/ --rule 'jsx-a11y/alt-text: error' --rule 'jsx-a11y/anchor-is-valid: error'"
+    "lint:a11y": "eslint src/"
   }
 }
+```
+
+```sh
+# .husky/pre-commit
+npm run lint:a11y
 ```
 
 ## Practical Code Examples
@@ -512,7 +507,7 @@ Catch issues before they even get committed:
 
 ```jsx
 // AccessibleForm.jsx
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 
 function AccessibleForm() {
   const [errors, setErrors] = useState({});
@@ -537,6 +532,12 @@ function AccessibleForm() {
     return newErrors;
   };
 
+  useEffect(() => {
+    if (Object.keys(errors).length > 0) {
+      errorSummaryRef.current?.focus();
+    }
+  }, [errors]);
+
   const handleSubmit = (event) => {
     event.preventDefault();
     const formData = new FormData(event.target);
@@ -544,8 +545,6 @@ function AccessibleForm() {
 
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
-      // Move focus to error summary for screen reader announcement
-      errorSummaryRef.current?.focus();
     } else {
       setErrors({});
       setSubmitted(true);
@@ -653,13 +652,6 @@ function AccessibleModal({ isOpen, onClose, title, children }) {
   const modalRef = useRef(null);
   const previousActiveElement = useRef(null);
 
-  // Store the element that triggered the modal
-  useEffect(() => {
-    if (isOpen) {
-      previousActiveElement.current = document.activeElement;
-    }
-  }, [isOpen]);
-
   // Focus management: trap focus inside modal
   const handleKeyDown = useCallback(
     (event) => {
@@ -693,25 +685,25 @@ function AccessibleModal({ isOpen, onClose, title, children }) {
 
   // Set up focus trap and restore focus on close
   useEffect(() => {
-    if (isOpen) {
-      // Focus the modal container
-      modalRef.current?.focus();
+    if (!isOpen) return;
 
-      // Prevent body scroll
-      document.body.style.overflow = "hidden";
+    previousActiveElement.current = document.activeElement;
 
-      // Add keyboard listener
-      document.addEventListener("keydown", handleKeyDown);
-    }
+    // Focus the modal container
+    modalRef.current?.focus();
+
+    // Prevent body scroll
+    document.body.style.overflow = "hidden";
+
+    // Add keyboard listener
+    document.addEventListener("keydown", handleKeyDown);
 
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
       document.body.style.overflow = "";
 
       // Restore focus to trigger element
-      if (!isOpen && previousActiveElement.current) {
-        previousActiveElement.current.focus();
-      }
+      previousActiveElement.current?.focus();
     };
   }, [isOpen, handleKeyDown]);
 

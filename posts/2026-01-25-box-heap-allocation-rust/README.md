@@ -305,7 +305,7 @@ fn main() {
     let value = *boxed;
     println!("Value: {}", value);
 
-    // Box::into_inner (moves out the value)
+    // Move out the value by dereferencing the Box
     let boxed = Box::new(String::from("hello"));
     let s: String = *boxed;  // Move string out of box
     println!("String: {}", s);
@@ -330,12 +330,13 @@ fn main() {
 |------|-----------|-------------|----------|
 | `Box<T>` | Single owner | Send if T: Send | Heap allocation, trait objects |
 | `Rc<T>` | Multiple owners | No | Shared ownership, single thread |
-| `Arc<T>` | Multiple owners | Yes | Shared ownership, multi-thread |
+| `Arc<T>` | Multiple owners | Yes, if T: Send + Sync | Shared ownership, multi-thread |
 | `RefCell<T>` | Single owner | No | Interior mutability |
 
 ## Performance Considerations
 
 ```rust
+use std::hint::black_box;
 use std::time::Instant;
 
 fn main() {
@@ -344,14 +345,16 @@ fn main() {
     // Stack allocation (faster for small data)
     let start = Instant::now();
     for _ in 0..iterations {
-        let _x = 42;
+        let x = black_box(42);
+        black_box(x);
     }
     println!("Stack: {:?}", start.elapsed());
 
     // Heap allocation (slower due to allocation)
     let start = Instant::now();
     for _ in 0..iterations {
-        let _x = Box::new(42);
+        let x = Box::new(black_box(42));
+        black_box(x);
     }
     println!("Heap: {:?}", start.elapsed());
 

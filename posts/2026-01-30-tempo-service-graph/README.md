@@ -137,7 +137,7 @@ metrics_generator:
       # Enable virtual nodes for uninstrumented services
       enable_virtual_node_label: true
 
-# Processors are disabled by default — enable them per tenant via the
+# Processors are disabled by default - enable them per tenant via the
 # overrides section. Use "defaults" to apply to all tenants.
 overrides:
   defaults:

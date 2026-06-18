@@ -47,18 +47,18 @@ graph LR
     style I fill:#9f9,stroke:#333,stroke-width:2px
 ```
 
-Each workflow run becomes a trace. Each job becomes a child span. Each step becomes a span nested under its job. This hierarchy maps naturally to the way GitHub Actions executes workflows.
+With a shared trace ID, each workflow run can become a trace. Each job becomes a child span. Each step becomes a span nested under its job. This hierarchy maps naturally to the way GitHub Actions executes workflows.
 
 ## Setting Up the OpenTelemetry Collector in GitHub Actions
 
-The first step is to run an OpenTelemetry Collector as a service container within your workflow. This collector receives spans from your steps and exports them to your backend.
+The first step is to run an OpenTelemetry Collector container within your workflow. This collector receives spans from your steps and exports them to your backend.
 
-Create a reusable workflow file that starts the collector as a service container alongside your jobs.
+Create a reusable workflow file that starts the collector before the instrumented steps.
 
 ```yaml
 # .github/workflows/build-with-tracing.yml
 
-# This workflow demonstrates running an OTel Collector as a service container
+# This workflow demonstrates running an OTel Collector container
 # so that individual steps can emit trace data during the build.
 name: Build with Tracing
 
@@ -72,17 +72,9 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
-    # Service containers run alongside the job
-    services:
-      otel-collector:
-        image: otel/opentelemetry-collector-contrib:latest
-        ports:
-          # OTLP gRPC receiver
-          - 4317:4317
-          # OTLP HTTP receiver
-          - 4318:4318
+    steps:
+      - name: Start OpenTelemetry Collector
         env:
-          # Pass the collector config inline via environment variable
           OTEL_CONFIG: |
             receivers:
               otlp:
@@ -105,8 +97,14 @@ jobs:
                   receivers: [otlp]
                   processors: [batch]
                   exporters: [otlphttp]
+        run: |
+          docker run -d --name otel-collector \
+            -p 4317:4317 \
+            -p 4318:4318 \
+            -e OTEL_CONFIG \
+            otel/opentelemetry-collector-contrib:0.152.0 \
+            --config=env:OTEL_CONFIG
 
-    steps:
       - uses: actions/checkout@v4
 
       - name: Build
@@ -139,7 +137,7 @@ END_TIME="$4"
 
 # Generate random trace and span IDs in hex format
 TRACE_ID="${OTEL_TRACE_ID:-$(openssl rand -hex 16)}"
-SPAN_ID="$(openssl rand -hex 8)"
+SPAN_ID="${OTEL_SPAN_ID:-$(openssl rand -hex 8)}"
 PARENT_SPAN_ID="${OTEL_PARENT_SPAN_ID:-}"
 
 # Convert ISO timestamps to nanoseconds since epoch
@@ -155,50 +153,63 @@ fi
 
 # Build the OTLP JSON payload
 # The nested structure follows the OTLP specification for trace data
-PAYLOAD=$(cat <<EOF
-{
-  "resourceSpans": [{
-    "resource": {
-      "attributes": [
-        {"key": "service.name", "value": {"stringValue": "github-actions"}},
-        {"key": "ci.provider", "value": {"stringValue": "github"}},
-        {"key": "ci.pipeline.name", "value": {"stringValue": "${GITHUB_WORKFLOW}"}},
-        {"key": "ci.pipeline.run.id", "value": {"stringValue": "${GITHUB_RUN_ID}"}}
-      ]
-    },
-    "scopeSpans": [{
-      "scope": {"name": "github-actions-tracer", "version": "1.0.0"},
-      "spans": [{
-        "traceId": "${TRACE_ID}",
-        "spanId": "${SPAN_ID}",
-        "parentSpanId": "${PARENT_SPAN_ID}",
-        "name": "${SPAN_NAME}",
-        "kind": 1,
-        "startTimeUnixNano": "${START_NANOS}",
-        "endTimeUnixNano": "${END_NANOS}",
-        "status": {"code": ${STATUS_CODE}},
-        "attributes": [
-          {"key": "github.repository", "value": {"stringValue": "${GITHUB_REPOSITORY}"}},
-          {"key": "github.ref", "value": {"stringValue": "${GITHUB_REF}"}},
-          {"key": "github.sha", "value": {"stringValue": "${GITHUB_SHA}"}},
-          {"key": "github.actor", "value": {"stringValue": "${GITHUB_ACTOR}"}},
-          {"key": "github.event_name", "value": {"stringValue": "${GITHUB_EVENT_NAME}"}}
+PAYLOAD=$(jq -n \
+  --arg trace_id "$TRACE_ID" \
+  --arg span_id "$SPAN_ID" \
+  --arg parent_span_id "$PARENT_SPAN_ID" \
+  --arg span_name "$SPAN_NAME" \
+  --arg start_nanos "$START_NANOS" \
+  --arg end_nanos "$END_NANOS" \
+  --arg workflow "$GITHUB_WORKFLOW" \
+  --arg run_id "$GITHUB_RUN_ID" \
+  --arg repository "$GITHUB_REPOSITORY" \
+  --arg ref "$GITHUB_REF" \
+  --arg sha "$GITHUB_SHA" \
+  --arg actor "$GITHUB_ACTOR" \
+  --arg event_name "$GITHUB_EVENT_NAME" \
+  --argjson status_code "$STATUS_CODE" \
+  '{
+    resourceSpans: [{
+      resource: {
+        attributes: [
+          {key: "service.name", value: {stringValue: "github-actions"}},
+          {key: "ci.provider", value: {stringValue: "github"}},
+          {key: "ci.pipeline.name", value: {stringValue: $workflow}},
+          {key: "ci.pipeline.run.id", value: {stringValue: $run_id}}
         ]
+      },
+      scopeSpans: [{
+        scope: {name: "github-actions-tracer", version: "1.0.0"},
+        spans: [{
+          traceId: $trace_id,
+          spanId: $span_id,
+          parentSpanId: $parent_span_id,
+          name: $span_name,
+          kind: 1,
+          startTimeUnixNano: $start_nanos,
+          endTimeUnixNano: $end_nanos,
+          status: {code: $status_code},
+          attributes: [
+            {key: "github.repository", value: {stringValue: $repository}},
+            {key: "github.ref", value: {stringValue: $ref}},
+            {key: "github.sha", value: {stringValue: $sha}},
+            {key: "github.actor", value: {stringValue: $actor}},
+            {key: "github.event_name", value: {stringValue: $event_name}}
+          ]
+        }]
       }]
     }]
-  }]
-}
-EOF
+  }'
 )
 
 # Send the span to the OTLP HTTP endpoint
-curl -s -X POST "${OTEL_EXPORTER_OTLP_ENDPOINT}/v1/traces" \
+curl -s -X POST "${OTEL_EXPORTER_OTLP_ENDPOINT%/}/v1/traces" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer ${OTEL_AUTH_TOKEN}" \
   -d "${PAYLOAD}"
 ```
 
-This script builds a well-formed OTLP JSON payload and posts it to any OTLP-compatible endpoint. The key detail is maintaining the trace ID across steps so all spans in a workflow run are grouped into a single trace.
+This script builds a well-formed OTLP JSON payload and posts it to any OTLP-compatible endpoint. The key detail is maintaining the trace ID across steps, and across jobs when you have multiple jobs, so all spans in a workflow run are grouped into a single trace.
 
 ## Instrumenting a Full Workflow
 
@@ -236,71 +247,90 @@ jobs:
       - name: Install Dependencies
         run: |
           STEP_START=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          set +e
           npm ci
+          EXIT_CODE=$?
+          set -e
           STEP_END=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-          export OTEL_PARENT_SPAN_ID=${{ env.JOB_SPAN_ID }}
-          bash scripts/otel-trace.sh "install-dependencies" "success" "$STEP_START" "$STEP_END"
+          export OTEL_PARENT_SPAN_ID="$JOB_SPAN_ID"
+          if [ "$EXIT_CODE" -eq 0 ]; then STATUS="success"; else STATUS="error"; fi
+          bash scripts/otel-trace.sh "install-dependencies" "$STATUS" "$STEP_START" "$STEP_END"
+          exit "$EXIT_CODE"
 
       - name: Lint
         run: |
           STEP_START=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          set +e
           npm run lint
+          EXIT_CODE=$?
+          set -e
           STEP_END=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-          export OTEL_PARENT_SPAN_ID=${{ env.JOB_SPAN_ID }}
-          bash scripts/otel-trace.sh "lint" "success" "$STEP_START" "$STEP_END"
+          export OTEL_PARENT_SPAN_ID="$JOB_SPAN_ID"
+          if [ "$EXIT_CODE" -eq 0 ]; then STATUS="success"; else STATUS="error"; fi
+          bash scripts/otel-trace.sh "lint" "$STATUS" "$STEP_START" "$STEP_END"
+          exit "$EXIT_CODE"
 
       - name: Unit Tests
         run: |
           STEP_START=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          set +e
           npm test
+          EXIT_CODE=$?
+          set -e
           STEP_END=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-          export OTEL_PARENT_SPAN_ID=${{ env.JOB_SPAN_ID }}
-          bash scripts/otel-trace.sh "unit-tests" "success" "$STEP_START" "$STEP_END"
+          export OTEL_PARENT_SPAN_ID="$JOB_SPAN_ID"
+          if [ "$EXIT_CODE" -eq 0 ]; then STATUS="success"; else STATUS="error"; fi
+          bash scripts/otel-trace.sh "unit-tests" "$STATUS" "$STEP_START" "$STEP_END"
+          exit "$EXIT_CODE"
 
       - name: Build
         run: |
           STEP_START=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          set +e
           npm run build
+          EXIT_CODE=$?
+          set -e
           STEP_END=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-          export OTEL_PARENT_SPAN_ID=${{ env.JOB_SPAN_ID }}
-          bash scripts/otel-trace.sh "build" "success" "$STEP_START" "$STEP_END"
+          export OTEL_PARENT_SPAN_ID="$JOB_SPAN_ID"
+          if [ "$EXIT_CODE" -eq 0 ]; then STATUS="success"; else STATUS="error"; fi
+          bash scripts/otel-trace.sh "build" "$STATUS" "$STEP_START" "$STEP_END"
+          exit "$EXIT_CODE"
 
       # Send the parent job-level span after all steps complete
       - name: Finalize Job Trace
         if: always()
         run: |
           JOB_END=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-          bash scripts/otel-trace.sh "build-and-test" "${{ job.status }}" "${{ env.JOB_START }}" "$JOB_END"
+          export OTEL_SPAN_ID="$JOB_SPAN_ID"
+          bash scripts/otel-trace.sh "build-and-test" "${{ job.status }}" "$JOB_START" "$JOB_END"
 ```
 
 The `if: always()` on the finalize step is important. It ensures the job-level span is sent even when a previous step fails, so you always get the full picture in your traces.
 
 ## Adding Semantic Attributes for CI/CD
 
-OpenTelemetry has proposed semantic conventions for CI/CD systems. Adding these attributes makes your trace data consistent and queryable.
+OpenTelemetry has development-status semantic conventions for CI/CD systems. Adding these attributes makes your trace data consistent and queryable.
 
 ```bash
 # scripts/otel-ci-attributes.sh
 # Builds a list of CI/CD semantic convention attributes for GitHub Actions.
 # Source these into your trace script to enrich span data.
 
-# CI/CD semantic conventions (proposed)
+# CI/CD semantic conventions (development status)
 CI_ATTRIBUTES=(
   # The CI system running the pipeline
   "cicd.pipeline.name=${GITHUB_WORKFLOW}"
   # Unique identifier for this pipeline run
   "cicd.pipeline.run.id=${GITHUB_RUN_ID}"
-  # Attempt number for retried runs
-  "cicd.pipeline.run.attempt=${GITHUB_RUN_ATTEMPT}"
   # The task within the pipeline (job name)
   "cicd.pipeline.task.name=${GITHUB_JOB}"
   # Source control attributes
   "vcs.repository.url.full=https://github.com/${GITHUB_REPOSITORY}"
-  "vcs.repository.ref.name=${GITHUB_REF_NAME}"
-  "vcs.repository.ref.revision=${GITHUB_SHA}"
+  "vcs.ref.head.name=${GITHUB_REF_NAME}"
+  "vcs.ref.head.revision=${GITHUB_SHA}"
   # Runner information
-  "cicd.runner.os=${RUNNER_OS}"
-  "cicd.runner.arch=${RUNNER_ARCH}"
+  "cicd.worker.name=${RUNNER_NAME}"
+  "cicd.worker.id=${RUNNER_NAME}"
 )
 ```
 
@@ -317,21 +347,24 @@ When a step fails, you want the span to capture the error status and relevant de
   continue-on-error: true
   run: |
     STEP_START=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    set +e
     npm run test:integration 2>&1 | tee test-output.log
-    echo "TEST_EXIT_CODE=$?" >> $GITHUB_ENV
+    TEST_EXIT_CODE=${PIPESTATUS[0]}
+    set -e
+    echo "TEST_EXIT_CODE=$TEST_EXIT_CODE" >> $GITHUB_ENV
     echo "STEP_START=$STEP_START" >> $GITHUB_ENV
 
 - name: Record Integration Test Span
   if: always()
   run: |
     STEP_END=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-    if [ "${{ env.TEST_EXIT_CODE }}" = "0" ]; then
+    if [ "$TEST_EXIT_CODE" = "0" ]; then
       STATUS="success"
     else
       STATUS="error"
     fi
-    export OTEL_PARENT_SPAN_ID=${{ env.JOB_SPAN_ID }}
-    bash scripts/otel-trace.sh "integration-tests" "$STATUS" "${{ env.STEP_START }}" "$STEP_END"
+    export OTEL_PARENT_SPAN_ID="$JOB_SPAN_ID"
+    bash scripts/otel-trace.sh "integration-tests" "$STATUS" "$STEP_START" "$STEP_END"
 ```
 
 By separating the execution step from the span-recording step and using `continue-on-error`, you ensure that trace data is always emitted regardless of whether the step succeeded or failed.

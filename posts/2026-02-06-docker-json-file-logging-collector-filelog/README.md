@@ -36,6 +36,8 @@ Restart Docker after making changes:
 sudo systemctl restart docker
 ```
 
+The new daemon-level logging configuration applies to newly created containers after the restart. Existing containers do not automatically switch logging configuration.
+
 The `max-size` and `max-file` options prevent logs from consuming all available disk space. Without these, a single chatty container can fill your volume.
 
 ## Understanding the Log File Structure
@@ -106,15 +108,18 @@ There are a few things worth noting here. The `json_parser` operator handles the
 
 ## Extracting the Container ID from the File Path
 
-You can also extract the container ID from the file path itself. Add a regex parser to your operators list:
+You can also extract the container ID from the file path itself. Since `log.file.path` is not added by default, enable `include_file_path` and add a regex parser to your operators list:
 
 ```yaml
-operators:
-  # Extract container ID from the file path
-  - type: regex_parser
-    regex: '/var/lib/docker/containers/(?P<container_id>[a-f0-9]+)/'
-    parse_from: attributes["log.file.path"]
-  # ... rest of your operators
+receivers:
+  filelog:
+    include_file_path: true
+    operators:
+      # Extract container ID from the file path
+      - type: regex_parser
+        regex: '/var/lib/docker/containers/(?P<container_id>[a-f0-9]+)/'
+        parse_from: attributes["log.file.path"]
+      # ... rest of your operators
 ```
 
 This gives you a `container_id` attribute on every log record, which is useful for correlating logs with container metadata.

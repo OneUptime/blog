@@ -41,7 +41,7 @@ flowchart LR
 The key benefits of Pulsar Functions include:
 
 - **No separate cluster**: Functions run within Pulsar, reducing operational overhead
-- **Automatic scaling**: Functions scale based on topic partitions
+- **Configurable parallelism**: Run multiple function instances to process partitioned topics in parallel
 - **Built-in fault tolerance**: State is persisted and recovered automatically
 - **Language flexibility**: Write functions in Java, Python, or Go
 
@@ -72,7 +72,7 @@ flowchart TB
         subgraph Exactly["Effectively-Once"]
             EO1[Message received]
             EO2[Process with dedup]
-            EO3[Transactional commit]
+            EO3[Single deduplicated output]
             EO1 --> EO2 --> EO3
         end
     end
@@ -80,7 +80,7 @@ flowchart TB
 
 - **At-most-once**: Messages are acknowledged before processing. Fast but may lose data on failures.
 - **At-least-once**: Messages are acknowledged after processing. Safe but may produce duplicates.
-- **Effectively-once**: Uses transactions and deduplication for exactly-once semantics. Most reliable but highest latency.
+- **Effectively-once**: Builds on at-least-once processing and server-side deduplication so each input message has one output, even if processing is retried.
 
 ## Setting Up the Development Environment
 
@@ -286,7 +286,7 @@ class EventRouter(Function):
                 topic_name=destination,
                 message=input_bytes,
                 # Preserve the partition key for ordering
-                partition_key=event.get('user_id', '')
+                message_conf={'partition_key': event.get('user_id', '')}
             )
 
             logger.debug(f"Routed {event_type} event to {destination}")
@@ -419,11 +419,10 @@ docker exec -it pulsar-functions bin/pulsar-admin functions create \
   --classname counter_function.UserEventCounter \
   --inputs persistent://public/default/user-events \
   --output persistent://public/default/user-counts \
-  --processing-guarantees EFFECTIVELY_ONCE \
-  --state-storage-service-url bk://localhost:4181
+  --processing-guarantees EFFECTIVELY_ONCE
 ```
 
-The `--state-storage-service-url` points to BookKeeper, where state is durably stored.
+The function worker must be configured with `stateStorageServiceUrl` pointing to the BookKeeper table service, such as `bk://localhost:4181`, so state can be durably stored.
 
 ### Windowed Aggregations
 
@@ -518,9 +517,6 @@ class WindowedAggregator(Function):
                     if window_data['count'] > 0 else 0
                 )
 
-                # Clear the state for this window
-                context.put_state(state_key, None)
-
                 logger.info(f"Emitting window result: {window_data}")
                 return json.dumps(window_data).encode('utf-8')
 
@@ -606,7 +602,11 @@ public class EventTransformerFunction implements Function<byte[], byte[]> {
 
             // Build normalized event
             JsonObject normalized = new JsonObject();
-            normalized.addProperty("event_id", context.getMessageId().toString());
+            String messageId = context.getCurrentRecord()
+                .getMessage()
+                .map(message -> message.getMessageId().toString())
+                .orElse("unknown");
+            normalized.addProperty("event_id", messageId);
             normalized.addProperty("user_id", userId);
             normalized.addProperty("event_type", eventType);
             normalized.addProperty("original_timestamp", timestamp);
@@ -681,17 +681,17 @@ docker exec -it pulsar-functions bin/pulsar-admin functions create \
   --inputs persistent://public/default/large-events \
   --output persistent://public/default/processed-large \
   --cpu 2.0 \
-  --ram 4096 \
-  --disk 10000 \
+  --ram 4294967296 \
+  --disk 10737418240 \
   --parallelism 4 \
   --processing-guarantees ATLEAST_ONCE
 ```
 
 Resource options:
 
-- `--cpu`: Number of CPU cores (can be fractional)
-- `--ram`: Memory in megabytes
-- `--disk`: Disk space in megabytes
+- `--cpu`: Number of CPU cores per function instance (can be fractional, for Kubernetes runtime)
+- `--ram`: Memory in bytes per function instance
+- `--disk`: Disk space in bytes per function instance (for Kubernetes runtime)
 - `--parallelism`: Number of function instances to run
 
 The parallelism setting determines how many instances process messages in parallel:
@@ -845,7 +845,7 @@ docker exec -it pulsar-functions bin/pulsar-admin functions create \
 
 ## Error Handling and Dead Letter Topics
 
-Production functions need robust error handling. Configure automatic dead letter routing for failed messages:
+Production functions need robust error handling. You can route permanent failures to a dead letter topic from the function:
 
 ```python
 # robust_function.py
@@ -978,11 +978,12 @@ docker exec -it pulsar-functions bin/pulsar-admin functions stats \
   --tenant public \
   --namespace default
 
-# View function logs
+# Trigger a test invocation
 docker exec -it pulsar-functions bin/pulsar-admin functions trigger \
   --name event-transformer \
   --tenant public \
   --namespace default \
+  --topic persistent://public/default/raw-events \
   --trigger-value '{"user_id": "test", "event_type": "test"}'
 ```
 
@@ -1043,7 +1044,7 @@ docker exec -it pulsar-functions bin/pulsar-admin functions update \
   --parallelism 8
 ```
 
-Pulsar performs rolling updates, replacing instances one at a time to maintain availability.
+Pulsar updates the deployed function configuration and restarts the affected instances. Check function status and input backlog after an update to confirm that the function has returned to healthy processing.
 
 ## Best Practices for Production
 

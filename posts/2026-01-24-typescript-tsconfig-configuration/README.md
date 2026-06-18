@@ -60,6 +60,7 @@ flowchart TD
         "strictFunctionTypes": true,      // Strict checking of function types
         "strictBindCallApply": true,      // Strict bind/call/apply methods
         "strictPropertyInitialization": true,  // Class properties must be initialized
+        "strictBuiltinIteratorReturn": true,  // Built-in iterators return undefined strictly
         "noImplicitThis": true,           // Error on 'this' with implied 'any'
         "useUnknownInCatchVariables": true,  // catch clause variables are 'unknown'
         "alwaysStrict": true,             // Emit 'use strict' in output
@@ -173,11 +174,12 @@ flowchart LR
     }
 }
 
-// For browser projects without bundler
+// For browser projects with native ESM imports
 {
     "compilerOptions": {
-        "module": "esnext",
-        "moduleResolution": "bundler"
+        "module": "nodenext",
+        "moduleResolution": "nodenext",
+        "noEmit": true
     }
 }
 ```
@@ -217,7 +219,8 @@ flowchart LR
 ### Target Options
 
 ```typescript
-// Target affects which JavaScript features are emitted vs polyfilled
+// Target affects which JavaScript features are downleveled vs left intact.
+// It does not add runtime polyfills.
 
 // target: "ES5" - Maximum compatibility
 // - Async/await transpiled to generators or promises
@@ -483,7 +486,7 @@ This option is recommended for most projects. It speeds up compilation and avoid
 }
 ```
 
-This ensures each file can be transpiled independently. Required when using transpilers other than tsc.
+This ensures each file can be transpiled independently. Enable it when using single-file transpilers other than tsc.
 
 ```typescript
 // ERROR with isolatedModules: true
@@ -492,9 +495,9 @@ This ensures each file can be transpiled independently. Required when using tran
 export { MyType } from './types';  // Error
 export type { MyType } from './types';  // OK
 
-// const enums cannot be used
-const enum Direction { Up, Down }  // Error
-enum Direction { Up, Down }  // OK
+// Ambient const enum members cannot be referenced
+declare const enum Direction { Up, Down }
+const direction = Direction.Up;  // Error
 ```
 
 ### noEmit

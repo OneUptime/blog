@@ -8,7 +8,7 @@ Description: A practical guide to fine-tuning large language models using LoRA (
 
 ---
 
-Fine-tuning large language models traditionally required massive GPU resources. A 7B parameter model needs around 56GB of VRAM just to store gradients and optimizer states during full fine-tuning. LoRA (Low-Rank Adaptation) changes this by training only small adapter matrices while keeping the base model frozen. You can fine-tune a 7B model on a single 24GB GPU.
+Fine-tuning large language models traditionally required massive GPU resources. A 7B parameter model can need around 56GB of VRAM for Adam optimizer states alone during full fine-tuning, with model weights, gradients, and activations requiring additional memory. LoRA (Low-Rank Adaptation) changes this by training only small adapter matrices while keeping the base model frozen. You can fine-tune a 7B model on a single 24GB GPU with quantization and memory-saving settings.
 
 ## How LoRA Works
 
@@ -35,10 +35,10 @@ The key insight: weight updates during fine-tuning often have low intrinsic rank
 
 | Approach | Trainable Params (7B Model) | VRAM Required |
 |----------|----------------------------|---------------|
-| Full Fine-Tuning | 7 billion | 56GB+ |
-| LoRA (r=8) | ~4 million | 16GB |
-| LoRA (r=16) | ~8 million | 18GB |
-| LoRA (r=64) | ~33 million | 24GB |
+| Full Fine-Tuning | 7 billion | 80GB+ |
+| LoRA (r=8) | ~20 million | 16GB |
+| LoRA (r=16) | ~40 million | 18GB |
+| LoRA (r=64) | ~160 million | 24GB+ |
 
 ## Setting Up Your Environment
 
@@ -54,7 +54,7 @@ source lora-env/bin/activate
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
 
 # Install Hugging Face libraries
-pip install transformers datasets accelerate peft
+pip install transformers datasets accelerate peft trl
 
 # Install bitsandbytes for quantization (reduces memory further)
 pip install bitsandbytes
@@ -116,22 +116,25 @@ def format_for_training(example):
 
     # Alpaca-style format works well for instruction-following
     if example.get("input"):
-        text = f"""### Instruction:
+        prompt = f"""### Instruction:
 {example['instruction']}
 
 ### Input:
 {example['input']}
 
 ### Response:
-{example['output']}"""
+"""
     else:
-        text = f"""### Instruction:
+        prompt = f"""### Instruction:
 {example['instruction']}
 
 ### Response:
-{example['output']}"""
+"""
 
-    return {"text": text}
+    return {
+        "prompt": prompt,
+        "completion": example["output"],
+    }
 
 
 # Load and process dataset
@@ -192,9 +195,9 @@ def load_model_for_training(model_name: str):
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
         quantization_config=bnb_config,
-        device_map="auto",           # Automatically distribute across GPUs
+        device_map="auto",           # Automatically place model layers
         trust_remote_code=True,      # Required for some models
-        torch_dtype=torch.bfloat16,  # Use bfloat16 for non-quantized parts
+        dtype=torch.bfloat16,        # Use bfloat16 for non-quantized parts
     )
 
     # Disable caching for training (saves memory)
@@ -272,16 +275,15 @@ model = configure_lora(model, rank=16, alpha=32, dropout=0.05)
 The output shows the dramatic reduction in trainable parameters.
 
 ```text
-trainable params: 8,388,608 || all params: 3,212,749,824 || trainable%: 0.2611
+trainable params: 24,000,000 || all params: 3,228,000,000 || trainable%: 0.74
 ```
 
 ## Setting Up the Training Loop
 
-Use the Hugging Face Trainer with SFTTrainer from the trl library for a streamlined fine-tuning experience.
+Use SFTTrainer from the trl library for a streamlined fine-tuning experience.
 
 ```python
-from transformers import TrainingArguments
-from trl import SFTTrainer, DataCollatorForCompletionOnlyLM
+from trl import SFTConfig, SFTTrainer
 
 def create_trainer(model, tokenizer, train_dataset, eval_dataset, output_dir: str):
     """
@@ -291,8 +293,8 @@ def create_trainer(model, tokenizer, train_dataset, eval_dataset, output_dir: st
     causal language model training with proper loss masking.
     """
 
-    # Training arguments control the training loop behavior
-    training_args = TrainingArguments(
+    # SFTConfig controls the training loop and dataset preprocessing
+    training_args = SFTConfig(
         output_dir=output_dir,
 
         # Batch size settings
@@ -313,7 +315,7 @@ def create_trainer(model, tokenizer, train_dataset, eval_dataset, output_dir: st
         logging_steps=10,                     # Log every 10 steps
         save_steps=100,                       # Save checkpoint every 100 steps
         save_total_limit=3,                   # Keep only last 3 checkpoints
-        evaluation_strategy="steps",
+        eval_strategy="steps",
         eval_steps=100,                       # Evaluate every 100 steps
 
         # Optimization settings
@@ -329,15 +331,11 @@ def create_trainer(model, tokenizer, train_dataset, eval_dataset, output_dir: st
         group_by_length=True,                 # Group similar length samples for efficiency
         report_to="tensorboard",              # Log to TensorBoard
         run_name="lora-fine-tune",
-    )
 
-    # Data collator handles padding and creates attention masks
-    # response_template tells it where the model's response starts
-    # This ensures loss is only computed on the response, not the prompt
-    response_template = "### Response:"
-    collator = DataCollatorForCompletionOnlyLM(
-        response_template=response_template,
-        tokenizer=tokenizer,
+        # SFT settings
+        max_length=2048,                      # Maximum sequence length
+        packing=False,                        # Don't pack multiple examples per sequence
+        completion_only_loss=True,            # Train on completion tokens, not prompt tokens
     )
 
     # Create the trainer
@@ -346,11 +344,7 @@ def create_trainer(model, tokenizer, train_dataset, eval_dataset, output_dir: st
         args=training_args,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
-        tokenizer=tokenizer,
-        data_collator=collator,
-        dataset_text_field="text",            # Field containing formatted examples
-        max_seq_length=2048,                  # Maximum sequence length
-        packing=False,                        # Don't pack multiple examples per sequence
+        processing_class=tokenizer,
     )
 
     return trainer
@@ -404,7 +398,7 @@ def train_with_monitoring(trainer):
     except torch.cuda.OutOfMemoryError:
         print("Out of memory! Try:")
         print("  - Reducing batch size")
-        print("  - Reducing max_seq_length")
+        print("  - Reducing max_length")
         print("  - Enabling gradient checkpointing")
         print("  - Using a smaller LoRA rank")
         raise
@@ -454,7 +448,7 @@ flowchart TD
 
 ## Saving and Loading LoRA Adapters
 
-LoRA adapters are small (typically 10-50MB) and can be saved separately from the base model. This enables easy versioning and sharing.
+LoRA adapters are much smaller than the base model (typically tens to hundreds of MB, depending on rank and target modules) and can be saved separately. This enables easy versioning and sharing.
 
 ```python
 def save_lora_adapter(model, output_path: str):
@@ -487,7 +481,7 @@ def load_lora_adapter(base_model_name: str, adapter_path: str):
     # Load base model (can use quantization for inference too)
     base_model = AutoModelForCausalLM.from_pretrained(
         base_model_name,
-        torch_dtype=torch.bfloat16,
+        dtype=torch.bfloat16,
         device_map="auto",
     )
 
@@ -705,17 +699,19 @@ Convert your merged model to GGUF format for Ollama deployment.
 
 ```bash
 # Clone llama.cpp for conversion
-git clone https://github.com/ggerganov/llama.cpp
+git clone https://github.com/ggml-org/llama.cpp
 cd llama.cpp
 
-# Install requirements
+# Install requirements and build the quantization tool
 pip install -r requirements.txt
+cmake -B build
+cmake --build build --config Release
 
 # Convert merged model to GGUF
 python convert_hf_to_gguf.py ../customer-support-merged --outfile customer-support.gguf
 
 # Quantize for smaller size (optional)
-./llama-quantize customer-support.gguf customer-support-q4_k_m.gguf Q4_K_M
+./build/bin/llama-quantize customer-support.gguf customer-support-q4_k_m.gguf Q4_K_M
 
 # Create Ollama model
 ollama create customer-support -f Modelfile
@@ -723,4 +719,4 @@ ollama create customer-support -f Modelfile
 
 ---
 
-LoRA makes fine-tuning accessible without expensive infrastructure. Start with a small dataset and low rank to validate your approach, then scale up as needed. The key is matching your prompt format between training and inference, and choosing hyperparameters appropriate for your dataset size. With QLoRA, you can fine-tune models up to 70B parameters on consumer hardware, opening up powerful customization possibilities for your specific use case.
+LoRA makes fine-tuning accessible without expensive infrastructure. Start with a small dataset and low rank to validate your approach, then scale up as needed. The key is matching your prompt format between training and inference, and choosing hyperparameters appropriate for your dataset size. With QLoRA, you can fine-tune much larger models on a single high-memory GPU, opening up powerful customization possibilities for your specific use case.

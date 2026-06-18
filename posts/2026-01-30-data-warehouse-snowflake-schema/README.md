@@ -28,20 +28,20 @@ Here is a visual representation of a snowflake schema for a retail sales data wa
 
 ```mermaid
 erDiagram
-    FACT_SALES ||--o{ DIM_PRODUCT : "product_id"
-    FACT_SALES ||--o{ DIM_STORE : "store_id"
-    FACT_SALES ||--o{ DIM_DATE : "date_id"
-    FACT_SALES ||--o{ DIM_CUSTOMER : "customer_id"
+    DIM_PRODUCT ||--o{ FACT_SALES : "product_id"
+    DIM_STORE ||--o{ FACT_SALES : "store_id"
+    DIM_DATE ||--o{ FACT_SALES : "date_id"
+    DIM_CUSTOMER ||--o{ FACT_SALES : "customer_id"
 
-    DIM_PRODUCT ||--o{ DIM_CATEGORY : "category_id"
-    DIM_PRODUCT ||--o{ DIM_BRAND : "brand_id"
-    DIM_CATEGORY ||--o{ DIM_DEPARTMENT : "department_id"
+    DIM_CATEGORY ||--o{ DIM_PRODUCT : "category_id"
+    DIM_BRAND ||--o{ DIM_PRODUCT : "brand_id"
+    DIM_DEPARTMENT ||--o{ DIM_CATEGORY : "department_id"
 
-    DIM_STORE ||--o{ DIM_CITY : "city_id"
-    DIM_CITY ||--o{ DIM_STATE : "state_id"
-    DIM_STATE ||--o{ DIM_COUNTRY : "country_id"
+    DIM_CITY ||--o{ DIM_STORE : "city_id"
+    DIM_STATE ||--o{ DIM_CITY : "state_id"
+    DIM_COUNTRY ||--o{ DIM_STATE : "country_id"
 
-    DIM_CUSTOMER ||--o{ DIM_CITY : "city_id"
+    DIM_CITY ||--o{ DIM_CUSTOMER : "city_id"
 
     FACT_SALES {
         int sale_id PK
@@ -179,12 +179,13 @@ CREATE TABLE dim_product_1nf (
 -- The same category_name appears for multiple products
 ```
 
-### Second Normal Form (2NF): Remove Partial Dependencies
+### Second Normal Form (2NF): Check for Partial Dependencies
 
 ```sql
--- 2NF: Remove partial dependencies on the primary key
--- Split tables so non-key attributes depend on the entire primary key
--- Category information now in its own table
+-- 2NF: Check for partial dependencies on a composite primary key
+-- With a single-column primary key, this product table is already in 2NF
+-- because there cannot be a dependency on only part of the key.
+-- The split below prepares for 3NF by separating category information.
 
 -- Category dimension with its own primary key
 CREATE TABLE dim_category_2nf (
@@ -410,7 +411,7 @@ SELECT
         WHEN EXTRACT(MONTH FROM d) BETWEEN 10 AND 12 THEN 3
         ELSE 4
     END AS fiscal_quarter
-FROM generate_series('2020-01-01'::DATE, '2030-12-31'::DATE, '1 day'::INTERVAL) AS d;
+FROM generate_series('2020-01-01'::DATE, '2030-12-31'::DATE, '1 day'::INTERVAL) AS dates(d);
 ```
 
 ### Fact Table
@@ -565,12 +566,12 @@ INNER JOIN dim_state st ON ci.state_id = st.state_id
 INNER JOIN dim_country c ON st.country_id = c.country_id
 INNER JOIN dim_date d ON f.date_id = d.date_id
 WHERE d.year = 2025
-GROUP BY
+GROUP BY ROLLUP (
     c.country_name,
     st.state_name,
     ci.city_name
+)
 -- Use ROLLUP for subtotals at each hierarchy level
-WITH ROLLUP
 ORDER BY
     c.country_name NULLS LAST,
     st.state_name NULLS LAST,
@@ -739,9 +740,7 @@ CREATE INDEX idx_mv_daily_sales_date ON mv_daily_sales_summary(date_id);
 ```sql
 -- Procedure to load or update the product dimension
 -- Implements Type 1 SCD (Slowly Changing Dimension) with overwrites
-CREATE OR REPLACE PROCEDURE sp_load_dim_product(
-    p_source_table VARCHAR
-)
+CREATE OR REPLACE PROCEDURE sp_load_dim_product()
 LANGUAGE plpgsql
 AS $$
 BEGIN
@@ -857,6 +856,27 @@ BEGIN
     WHERE st.store_id IS NULL
         AND s.batch_date = p_batch_date;
 
+    -- Log records with invalid date references
+    INSERT INTO tmp_rejected_sales (transaction_number, rejection_reason)
+    SELECT
+        s.transaction_number,
+        'Invalid sale_date: ' || s.sale_date
+    FROM staging_sales s
+    LEFT JOIN dim_date d ON TO_CHAR(s.sale_date, 'YYYYMMDD')::INT = d.date_id
+    WHERE d.date_id IS NULL
+        AND s.batch_date = p_batch_date;
+
+    -- Log records with invalid customer references
+    INSERT INTO tmp_rejected_sales (transaction_number, rejection_reason)
+    SELECT
+        s.transaction_number,
+        'Invalid customer_id: ' || s.customer_id
+    FROM staging_sales s
+    LEFT JOIN dim_customer c ON s.customer_id = c.customer_id
+    WHERE s.customer_id IS NOT NULL
+        AND c.customer_id IS NULL
+        AND s.batch_date = p_batch_date;
+
     -- Load valid records into fact table
     INSERT INTO fact_sales (
         sale_id, product_id, store_id, customer_id, date_id,
@@ -885,6 +905,7 @@ BEGIN
     INNER JOIN dim_date d ON TO_CHAR(s.sale_date, 'YYYYMMDD')::INT = d.date_id
     LEFT JOIN dim_customer c ON s.customer_id = c.customer_id
     WHERE s.batch_date = p_batch_date
+        AND (s.customer_id IS NULL OR c.customer_id IS NOT NULL)
         -- Exclude already rejected records
         AND s.transaction_number NOT IN (
             SELECT transaction_number FROM tmp_rejected_sales
@@ -909,8 +930,7 @@ $$;
 ### Index Strategy
 
 ```sql
--- Bitmap indexes work well for low-cardinality columns in dimensions
--- (Syntax varies by database - this is PostgreSQL compatible)
+-- PostgreSQL may use ordinary B-tree indexes in bitmap scans for selective filters
 CREATE INDEX idx_product_active ON dim_product(is_active);
 CREATE INDEX idx_store_type ON dim_store(store_type);
 
@@ -973,13 +993,13 @@ CREATE INDEX idx_fact_sales_2025_store ON fact_sales_2025(store_id);
 
 2. **Normalize Strategically**: Not all dimensions need full normalization. Apply snowflaking where it provides clear benefits such as storage savings or data integrity.
 
-3. **Use Surrogate Keys**: Always use integer surrogate keys for dimension tables rather than natural keys for better join performance.
+3. **Use Surrogate Keys**: Prefer integer surrogate keys for dimension tables rather than natural keys when they improve stability and join performance.
 
 4. **Create Helper Views**: Build views that flatten commonly used dimension hierarchies to simplify analyst queries.
 
 5. **Index Thoughtfully**: Create indexes based on actual query patterns, not assumptions. Monitor and adjust over time.
 
-6. **Partition Large Tables**: Partition fact tables by date or another high-cardinality column to improve query performance and maintenance.
+6. **Partition Large Tables**: Partition fact tables by date or another commonly filtered key to improve query performance and maintenance.
 
 7. **Document Relationships**: Maintain clear documentation of all table relationships and business rules encoded in the schema.
 

@@ -110,8 +110,8 @@ Sample output:
 ------------------------------------------------------------------------------
 Archive name: full-2026-01-25T10:30:00
 Archive fingerprint: a1b2c3d4...
-Time (start): Sat, 2026-01-25 10:30:00
-Time (end):   Sat, 2026-01-25 10:30:45
+Time (start): Sun, 2026-01-25 10:30:00
+Time (end):   Sun, 2026-01-25 10:30:45
 Duration: 45.23 seconds
 Number of files: 48291
 Utilization of max. archive size: 0%
@@ -149,9 +149,9 @@ View what is stored in your repository:
 borg list /mnt/backup/myrepo
 
 # Sample output:
-# home-2026-01-20T02:00:00    Sat, 2026-01-20 02:00:00
-# home-2026-01-21T02:00:00    Sun, 2026-01-21 02:00:00
-# home-2026-01-22T02:00:00    Mon, 2026-01-22 02:00:00
+# home-2026-01-20T02:00:00    Tue, 2026-01-20 02:00:00
+# home-2026-01-21T02:00:00    Wed, 2026-01-21 02:00:00
+# home-2026-01-22T02:00:00    Thu, 2026-01-22 02:00:00
 
 # List files in a specific archive
 borg list ::home-2026-01-22T02:00:00
@@ -326,10 +326,10 @@ Borg supports multiple compression algorithms:
 # No compression (fastest, largest)
 borg create --compression none ::archive /data
 
-# LZ4 (fast, moderate compression)
+# LZ4 (fast, low compression)
 borg create --compression lz4 ::archive /data
 
-# Zstandard (balanced, recommended default)
+# Zstandard (balanced choice)
 borg create --compression zstd,3 ::archive /data
 # Levels 1-22, higher = better compression but slower
 
@@ -353,7 +353,7 @@ Protect against ransomware or accidental deletion by enabling append-only mode o
 command="borg serve --append-only --restrict-to-path /home/backup/repos",restrict ssh-rsa AAAA... client@workstation
 ```
 
-In append-only mode, clients can create new archives but cannot delete or prune existing ones. An administrator must run prune operations directly on the server.
+In append-only mode, clients can create new archives and may still run delete or prune commands, but committed data is not physically removed while append-only protections are in effect. Run pruning and compaction only from a trusted administrative context.
 
 ## Remote Backup Best Practices
 
@@ -405,4 +405,4 @@ exit $EXIT_CODE
 
 ## Wrapping Up
 
-Borg delivers efficient, encrypted backups with minimal storage overhead. Its deduplication means your tenth backup takes almost as long as your first but uses only a fraction of the space. Start with a local repository to learn the workflow, then graduate to SSH-based remote backups for disaster recovery. Test restores quarterly because a backup you have never restored is just hope with encryption.
+Borg delivers efficient, encrypted backups with minimal storage overhead. Its deduplication means later backups usually add only a fraction of the original data. Start with a local repository to learn the workflow, then graduate to SSH-based remote backups for disaster recovery. Test restores quarterly because a backup you have never restored is just hope with encryption.

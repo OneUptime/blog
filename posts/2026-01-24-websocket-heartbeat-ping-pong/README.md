@@ -48,7 +48,6 @@ const wss = new WebSocket.Server({ port: 8080 });
 
 // Heartbeat interval in milliseconds
 const HEARTBEAT_INTERVAL = 30000; // 30 seconds
-const CLIENT_TIMEOUT = 35000; // 35 seconds (slightly more than interval)
 
 function heartbeat() {
     // Mark connection as alive when pong received
@@ -106,7 +105,6 @@ class HeartbeatManager {
     constructor(wss, options = {}) {
         this.wss = wss;
         this.interval = options.interval || 30000;
-        this.timeout = options.timeout || 35000;
         this.maxMissedPings = options.maxMissedPings || 2;
 
         // Metrics
@@ -235,7 +233,6 @@ const wss = new WebSocket.Server({ port: 8080 });
 
 const heartbeatManager = new HeartbeatManager(wss, {
     interval: 30000,      // Send ping every 30 seconds
-    timeout: 35000,       // Wait 35 seconds for pong
     maxMissedPings: 2     // Terminate after 2 missed pings
 });
 
@@ -327,6 +324,10 @@ class HeartbeatWebSocket {
     sendPing() {
         if (this.socket.readyState !== WebSocket.OPEN) {
             return;
+        }
+
+        if (this.pongTimer) {
+            clearTimeout(this.pongTimer);
         }
 
         const pingMessage = {
@@ -495,7 +496,13 @@ wss.on('connection', function(ws) {
     });
 
     ws.on('message', function(data) {
-        const message = JSON.parse(data);
+        let message;
+        try {
+            message = JSON.parse(data);
+        } catch (error) {
+            console.error('Invalid JSON:', error);
+            return;
+        }
 
         if (message.type === 'PING') {
             ws.lastAppPing = Date.now();
@@ -625,6 +632,7 @@ class ResilientWebSocket {
             if (this.socket.readyState === WebSocket.OPEN) {
                 this.socket.send(JSON.stringify({ type: 'PING' }));
 
+                clearTimeout(this.pongTimer);
                 this.pongTimer = setTimeout(() => {
                     console.log('Heartbeat failed');
                     this.socket.close(4000, 'Heartbeat timeout');
@@ -756,14 +764,14 @@ class HeartbeatMonitor {
 
         if (recentMetrics.length < 5) return;
 
-        // Check for high dead connection rate
-        const avgDeadConnections = recentMetrics.reduce(
-            (sum, m) => sum + m.deadConnectionsDetected, 0
-        ) / recentMetrics.length;
+        // Check for high dead connection rate over the recent window
+        const deadConnectionDelta =
+            recentMetrics[recentMetrics.length - 1].deadConnectionsDetected -
+            recentMetrics[0].deadConnectionsDetected;
 
-        if (avgDeadConnections > 10) {
+        if (deadConnectionDelta > 10) {
             this.alert('HIGH_DEAD_CONNECTIONS', {
-                average: avgDeadConnections,
+                count: deadConnectionDelta,
                 message: 'Unusually high number of dead connections detected'
             });
         }

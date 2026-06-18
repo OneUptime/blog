@@ -68,10 +68,10 @@ Test it with the OPA CLI:
 
 ```bash
 # Evaluate the policy with sample input
-echo '{"user": "admin"}' | opa eval -i /dev/stdin -d example.rego "data.example.allow"
+echo '{"user": "admin"}' | opa eval --format raw -i /dev/stdin -d example.rego "data.example.allow"
 # Output: true
 
-echo '{"user": "guest"}' | opa eval -i /dev/stdin -d example.rego "data.example.allow"
+echo '{"user": "guest"}' | opa eval --format raw -i /dev/stdin -d example.rego "data.example.allow"
 # Output: undefined (no result means false/denied)
 ```
 
@@ -149,7 +149,7 @@ has_permission if {
 
 ### Variables and Unification
 
-Variables in Rego are assigned through unification, not assignment. A statement like `x := value` binds the variable if unbound, or checks equality if already bound.
+Variables in Rego can be bound with assignment (`:=`), compared with equality (`==`), or matched with unification (`=`). Assignment binds a local variable once; unification can bind an unbound variable or check that an already-bound variable matches.
 
 ```rego
 package variables
@@ -164,10 +164,11 @@ example_unification if {
     # This succeeds because x already equals 10
     x == 10
 
-    # Array destructuring through unification
-    # Binds first to "a" and rest to ["b", "c"]
-    [first, rest] := ["a", ["b", "c"]]
+    # Array destructuring through assignment
+    # Binds first to "a" and second to ["b", "c"]
+    [first, second] := ["a", ["b", "c"]]
     first == "a"
+    second == ["b", "c"]
 }
 
 # Using 'some' for iteration with unification
@@ -500,7 +501,8 @@ allow if {
     is_business_hours
 }
 
-# Helper to check business hours (9 AM to 6 PM)
+# Helper to check business hours (9 AM to 6 PM).
+# input.environment.timestamp must be nanoseconds since epoch.
 is_business_hours if {
     hour := time.clock([input.environment.timestamp, "UTC"])[0]
     hour >= 9
@@ -703,7 +705,7 @@ opa run
 
 Common REPL commands:
 
-```rego
+```text
 # Load a policy file
 > .load policy.rego
 
@@ -714,8 +716,8 @@ Common REPL commands:
 > data.authz.allow
 true
 
-# Trace evaluation to see how decision was made
-> trace(data.authz.allow)
+# Emit a trace note while debugging policies
+> trace("checking authz.allow")
 
 # Explore data structure
 > data.authz
@@ -787,6 +789,18 @@ check_all if {
     check_permissions
 }
 
+check_auth if {
+    input.user
+}
+
+check_rate_limit if {
+    not rate_limit_exceeded
+}
+
+check_permissions if {
+    has_required_permissions
+}
+
 # More efficient: Early termination with ordered conditions
 # Put cheap, likely-to-fail checks first
 default allow := false
@@ -832,8 +846,8 @@ package company.platform.authz.api
 # 3. Keep policies focused - one concern per file
 
 # 4. Use descriptive rule names
-user_can_access_resource if { ... }  # Good
-allow if { ... }                      # Too generic for complex policies
+user_can_access_resource if { input.user }  # Good
+allow if { input.user }                     # Too generic for complex policies
 
 # 5. Document complex logic with comments
 # Check if user has transitive permission through group membership
@@ -872,6 +886,10 @@ reason := "user not authenticated" if {
 reason := "insufficient permissions" if {
     input.user
     not has_permission
+}
+
+has_permission if {
+    input.user.role == "admin"
 }
 ```
 

@@ -90,7 +90,7 @@ class CacheAside:
         """Set value in cache with TTL"""
         try:
             ttl = ttl or self.default_ttl
-            self.redis.setex(key, ttl, json.dumps(value))
+            self.redis.set(key, json.dumps(value), ex=ttl)
             return True
         except redis.RedisError as e:
             logger.warning(f"Cache write error: {e}")
@@ -108,7 +108,7 @@ class CacheAside:
     def invalidate_pattern(self, pattern: str) -> int:
         """Delete all keys matching pattern"""
         try:
-            keys = self.redis.keys(pattern)
+            keys = list(self.redis.scan_iter(match=pattern))
             if keys:
                 return self.redis.delete(*keys)
             return 0
@@ -197,14 +197,13 @@ def search_products(query: str, limit: int = 10) -> list:
 
 ## Pattern 2: Write-Through Cache
 
-Data is written to cache and database synchronously. Guarantees cache consistency:
+Data is written to cache and database synchronously. This keeps the cache synchronized on successful writes, but it is not atomic unless you add transaction or recovery logic around both systems:
 
 ```python
 # write_through.py
 import redis
 import json
 from typing import Any, Optional
-from contextlib import contextmanager
 
 class WriteThroughCache:
     """Write-through cache - writes go to both cache and DB"""
@@ -224,12 +223,12 @@ class WriteThroughCache:
         # Fetch from DB and populate cache
         result = self.db.query(db_query, params)
         if result:
-            self.redis.setex(key, self.default_ttl, json.dumps(result))
+            self.redis.set(key, json.dumps(result), ex=self.default_ttl)
         return result
 
     def set(self, key: str, value: Any, db_query: str, params: tuple,
             ttl: int = None) -> bool:
-        """Write to both cache and database atomically"""
+        """Write to the database, then refresh the cache"""
         ttl = ttl or self.default_ttl
 
         try:
@@ -237,13 +236,14 @@ class WriteThroughCache:
             self.db.execute(db_query, params)
 
             # Then update cache
-            self.redis.setex(key, ttl, json.dumps(value))
+            try:
+                self.redis.set(key, json.dumps(value), ex=ttl)
+            except redis.RedisError:
+                pass  # Cache will be populated on next read
             return True
 
         except Exception as e:
             # If DB write fails, don't update cache
-            # If cache write fails after DB success, that's acceptable
-            # Cache will be populated on next read
             raise
 
     def delete(self, key: str, db_query: str, params: tuple) -> bool:
@@ -287,7 +287,7 @@ import json
 import threading
 import queue
 import time
-from typing import Any, Dict
+from typing import Any
 import logging
 
 logger = logging.getLogger(__name__)
@@ -354,6 +354,9 @@ class WriteBehindCache:
 
             except Exception as e:
                 logger.error(f"Background writer error: {e}")
+
+        if batch:
+            self._flush_batch(batch)
 
     def _flush_batch(self, batch: list):
         """Flush a batch of writes to the database"""
@@ -438,7 +441,7 @@ class MultiLevelCache:
 
         # Set in L2
         try:
-            self.l2.setex(key, self.l2_ttl, json.dumps(value))
+            self.l2.set(key, json.dumps(value), ex=self.l2_ttl)
         except redis.RedisError:
             pass  # L1 still has it
 
@@ -479,7 +482,10 @@ When cache expires, many requests hit the database simultaneously:
 import redis
 import time
 import random
-from typing import Any, Callable, Optional
+import json
+import math
+import uuid
+from typing import Any, Callable
 
 class StampedeProtectedCache:
     """Cache with stampede protection using probabilistic early expiration"""
@@ -518,9 +524,15 @@ class StampedeProtectedCache:
     def _locked_fetch(self, key: str, ttl: int, fetch_func: Callable) -> Any:
         """Fetch with distributed lock to prevent stampede"""
         lock_key = f"lock:{key}"
+        lock_token = str(uuid.uuid4())
 
         # Try to acquire lock
-        acquired = self.redis.set(lock_key, "1", nx=True, ex=self.lock_timeout)
+        acquired = self.redis.set(
+            lock_key,
+            lock_token,
+            nx=True,
+            ex=self.lock_timeout
+        )
 
         if not acquired:
             # Another process is fetching, wait and retry
@@ -543,11 +555,21 @@ class StampedeProtectedCache:
                 'expiry': time.time() + ttl,
                 'delta': delta
             }
-            self.redis.setex(key, ttl, json.dumps(cached))
+            self.redis.set(key, json.dumps(cached), ex=ttl)
 
             return value
         finally:
-            self.redis.delete(lock_key)
+            self.redis.eval(
+                """
+                if redis.call("get", KEYS[1]) == ARGV[1] then
+                    return redis.call("del", KEYS[1])
+                end
+                return 0
+                """,
+                1,
+                lock_key,
+                lock_token
+            )
 ```
 
 ---
@@ -556,6 +578,9 @@ class StampedeProtectedCache:
 
 ```python
 # cache_invalidation.py
+import json
+from typing import Any
+
 class CacheInvalidator:
     """Strategies for cache invalidation"""
 
@@ -564,19 +589,19 @@ class CacheInvalidator:
 
     def time_based(self, key: str, value: Any, ttl: int):
         """Simple TTL-based expiration"""
-        self.redis.setex(key, ttl, json.dumps(value))
+        self.redis.set(key, json.dumps(value), ex=ttl)
 
     def version_based(self, entity: str, entity_id: int, value: Any):
         """Version-based invalidation - increment version to invalidate"""
-        version = self.redis.incr(f"{entity}:version")
+        version = self.redis.incr(f"{entity}:{entity_id}:version")
         key = f"{entity}:{entity_id}:v{version}"
-        self.redis.setex(key, 3600, json.dumps(value))
+        self.redis.set(key, json.dumps(value), ex=3600)
         return version
 
     def tag_based(self, key: str, value: Any, tags: list, ttl: int = 3600):
         """Tag-based invalidation - invalidate by tag"""
         # Store the value
-        self.redis.setex(key, ttl, json.dumps(value))
+        self.redis.set(key, json.dumps(value), ex=ttl)
 
         # Add key to each tag's set
         for tag in tags:

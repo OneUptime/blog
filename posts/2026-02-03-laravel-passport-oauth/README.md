@@ -128,7 +128,7 @@ class User extends Authenticatable
 
 ## Configuring Passport
 
-In Laravel 11 with Passport 12, the OAuth routes are registered automatically by Passport's service provider — there is no longer a `Passport::routes()` method to call. You can still customize Passport behavior (like token lifetimes) in the `boot` method of your `AppServiceProvider`:
+In Laravel 11 with Passport 12, the OAuth routes are registered automatically by Passport's service provider - there is no longer a `Passport::routes()` method to call. You can still customize Passport behavior (like token lifetimes) in the `boot` method of your `AppServiceProvider`:
 
 ```php
 <?php

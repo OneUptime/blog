@@ -422,7 +422,7 @@ Groups can have custom attributes that propagate to all members. Use group attri
 
 ### Include Group Membership in Tokens
 
-Create a protocol mapper to include the user's group membership in JWT tokens. Keycloak does not ship with a built-in mapper for custom group attributes — those require a script mapper or a custom protocol mapper SPI.
+Create a protocol mapper to include the user's group membership in JWT tokens. Keycloak does not ship with a built-in mapper for custom group attributes - those require a script mapper or a custom protocol mapper SPI.
 
 ```json
 {

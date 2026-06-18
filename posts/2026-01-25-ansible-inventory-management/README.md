@@ -57,6 +57,8 @@ db_port=5432
 backup_enabled=true
 ```
 
+In INI inventory, values in `:vars` sections are interpreted as strings. Cast values with filters when a playbook needs a boolean or number, or use YAML inventory for consistent typing.
+
 ### YAML Format
 
 YAML provides more flexibility for complex structures.
@@ -157,9 +159,10 @@ Understanding variable precedence prevents unexpected behavior. From lowest to h
 # 15. Block vars
 # 16. Task vars
 # 17. Include vars
-# 18. Set facts / registered vars
+# 18. Registered vars / set facts
 # 19. Role params
-# 20. Extra vars (-e) - highest priority, always wins
+# 20. Include params
+# 21. Extra vars (-e) - highest priority, always wins
 ```
 
 ## Group Variables
@@ -294,8 +297,8 @@ ansible '192.168.1.*' -m ping
 # Regex patterns (prefix with ~)
 ansible '~web[0-9]+\.example\.com' -m ping
 
-# Numeric ranges
-ansible 'web[1:5].example.com' -m ping
+# Group slices
+ansible 'webservers[0:4]' -m ping
 
 # Combine patterns
 ansible 'webservers:&production:!maintenance' -m ping
@@ -341,7 +344,7 @@ all:
 
     # Docker container
     app-container:
-      ansible_connection: docker
+      ansible_connection: community.docker.docker
       ansible_docker_extra_args: "--tlsverify"
 ```
 
@@ -382,14 +385,13 @@ ansible webservers --list-hosts
 
 Ansible supports various inventory plugins for different sources.
 
-```yaml
+```ini
 # ansible.cfg
 [inventory]
 # Enable specific plugins
-enable_plugins = host_list, script, auto, yaml, ini, toml
+enable_plugins = host_list, script, auto, yaml, ini, toml, amazon.aws.aws_ec2
 
-# Plugin-specific settings
-[inventory_plugin_aws_ec2]
+# Inventory cache settings
 cache = yes
 cache_timeout = 300
 ```
@@ -397,12 +399,12 @@ cache_timeout = 300
 ```yaml
 # inventory/aws_ec2.yml
 # AWS EC2 dynamic inventory
-plugin: aws_ec2
+plugin: amazon.aws.aws_ec2
 regions:
   - us-east-1
   - us-west-2
 keyed_groups:
-  - key: tags.Environment
+  - key: ec2_tags.Environment
     prefix: env
   - key: instance_type
     prefix: type

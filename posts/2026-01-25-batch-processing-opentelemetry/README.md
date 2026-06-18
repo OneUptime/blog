@@ -15,7 +15,7 @@ Sending telemetry data one span or metric at a time wastes network resources and
 Consider a service handling 10,000 requests per second. Without batching, each request generates at least one span, resulting in 10,000 export calls per second. With batching, you might send 10 batches of 1,000 spans each, reducing export calls by 99.9%.
 
 Benefits of batching:
-- Reduced network overhead (fewer TCP connections, less TLS handshake overhead)
+- Reduced network overhead (fewer export requests and less per-request overhead)
 - Better compression ratios (larger payloads compress more efficiently)
 - Lower backend load (fewer API calls to process)
 - Improved error handling (retry one batch instead of thousands of individual items)
@@ -119,7 +119,7 @@ const spanProcessor = new BatchSpanProcessor(exporter, {
 });
 
 const sdk = new NodeSDK({
-  spanProcessor,
+  spanProcessors: [spanProcessor],
 });
 
 sdk.start();
@@ -322,7 +322,7 @@ Use shorter timeouts for logs to ensure error messages appear quickly.
 
 ## Memory Considerations
 
-Batching requires memory to hold pending items. Calculate your memory requirements:
+Batching requires memory to hold pending items. For SDK span processors, calculate your queue memory requirements:
 
 ```text
 memory_per_pipeline = max_queue_size * average_item_size
@@ -384,7 +384,7 @@ processors:
     timeout: 5s
 ```
 
-The queue holds batches waiting to be sent. With 5000 queue slots and 1024 items per batch, you can buffer up to 5 million items temporarily.
+By default, the exporter queue is sized in requests, which usually means queued batches after the batch processor. With 5000 queue slots and full 1024-item batches, you can buffer roughly up to 5 million items temporarily. Actual capacity depends on batch fullness and the `sending_queue.sizer` setting.
 
 ## Monitoring Batch Performance
 
@@ -404,7 +404,7 @@ Key metrics:
 - `otelcol_exporter_queue_size` - Current queue depth
 - `otelcol_exporter_queue_capacity` - Maximum queue capacity
 
-If you see many timeout-triggered sends, your traffic might be too low for the configured batch size. If you see consistent size-triggered sends, your traffic is healthy.
+If you see many timeout-triggered sends, your traffic might be too low for the configured batch size. If you see consistent size-triggered sends, your traffic is high enough to fill batches before the timeout.
 
 ## Pipeline-Specific Batching
 

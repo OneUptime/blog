@@ -97,14 +97,14 @@ flowchart TB
         G3[Gradient Effect]
     end
 
-    G1 --> D1["Fills clockwise around a circle"]
+    G1 --> D1["Fills clockwise around an arc"]
     G2 --> D2["Fills left to right around an arc"]
     G3 --> D3["Applies gradient coloring"]
 ```
 
 ### Circle Style
 
-Fills clockwise around a circle, starting from the 12 o'clock position. Best for dashboard displays where visual impact matters.
+Fills clockwise around an arc, starting from the lower-left position. Best for dashboard displays where visual impact matters.
 
 ### Arc Style
 
@@ -489,8 +489,8 @@ Control how gauges display in the panel.
 flowchart TB
     subgraph Orientation["Orientation Options"]
         direction LR
-        H["Horizontal<br/>Top to bottom"]
-        V["Vertical<br/>Left to right"]
+        H["Horizontal<br/>Left to right"]
+        V["Vertical<br/>Top to bottom"]
         A["Auto<br/>Based on panel size"]
     end
 ```

@@ -438,7 +438,7 @@ sudo systemctl daemon-reload
 
 ### Rootless Default Limits
 
-Configure default container limits in rootless mode using the containers.conf file. Note that containers.conf does not have keys for default memory or CPU limits — those must be set per container via CLI flags. The fields that do apply globally are process limits and ulimits:
+Configure default container limits in rootless mode using the containers.conf file. Note that containers.conf does not have keys for default memory or CPU limits - those must be set per container via CLI flags. The fields that do apply globally are process limits and ulimits:
 
 ```bash
 # Create user-specific containers configuration
@@ -477,7 +477,7 @@ ContainerName=webapp
 
 # Memory limits
 Memory=2g
-# MemoryReservation has no dedicated Quadlet key — pass via PodmanArgs
+# MemoryReservation has no dedicated Quadlet key - pass via PodmanArgs
 PodmanArgs=--memory-reservation=1g
 
 # Process limits

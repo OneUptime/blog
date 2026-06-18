@@ -1062,7 +1062,7 @@ const serviceConfig = {
         backoffMultiplier: 2,
         // Status codes that trigger a retry
         // UNAVAILABLE: server is temporarily unavailable
-        // RESOURCE_EXHAUSTED: rate limited (with retry-after header)
+        // RESOURCE_EXHAUSTED: resource exhausted (server may send grpc-retry-pushback-ms to throttle)
         // ABORTED: operation was aborted (usually safe to retry)
         retryableStatusCodes: ['UNAVAILABLE', 'RESOURCE_EXHAUSTED', 'ABORTED'],
       },

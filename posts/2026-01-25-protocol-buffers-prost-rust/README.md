@@ -18,11 +18,13 @@ First, add the necessary dependencies to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-prost = "0.12"
-prost-types = "0.12"
+prost = "0.14"
+prost-types = "0.14"
+chrono = "0.4"
+serde = { version = "1", features = ["derive"] }
 
 [build-dependencies]
-prost-build = "0.12"
+prost-build = "0.14"
 ```
 
 Create a basic proto file at `proto/user.proto`:
@@ -244,7 +246,7 @@ impl UserList {
 
 ## Handling Optional Fields
 
-Proto3 uses wrapper types for optional primitives. Here is how to work with them ergonomically:
+Proto3 supports `optional` scalar fields for explicit presence, and existing schemas often use wrapper types for optional primitives. Here is how to work with wrapper fields ergonomically:
 
 ```protobuf
 syntax = "proto3";
@@ -266,12 +268,12 @@ use crate::myapp::Profile;
 impl Profile {
     // Get bio with a default
     pub fn bio_or_default(&self) -> &str {
-        self.bio.as_ref().map(|w| w.value.as_str()).unwrap_or("")
+        self.bio.as_deref().unwrap_or("")
     }
 
     // Set bio from an Option
     pub fn set_bio(&mut self, bio: Option<String>) {
-        self.bio = bio.map(|value| prost_types::StringValue { value });
+        self.bio = bio;
     }
 
     // Check if profile is complete

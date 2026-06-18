@@ -508,7 +508,7 @@ actual class TokenStorage {
 
 // Helper class for iOS Keychain operations.
 // Note: the conversion helpers used below (`toCFDictionary`, `toNSData`,
-// `NSData.fromCFData`, `toByteArray`) are not part of Kotlin/Native's stdlib —
+// `NSData.fromCFData`, `toByteArray`) are not part of Kotlin/Native's stdlib -
 // they need custom implementations using `kotlinx.cinterop` (CFBridgingRetain
 // / CFBridgingRelease, NSData.create(bytes, length), etc.), or you can use a
 // library like Multiplatform Settings to avoid the boilerplate.
@@ -688,7 +688,7 @@ class LoginViewModel: ObservableObject {
 
     private func observeState() {
         // Observe Kotlin StateFlow from Swift. Vanilla Kotlin/Native does not
-        // expose StateFlow as AsyncSequence — this requires a wrapper such as
+        // expose StateFlow as AsyncSequence - this requires a wrapper such as
         // SKIE or KMP-NativeCoroutines, which generate the `for await` bridge.
         stateObserver = Task {
             for await state in viewModel.uiState {

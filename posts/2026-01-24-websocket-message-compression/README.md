@@ -32,7 +32,7 @@ sequenceDiagram
 
 ### Node.js with ws Library
 
-The ws library supports permessage-deflate out of the box.
+The ws library supports permessage-deflate. It is enabled by default for clients, but must be enabled explicitly on servers.
 
 ```javascript
 // server-compression.js
@@ -49,13 +49,13 @@ const wss = new WebSocket.Server({
     zlibInflateOptions: {
       chunkSize: 10 * 1024
     },
-    // Threshold for message size to compress (bytes)
+    // Threshold for message size to compress when context takeover is disabled (bytes)
     threshold: 1024,
     // Maximum server window bits
     serverMaxWindowBits: 15,
     // Maximum client window bits
     clientMaxWindowBits: 15,
-    // Do not compress if adding compression header makes message larger
+    // Allow context takeover by default
     serverNoContextTakeover: false,
     clientNoContextTakeover: false,
     // Concurrent compression limit to prevent memory issues
@@ -63,9 +63,9 @@ const wss = new WebSocket.Server({
   }
 });
 
-wss.on('connection', (ws, req) => {
+wss.on('connection', (ws) => {
   // Check if compression was negotiated
-  const extensions = req.headers['sec-websocket-extensions'];
+  const extensions = ws.extensions;
   console.log('Negotiated extensions:', extensions);
 
   ws.on('message', (data, isBinary) => {
@@ -101,7 +101,7 @@ const compressionOptions = {
     chunkSize: 16 * 1024
   },
 
-  // Only compress messages larger than this size (bytes)
+  // Only compress messages larger than this size when context takeover is disabled (bytes)
   threshold: 1024,
 
   // Window bits control compression dictionary size
@@ -111,8 +111,8 @@ const compressionOptions = {
   clientMaxWindowBits: 15,
 
   // Context takeover: reuse compression context between messages
-  // false = reset context for each message (less memory, worse compression)
-  // true = maintain context (more memory, better compression for similar messages)
+  // false = allow context takeover (more memory, better compression for similar messages)
+  // true = reset context for each message (less memory, worse compression)
   serverNoContextTakeover: false,
   clientNoContextTakeover: false,
 
@@ -229,7 +229,8 @@ class CompressedWebSocketClient {
     console.log('Received:', typeof data === 'string' ? data.length : data.byteLength, 'bytes');
   }
 
-  // Manual compression for additional savings
+  // Optional application-level compression.
+  // This is not permessage-deflate; the server must explicitly expect and decompress it.
   async sendCompressed(data) {
     const encoder = new TextEncoder();
     const stream = new CompressionStream('deflate');
@@ -249,8 +250,13 @@ class CompressedWebSocketClient {
 
     const compressed = new Blob(chunks);
     const buffer = await compressed.arrayBuffer();
+    const header = new Uint8Array([0x01]);  // 0x01 = application-level compressed payload
+    const message = new Uint8Array(header.byteLength + buffer.byteLength);
 
-    this.ws.send(buffer);
+    message.set(header, 0);
+    message.set(new Uint8Array(buffer), header.byteLength);
+
+    this.ws.send(message);
   }
 
   send(data) {
@@ -276,6 +282,7 @@ function createCompressedClient(url) {
       serverMaxWindowBits: 15,
       clientNoContextTakeover: false,
       serverNoContextTakeover: false,
+      // Applies to messages when context takeover is disabled
       threshold: 1024
     }
   });
@@ -327,7 +334,7 @@ class CompressionMetrics {
     const uncompressedSize = Buffer.byteLength(data);
 
     return new Promise((resolve, reject) => {
-      zlib.deflate(data, { level: 6 }, (err, compressed) => {
+      zlib.deflateRaw(data, { level: 6 }, (err, compressed) => {
         if (err) {
           reject(err);
           return;
@@ -383,7 +390,7 @@ async function testCompression() {
 
 async function compressData(data) {
   return new Promise((resolve, reject) => {
-    zlib.deflate(data, (err, result) => {
+    zlib.deflateRaw(data, (err, result) => {
       if (err) reject(err);
       else resolve(result);
     });
@@ -409,7 +416,7 @@ async function benchmarkCompressionLevels(data) {
     const start = performance.now();
 
     const compressed = await new Promise((resolve, reject) => {
-      zlib.deflate(data, { level }, (err, result) => {
+      zlib.deflateRaw(data, { level }, (err, result) => {
         if (err) reject(err);
         else resolve(result);
       });
@@ -490,8 +497,8 @@ function createServerWithFallback(port) {
       }
     });
 
-    wss.on('connection', (ws, req) => {
-      const extensions = req.headers['sec-websocket-extensions'] || '';
+    wss.on('connection', (ws) => {
+      const extensions = ws.extensions || '';
       const hasCompression = extensions.includes('permessage-deflate');
 
       console.log(`Client connected, compression: ${hasCompression}`);
@@ -538,7 +545,7 @@ function createMemorySafeServer(port) {
       clientMaxWindowBits: 12,
       // Limit concurrent compression operations
       concurrencyLimit: 5,
-      // Higher threshold to compress fewer messages
+      // Higher threshold to compress fewer messages when context takeover is disabled
       threshold: 2048
     },
     // Connection limits
@@ -566,7 +573,7 @@ function createMemorySafeServer(port) {
 
 ## Best Practices
 
-1. **Set appropriate threshold**: Only compress messages larger than 1KB to avoid overhead for small messages
+1. **Set appropriate threshold**: When context takeover is disabled, only compress messages larger than 1KB to avoid overhead for small messages
 
 2. **Choose compression level wisely**: Level 6 offers good balance between speed and compression ratio
 

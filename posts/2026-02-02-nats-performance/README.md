@@ -195,7 +195,7 @@ func CreateOptimizedConnection(servers string) (*nats.Conn, error) {
 }
 ```
 
-Per-subscription pending limits (default 65,536 messages and 64MB) can be raised on each subscription via `sub.SetPendingLimits(msgLimit, bytesLimit)` once the subscription is created — see the subscriber examples below.
+Per-subscription pending limits (default 65,536 messages and 64MB) can be raised on each subscription via `sub.SetPendingLimits(msgLimit, bytesLimit)` once the subscription is created - see the subscriber examples below.
 
 ## Message Publishing Optimization
 

@@ -10,7 +10,7 @@ Description: A practical guide to diagnosing and fixing 'Invalid Frame Header' W
 
 > The "Invalid Frame Header" error occurs when a WebSocket implementation receives a frame that does not conform to the WebSocket protocol specification (RFC 6455). This typically indicates protocol-level issues rather than application logic problems, making them particularly challenging to debug.
 
-Understanding WebSocket frame structure is essential for diagnosing these errors. Every WebSocket message is wrapped in a frame with specific header bytes that define the message type, length, and masking.
+Understanding WebSocket frame structure is essential for diagnosing these errors. Every WebSocket message is carried in one or more frames with specific header bytes that define the frame type, length, and masking.
 
 ---
 
@@ -19,7 +19,7 @@ Understanding WebSocket frame structure is essential for diagnosing these errors
 ```mermaid
 flowchart LR
     subgraph "WebSocket Frame"
-        A[FIN + Opcode<br/>1 byte] --> B[Mask + Payload Length<br/>1-9 bytes]
+        A[FIN + RSV + Opcode<br/>1 byte] --> B[Mask + Payload Length<br/>1-9 bytes]
         B --> C[Masking Key<br/>0 or 4 bytes]
         C --> D[Payload Data<br/>Variable]
     end
@@ -27,6 +27,7 @@ flowchart LR
 
 The frame header consists of:
 - **FIN bit**: Indicates if this is the final fragment
+- **RSV bits**: Must be clear unless an extension negotiated their use
 - **Opcode**: Message type (text, binary, close, ping, pong)
 - **Mask bit**: Must be set for client-to-server messages
 - **Payload length**: 7 bits, 7+16 bits, or 7+64 bits
@@ -48,7 +49,7 @@ sequenceDiagram
     Client->>Proxy: WebSocket Upgrade Request
     Proxy->>Server: HTTP Request (wrong!)
     Server->>Proxy: HTTP Response
-    Proxy->>Client: Invalid Frame Header Error
+    Proxy->>Client: Failed Upgrade or Invalid Frame Header
 
     Note over Client,Server: Proxy strips WebSocket headers
 ```
@@ -115,27 +116,29 @@ Sending HTTP data over an established WebSocket connection corrupts the frame st
 // BAD: Mixing protocols causes invalid frame headers
 const WebSocket = require('ws');
 
-const wss = new WebSocket.Server({ port: 8080 });
+{
+    const wss = new WebSocket.Server({ port: 8080 });
 
-wss.on('connection', (ws, req) => {
-    // This is WRONG - trying to send HTTP over WebSocket
-    // The HTTP response format is not valid WebSocket frames
-    ws._socket.write('HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nHello');
-});
+    wss.on('connection', (ws, req) => {
+        // This is WRONG - trying to send HTTP over WebSocket
+        // The HTTP response format is not valid WebSocket frames
+        ws._socket.write('HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nHello');
+    });
+}
 
 // GOOD: Use proper WebSocket message sending
-const WebSocket = require('ws');
+{
+    const wss = new WebSocket.Server({ port: 8081 });
 
-const wss = new WebSocket.Server({ port: 8080 });
+    wss.on('connection', (ws, req) => {
+        // Send data using WebSocket protocol
+        // The ws library handles frame encoding automatically
+        ws.send('Hello');
 
-wss.on('connection', (ws, req) => {
-    // Send data using WebSocket protocol
-    // The ws library handles frame encoding automatically
-    ws.send('Hello');
-
-    // For JSON data
-    ws.send(JSON.stringify({ type: 'greeting', message: 'Hello' }));
-});
+        // For JSON data
+        ws.send(JSON.stringify({ type: 'greeting', message: 'Hello' }));
+    });
+}
 ```
 
 ---
@@ -148,16 +151,11 @@ Per RFC 6455, client-to-server messages must be masked, but server-to-client mes
 // Debug masking issues in Node.js
 const WebSocket = require('ws');
 
-const wss = new WebSocket.Server({
-    port: 8080,
-    // Enable frame verification for debugging
-    verifyClient: (info, callback) => {
-        console.log('Connection attempt from:', info.origin);
-        callback(true);
-    }
-});
+const wss = new WebSocket.Server({ port: 8080 });
 
-wss.on('connection', (ws) => {
+wss.on('connection', (ws, req) => {
+    console.log('Connection attempt from:', req.headers.origin);
+
     // Log raw frame events for debugging
     ws._receiver.on('conclude', (code, reason) => {
         console.log('Frame conclude:', code, reason);
@@ -181,25 +179,26 @@ wss.on('connection', (ws) => {
 
 ```python
 import asyncio
-import websockets
 import logging
+from websockets.asyncio.server import serve
+from websockets.exceptions import ConnectionClosedError
 
 # Enable protocol-level logging
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger('websockets')
 logger.setLevel(logging.DEBUG)
 
-async def handler(websocket, path):
+async def handler(websocket):
     """Handle WebSocket connections with detailed logging"""
     try:
         async for message in websocket:
             # Log frame details
             logger.debug(f"Received message: {len(message)} bytes")
             await websocket.send(f"Echo: {message}")
-    except websockets.exceptions.ProtocolError as e:
-        # Catch and log protocol errors including invalid frames
-        logger.error(f"Protocol error: {e}")
-        logger.error(f"This usually indicates:")
+    except ConnectionClosedError as e:
+        # Log abnormal connection closes, including protocol-related closes
+        logger.error(f"Connection closed with error: {e}")
+        logger.error("This may indicate:")
         logger.error("  - Proxy not forwarding WebSocket properly")
         logger.error("  - Client sending malformed frames")
         logger.error("  - Mixed HTTP/WebSocket traffic")
@@ -207,7 +206,7 @@ async def handler(websocket, path):
         logger.error(f"Connection error: {e}")
 
 async def main():
-    async with websockets.serve(
+    async with serve(
         handler,
         "0.0.0.0",
         8080,
@@ -224,7 +223,7 @@ if __name__ == "__main__":
 
 ### 4. SSL/TLS Termination Issues
 
-When SSL is terminated at a proxy, the backend may receive encrypted data it cannot parse.
+When SSL/TLS expectations do not match between the proxy and backend, the backend may receive bytes it cannot parse as the expected protocol.
 
 ```mermaid
 flowchart TD
@@ -244,10 +243,10 @@ frontend https_frontend
 
     # Detect WebSocket upgrade requests
     acl is_websocket hdr(Upgrade) -i websocket
-    acl is_websocket hdr_beg(Host) -i ws
+    acl is_upgrade hdr(Connection) -i upgrade
 
     # Route WebSocket to dedicated backend
-    use_backend websocket_backend if is_websocket
+    use_backend websocket_backend if is_websocket is_upgrade
     default_backend http_backend
 
 backend websocket_backend
@@ -267,7 +266,7 @@ backend websocket_backend
 
 ### 5. Frame Size Exceeds Maximum
 
-Large messages may exceed configured limits, causing frame parsing failures.
+Large messages may exceed configured limits, causing the connection to close with a payload-size error rather than an invalid header error.
 
 ```javascript
 const WebSocket = require('ws');
@@ -329,7 +328,7 @@ function sendLargeData(ws, data, chunkSize = 64 * 1024) {
 
 ### 6. Binary vs Text Frame Mismatch
 
-Sending binary data as text or vice versa can cause frame parsing issues.
+Sending binary data as text or vice versa usually causes application decoding errors or text-frame UTF-8 validation errors, not invalid frame headers.
 
 ```javascript
 const WebSocket = require('ws');
@@ -536,15 +535,15 @@ server.listen(8080);
 
 ## Summary
 
-Invalid frame header errors typically indicate infrastructure issues rather than application bugs:
+Invalid frame header errors typically indicate infrastructure issues rather than application bugs. Related protocol errors can have similar symptoms:
 
 | Cause | Solution |
 |-------|----------|
 | Proxy misconfiguration | Add Upgrade and Connection headers |
 | SSL termination | Ensure plain WebSocket to backend |
 | Mixed protocols | Never write raw HTTP over WebSocket |
-| Frame size limits | Configure maxPayload appropriately |
-| Binary/text mismatch | Use correct frame types |
+| Frame/message size limits | Configure maxPayload appropriately and chunk large messages |
+| Binary/text mismatch | Use correct frame types and validate text as UTF-8 |
 
 The key to fixing these errors is understanding that WebSocket is a framed protocol with specific header requirements. When frames arrive malformed, the connection must be terminated because there is no way to recover synchronization.
 

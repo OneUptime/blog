@@ -8,22 +8,21 @@ Tutorial
 
 ## Technologies Covered
 - Go
-- Go `io/fs` package
-- Go `testing/fstest` package
-- `fstest.MapFS` and `fstest.MapFile`
-- `fs.ReadFile`, `fs.ReadDir`, `fs.WalkDir`, and `fs.Stat`
+- `io/fs`
+- `testing/fstest`
+- `fstest.MapFS`
+- `fstest.MapFile`
+- `fstest.TestFS`
 - `os.DirFS`
 
 ## Sources Consulted
 - Go `testing/fstest` package documentation: https://pkg.go.dev/testing/fstest
 - Go `io/fs` package documentation: https://pkg.go.dev/io/fs
-- Go 1.16 release notes, File Systems section: https://go.dev/doc/go1.16#file-systems
-- Go 1.16 release notes, `io/ioutil` deprecation replacements: https://go.dev/doc/go1.16#ioutil
+- Go 1.16 release notes: https://go.dev/doc/go1.16
 
 ## Issues Found
-- The introduction said `fstest` in-memory file systems behave "exactly like real ones." This was too broad because `io/fs` is a read-only filesystem abstraction and `MapFS` has test-oriented behavior and limitations. Changed it to say `fstest` implements the same read-only `fs.FS` abstraction.
-- The comparison table said real files in `testdata/` require cleanup. Static `testdata/` fixtures typically do not require cleanup, so the wording was changed to focus on possible speed and path issues.
-- The `FindTemplates` example imported `path/filepath` but did not use it, which would cause a Go compile error. Removed the unused import.
+- The post described `fstest.MapFS` as "simply a map from file paths to file contents." Updated this to match the official type more accurately: it maps paths to information about files or directories.
+- The limitations section said `fstest.MapFS` itself is read-only and files cannot be written to it during tests. Updated this to clarify that `fs.FS` is a read-only interface and `MapFS` does not provide file-writing operations through that interface, while the map can still be populated or edited as test setup.
 
 ## Review Notes
-The local environment does not have the `go` tool installed, so examples could not be executed locally. Code and claims were reviewed against the official Go documentation instead. Some later snippets are intentionally partial examples and rely on imports shown earlier or implied by context.
+The Go code examples use current standard library APIs and are technically correct by inspection. The local environment does not have the `go` binary installed, so examples could not be compiled with `go test` during review.

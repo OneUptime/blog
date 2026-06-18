@@ -57,7 +57,7 @@ Deno provides multiple levels of type checking that you can configure based on y
 
 ### Default Type Checking
 
-By default, `deno run` does not type check your TypeScript files — it strips the types and executes the resulting JavaScript for faster startup. To opt in to type checking before execution, use the `--check` flag:
+By default, `deno run` does not type check your TypeScript files - it strips the types and executes the resulting JavaScript for faster startup. To opt in to type checking before execution, use the `--check` flag:
 
 ```bash
 deno run --check main.ts

@@ -49,7 +49,7 @@ function processUnknown(data: unknown) {
 
 ### Scenario 1: JSON Parsing
 
-Parsing JSON returns `unknown` in strict TypeScript configurations.
+`JSON.parse` returns `any` in TypeScript's standard library, even in strict configurations. For safer code, wrap parsing in a function that returns `unknown` so callers must validate the result before using it.
 
 ```typescript
 // The problem
@@ -154,7 +154,7 @@ async function fetchUser(id: string): Promise<User> {
 
 ### Scenario 3: Error Handling in Catch Blocks
 
-In TypeScript 4.4+, caught errors are typed as `unknown` by default.
+In TypeScript 4.4+, caught errors are typed as `unknown` when `useUnknownInCatchVariables` is enabled, which is included in `strict` mode.
 
 ```typescript
 // The problem
@@ -209,7 +209,7 @@ try {
 
 ### Scenario 4: Working with Local Storage
 
-Local storage returns strings, but you often store serialized objects.
+Local storage returns strings or `null`, but you often store serialized objects.
 
 ```typescript
 // Type-safe local storage wrapper

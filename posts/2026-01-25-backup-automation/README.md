@@ -258,11 +258,25 @@ Use Ansible for cross-server backup orchestration:
         state: present
       when: ansible_os_family == "Debian"
 
+    - name: Create backup user
+      user:
+        name: backup
+        system: yes
+        create_home: no
+
     - name: Create backup directory
       file:
         path: "{{ backup_dir }}"
         state: directory
         owner: backup
+        group: backup
+        mode: '0750'
+
+    - name: Create backup configuration directory
+      file:
+        path: /etc/backup
+        state: directory
+        owner: root
         group: backup
         mode: '0750'
 
@@ -396,7 +410,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "backups" {
   }
 }
 
-# IAM role for backup jobs
+# IAM role for AWS Backup jobs
 resource "aws_iam_role" "backup_role" {
   name = "backup-role-${var.environment}"
 
@@ -406,32 +420,15 @@ resource "aws_iam_role" "backup_role" {
       Action = "sts:AssumeRole"
       Effect = "Allow"
       Principal = {
-        Service = "ec2.amazonaws.com"
+        Service = "backup.amazonaws.com"
       }
     }]
   })
 }
 
-resource "aws_iam_role_policy" "backup_policy" {
-  name = "backup-policy"
-  role = aws_iam_role.backup_role.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect = "Allow"
-      Action = [
-        "s3:PutObject",
-        "s3:GetObject",
-        "s3:ListBucket",
-        "s3:DeleteObject"
-      ]
-      Resource = [
-        aws_s3_bucket.backups.arn,
-        "${aws_s3_bucket.backups.arn}/*"
-      ]
-    }]
-  })
+resource "aws_iam_role_policy_attachment" "backup_policy" {
+  role       = aws_iam_role.backup_role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForBackup"
 }
 
 # AWS Backup Plan
@@ -503,6 +500,9 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
+
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
 
       - name: Check backup exists
         run: |

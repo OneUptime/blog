@@ -581,9 +581,10 @@ class RequestFingerprint {
 
         Object.entries(headers)
             .filter(([, value]) => value !== undefined)
+            .map(([key, value]) => [key.toLowerCase(), value] as const)
             .sort(([a], [b]) => a.localeCompare(b))
             .forEach(([key, value]) => {
-                normalized[key.toLowerCase()] = value as string;
+                normalized[key] = value as string;
             });
 
         return normalized;

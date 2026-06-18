@@ -286,9 +286,9 @@ Use IHubContext to send messages from services or controllers:
 // Services/OrderService.cs
 public class OrderService
 {
-    private readonly IHubContext<NotificationHub, INotificationClient> _hubContext;
+    private readonly IHubContext<TypedNotificationHub, INotificationClient> _hubContext;
 
-    public OrderService(IHubContext<NotificationHub, INotificationClient> hubContext)
+    public OrderService(IHubContext<TypedNotificationHub, INotificationClient> hubContext)
     {
         _hubContext = hubContext;
     }
@@ -375,10 +375,12 @@ For multiple server instances, use Redis to synchronize messages:
 
 ```csharp
 // Program.cs
+var redisConnection = builder.Configuration.GetConnectionString("Redis")
+    ?? throw new InvalidOperationException("Redis connection string is not configured");
+
 builder.Services.AddSignalR()
-    .AddStackExchangeRedis(options =>
+    .AddStackExchangeRedis(redisConnection, options =>
     {
-        options.Configuration = builder.Configuration.GetConnectionString("Redis");
         options.Configuration.ChannelPrefix = RedisChannel.Literal("MyApp");
     });
 ```
@@ -401,49 +403,51 @@ Track connection state for presence features:
 // Services/PresenceTracker.cs
 public class PresenceTracker
 {
-    private readonly ConcurrentDictionary<string, HashSet<string>> _onlineUsers = new();
+    private readonly Dictionary<string, HashSet<string>> _onlineUsers = new();
+    private readonly object _lock = new();
 
     public Task<bool> UserConnected(string userId, string connectionId)
     {
-        var isNewUser = false;
-
-        _onlineUsers.AddOrUpdate(
-            userId,
-            _ =>
+        lock (_lock)
+        {
+            if (!_onlineUsers.TryGetValue(userId, out var connections))
             {
-                isNewUser = true;
-                return new HashSet<string> { connectionId };
-            },
-            (_, connections) =>
-            {
-                connections.Add(connectionId);
-                return connections;
-            });
+                _onlineUsers[userId] = new HashSet<string> { connectionId };
+                return Task.FromResult(true);
+            }
 
-        return Task.FromResult(isNewUser);
+            connections.Add(connectionId);
+            return Task.FromResult(false);
+        }
     }
 
     public Task<bool> UserDisconnected(string userId, string connectionId)
     {
-        if (!_onlineUsers.TryGetValue(userId, out var connections))
+        lock (_lock)
         {
+            if (!_onlineUsers.TryGetValue(userId, out var connections))
+            {
+                return Task.FromResult(false);
+            }
+
+            connections.Remove(connectionId);
+
+            if (connections.Count == 0)
+            {
+                _onlineUsers.Remove(userId);
+                return Task.FromResult(true); // User is now offline
+            }
+
             return Task.FromResult(false);
         }
-
-        connections.Remove(connectionId);
-
-        if (connections.Count == 0)
-        {
-            _onlineUsers.TryRemove(userId, out _);
-            return Task.FromResult(true); // User is now offline
-        }
-
-        return Task.FromResult(false);
     }
 
     public Task<string[]> GetOnlineUsers()
     {
-        return Task.FromResult(_onlineUsers.Keys.ToArray());
+        lock (_lock)
+        {
+            return Task.FromResult(_onlineUsers.Keys.ToArray());
+        }
     }
 }
 ```

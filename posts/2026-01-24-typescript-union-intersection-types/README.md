@@ -366,14 +366,14 @@ function initializeApp(config: AppConfig): void {
 
 ```typescript
 // Event type definitions
-interface MouseEvent {
+interface AppMouseEvent {
     type: "click" | "mouseover" | "mouseout";
     x: number;
     y: number;
     button: number;
 }
 
-interface KeyboardEvent {
+interface AppKeyboardEvent {
     type: "keydown" | "keyup";
     key: string;
     keyCode: number;
@@ -384,14 +384,14 @@ interface KeyboardEvent {
     };
 }
 
-interface CustomEvent {
+interface AppCustomEvent {
     type: "custom";
     name: string;
     payload: unknown;
 }
 
 // Union of all events
-type AppEvent = MouseEvent | KeyboardEvent | CustomEvent;
+type AppEvent = AppMouseEvent | AppKeyboardEvent | AppCustomEvent;
 
 // Event metadata intersection
 interface EventMetadata {

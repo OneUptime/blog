@@ -18,7 +18,7 @@ A Bloom filter is a space-efficient probabilistic data structure that tests whet
 
 | Operation | Hash Map | Bloom Filter |
 |-----------|----------|--------------|
-| **Memory** | O(n) | O(1) fixed |
+| **Memory** | O(n) | O(n) bits, fixed after creation |
 | **False positives** | No | Yes |
 | **False negatives** | No | No |
 | **Deletions** | Yes | No (usually) |
@@ -59,7 +59,6 @@ Let us build a Bloom filter from scratch to understand the internals. This imple
 package bloom
 
 import (
-    "hash"
     "hash/fnv"
     "math"
 )
@@ -167,7 +166,7 @@ func main() {
     // Check for duplicates
     testURLs := []string{
         "https://example.com/page1",  // Added - will return true
-        "https://example.com/page4",  // Not added - will return false
+        "https://example.com/page4",  // Not added - should return false, unless a false positive occurs
         "https://example.com/page2",  // Added - will return true
     }
 
@@ -183,7 +182,7 @@ func main() {
 
 ## Production-Ready Implementation
 
-For production use, I recommend the popular `github.com/bits-and-blooms/bloom/v3` package. It handles the math correctly, is thread-safe, and supports serialization.
+For production use, I recommend the popular `github.com/bits-and-blooms/bloom/v3` package. It handles the math correctly and supports serialization.
 
 ```go
 package main
@@ -203,10 +202,10 @@ func main() {
 
     // Check membership
     fmt.Println(filter.TestString("user:12345"))  // true
-    fmt.Println(filter.TestString("user:99999"))  // false (probably)
+    fmt.Println(filter.TestString("user:99999"))  // usually false, but may be true
 
-    // Thread-safe operations using TestOrAdd
-    // Returns true if item was already present
+    // Combined test/add operation
+    // Returns true if the item was probably already present
     wasPresent := filter.TestOrAddString("user:12345")
     fmt.Println("Was already present:", wasPresent)  // true
 
@@ -270,15 +269,15 @@ func normalizeURL(rawURL string) string {
     return parsed.String()
 }
 
-// IsNew returns true if the URL has not been seen before
-// If new, it also marks the URL as seen
+// IsNew returns true if the URL was definitely not seen before
+// If definitely new, it also marks the URL as seen
 func (d *URLDeduplicator) IsNew(rawURL string) bool {
     normalized := normalizeURL(rawURL)
 
     d.mu.Lock()
     defer d.mu.Unlock()
 
-    // TestOrAdd returns true if already present
+    // TestOrAdd returns true if probably already present
     alreadySeen := d.filter.TestOrAddString(normalized)
     return !alreadySeen
 }
@@ -328,8 +327,7 @@ For long-running applications, you will want to persist the Bloom filter to disk
 package main
 
 import (
-    "bytes"
-    "io"
+    "fmt"
     "os"
 
     "github.com/bits-and-blooms/bloom/v3"

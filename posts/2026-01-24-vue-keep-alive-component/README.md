@@ -39,18 +39,17 @@ The keep-alive component wraps dynamic components to cache their instances.
 
     <!-- Wrap dynamic component in keep-alive to preserve state -->
     <keep-alive>
-      <component :is="currentView" />
+      <component :is="components[currentView]" />
     </keep-alive>
   </div>
 </template>
 
 <script setup>
-import { ref, shallowRef } from 'vue'
+import { ref } from 'vue'
 import Home from './components/Home.vue'
 import Profile from './components/Profile.vue'
 import Settings from './components/Settings.vue'
 
-// Use shallowRef for component references
 const components = {
   Home,
   Profile,
@@ -117,7 +116,7 @@ onActivated(() => {
   }, 1000)
 })
 
-// Called when component is cached (switched away from)
+// Called when component is cached (switched away from) and also when unmounted
 onDeactivated(() => {
   console.log('Profile deactivated - pausing timer')
   // Pause timer but preserve timeOnPage value
@@ -168,7 +167,7 @@ Control which components are cached using include and exclude props.
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 
 // Cache these components (by their name option)
 const cachedViews = ref(['HomeView', 'ProfileView', 'DashboardView'])
@@ -194,24 +193,13 @@ function removeFromCache(viewName) {
 
 ```vue
 <!-- HomeView.vue -->
-<!-- Component must have a name to be included/excluded -->
-
-<script>
-// Options API - name is explicit
-export default {
-  name: 'HomeView',
-  // ... component options
-}
-</script>
-
-<!-- OR with script setup, define name separately -->
-<script>
-export default {
-  name: 'HomeView'
-}
-</script>
-
+<!-- Single-file components infer their name from the filename in Vue 3.2.34+.
+     In Vue 3.3+, use defineOptions when you need to override it. -->
 <script setup>
+defineOptions({
+  name: 'HomeView'
+})
+
 // Component logic here
 import { ref } from 'vue'
 const count = ref(0)
@@ -257,7 +245,7 @@ flowchart LR
       <!-- Cache at most 5 component instances -->
       <!-- Uses LRU (Least Recently Used) eviction -->
       <keep-alive :max="5">
-        <component :is="Component" :key="$route.fullPath" />
+        <component :is="Component" :key="$route.path" />
       </keep-alive>
     </router-view>
   </div>
@@ -292,31 +280,31 @@ import { createRouter, createWebHistory } from 'vue-router'
 const routes = [
   {
     path: '/',
-    name: 'Home',
+    name: 'HomeView',
     component: () => import('../views/HomeView.vue'),
     meta: { keepAlive: true }
   },
   {
     path: '/search',
-    name: 'Search',
+    name: 'SearchView',
     component: () => import('../views/SearchView.vue'),
     meta: { keepAlive: true } // Preserve search results and filters
   },
   {
     path: '/product/:id',
-    name: 'Product',
+    name: 'ProductView',
     component: () => import('../views/ProductView.vue'),
     meta: { keepAlive: false } // Always fresh data for products
   },
   {
     path: '/checkout',
-    name: 'Checkout',
+    name: 'CheckoutView',
     component: () => import('../views/CheckoutView.vue'),
     meta: { keepAlive: false } // Security - never cache checkout
   },
   {
     path: '/dashboard',
-    name: 'Dashboard',
+    name: 'DashboardView',
     component: () => import('../views/DashboardView.vue'),
     meta: {
       keepAlive: true,
@@ -333,22 +321,26 @@ export default createRouter({
 
 ```vue
 <!-- App.vue -->
-<!-- Conditional keep-alive based on route meta -->
+<!-- Keep route components alive with include matching component names -->
 
 <template>
   <div class="app">
     <router-view v-slot="{ Component, route }">
-      <!-- Conditionally wrap in keep-alive based on route meta -->
-      <keep-alive v-if="route.meta.keepAlive">
+      <!-- Cache only components whose names are listed in include -->
+      <keep-alive :include="cachedRouteNames">
         <component
           :is="Component"
-          :key="route.meta.keepAliveKey || route.path"
+          :key="route.meta.keepAliveKey || route.name || route.path"
         />
       </keep-alive>
-      <component v-else :is="Component" :key="route.fullPath" />
     </router-view>
   </div>
 </template>
+
+<script setup>
+// Same components as routes whose meta.keepAlive is true
+const cachedRouteNames = ['HomeView', 'SearchView', 'DashboardView']
+</script>
 ```
 
 ---
@@ -566,8 +558,8 @@ import { useRouter } from 'vue-router'
 const cacheStore = useCacheStore()
 const router = useRouter()
 
-// Add view to cache on route enter
-router.beforeEach((to, from) => {
+// Add component name to cache on route enter
+router.beforeEach((to) => {
   if (to.meta.keepAlive && to.name) {
     cacheStore.addCachedView(to.name)
   }
@@ -763,15 +755,13 @@ Common problems and solutions.
   </div>
 </template>
 
-<script>
-// Must use Options API name for include/exclude to work
-export default {
-  name: 'DebugView'
-}
-</script>
-
 <script setup>
 import { ref, onMounted, onUnmounted, onActivated, onDeactivated, computed } from 'vue'
+
+// Use a component name that matches include/exclude patterns
+defineOptions({
+  name: 'DebugView'
+})
 
 const mountCount = ref(0)
 const activateCount = ref(0)
@@ -812,21 +802,20 @@ onDeactivated(() => {
 // Common keep-alive issues and fixes
 
 // Issue 1: Component not being cached
-// - Check that component has a 'name' option
+// - Check that the component has a name (explicit or inferred from the filename)
 // - Check that name matches include pattern exactly
 // - Check component is not in exclude list
 
-// Issue 2: Using script setup without name
-// WRONG - no name defined
+// Issue 2: Using script setup with an include name that does not match
+// POTENTIAL ISSUE - if the inferred filename is MyComponent.vue,
+// this will not match include="CachedComponent"
 // <script setup>
 // const count = ref(0)
 // </script>
 
-// CORRECT - define name separately
-// <script>
-// export default { name: 'MyComponent' }
-// </script>
+// CORRECT - rename the file to match the include pattern, or override the name
 // <script setup>
+// defineOptions({ name: 'CachedComponent' })
 // const count = ref(0)
 // </script>
 
@@ -857,7 +846,7 @@ onDeactivated(() => {
 ```mermaid
 flowchart TB
     subgraph Do["Best Practices"]
-        A[Use name option for include/exclude]
+        A[Match component names for include/exclude]
         B[Clean up in onDeactivated]
         C[Set max to limit memory]
         D[Refresh stale data on activate]
@@ -874,7 +863,7 @@ flowchart TB
 
 Key takeaways for using keep-alive effectively:
 
-1. **Define component names** - Required for include/exclude patterns
+1. **Use matching component names** - Required for include/exclude patterns
 2. **Use onActivated/onDeactivated** - Handle resume/pause logic
 3. **Set a max limit** - Prevent unbounded memory growth
 4. **Clean up resources** - Stop timers and listeners in onDeactivated

@@ -151,7 +151,7 @@ const actions = {
     commit('LOGOUT')
   },
 
-  // Action that dispatches another action
+  // Action that refreshes user data
   async refreshUser({ commit, state }) {
     if (!state.token) return null
 
@@ -331,8 +331,8 @@ sequenceDiagram
 
     C->>R: dispatch('cart/checkout')
     R->>C: Execute checkout action
-    C->>P: dispatch('products/decrementStock', null, {root: true})
-    C->>U: Access rootGetters['user/userId']
+    C->>P: dispatch('products/decrementStock', payload, {root: true})
+    C->>U: Access rootGetters['user/userDisplayName']
     C->>R: commit('SET_LOADING', true, {root: true})
 ```
 
@@ -349,7 +349,7 @@ const actions = {
     const userId = rootState.user.currentUser?.id
 
     // Access another module's getter
-    const userEmail = rootGetters['user/userDisplayName']
+    const userDisplayName = rootGetters['user/userDisplayName']
 
     // Check if user is logged in before checkout
     if (!rootGetters['user/isLoggedIn']) {

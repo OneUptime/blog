@@ -97,6 +97,14 @@ server.on('upgrade', function(request, socket, head) {
         return;
     }
 
+    const decodedKey = Buffer.from(key, 'base64');
+    if (decodedKey.length !== 16 || decodedKey.toString('base64') !== key) {
+        console.error('Invalid Sec-WebSocket-Key header');
+        socket.write('HTTP/1.1 400 Bad Request\r\n\r\n');
+        socket.destroy();
+        return;
+    }
+
     const version = request.headers['sec-websocket-version'];
     if (version !== '13') {
         console.error('Unsupported WebSocket version:', version);
@@ -233,7 +241,7 @@ wss.on('connection', function(ws) {
     ws.on('message', function(data, isBinary) {
         try {
             if (!isBinary) {
-                // Validate UTF-8 encoding for text frames
+                // ws validates UTF-8 for text frames by default
                 const text = data.toString('utf8');
                 JSON.parse(text); // Additional validation if expecting JSON
             }
@@ -574,7 +582,7 @@ class WebSocketDebugger {
         this.socket.onmessage = (event) => {
             this.log('MESSAGE', {
                 type: typeof event.data,
-                size: event.data.length || event.data.byteLength,
+                size: this.getSize(event.data),
                 preview: this.preview(event.data)
             });
         };
@@ -608,7 +616,17 @@ class WebSocketDebugger {
         if (typeof data === 'string') {
             return data.substring(0, 100) + (data.length > 100 ? '...' : '');
         }
-        return `Binary data: ${data.byteLength} bytes`;
+        return `Binary data: ${this.getSize(data)} bytes`;
+    }
+
+    getSize(data) {
+        if (typeof data === 'string') {
+            return data.length;
+        }
+        if (typeof Blob !== 'undefined' && data instanceof Blob) {
+            return data.size;
+        }
+        return data.byteLength;
     }
 
     interpretCloseCode(code) {
@@ -645,12 +663,12 @@ class WebSocketDebugger {
 }
 
 // Usage
-const debugger = new WebSocketDebugger('wss://api.example.com/ws', ['graphql-ws']);
-debugger.connect();
+const wsDebugger = new WebSocketDebugger('wss://api.example.com/ws', ['graphql-ws']);
+wsDebugger.connect();
 
 // Later, get full report
 setTimeout(function() {
-    console.log('Debug Report:', JSON.stringify(debugger.getReport(), null, 2));
+    console.log('Debug Report:', JSON.stringify(wsDebugger.getReport(), null, 2));
 }, 5000);
 ```
 

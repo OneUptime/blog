@@ -171,7 +171,7 @@ def increment(counter=None):
 Sometimes `None` is a valid argument value. In these cases, use a sentinel object.
 
 ```python
-# Create a unique sentinel that cannot be passed by callers
+# Create a unique sentinel that callers are unlikely to pass accidentally
 _UNSET = object()
 
 def process_data(data, default=_UNSET):
@@ -205,7 +205,7 @@ from typing import List
 
 @dataclass
 class ShoppingCart:
-    # WRONG: items: List[str] = []  # This would cause the same bug
+    # WRONG: items: List[str] = []  # Dataclasses reject mutable defaults
 
     # CORRECT: Use default_factory for mutable defaults
     items: List[str] = field(default_factory=list)
@@ -296,7 +296,7 @@ def fixed(items=None):
         items = []
 ```
 
-Configure your editor or CI pipeline to run linters. The few minutes of setup will prevent this class of bugs entirely.
+Configure your editor or CI pipeline to run linters. The few minutes of setup will help prevent this class of bugs.
 
 ## Summary
 

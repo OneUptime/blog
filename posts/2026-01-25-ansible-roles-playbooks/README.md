@@ -39,7 +39,7 @@ Use `ansible-galaxy` to scaffold a role with the correct directory structure.
 ```bash
 # Create a new role called 'nginx' in the roles directory
 
-ansible-galaxy role init roles/nginx
+ansible-galaxy role init nginx --init-path roles
 
 # This creates the following structure:
 # roles/nginx/
@@ -221,7 +221,8 @@ server {
     server_name {{ item.server_name }};
 
 {% if item.ssl | default(false) %}
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     ssl_certificate {{ item.ssl_certificate }};
     ssl_certificate_key {{ item.ssl_certificate_key }};
 {% endif %}

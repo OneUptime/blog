@@ -19,7 +19,7 @@ Backup encryption addresses several risks:
 1. **Storage compromise:** Cloud storage credentials leak or storage is misconfigured
 2. **Physical theft:** Backup media or drives are stolen
 3. **Insider threats:** Unauthorized employees access backup files
-4. **Compliance requirements:** GDPR, HIPAA, PCI-DSS mandate encryption
+4. **Compliance requirements:** GDPR, HIPAA, and PCI-DSS require appropriate safeguards, often including encryption or equivalent controls
 5. **Third-party exposure:** Backup vendors or contractors access data
 
 Encryption ensures that even if backup files are accessed, the data remains unreadable without the encryption key.
@@ -130,7 +130,7 @@ openssl enc -aes-256-cbc -d -pbkdf2 -iter 100000 \
 
 ### Age Encryption
 
-Age is a modern, simple encryption tool designed to replace GPG:
+Age is a modern, simple alternative to GPG for file encryption:
 
 ```bash
 # Install age
@@ -154,7 +154,7 @@ Many backup tools include built-in encryption.
 
 ### Restic Encryption
 
-Restic encrypts all data by default using AES-256:
+Restic encrypts all data by default using AES-256-CTR with Poly1305-AES authentication:
 
 ```bash
 # Initialize encrypted repository
@@ -170,7 +170,7 @@ restic backup /var/www
 # Key management
 restic key list
 restic key add    # Add new key
-restic key remove # Remove old key
+restic key remove <key-id> # Remove old key
 ```
 
 Store password securely:
@@ -232,8 +232,7 @@ aws s3api put-bucket-encryption \
         "Rules": [{
             "ApplyServerSideEncryptionByDefault": {
                 "SSEAlgorithm": "AES256"
-            },
-            "BucketKeyEnabled": true
+            }
         }]
     }'
 
@@ -272,15 +271,17 @@ az storage account update \
 
 ```bash
 # Create Cloud KMS key
+gcloud kms keyrings create backup-keyring \
+    --location=global
+
 gcloud kms keys create backup-key \
     --location=global \
     --keyring=backup-keyring \
     --purpose=encryption
 
 # Set default encryption key for bucket
-gsutil kms encryption \
-    -k projects/my-project/locations/global/keyRings/backup-keyring/cryptoKeys/backup-key \
-    gs://my-backup-bucket
+gcloud storage buckets update gs://my-backup-bucket \
+    --default-encryption-key=projects/my-project/locations/global/keyRings/backup-keyring/cryptoKeys/backup-key
 ```
 
 ## Key Management
@@ -371,7 +372,7 @@ def encrypt_backup(input_file, output_file):
 
     # Write encrypted key + encrypted data
     with open(output_file, 'wb') as f:
-        # First 256 bytes: encrypted data key
+        # Length-prefixed encrypted data key
         f.write(len(encrypted_key).to_bytes(4, 'big'))
         f.write(encrypted_key)
         # Rest: encrypted backup data
@@ -405,8 +406,8 @@ for backup in $(aws s3 ls s3://backups/ | awk '{print $4}' | head -30); do
 
     # Download and decrypt with old key
     aws s3 cp "s3://backups/$backup" - | \
-        openssl enc -aes-256-cbc -d -pbkdf2 -pass file:/etc/backup/old-key | \
-        openssl enc -aes-256-cbc -pbkdf2 -pass "pass:${NEW_KEY}" | \
+        openssl enc -aes-256-cbc -d -pbkdf2 -iter 100000 -pass file:/etc/backup/old-key | \
+        openssl enc -aes-256-cbc -pbkdf2 -iter 100000 -pass "pass:${NEW_KEY}" | \
         aws s3 cp - "s3://backups/$backup"
 done
 
@@ -479,9 +480,9 @@ Different regulations have specific encryption requirements:
 
 | Regulation | Encryption Requirements |
 |------------|------------------------|
-| GDPR | "Appropriate" security measures including encryption |
-| HIPAA | Must implement encryption mechanism for ePHI |
-| PCI-DSS | Strong cryptography for stored cardholder data |
+| GDPR | Appropriate security measures; encryption is specifically listed as an example |
+| HIPAA | Addressable encryption mechanisms for ePHI, or documented equivalent safeguards when encryption is not reasonable and appropriate |
+| PCI-DSS | Stored PAN must be rendered unreadable; strong cryptography is one accepted method |
 | SOC 2 | Encryption controls for data in transit and at rest |
 
 Document your encryption practices:

@@ -578,7 +578,7 @@ spec:
 
 Protect against cardinality explosions. The `max_active_series` limit is configured under the
 per-tenant overrides section (not under the `span_metrics` processor itself). The limit is enforced
-per generator instance — the total active series remote-written will be
+per generator instance - the total active series remote-written will be
 `<# of generators> * max_active_series`. When the limit is reached, new label combinations are
 collapsed into overflow series labeled with `metric_overflow="true"` rather than dropped:
 

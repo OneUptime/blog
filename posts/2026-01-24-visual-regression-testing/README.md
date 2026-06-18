@@ -110,7 +110,7 @@ module.exports = defineConfig({
       maxDiffPixels: 100,
       // Or use percentage threshold
       maxDiffPixelRatio: 0.01,
-      // Animation timeout
+      // Disable animations during screenshots
       animations: 'disabled',
       // Consistent scaling
       scale: 'device'
@@ -120,10 +120,8 @@ module.exports = defineConfig({
   use: {
     // Consistent viewport
     viewport: { width: 1280, height: 720 },
-    // Disable animations
-    launchOptions: {
-      args: ['--force-prefers-reduced-motion']
-    }
+    // Emulate reduced motion for app code that respects prefers-reduced-motion
+    reducedMotion: 'reduce'
   },
 
   // Run in single browser for consistency
@@ -363,11 +361,12 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Run visual tests
+        id: visual_tests
         run: npx playwright test tests/visual/
         continue-on-error: true
 
       - name: Upload test results
-        if: failure()
+        if: steps.visual_tests.outcome == 'failure'
         uses: actions/upload-artifact@v4
         with:
           name: visual-test-results
@@ -376,14 +375,11 @@ jobs:
             playwright-report/
 
       - name: Comment on PR with diff
-        if: failure()
+        if: steps.visual_tests.outcome == 'failure'
         uses: actions/github-script@v7
         with:
           script: |
-            const fs = require('fs');
-            const report = fs.existsSync('playwright-report/index.html');
-
-            github.rest.issues.createComment({
+            await github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -401,6 +397,10 @@ jobs:
                  ```
               `
             });
+
+      - name: Fail workflow if visual tests failed
+        if: steps.visual_tests.outcome == 'failure'
+        run: exit 1
 ````
 
 ---
@@ -509,6 +509,9 @@ test.describe('Dashboard Visual Tests', () => {
 const { defineConfig } = require('@playwright/test');
 
 module.exports = defineConfig({
+  // Separate snapshots per browser
+  snapshotPathTemplate: '{testDir}/__snapshots__/{projectName}/{testFilePath}/{arg}{ext}',
+
   projects: [
     {
       name: 'chromium',
@@ -517,17 +520,14 @@ module.exports = defineConfig({
         // Use consistent rendering
         deviceScaleFactor: 1,
         hasTouch: false
-      },
-      // Separate snapshots per browser
-      snapshotPathTemplate: '{testDir}/__snapshots__/{projectName}/{testFilePath}/{arg}{ext}'
+      }
     },
     {
       name: 'firefox',
       use: {
         browserName: 'firefox',
         deviceScaleFactor: 1
-      },
-      snapshotPathTemplate: '{testDir}/__snapshots__/{projectName}/{testFilePath}/{arg}{ext}'
+      }
     }
   ]
 });
@@ -554,7 +554,7 @@ jobs:
     runs-on: ubuntu-latest
     container:
       # Use consistent environment
-      image: mcr.microsoft.com/playwright:v1.40.0-jammy
+      image: mcr.microsoft.com/playwright:v1.61.0-noble
 
     steps:
       - uses: actions/checkout@v4
@@ -610,7 +610,7 @@ jobs:
   update:
     runs-on: ubuntu-latest
     container:
-      image: mcr.microsoft.com/playwright:v1.40.0-jammy
+      image: mcr.microsoft.com/playwright:v1.61.0-noble
 
     steps:
       - uses: actions/checkout@v4

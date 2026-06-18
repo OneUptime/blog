@@ -66,8 +66,9 @@ console.log(state.count)  // 0
 state.count++  // Reactive update
 state.message = 'world'  // Reactive update
 
-// CANNOT reassign the whole object
-// state = { count: 1, message: 'new' }  // WRONG - loses reactivity
+// CANNOT replace the whole object and keep the same reactivity connection
+// If state were declared with let, this would lose reactivity:
+// state = { count: 1, message: 'new' }  // WRONG
 ```
 
 ---
@@ -93,7 +94,7 @@ const user = ref({
 
 const items = ref(['apple', 'banana', 'cherry'])
 
-// Template refs - MUST use ref
+// Template refs - use ref before Vue 3.5, or useTemplateRef in Vue 3.5+
 const inputElement = ref(null)
 const modalComponent = ref(null)
 
@@ -109,7 +110,7 @@ async function fetchData() {
 // 1. Works with all types (primitives, objects, arrays)
 // 2. Can be fully reassigned
 // 3. Clear when you're using reactive state (.value)
-// 4. Required for template refs
+// 4. Works for template refs
 </script>
 
 <template>
@@ -661,7 +662,7 @@ Key guidelines for choosing between ref and reactive:
 
 1. **Default to ref** - It works with all types and is more predictable
 2. **Use reactive for forms** - When you have many related fields
-3. **Never destructure reactive** - Use toRefs if you need to
+3. **Avoid destructuring reactive state directly** - Use toRefs if you need reactive bindings
 4. **Never reassign reactive** - Use Object.assign or ref instead
 5. **Remember .value** - Required in script, not in template
 6. **Watch unwrapping** - Arrays inside reactive do not auto-unwrap refs

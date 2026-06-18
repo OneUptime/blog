@@ -453,7 +453,7 @@ func runPullWorker(ctx context.Context, js nats.JetStreamContext, workerID strin
     defer wg.Done()
 
     // Create pull subscription bound to the existing durable consumer.
-    // When using nats.Bind, leave the durable argument empty — they are
+    // When using nats.Bind, leave the durable argument empty - they are
     // alternative attachment modes and combining them is invalid.
     sub, err := js.PullSubscribe(
         "orders.>",

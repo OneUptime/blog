@@ -31,18 +31,21 @@ helm repo add chaos-mesh https://charts.chaos-mesh.org
 # Create namespace
 kubectl create namespace chaos-mesh
 
-# Install Chaos Mesh
+# Choose the command for your container runtime.
+
+# Install Chaos Mesh for containerd
 helm install chaos-mesh chaos-mesh/chaos-mesh \
   --namespace chaos-mesh \
   --set chaosDaemon.runtime=containerd \
   --set chaosDaemon.socketPath=/run/containerd/containerd.sock \
   --set dashboard.securityMode=false
 
-# For Docker runtime instead
+# Or install Chaos Mesh for Docker instead
 helm install chaos-mesh chaos-mesh/chaos-mesh \
   --namespace chaos-mesh \
   --set chaosDaemon.runtime=docker \
-  --set chaosDaemon.socketPath=/var/run/docker.sock
+  --set chaosDaemon.socketPath=/var/run/docker.sock \
+  --set dashboard.securityMode=false
 ```
 
 Verify installation:
@@ -480,19 +483,23 @@ spec:
 Export metrics to Prometheus:
 
 ```bash
-# Check Chaos Mesh metrics endpoint
+# Check Chaos Daemon metrics endpoint
 kubectl port-forward -n chaos-mesh svc/chaos-daemon 31766:31766
 curl http://localhost:31766/metrics
+
+# Check Chaos Controller Manager metrics endpoint
+kubectl port-forward -n chaos-mesh svc/chaos-mesh-controller-manager 10080:10080
+curl http://localhost:10080/metrics
 ```
 
 Grafana dashboard query examples:
 
 ```promql
 # Active experiments
-chaos_mesh_experiments{status="running"}
+chaos_controller_manager_chaos_experiments{phase="running"}
 
-# Injected failures
-rate(chaos_mesh_injected_count[5m])
+# Controller events
+rate(chaos_controller_manager_emitted_event_total[5m])
 ```
 
 ## Best Practices

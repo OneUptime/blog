@@ -46,8 +46,6 @@ Start with a Docker Compose configuration that runs all three components. This s
 # docker-compose.yml
 
 # ELK Stack configuration for centralized logging
-version: '3.8'
-
 services:
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
@@ -83,9 +81,11 @@ services:
     ports:
       # Beats input
       - "5044:5044"
-      # TCP input for syslog
+      # TCP input for JSON logs
       - "5000:5000"
-      # HTTP input for webhooks
+      # HTTP input for application logs
+      - "8080:8080"
+      # Logstash monitoring API
       - "9600:9600"
     environment:
       - "LS_JAVA_OPTS=-Xms1g -Xmx1g"
@@ -136,7 +136,7 @@ input {
     tags => ["beats"]
   }
 
-  # Accept syslog messages over TCP
+  # Accept newline-delimited JSON messages over TCP
   tcp {
     port => 5000
     codec => json_lines
@@ -172,8 +172,10 @@ filter {
     }
     # Convert status code to integer for aggregations
     mutate {
-      convert => { "status" => "integer" }
-      convert => { "bytes" => "integer" }
+      convert => {
+        "status" => "integer"
+        "bytes" => "integer"
+      }
     }
   }
 
@@ -211,11 +213,9 @@ filter {
 # Send processed logs to Elasticsearch
 output {
   elasticsearch {
-    hosts => ["elasticsearch:9200"]
+    hosts => ["http://elasticsearch:9200"]
     # Create daily indices for easier management
     index => "logs-%{+YYYY.MM.dd}"
-    # Use document ID if provided to prevent duplicates
-    document_id => "%{[@metadata][fingerprint]}"
   }
 
   # Also output to stdout for debugging
@@ -229,7 +229,7 @@ output {
 
 ## Sending Logs to the ELK Stack
 
-Configure your applications to send logs to Logstash. Here is a Node.js example using Winston:
+Configure your applications to send structured logs into the stack. Here is a Node.js example using Winston that indexes directly into Elasticsearch:
 
 ```javascript
 // logger.js
@@ -237,17 +237,21 @@ Configure your applications to send logs to Logstash. Here is a Node.js example 
 const winston = require('winston');
 const { ElasticsearchTransport } = require('winston-elasticsearch');
 
+const clientOpts = {
+  node: process.env.ELASTICSEARCH_URL || 'http://localhost:9200'
+};
+
+if (process.env.ES_USERNAME && process.env.ES_PASSWORD) {
+  clientOpts.auth = {
+    username: process.env.ES_USERNAME,
+    password: process.env.ES_PASSWORD
+  };
+}
+
 // Create Elasticsearch transport for direct indexing
 const esTransport = new ElasticsearchTransport({
   level: 'info',
-  clientOpts: {
-    node: process.env.ELASTICSEARCH_URL || 'http://localhost:9200',
-    // Optional authentication
-    auth: {
-      username: process.env.ES_USERNAME,
-      password: process.env.ES_PASSWORD
-    }
-  },
+  clientOpts,
   indexPrefix: 'app-logs',
   // Transform log data before sending
   transformer: (logData) => {
@@ -306,6 +310,8 @@ const logger = require('./logger');
 
 const app = express();
 
+app.use(express.json());
+
 // Middleware to log all requests
 app.use((req, res, next) => {
   const startTime = Date.now();
@@ -333,8 +339,8 @@ app.post('/api/orders', async (req, res) => {
 
   logger.info('Order creation started', {
     order_id: orderId,
-    user_id: req.user.id,
-    items_count: req.body.items.length
+    user_id: req.user?.id || 'anonymous',
+    items_count: Array.isArray(req.body?.items) ? req.body.items.length : 0
   });
 
   try {
@@ -363,24 +369,25 @@ app.post('/api/orders', async (req, res) => {
 
 ## Creating Kibana Dashboards
 
-Once logs flow into Elasticsearch, create index patterns and dashboards in Kibana.
+Once logs flow into Elasticsearch, create data views and dashboards in Kibana.
 
-First, create an index pattern through the Kibana API:
+First, create a data view through the Kibana API:
 
 ```bash
-# Create index pattern for your logs
-curl -X POST "http://localhost:5601/api/saved_objects/index-pattern" \
+# Create a data view for your logs
+curl -X POST "http://localhost:5601/api/data_views/data_view" \
   -H "kbn-xsrf: true" \
   -H "Content-Type: application/json" \
   -d '{
-    "attributes": {
+    "data_view": {
       "title": "logs-*",
+      "name": "Application Logs",
       "timeFieldName": "@timestamp"
     }
   }'
 ```
 
-Build a dashboard configuration that you can import:
+Build an error-rate visualization in Kibana using a configuration like this:
 
 ```json
 {
@@ -439,10 +446,6 @@ Configure automatic index management to control storage costs and performance:
       "hot": {
         "min_age": "0ms",
         "actions": {
-          "rollover": {
-            "max_size": "50gb",
-            "max_age": "1d"
-          },
           "set_priority": {
             "priority": 100
           }
@@ -496,8 +499,7 @@ curl -X PUT "http://localhost:9200/_index_template/logs-template" \
     "index_patterns": ["logs-*"],
     "template": {
       "settings": {
-        "index.lifecycle.name": "logs-policy",
-        "index.lifecycle.rollover_alias": "logs"
+        "index.lifecycle.name": "logs-policy"
       }
     }
   }'
@@ -511,7 +513,7 @@ When deploying ELK in production, consider these factors:
 
 **Cluster Sizing**: Run at least three Elasticsearch nodes for high availability. Dedicate master-eligible nodes for cluster coordination.
 
-**Memory Allocation**: Give Elasticsearch half your available RAM for the JVM heap, but never more than 32GB. Leave the rest for the filesystem cache.
+**Memory Allocation**: Set Elasticsearch heap to no more than half the memory available to each node, and keep it below the compressed ordinary object pointers threshold. Elastic documents 26GB as safe on most systems and up to 30GB on some systems. Leave the rest for the filesystem cache.
 
 **Storage**: Use SSDs for hot data. Calculate storage needs based on daily log volume and retention period.
 
@@ -520,6 +522,9 @@ When deploying ELK in production, consider these factors:
 ```yaml
 # elasticsearch.yml security configuration
 xpack.security.enabled: true
+xpack.security.http.ssl.enabled: true
+xpack.security.http.ssl.keystore.path: elastic-certificates.p12
+xpack.security.http.ssl.truststore.path: elastic-certificates.p12
 xpack.security.transport.ssl.enabled: true
 xpack.security.transport.ssl.verification_mode: certificate
 xpack.security.transport.ssl.keystore.path: elastic-certificates.p12

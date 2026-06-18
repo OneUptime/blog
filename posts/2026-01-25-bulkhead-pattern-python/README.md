@@ -107,7 +107,8 @@ class Bulkhead:
         Attempt to acquire a bulkhead slot.
         Returns True if acquired, False if rejected.
         """
-        self._stats.total_calls += 1
+        async with self._lock:
+            self._stats.total_calls += 1
 
         if self.max_wait > 0:
             # Try to acquire with timeout
@@ -117,18 +118,23 @@ class Bulkhead:
                     timeout=self.max_wait
                 )
             except asyncio.TimeoutError:
-                self._stats.rejected_calls += 1
+                async with self._lock:
+                    self._stats.rejected_calls += 1
                 logger.warning(f"Bulkhead {self.name}: request rejected (timeout)")
                 return False
         else:
             # Immediate rejection if no slots available
-            acquired = self._semaphore.locked()
-            if not self._semaphore.locked() or self._semaphore._value > 0:
-                await self._semaphore.acquire()
-            else:
-                self._stats.rejected_calls += 1
-                logger.warning(f"Bulkhead {self.name}: request rejected (full)")
-                return False
+            async with self._lock:
+                if self._current >= self.max_concurrent:
+                    self._stats.rejected_calls += 1
+                    logger.warning(f"Bulkhead {self.name}: request rejected (full)")
+                    return False
+
+                self._current += 1
+                self._stats.current_concurrent = self._current
+
+            await self._semaphore.acquire()
+            return True
 
         async with self._lock:
             self._current += 1
@@ -230,6 +236,8 @@ from typing import Dict, Optional
 import asyncio
 import logging
 
+from bulkhead import Bulkhead, BulkheadStats
+
 logger = logging.getLogger(__name__)
 
 
@@ -315,15 +323,17 @@ async def setup_bulkheads():
 
 ## Thread Pool Isolation
 
-For CPU-bound operations, use thread pool bulkheads:
+For blocking operations that should not run on the event loop, use thread pool bulkheads:
 
 ```python
 # thread_bulkhead.py
 import asyncio
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
+from concurrent.futures import ThreadPoolExecutor
 from typing import Callable, Any
 from dataclasses import dataclass
 import logging
+
+from bulkhead import BulkheadFullError
 
 logger = logging.getLogger(__name__)
 
@@ -333,7 +343,7 @@ class ThreadBulkheadStats:
     """Statistics for thread pool bulkhead"""
     name: str
     max_workers: int
-    active_threads: int = 0
+    in_flight_tasks: int = 0
     queued_tasks: int = 0
     completed_tasks: int = 0
     rejected_tasks: int = 0
@@ -342,10 +352,12 @@ class ThreadBulkheadStats:
 
 class ThreadPoolBulkhead:
     """
-    Thread pool-based bulkhead for CPU-bound operations.
+    Thread pool-based bulkhead for blocking operations.
 
     Unlike semaphore bulkheads which limit concurrent async operations,
-    this uses a dedicated thread pool to truly isolate blocking operations.
+    this uses a dedicated thread pool to isolate blocking operations from
+    the event loop. For CPU-heavy pure Python code, prefer ProcessPoolExecutor
+    so work can run in separate interpreter processes.
     """
 
     def __init__(
@@ -366,8 +378,11 @@ class ThreadPoolBulkhead:
             thread_name_prefix=f"bulkhead-{name}"
         )
         self._stats = ThreadBulkheadStats(name=name, max_workers=max_workers)
-        self._active_count = 0
-        self._queued_count = 0
+        self._in_flight_count = 0
+
+    def _update_task_stats(self) -> None:
+        self._stats.in_flight_tasks = self._in_flight_count
+        self._stats.queued_tasks = max(0, self._in_flight_count - self.max_workers)
 
     async def execute(
         self,
@@ -376,41 +391,45 @@ class ThreadPoolBulkhead:
         **kwargs
     ) -> Any:
         """Execute a blocking function in the thread pool"""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         # Check if we should reject
-        if self.queue_size > 0 and self._queued_count >= self.queue_size:
+        if (
+            self.queue_size > 0 and
+            self._in_flight_count >= self.max_workers + self.queue_size
+        ):
             self._stats.rejected_tasks += 1
             raise BulkheadFullError(
                 f"Thread bulkhead {self.name} queue is full"
             )
 
-        self._queued_count += 1
+        self._in_flight_count += 1
+        self._update_task_stats()
+
+        # Run in thread pool with timeout. If the wait times out, the thread
+        # keeps running until func returns, so in-flight stats are updated when
+        # the executor future is actually done.
+        future = loop.run_in_executor(
+            self._executor,
+            lambda: func(*args, **kwargs)
+        )
+
+        def mark_done(_):
+            self._in_flight_count -= 1
+            self._update_task_stats()
+
+        future.add_done_callback(mark_done)
 
         try:
-            # Run in thread pool with timeout
-            future = loop.run_in_executor(
-                self._executor,
-                lambda: func(*args, **kwargs)
-            )
-
-            self._active_count += 1
-            self._stats.active_threads = self._active_count
-
-            try:
-                result = await asyncio.wait_for(future, timeout=self.timeout)
-                self._stats.completed_tasks += 1
-                return result
-            except asyncio.TimeoutError:
-                self._stats.failed_tasks += 1
-                raise
-            finally:
-                self._active_count -= 1
-                self._stats.active_threads = self._active_count
-
-        finally:
-            self._queued_count -= 1
-            self._stats.queued_tasks = self._queued_count
+            result = await asyncio.wait_for(asyncio.shield(future), timeout=self.timeout)
+            self._stats.completed_tasks += 1
+            return result
+        except asyncio.TimeoutError:
+            self._stats.failed_tasks += 1
+            raise
+        except Exception:
+            self._stats.failed_tasks += 1
+            raise
 
     def get_stats(self) -> ThreadBulkheadStats:
         """Get current statistics"""
@@ -422,9 +441,9 @@ class ThreadPoolBulkhead:
         logger.info(f"Thread bulkhead {self.name} shutdown")
 
 
-# Usage for CPU-bound tasks
-def cpu_intensive_task(data: bytes) -> bytes:
-    """A CPU-bound task that should be isolated"""
+# Usage for blocking tasks
+def blocking_hash_task(data: bytes) -> bytes:
+    """A blocking task that should be isolated from the event loop"""
     import hashlib
     result = data
     for _ in range(1000):
@@ -443,7 +462,7 @@ async def example():
     data = b"Hello, World!"
 
     # This runs in an isolated thread pool
-    result = await bulkhead.execute(cpu_intensive_task, data)
+    result = await bulkhead.execute(blocking_hash_task, data)
     print(f"Hash: {result.hex()}")
 
     stats = bulkhead.get_stats()
@@ -463,9 +482,11 @@ For maximum resilience, combine bulkhead with circuit breaker:
 import asyncio
 from dataclasses import dataclass, field
 from typing import Callable, Any, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 from enum import Enum, auto
 import logging
+
+from bulkhead import Bulkhead, BulkheadFullError
 
 logger = logging.getLogger(__name__)
 
@@ -509,7 +530,7 @@ class CircuitBreaker:
         """Check if enough time has passed to try half-open"""
         if self._last_failure_time is None:
             return True
-        elapsed = (datetime.utcnow() - self._last_failure_time).total_seconds()
+        elapsed = (datetime.now(timezone.utc) - self._last_failure_time).total_seconds()
         return elapsed >= self.config.timeout
 
     def record_success(self) -> None:
@@ -531,7 +552,7 @@ class CircuitBreaker:
             return
 
         self._failure_count += 1
-        self._last_failure_time = datetime.utcnow()
+        self._last_failure_time = datetime.now(timezone.utc)
 
         if self._state == CircuitState.HALF_OPEN:
             self._state = CircuitState.OPEN
@@ -678,9 +699,12 @@ Integrate bulkheads with FastAPI endpoints:
 
 ```python
 # fastapi_bulkhead.py
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException
 from contextlib import asynccontextmanager
+from typing import Dict
 import asyncio
+
+from bulkhead import Bulkhead, BulkheadFullError
 
 # Store bulkheads in app state
 bulkheads: Dict[str, Bulkhead] = {}

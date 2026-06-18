@@ -81,7 +81,7 @@ const Redis = require('ioredis');
 
 const redis = new Redis({
     host: process.env.REDIS_HOST || 'localhost',
-    port: process.env.REDIS_PORT || 6379,
+    port: Number(process.env.REDIS_PORT) || 6379,
     password: process.env.REDIS_PASSWORD
 });
 
@@ -97,7 +97,7 @@ class RedisCache {
 
     async set(key, value, ttlSeconds = 3600) {
         const serialized = JSON.stringify(value);
-        await this.client.setex(this.getKey(key), ttlSeconds, serialized);
+        await this.client.set(this.getKey(key), serialized, 'EX', ttlSeconds);
     }
 
     async get(key) {
@@ -110,10 +110,23 @@ class RedisCache {
     }
 
     async deletePattern(pattern) {
-        const keys = await this.client.keys(this.getKey(pattern));
-        if (keys.length > 0) {
-            await this.client.del(...keys);
-        }
+        let cursor = '0';
+
+        do {
+            const [nextCursor, keys] = await this.client.scan(
+                cursor,
+                'MATCH',
+                this.getKey(pattern),
+                'COUNT',
+                100
+            );
+
+            cursor = nextCursor;
+
+            if (keys.length > 0) {
+                await this.client.del(...keys);
+            }
+        } while (cursor !== '0');
     }
 
     // Get or set pattern
@@ -139,7 +152,7 @@ await cache.set('user:123', { name: 'John' }, 3600);
 const user = await cache.get('user:123');
 
 // Get or fetch
-const user = await cache.getOrSet('user:456', async () => {
+const fetchedUser = await cache.getOrSet('user:456', async () => {
     return await User.findById(456);
 }, 3600);
 ```
@@ -154,7 +167,7 @@ async function getUserById(userId) {
 
     // Try cache first
     const cached = await cache.get(cacheKey);
-    if (cached) {
+    if (cached !== null) {
         return cached;
     }
 
@@ -184,7 +197,7 @@ async function updateUser(userId, data) {
     await cache.set(cacheKey, user, 3600);
 
     // Invalidate related caches
-    await cache.delete(`userList:page:*`);
+    await cache.deletePattern(`userList:page:*`);
 
     return user;
 }
@@ -218,7 +231,7 @@ function cacheMiddleware(ttlSeconds = 60) {
         const cacheKey = `http:${req.originalUrl}`;
         const cached = await cache.get(cacheKey);
 
-        if (cached) {
+        if (cached !== null) {
             // Set header to indicate cache hit
             res.set('X-Cache', 'HIT');
             return res.json(cached);
@@ -399,7 +412,8 @@ async function getOrSetWithLock(key, fetchFn, ttlSeconds) {
     if (cached !== null) return cached;
 
     const lockKey = `lock:${key}`;
-    const lockAcquired = await redis.set(lockKey, '1', 'EX', 10, 'NX');
+    const lockToken = `${process.pid}:${Date.now()}:${Math.random()}`;
+    const lockAcquired = await redis.set(lockKey, lockToken, 'EX', 10, 'NX');
 
     if (!lockAcquired) {
         // Wait and retry
@@ -412,7 +426,16 @@ async function getOrSetWithLock(key, fetchFn, ttlSeconds) {
         await cache.set(key, value, ttlSeconds);
         return value;
     } finally {
-        await redis.del(lockKey);
+        await redis.eval(
+            `if redis.call("get", KEYS[1]) == ARGV[1] then
+                return redis.call("del", KEYS[1])
+            else
+                return 0
+            end`,
+            1,
+            lockKey,
+            lockToken
+        );
     }
 }
 ```

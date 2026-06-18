@@ -56,9 +56,11 @@ The simplest verification confirms the backup file is not corrupted.
 BACKUP_FILE="$1"
 CHECKSUM_FILE="${BACKUP_FILE}.sha256"
 
-# Generate checksum during backup
-
-sha256sum "$BACKUP_FILE" > "$CHECKSUM_FILE"
+# Generate this checksum during backup, before verification.
+if [ ! -f "$CHECKSUM_FILE" ]; then
+    echo "ERROR: Missing checksum file: $CHECKSUM_FILE"
+    exit 1
+fi
 
 # Verify checksum
 sha256sum -c "$CHECKSUM_FILE"
@@ -87,9 +89,18 @@ if [[ "$BACKUP_FILE" == *.gz ]]; then
     fi
 fi
 
-# Test tar archive contents
-if [[ "$BACKUP_FILE" == *.tar* ]]; then
+# Test gzip-compressed tar archive contents
+if [[ "$BACKUP_FILE" == *.tar.gz || "$BACKUP_FILE" == *.tgz ]]; then
     tar -tzf "$BACKUP_FILE" > /dev/null
+    if [ $? -ne 0 ]; then
+        echo "ERROR: Tar archive test failed"
+        exit 1
+    fi
+fi
+
+# Test uncompressed tar archive contents
+if [[ "$BACKUP_FILE" == *.tar ]]; then
+    tar -tf "$BACKUP_FILE" > /dev/null
     if [ $? -ne 0 ]; then
         echo "ERROR: Tar archive test failed"
         exit 1
@@ -191,6 +202,7 @@ Restore database backups to a test environment.
 # verify-database-restore.sh
 
 BACKUP_FILE="$1"
+DB_TYPE="$2"
 TEST_DB="restore_test_$(date +%s)"
 
 # PostgreSQL restore test
@@ -255,15 +267,19 @@ verify_mysql() {
     echo "MySQL restore test passed"
 }
 
-# Detect backup type and run appropriate test
-if file "$BACKUP_FILE" | grep -q "PostgreSQL"; then
-    verify_postgres
-elif file "$BACKUP_FILE" | grep -q "MySQL"; then
-    verify_mysql
-else
-    echo "Unknown database backup format"
-    exit 1
-fi
+# Select backup type and run appropriate test
+case "$DB_TYPE" in
+    postgres)
+        verify_postgres
+        ;;
+    mysql)
+        verify_mysql
+        ;;
+    *)
+        echo "Usage: $0 BACKUP_FILE postgres|mysql"
+        exit 1
+        ;;
+esac
 ```
 
 ## Level 4: Application Restore Testing
@@ -333,8 +349,17 @@ on:
 jobs:
   verify-database-backup:
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6.1.0
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Download latest backup
         run: |
@@ -363,8 +388,17 @@ jobs:
 
   verify-file-backup:
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6.1.0
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Download and verify archive
         run: |
@@ -455,12 +489,17 @@ def run_verification(backup_path):
 def send_metrics(results):
     """Send verification metrics to monitoring system."""
 
+    def escape_label_value(value):
+        return str(value).replace("\\", "\\\\").replace("\n", "\\n").replace('"', '\\"')
+
+    backup_label = escape_label_value(results["backup_path"])
+
     # Push to Prometheus Pushgateway
     metrics = f"""
 # TYPE backup_verification_success gauge
-backup_verification_success{{backup="{results['backup_path']}"}} {1 if results['restore_successful'] else 0}
+backup_verification_success{{backup="{backup_label}"}} {1 if results['restore_successful'] else 0}
 # TYPE backup_verification_duration_seconds gauge
-backup_verification_duration_seconds{{backup="{results['backup_path']}"}} {results['duration_seconds']}
+backup_verification_duration_seconds{{backup="{backup_label}"}} {results['duration_seconds']}
 """
 
     requests.post(

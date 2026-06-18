@@ -13,12 +13,10 @@ Running the OpenTelemetry Collector as a sidecar in Docker Compose is one of the
 In this setup, the Collector runs as its own service in the same Docker Compose file. Application containers send OTLP data to it using the service name as the hostname. Here is the full `docker-compose.yaml`:
 
 ```yaml
-version: "3.8"
-
 services:
   # The OpenTelemetry Collector sidecar
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:latest
+    image: otel/opentelemetry-collector-contrib:0.153.0
     container_name: otel-collector
     volumes:
       - ./otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml
@@ -102,9 +100,9 @@ exporters:
     tls:
       insecure: false
 
-  # Also log to stdout for debugging during development
-  logging:
-    loglevel: info
+  # Also write trace summaries to stdout for debugging during development
+  debug:
+    verbosity: normal
 
 extensions:
   health_check:
@@ -116,7 +114,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [otlp, logging]
+      exporters: [otlp, debug]
 ```
 
 Notice the `memory_limiter` processor. In Docker environments with memory constraints, this prevents the Collector from consuming too much memory and getting killed by the OOM killer.
@@ -200,9 +198,9 @@ Add a health check to the Collector so dependent services wait for it:
 
 ```yaml
 otel-collector:
-  image: otel/opentelemetry-collector-contrib:latest
+  image: otel/opentelemetry-collector-contrib:0.153.0
   healthcheck:
-    test: ["CMD", "wget", "--spider", "-q", "http://localhost:13133/"]
+    test: ["CMD", "otelcol-contrib", "validate", "--config=/etc/otelcol-contrib/config.yaml"]
     interval: 10s
     timeout: 5s
     retries: 3
@@ -213,7 +211,7 @@ web-api:
       condition: service_healthy
 ```
 
-This prevents your application from starting before the Collector is ready to accept traces.
+This prevents your application from starting before Docker has marked the Collector container healthy. The official Collector image does not include `wget` or `curl`, so this example uses the Collector's built-in config validation command for the health check.
 
 ## Testing the Setup
 

@@ -159,12 +159,12 @@ async function handleBlobMessage(blob) {
     processBuffer(buffer);
 
     // Option 2: Create object URL for display
-    const url = URL.createObjectURL(blob);
+    const imageUrl = URL.createObjectURL(blob);
 
     // If it's an image
     const img = document.createElement('img');
-    img.src = url;
-    img.onload = () => URL.revokeObjectURL(url);
+    img.src = imageUrl;
+    img.onload = () => URL.revokeObjectURL(imageUrl);
     document.body.appendChild(img);
 
     // Option 3: Read as text if needed
@@ -172,11 +172,16 @@ async function handleBlobMessage(blob) {
     console.log('Blob as text:', text);
 
     // Option 4: Download as file
+    const downloadUrl = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url;
+    a.href = downloadUrl;
     a.download = 'received_file.bin';
     a.click();
-    URL.revokeObjectURL(url);
+    URL.revokeObjectURL(downloadUrl);
+}
+
+function processBuffer(buffer) {
+    console.log('Processing buffer:', buffer.byteLength, 'bytes');
 }
 ```
 
@@ -266,8 +271,18 @@ function processBinaryProtocol(ws, data) {
     // Remaining: Payload
 
     const buffer = Buffer.from(data);
+    if (buffer.length < 5) {
+        console.error('Invalid binary message: header too short');
+        return;
+    }
+
     const messageType = buffer.readUInt8(0);
     const payloadLength = buffer.readUInt32LE(1);
+    if (buffer.length < 5 + payloadLength) {
+        console.error('Invalid binary message: incomplete payload');
+        return;
+    }
+
     const payload = buffer.slice(5, 5 + payloadLength);
 
     console.log(`Binary message type ${messageType}, payload ${payloadLength} bytes`);
@@ -288,15 +303,24 @@ function processBinaryProtocol(ws, data) {
 function saveFile(ws) {
     const { name, chunks } = ws.fileUpload;
     const buffer = Buffer.concat(chunks);
-    const filePath = path.join('/tmp/uploads', name);
+    const uploadDir = '/tmp/uploads';
+    const filePath = path.join(uploadDir, name);
 
-    fs.writeFile(filePath, buffer, (error) => {
-        if (error) {
-            ws.send(JSON.stringify({ type: 'upload_error', message: error.message }));
-        } else {
-            ws.send(JSON.stringify({ type: 'upload_complete', path: filePath }));
+    fs.mkdir(uploadDir, { recursive: true }, (mkdirError) => {
+        if (mkdirError) {
+            ws.send(JSON.stringify({ type: 'upload_error', message: mkdirError.message }));
+            ws.fileUpload = null;
+            return;
         }
-        ws.fileUpload = null;
+
+        fs.writeFile(filePath, buffer, (error) => {
+            if (error) {
+                ws.send(JSON.stringify({ type: 'upload_error', message: error.message }));
+            } else {
+                ws.send(JSON.stringify({ type: 'upload_complete', path: filePath }));
+            }
+            ws.fileUpload = null;
+        });
     });
 }
 
@@ -319,6 +343,14 @@ function sendBinaryResponse(ws, type, data) {
     // Send as binary (second parameter)
     ws.send(message, { binary: true });
 }
+
+function processSensorData(ws, payload) {
+    console.log('Sensor data:', payload);
+}
+
+function processCommand(ws, payload) {
+    console.log('Command:', payload);
+}
 ```
 
 ---
@@ -338,7 +370,7 @@ class BinaryMessageHandler:
     def __init__(self):
         self.file_uploads = {}  # websocket -> upload state
 
-    async def handle_connection(self, websocket, path):
+    async def handle_connection(self, websocket):
         self.file_uploads[websocket] = None
 
         try:
@@ -399,6 +431,9 @@ class BinaryMessageHandler:
 
         msg_type = data[0]
         payload_len = struct.unpack('<I', data[1:5])[0]
+        if len(data) < 5 + payload_len:
+            return
+
         payload = data[5:5 + payload_len]
 
         print(f"Binary message: type={msg_type}, payload={payload_len} bytes")
@@ -568,6 +603,10 @@ const WebSocket = require('ws');
 
 const wss = new WebSocket.Server({ port: 8080 });
 
+function processRequest(message) {
+    return { ok: true, echo: message };
+}
+
 wss.on('connection', (ws) => {
     ws.on('message', (data, isBinary) => {
         if (isBinary) {
@@ -602,7 +641,7 @@ wss.on('connection', (ws) => {
         }
     };
 
-    // MessagePack is typically 50-80% smaller than JSON
+    // MessagePack size savings depend on the shape of the data
     const jsonSize = JSON.stringify(complexData).length;
     const msgpackSize = msgpack.encode(complexData).length;
 
@@ -862,14 +901,14 @@ benchmark();
 | Format | Size | Speed | Use Case |
 |--------|------|-------|----------|
 | JSON (text) | Largest | Fast | General purpose, human-readable |
-| MessagePack | ~30% smaller | Faster | Drop-in JSON replacement |
-| Protocol Buffers | ~50% smaller | Fastest | Schema-defined data, high performance |
-| Raw Binary | Smallest | Fastest | Custom protocols, files |
+| MessagePack | Often smaller | Data-dependent | Drop-in JSON replacement |
+| Protocol Buffers | Often smaller | Data-dependent | Schema-defined data, high performance |
+| Raw Binary | Usually smallest | Usually fastest | Custom protocols, files |
 
 Best practices for WebSocket binary messages:
 1. **Use binary for large data** - Files, images, and high-frequency data
 2. **Choose the right format** - MessagePack for flexibility, Protobuf for performance
-3. **Implement chunking** - For data larger than a few KB
+3. **Implement chunking** - For large data where you need progress reporting, integrity checks, or application-level flow control
 4. **Handle backpressure** - Check bufferedAmount before sending
 5. **Verify integrity** - Use checksums for critical data
 

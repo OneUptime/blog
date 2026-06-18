@@ -142,7 +142,7 @@ Vite uses `.env` files for environment configuration:
 VITE_APP_TITLE=My Vue App
 
 # .env.local - loaded in all cases, ignored by git
-VITE_API_SECRET=local_secret
+API_SECRET=local_secret
 
 # .env.development - only loaded in development
 VITE_API_URL=http://localhost:3000/api
@@ -235,9 +235,6 @@ export default defineConfig({
             }
         },
 
-        // HTTPS configuration
-        https: false,
-
         // Host configuration for network access
         host: true
     }
@@ -247,6 +244,10 @@ export default defineConfig({
 ## Build Configuration
 
 Optimize production builds:
+
+```bash
+npm install -D terser
+```
 
 ```typescript
 // vite.config.ts
@@ -275,8 +276,8 @@ export default defineConfig({
             }
         },
 
-        // Rollup options
-        rollupOptions: {
+        // Rolldown options
+        rolldownOptions: {
             output: {
                 // Manual chunk splitting
                 manualChunks: {
@@ -322,20 +323,20 @@ export default defineConfig({
 sequenceDiagram
     participant Dev as Developer
     participant Vite
-    participant Rollup
+    participant Rolldown
     participant Output
 
     Dev->>Vite: npm run build
     Vite->>Vite: Load vite.config.ts
     Vite->>Vite: Transform Vue SFCs
-    Vite->>Rollup: Hand off to Rollup
+    Vite->>Rolldown: Hand off to Rolldown
 
-    Rollup->>Rollup: Bundle modules
-    Rollup->>Rollup: Apply manualChunks
-    Rollup->>Rollup: Tree shaking
-    Rollup->>Rollup: Minify code
+    Rolldown->>Rolldown: Bundle modules
+    Rolldown->>Rolldown: Apply manualChunks
+    Rolldown->>Rolldown: Tree shaking
+    Rolldown->>Rolldown: Minify code
 
-    Rollup->>Output: Generate chunks
+    Rolldown->>Output: Generate chunks
     Output->>Output: Write to dist/
 
     Output-->>Dev: Build complete
@@ -445,6 +446,8 @@ Configure CSS preprocessing and modules:
 // vite.config.ts
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
+import autoprefixer from 'autoprefixer';
+import postcssPresetEnv from 'postcss-preset-env';
 
 export default defineConfig({
     plugins: [vue()],
@@ -474,8 +477,8 @@ export default defineConfig({
         // PostCSS configuration
         postcss: {
             plugins: [
-                require('autoprefixer'),
-                require('postcss-preset-env')({
+                autoprefixer(),
+                postcssPresetEnv({
                     stage: 3,
                     features: {
                         'nesting-rules': true
@@ -519,8 +522,7 @@ export default defineConfig(({ command, mode }) => {
 
         plugins: [
             vue({
-                script: {
-                    defineModel: true,
+                features: {
                     propsDestructure: true
                 }
             }),
@@ -583,7 +585,7 @@ export default defineConfig(({ command, mode }) => {
                     drop_debugger: isProd
                 }
             },
-            rollupOptions: {
+            rolldownOptions: {
                 output: {
                     manualChunks: {
                         'vue-vendor': ['vue', 'vue-router', 'pinia'],

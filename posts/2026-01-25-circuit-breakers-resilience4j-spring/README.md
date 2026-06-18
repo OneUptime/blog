@@ -53,6 +53,12 @@ First, add the Resilience4j dependencies to your `pom.xml`:
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-actuator</artifactId>
     </dependency>
+
+    <!-- Needed for the WebClient example below -->
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-webflux</artifactId>
+    </dependency>
 </dependencies>
 ```
 
@@ -64,6 +70,7 @@ dependencies {
     implementation 'io.github.resilience4j:resilience4j-spring-boot3:2.2.0'
     implementation 'org.springframework.boot:spring-boot-starter-aop'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'org.springframework.boot:spring-boot-starter-webflux'
 }
 ```
 
@@ -232,7 +239,7 @@ public class InventoryService {
 
 ## Combining Circuit Breaker with Retry and Timeout
 
-Resilience4j provides multiple resilience patterns that work well together. The order of decorators matters - typically you want Retry on the outside, then Circuit Breaker, then Timeout.
+Resilience4j provides multiple resilience patterns that work well together. The order of decorators matters - by default, Resilience4j applies Retry on the outside, then Circuit Breaker, then TimeLimiter.
 
 ```java
 // ResilientApiClient.java
@@ -243,6 +250,7 @@ import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.retry.annotation.Retry;
 import io.github.resilience4j.timelimiter.annotation.TimeLimiter;
 import org.springframework.stereotype.Component;
+import org.springframework.web.reactive.function.client.WebClient;
 
 import java.util.concurrent.CompletableFuture;
 
@@ -258,7 +266,7 @@ public class ResilientApiClient {
     }
 
     // Stack multiple resilience annotations
-    // Order of execution: TimeLimiter -> CircuitBreaker -> Retry -> Actual call
+    // Default execution order: Retry -> CircuitBreaker -> TimeLimiter -> Actual call
     @TimeLimiter(name = "externalApi")       // Cancel if takes too long
     @CircuitBreaker(name = "externalApi", fallbackMethod = "fallback")
     @Retry(name = "externalApi")              // Retry transient failures
@@ -327,6 +335,12 @@ management:
   health:
     circuitbreakers:
       enabled: true
+
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        registerHealthIndicator: true
 ```
 
 You can also listen to circuit breaker events programmatically:

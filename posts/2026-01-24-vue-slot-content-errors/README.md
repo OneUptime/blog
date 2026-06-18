@@ -89,7 +89,9 @@ The `v-slot` directive can only be used on `<template>` elements or component ta
     <template v-slot:header>
       <h1>Title</h1>
     </template>
+  </MyComponent>
 
+  <MyComponent>
     <!-- CORRECT: Shorthand syntax -->
     <template #header>
       <h1>Title</h1>
@@ -125,10 +127,10 @@ The only exception is using `v-slot` directly on a component for the default slo
 ### The Error
 
 ```text
-[Vue warn]: Slot "header" invoked outside of the render function: this will not track dependencies used in the slot.
+No content appears in the expected slot.
 ```
 
-Or the slot content simply does not render.
+A misspelled slot name usually does not produce a Vue warning. Vue will simply not render the content unless the child component has a matching slot outlet.
 
 ### Debugging Slot Names
 
@@ -208,13 +210,19 @@ flowchart TD
 [Vue warn]: Property "user" was accessed during render but is not defined on instance.
 ```
 
+Or, if a slot prop object is missing an expected nested property:
+
+```text
+Cannot read properties of undefined
+```
+
 ### Child Component Exposing Data
 
 ```vue
 <!-- UserList.vue -->
 <template>
   <ul>
-    <li v-for="user in users" :key="user.id">
+    <li v-for="(user, index) in users" :key="user.id">
       <!-- Expose user data to parent via slot props -->
       <slot name="user" :user="user" :index="index">
         <!-- Default content if no slot provided -->
@@ -239,17 +247,20 @@ const users = ref([
 ```vue
 <template>
   <UserList>
-    <!-- WRONG: Trying to access properties not passed -->
-    <template #user="{ user }">
-      <!-- ERROR: 'email' was not passed in slot props -->
-      <span>{{ user.email }}</span>
+    <!-- WRONG: Trying to access slot props without receiving them -->
+    <template #user>
+      <span>{{ user.name }}</span>
     </template>
+  </UserList>
 
+  <UserList>
     <!-- CORRECT: Only access passed properties -->
     <template #user="{ user, index }">
       <span>{{ index + 1 }}. {{ user.name }} ({{ user.role }})</span>
     </template>
+  </UserList>
 
+  <UserList>
     <!-- CORRECT: With destructuring and defaults -->
     <template #user="{ user, index = 0 }">
       <span>{{ user.name }}</span>
@@ -366,20 +377,26 @@ Dynamic slot names require proper bracket syntax.
 
 ```vue
 <template>
-  <!-- WRONG: String interpolation does not work -->
-  <template #"item-{{ index }}">
-    Content
-  </template>
+  <MyComponent>
+    <!-- WRONG: String interpolation does not work -->
+    <template #"item-{{ index }}">
+      Content
+    </template>
+  </MyComponent>
 
-  <!-- CORRECT: Dynamic slot name syntax -->
-  <template v-slot:[`item-${index}`]>
-    Content
-  </template>
+  <MyComponent>
+    <!-- CORRECT: Dynamic slot name syntax -->
+    <template v-slot:[dynamicSlotName]>
+      Content
+    </template>
+  </MyComponent>
 
-  <!-- CORRECT: With shorthand -->
-  <template #[dynamicSlotName]>
-    Content
-  </template>
+  <MyComponent>
+    <!-- CORRECT: With shorthand -->
+    <template #[dynamicSlotName]>
+      Content
+    </template>
+  </MyComponent>
 </template>
 
 <script setup>
@@ -410,7 +427,7 @@ const dynamicSlotName = computed(() => `item-${index}`)
       <!-- Dynamic slot rendering -->
       <template v-for="tab in tabs" :key="tab.id">
         <div v-show="activeTab === tab.id">
-          <slot :name="`tab-${tab.id}`" :tab="tab">
+          <slot :name="tab.slotName" :tab="tab">
             Default content for {{ tab.label }}
           </slot>
         </div>
@@ -438,8 +455,8 @@ const activeTab = ref(props.tabs[0]?.id)
 ```vue
 <template>
   <TabPanel :tabs="tabs">
-    <template v-for="tab in tabs" :key="tab.id" v-slot:[`tab-${tab.id}`]="{ tab }">
-      <component :is="tab.component" v-bind="tab.props" />
+    <template v-for="tab in tabs" :key="tab.id" #[tab.slotName]="{ tab: slotTab }">
+      <component :is="slotTab.component" v-bind="slotTab.props" />
     </template>
   </TabPanel>
 </template>
@@ -449,8 +466,8 @@ import UserProfile from './UserProfile.vue'
 import Settings from './Settings.vue'
 
 const tabs = [
-  { id: 'profile', label: 'Profile', component: UserProfile, props: { userId: 1 } },
-  { id: 'settings', label: 'Settings', component: Settings, props: {} },
+  { id: 'profile', slotName: 'tab-profile', label: 'Profile', component: UserProfile, props: { userId: 1 } },
+  { id: 'settings', slotName: 'tab-settings', label: 'Settings', component: Settings, props: {} },
 ]
 </script>
 ```

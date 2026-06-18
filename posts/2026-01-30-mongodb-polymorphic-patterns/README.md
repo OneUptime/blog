@@ -54,10 +54,10 @@ The discriminator field is the cornerstone of the polymorphic pattern. It is a f
 
 // Email notification
 {
-  _id: ObjectId("..."),
+  _id: ObjectId("507f1f77bcf86cd799439011"),
   type: "email",                    // Discriminator field
   createdAt: ISODate("2026-01-30"),
-  userId: ObjectId("..."),
+  userId: ObjectId("507f191e810c19729de860ea"),
   // Type-specific fields
   subject: "Welcome to our platform",
   body: "Thank you for signing up...",
@@ -66,10 +66,10 @@ The discriminator field is the cornerstone of the polymorphic pattern. It is a f
 
 // SMS notification
 {
-  _id: ObjectId("..."),
+  _id: ObjectId("507f1f77bcf86cd799439012"),
   type: "sms",                      // Discriminator field
   createdAt: ISODate("2026-01-30"),
-  userId: ObjectId("..."),
+  userId: ObjectId("507f191e810c19729de860ea"),
   // Type-specific fields
   message: "Your verification code is 123456",
   phoneNumber: "+1234567890"
@@ -77,10 +77,10 @@ The discriminator field is the cornerstone of the polymorphic pattern. It is a f
 
 // Push notification
 {
-  _id: ObjectId("..."),
+  _id: ObjectId("507f1f77bcf86cd799439013"),
   type: "push",                     // Discriminator field
   createdAt: ISODate("2026-01-30"),
-  userId: ObjectId("..."),
+  userId: ObjectId("507f191e810c19729de860ea"),
   // Type-specific fields
   title: "New message received",
   body: "You have a new message from John",
@@ -97,7 +97,7 @@ For more complex hierarchies, you can use multiple discriminator fields or neste
 
 // Physical product - Electronics
 {
-  _id: ObjectId("..."),
+  _id: ObjectId("507f1f77bcf86cd799439014"),
   category: "physical",
   subcategory: "electronics",
   name: "Wireless Headphones",
@@ -112,7 +112,7 @@ For more complex hierarchies, you can use multiple discriminator fields or neste
 
 // Digital product - Software
 {
-  _id: ObjectId("..."),
+  _id: ObjectId("507f1f77bcf86cd799439015"),
   category: "digital",
   subcategory: "software",
   name: "Project Management Tool",
@@ -127,7 +127,7 @@ For more complex hierarchies, you can use multiple discriminator fields or neste
 
 // Service product
 {
-  _id: ObjectId("..."),
+  _id: ObjectId("507f1f77bcf86cd799439016"),
   category: "service",
   subcategory: "consulting",
   name: "Technical Consultation",
@@ -215,7 +215,7 @@ db.createCollection("notifications", {
 
 ### Conditional Schema Validation
 
-Use `oneOf` or `anyOf` to define type-specific validation rules:
+Use `oneOf` or `anyOf` with single-value `enum` checks to define type-specific validation rules:
 
 ```javascript
 db.createCollection("notifications", {
@@ -238,7 +238,7 @@ db.createCollection("notifications", {
         {
           // Email notification validation
           properties: {
-            type: { const: "email" },
+            type: { enum: ["email"] },
             subject: { bsonType: "string", maxLength: 200 },
             body: { bsonType: "string" },
             recipientEmail: {
@@ -251,7 +251,7 @@ db.createCollection("notifications", {
         {
           // SMS notification validation
           properties: {
-            type: { const: "sms" },
+            type: { enum: ["sms"] },
             message: { bsonType: "string", maxLength: 160 },
             phoneNumber: {
               bsonType: "string",
@@ -263,7 +263,7 @@ db.createCollection("notifications", {
         {
           // Push notification validation
           properties: {
-            type: { const: "push" },
+            type: { enum: ["push"] },
             title: { bsonType: "string", maxLength: 100 },
             body: { bsonType: "string", maxLength: 250 },
             deviceToken: { bsonType: "string" }
@@ -403,12 +403,12 @@ flowchart TD
 // Find all email notifications for a user
 db.notifications.find({
   type: "email",
-  userId: ObjectId("...")
+  userId: ObjectId("507f191e810c19729de860ea")
 }).sort({ createdAt: -1 });
 
 // Find all notifications regardless of type
 db.notifications.find({
-  userId: ObjectId("...")
+  userId: ObjectId("507f191e810c19729de860ea")
 }).sort({ createdAt: -1 });
 ```
 
@@ -418,7 +418,7 @@ db.notifications.find({
 db.notifications.aggregate([
   {
     $match: {
-      userId: ObjectId("..."),
+      userId: ObjectId("507f191e810c19729de860ea"),
       createdAt: { $gte: ISODate("2026-01-01") }
     }
   },
@@ -465,7 +465,7 @@ db.notifications.aggregate([
 // Project common fields plus type-specific fields conditionally
 db.notifications.aggregate([
   {
-    $match: { userId: ObjectId("...") }
+    $match: { userId: ObjectId("507f191e810c19729de860ea") }
   },
   {
     $project: {
@@ -762,6 +762,8 @@ Maintain clear documentation of all document types and their fields:
 ### 4. Use TypeScript for Type Safety
 
 ```typescript
+import type { ObjectId } from 'mongodb';
+
 // Base notification interface
 interface BaseNotification {
   _id: ObjectId;
@@ -793,23 +795,23 @@ interface PushNotification extends BaseNotification {
 }
 
 // Union type for all notifications
-type Notification = EmailNotification | SmsNotification | PushNotification;
+type NotificationDocument = EmailNotification | SmsNotification | PushNotification;
 
 // Type guard functions
-function isEmailNotification(n: Notification): n is EmailNotification {
+function isEmailNotification(n: NotificationDocument): n is EmailNotification {
   return n.type === 'email';
 }
 
-function isSmsNotification(n: Notification): n is SmsNotification {
+function isSmsNotification(n: NotificationDocument): n is SmsNotification {
   return n.type === 'sms';
 }
 
-function isPushNotification(n: Notification): n is PushNotification {
+function isPushNotification(n: NotificationDocument): n is PushNotification {
   return n.type === 'push';
 }
 
 // Usage with type narrowing
-function processNotification(notification: Notification) {
+function processNotification(notification: NotificationDocument) {
   console.log(`Processing ${notification.type} notification`);
 
   if (isEmailNotification(notification)) {
@@ -853,7 +855,7 @@ flowchart LR
 // Efficient - uses discriminator in query
 db.notifications.find({
   type: "email",
-  userId: ObjectId("..."),
+  userId: ObjectId("507f191e810c19729de860ea"),
   createdAt: { $gte: ISODate("2026-01-01") }
 });
 
@@ -877,7 +879,7 @@ Always analyze query performance with explain:
 ```javascript
 db.notifications.find({
   type: "email",
-  userId: ObjectId("...")
+  userId: ObjectId("507f191e810c19729de860ea")
 }).explain("executionStats");
 
 // Look for:

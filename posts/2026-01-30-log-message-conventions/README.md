@@ -85,7 +85,7 @@ logger.info("User created");
 logger.info("Will send email");
 
 // Good: Consistent past tense for completed actions
-logger.info("Started user creation", { email: user.email });
+logger.info("Started user creation", { registrationSource: "organic" });
 logger.info("Created user", { userId: user.id });
 logger.info("Sent welcome email", { userId: user.id, emailType: "welcome" });
 ```
@@ -155,7 +155,7 @@ Add context relevant to the operation being logged:
 // User operations
 logger.info("Created user account", {
   userId: user.id,
-  email: user.email,
+  emailDomain: user.emailDomain,
   registrationSource: "organic",
   hasReferralCode: !!referralCode
 });
@@ -224,7 +224,7 @@ logger.error("Failed to connect to database", {
 // Why: Invalid credentials
 // What to do: Normal user error, no action needed
 logger.warn("Authentication failed", {
-  email: attemptedEmail,
+  attemptedEmailHash: attemptedEmailHash,
   failureReason: "invalid_password",
   attemptCount: loginAttempts,
   ipAddress: clientIp,
@@ -407,8 +407,17 @@ const baseLogger = pino({
   }
 });
 
+type LogValue =
+  | string
+  | number
+  | boolean
+  | null
+  | undefined
+  | LogValue[]
+  | { [key: string]: LogValue };
+
 interface LogContext {
-  [key: string]: string | number | boolean | undefined;
+  [key: string]: LogValue;
 }
 
 function enrichWithTraceContext(ctx: LogContext): LogContext {
@@ -440,6 +449,14 @@ export const logger = {
 
   debug: (message: string, ctx: LogContext = {}) => {
     baseLogger.debug(enrichWithTraceContext(ctx), message);
+  },
+
+  trace: (message: string, ctx: LogContext = {}) => {
+    baseLogger.trace(enrichWithTraceContext(ctx), message);
+  },
+
+  fatal: (message: string, ctx: LogContext = {}) => {
+    baseLogger.fatal(enrichWithTraceContext(ctx), message);
   }
 };
 ```
@@ -560,10 +577,9 @@ try {
 } catch (error) {
   logger.error("Failed to save user", {
     userId: user.id,
-    email: user.email,
-    errorType: error.constructor.name,
-    errorMessage: error.message,
-    errorStack: error.stack,
+    "exception.type": error.constructor.name,
+    "exception.message": error.message,
+    "exception.stacktrace": error.stack,
     dbOperation: "INSERT",
     dbTable: "users"
   });

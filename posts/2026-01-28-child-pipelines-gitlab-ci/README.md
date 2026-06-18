@@ -419,7 +419,7 @@ deploy-staging:
 
 ## Debugging Child Pipelines
 
-When child pipelines fail or behave unexpectedly, add a separate debug job that runs before the trigger. Trigger jobs don't have a runner execution context, so they don't support `script`, `before_script`, or `after_script` — the debug output has to live in its own job.
+When child pipelines fail or behave unexpectedly, add a separate debug job that runs before the trigger. Trigger jobs don't have a runner execution context, so they don't support `script`, `before_script`, or `after_script` - the debug output has to live in its own job.
 
 ```yaml
 # Add debug output via a separate job, since trigger jobs can't run scripts
