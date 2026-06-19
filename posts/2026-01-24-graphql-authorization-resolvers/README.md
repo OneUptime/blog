@@ -69,13 +69,20 @@ export async function createContext({ req }: { req: Request }): Promise<Context>
 // server.ts
 import { ApolloServer } from '@apollo/server';
 import { expressMiddleware } from '@apollo/server/express4';
-import { createContext } from './context';
+import cors from 'cors';
+import express from 'express';
+import { Context, createContext } from './context';
 import { schema } from './schema';
 
-const server = new ApolloServer({ schema });
+const server = new ApolloServer<Context>({ schema });
+await server.start();
+
+const app = express();
 
 app.use(
   '/graphql',
+  cors<cors.CorsRequest>(),
+  express.json(),
   expressMiddleware(server, {
     context: createContext,
   })
@@ -103,7 +110,7 @@ export const userResolvers = {
 
     // Requires authentication
     me: async (_: unknown, __: unknown, context: Context) => {
-      if (!context.isAuthenticated) {
+      if (!context.isAuthenticated || !context.user) {
         throw new AuthenticationError('You must be logged in');
       }
       return db.users.findUnique({ where: { id: context.user.id } });
@@ -111,7 +118,7 @@ export const userResolvers = {
 
     // Requires specific role
     user: async (_: unknown, args: { id: string }, context: Context) => {
-      if (!context.isAuthenticated) {
+      if (!context.isAuthenticated || !context.user) {
         throw new AuthenticationError('You must be logged in');
       }
 
@@ -130,7 +137,7 @@ export const userResolvers = {
 
     // Requires specific permission
     users: async (_: unknown, __: unknown, context: Context) => {
-      if (!context.isAuthenticated) {
+      if (!context.isAuthenticated || !context.user) {
         throw new AuthenticationError('You must be logged in');
       }
 
@@ -148,7 +155,7 @@ export const userResolvers = {
       args: { id: string; input: UpdateUserInput },
       context: Context
     ) => {
-      if (!context.isAuthenticated) {
+      if (!context.isAuthenticated || !context.user) {
         throw new AuthenticationError('You must be logged in');
       }
 
@@ -283,7 +290,7 @@ export const userResolvers = {
   User: {
     // Email is only visible to the user themselves or admins
     email: (parent: User, _: unknown, context: Context) => {
-      if (!context.isAuthenticated) {
+      if (!context.isAuthenticated || !context.user) {
         return null;
       }
 
@@ -296,7 +303,7 @@ export const userResolvers = {
 
     // Salary is only visible to HR and finance
     salary: (parent: User, _: unknown, context: Context) => {
-      if (!context.isAuthenticated) {
+      if (!context.isAuthenticated || !context.user) {
         return null;
       }
 
@@ -309,7 +316,7 @@ export const userResolvers = {
 
     // Phone number requires explicit permission
     phoneNumber: (parent: User, _: unknown, context: Context) => {
-      if (!context.isAuthenticated) {
+      if (!context.isAuthenticated || !context.user) {
         return null;
       }
 
@@ -356,7 +363,7 @@ type User {
   name: String!
 
   # Only visible to owner or admin
-  email: String! @owner
+  email: String @owner
 
   # Only visible to HR
   salary: Float @hasRole(role: "hr")
@@ -403,6 +410,9 @@ export function authDirectiveTransformer(schema: GraphQLSchema): GraphQLSchema {
           if (!context.isAuthenticated) {
             throw new AuthenticationError('You must be logged in');
           }
+          if (!context.user) {
+            throw new AuthenticationError('You must be logged in');
+          }
           if (!context.user.roles.includes(role)) {
             throw new ForbiddenError(`Required role: ${role}`);
           }
@@ -419,6 +429,9 @@ export function authDirectiveTransformer(schema: GraphQLSchema): GraphQLSchema {
           if (!context.isAuthenticated) {
             throw new AuthenticationError('You must be logged in');
           }
+          if (!context.user) {
+            throw new AuthenticationError('You must be logged in');
+          }
           if (!context.user.permissions.includes(permission)) {
             throw new ForbiddenError(`Required permission: ${permission}`);
           }
@@ -433,6 +446,9 @@ export function authDirectiveTransformer(schema: GraphQLSchema): GraphQLSchema {
         const { resolve = defaultFieldResolver } = fieldConfig;
         fieldConfig.resolve = async function (source, args, context, info) {
           if (!context.isAuthenticated) {
+            return null;
+          }
+          if (!context.user) {
             return null;
           }
 
@@ -478,7 +494,7 @@ GraphQL Shield provides a permissions layer with caching and rule composition:
 
 ```typescript
 // permissions/index.ts
-import { shield, rule, and, or, not, allow, deny } from 'graphql-shield';
+import { shield, rule, and, or, allow, deny } from 'graphql-shield';
 import { Context } from '../context';
 
 // Define reusable rules
@@ -511,6 +527,26 @@ const isSameOrganization = rule({ cache: 'strict' })(
   }
 );
 
+const canAccessOrder = rule({ cache: 'strict' })(
+  async (_parent, args: { id: string }, context: Context) => {
+    if (!context.user) {
+      return false;
+    }
+
+    const order = await db.orders.findUnique({
+      where: { id: args.id },
+      select: { userId: true, organizationId: true },
+    });
+
+    return (
+      !!order &&
+      (order.userId === context.user.id ||
+        order.organizationId === context.user.organizationId ||
+        context.user.roles.includes('admin'))
+    );
+  }
+);
+
 // Compose permissions
 export const permissions = shield(
   {
@@ -527,7 +563,7 @@ export const permissions = shield(
       auditLogs: and(isAuthenticated, hasPermission('audit:read')),
 
       // Complex rules
-      order: and(isAuthenticated, or(isOwner, isAdmin)),
+      order: and(isAuthenticated, canAccessOrder),
     },
 
     Mutation: {
@@ -536,8 +572,8 @@ export const permissions = shield(
       createOrder: isAuthenticated,
 
       // Ownership mutations
-      updateOrder: and(isAuthenticated, or(isOwner, isAdmin)),
-      deleteOrder: and(isAuthenticated, or(isOwner, isAdmin)),
+      updateOrder: and(isAuthenticated, canAccessOrder),
+      deleteOrder: and(isAuthenticated, canAccessOrder),
 
       // Admin mutations
       deleteUser: isAdmin,
@@ -556,9 +592,9 @@ export const permissions = shield(
     },
   },
   {
-    // Return null for unauthorized fields instead of throwing
+    // Throw a consistent error for fields without an explicit rule
     allowExternalErrors: true,
-    fallbackRule: allow,
+    fallbackRule: deny,
     fallbackError: new ForbiddenError('Access denied'),
   }
 );
@@ -634,7 +670,7 @@ export class UserResolver {
   @Authorized()
   @Query(() => User)
   async me(@Ctx() context: Context): Promise<User> {
-    return db.users.findUnique({ where: { id: context.user.id } });
+    return db.users.findUnique({ where: { id: context.user!.id } });
   }
 
   // Requires admin role
@@ -697,7 +733,7 @@ sequenceDiagram
 | **Audit sensitive operations** | Log all authorization decisions for security review |
 | **Use consistent patterns** | Choose one approach (directives, middleware, or guards) |
 | **Test authorization** | Write tests for every permission combination |
-| **Hide unauthorized data** | Return null for unauthorized fields, not errors |
+| **Hide unauthorized data** | Return null only for nullable fields, or throw a consistent authorization error |
 
 ## Error Handling
 
