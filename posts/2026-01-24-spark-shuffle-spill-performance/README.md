@@ -12,7 +12,7 @@ Shuffle operations are often the biggest performance bottleneck in Spark jobs. W
 
 ## Understanding Spark Shuffle
 
-A shuffle occurs when Spark needs to redistribute data across partitions. Operations like `groupByKey`, `reduceByKey`, `join`, and `repartition` trigger shuffles.
+A shuffle occurs when Spark needs to redistribute data across partitions. Operations like `groupByKey`, `reduceByKey`, `join`, and `repartition` may trigger shuffles.
 
 ```mermaid
 flowchart LR
@@ -63,7 +63,9 @@ flowchart TD
 ### Programmatic Detection
 
 ```scala
-// Enable detailed metrics collection
+import org.apache.spark.scheduler.{SparkListener, SparkListenerStageCompleted}
+
+// Optional: enable AQE so Spark SQL can adapt shuffle plans at runtime
 spark.conf.set("spark.sql.adaptive.enabled", "true")
 spark.conf.set("spark.sql.adaptive.coalescePartitions.enabled", "true")
 
@@ -100,9 +102,9 @@ The most common cause of spill is simply not having enough memory for shuffle bu
 val spark = SparkSession.builder()
   .appName("OptimizedJob")
   .config("spark.executor.memory", "8g")
-  // Fraction of heap for execution (shuffle + joins)
+  // Fraction of (heap - 300MiB) reserved for Spark execution and storage
   .config("spark.memory.fraction", "0.8")
-  // Fraction of execution memory for storage
+  // Fraction of Spark memory where cached blocks are immune to eviction
   .config("spark.memory.storageFraction", "0.3")
   .getOrCreate()
 ```
@@ -112,12 +114,13 @@ val spark = SparkSession.builder()
 ```mermaid
 flowchart TD
     subgraph "Executor Memory 8GB"
-        A[Reserved Memory<br/>300MB] --> B[User Memory<br/>20% = 1.5GB]
-        B --> C[Spark Memory<br/>80% = 6.2GB]
+        A[Reserved Memory<br/>300MiB]
+        B[User Memory<br/>remaining heap outside Spark memory]
+        C[Spark Memory<br/>execution and storage share this region]
 
         subgraph "Spark Memory"
-            C --> D[Storage Memory<br/>50% = 3.1GB]
-            C --> E[Execution Memory<br/>50% = 3.1GB]
+            C --> D[Storage reserve<br/>cached blocks immune to eviction]
+            C --> E[Execution Memory<br/>shuffles, joins, sorts, aggregations]
         end
     end
 
@@ -175,9 +178,12 @@ spark.conf.set("spark.sql.shuffle.partitions", "400")
 spark.conf.set("spark.default.parallelism", "400")
 
 // Dynamic partitioning based on data size
-val dataSize = df.rdd.map(_.toString.getBytes.length.toLong).reduce(_ + _)
-val targetPartitionSize = 128 * 1024 * 1024 // 128MB per partition
-val optimalPartitions = Math.max(200, (dataSize / targetPartitionSize).toInt)
+val estimatedSizeBytes = 50L * 1024 * 1024 * 1024 // Use input metadata or table statistics
+val targetPartitionSize = 128L * 1024 * 1024 // 128MB per partition
+val optimalPartitions = Math.max(
+  200,
+  Math.ceil(estimatedSizeBytes.toDouble / targetPartitionSize).toInt
+)
 
 val repartitioned = df.repartition(optimalPartitions)
 ```
@@ -243,11 +249,11 @@ Fine-tune shuffle-related memory settings.
 ```scala
 val spark = SparkSession.builder()
   .appName("ShuffleOptimized")
-  // Initial size of shuffle read buffer
+  // Maximum map output data fetched at once by each reduce task
   .config("spark.reducer.maxSizeInFlight", "96m")
   // Size of shuffle write buffer
   .config("spark.shuffle.file.buffer", "64k")
-  // Use off-heap memory for shuffle
+  // Allow Spark to use off-heap memory for supported operations
   .config("spark.memory.offHeap.enabled", "true")
   .config("spark.memory.offHeap.size", "2g")
   // Compress shuffle files
@@ -289,6 +295,8 @@ flowchart TD
 Set up alerting for shuffle spill in production:
 
 ```scala
+import org.apache.spark.scheduler.{SparkListener, SparkListenerTaskEnd}
+
 // Custom metric reporter
 class ShuffleMetricReporter extends SparkListener {
   override def onTaskEnd(taskEnd: SparkListenerTaskEnd): Unit = {
