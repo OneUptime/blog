@@ -128,14 +128,19 @@ const resolvers = {
 
 ```javascript
 // GOOD: Wrap resolver logic in try-catch with meaningful errors
+const { GraphQLError } = require('graphql');
+
 const resolvers = {
   Mutation: {
     createUser: async (_, { input }, context) => {
       try {
         // Validate input before database operation
         if (!isValidEmail(input.email)) {
-          throw new UserInputError('Invalid email format', {
-            invalidArgs: ['email']
+          throw new GraphQLError('Invalid email format', {
+            extensions: {
+              code: 'BAD_USER_INPUT',
+              invalidArgs: ['email']
+            }
           });
         }
 
@@ -145,9 +150,12 @@ const resolvers = {
         });
 
         if (existingUser) {
-          throw new UserInputError('User with this email already exists', {
-            invalidArgs: ['email'],
-            existingUserId: existingUser.id
+          throw new GraphQLError('User with this email already exists', {
+            extensions: {
+              code: 'BAD_USER_INPUT',
+              invalidArgs: ['email'],
+              existingUserId: existingUser.id
+            }
           });
         }
 
@@ -157,16 +165,19 @@ const resolvers = {
 
       } catch (error) {
         // Re-throw GraphQL errors as-is
-        if (error instanceof ApolloError) {
+        if (error instanceof GraphQLError) {
           throw error;
         }
 
         // Log unexpected errors and return a safe message
         console.error('createUser mutation failed:', error);
-        throw new ApolloError(
+        throw new GraphQLError(
           'Failed to create user. Please try again.',
-          'USER_CREATION_FAILED',
-          { originalError: error.message }
+          {
+            extensions: {
+              code: 'USER_CREATION_FAILED'
+            }
+          }
         );
       }
     }
@@ -182,6 +193,7 @@ Implement robust input validation to catch errors before they reach your databas
 
 ```javascript
 // validation.js - Centralized validation functions
+const { GraphQLError } = require('graphql');
 const Joi = require('joi');
 
 // Define validation schema for user creation
@@ -224,8 +236,11 @@ function validateInput(schema, input) {
       message: detail.message
     }));
 
-    throw new UserInputError('Validation failed', {
-      validationErrors
+    throw new GraphQLError('Validation failed', {
+      extensions: {
+        code: 'VALIDATION_ERROR',
+        validationErrors
+      }
     });
   }
 
@@ -242,7 +257,7 @@ const { createUserSchema, validateInput } = require('./validation');
 const resolvers = {
   Mutation: {
     createUser: async (_, { input }, context) => {
-      // Validate input - throws UserInputError if invalid
+      // Validate input - throws GraphQLError if invalid
       const validatedInput = validateInput(createUserSchema, input);
 
       // Proceed with validated and sanitized data
@@ -279,6 +294,8 @@ sequenceDiagram
 
 ```javascript
 // Handle database transactions with proper error handling
+const { GraphQLError } = require('graphql');
+
 const resolvers = {
   Mutation: {
     createOrder: async (_, { input }, { db }) => {
@@ -304,12 +321,17 @@ const resolvers = {
           });
 
           if (!product) {
-            throw new UserInputError(`Product ${item.productId} not found`);
+            throw new GraphQLError(`Product ${item.productId} not found`, {
+              extensions: { code: 'BAD_USER_INPUT' }
+            });
           }
 
           if (product.stock < item.quantity) {
-            throw new UserInputError(
-              `Insufficient stock for ${product.name}. Available: ${product.stock}`
+            throw new GraphQLError(
+              `Insufficient stock for ${product.name}. Available: ${product.stock}`,
+              {
+                extensions: { code: 'BAD_USER_INPUT' }
+              }
             );
           }
 
@@ -347,25 +369,34 @@ const resolvers = {
 
         // Handle specific database errors
         if (error.name === 'SequelizeUniqueConstraintError') {
-          throw new UserInputError('Duplicate entry detected', {
-            field: error.errors[0]?.path
+          throw new GraphQLError('Duplicate entry detected', {
+            extensions: {
+              code: 'BAD_USER_INPUT',
+              field: error.errors[0]?.path
+            }
           });
         }
 
         if (error.name === 'SequelizeForeignKeyConstraintError') {
-          throw new UserInputError('Referenced record does not exist');
+          throw new GraphQLError('Referenced record does not exist', {
+            extensions: { code: 'BAD_USER_INPUT' }
+          });
         }
 
         // Re-throw GraphQL errors
-        if (error instanceof ApolloError) {
+        if (error instanceof GraphQLError) {
           throw error;
         }
 
         // Log and wrap unexpected errors
         console.error('Order creation failed:', error);
-        throw new ApolloError(
+        throw new GraphQLError(
           'Failed to create order',
-          'ORDER_CREATION_FAILED'
+          {
+            extensions: {
+              code: 'ORDER_CREATION_FAILED'
+            }
+          }
         );
       }
     }
@@ -381,14 +412,14 @@ Implement proper auth checks in your mutations.
 
 ```javascript
 // auth.js - Authentication utilities
-const { AuthenticationError, ForbiddenError } = require('apollo-server');
+const { GraphQLError } = require('graphql');
 
 // Check if user is authenticated
 function requireAuth(context) {
   if (!context.user) {
-    throw new AuthenticationError(
-      'You must be logged in to perform this action'
-    );
+    throw new GraphQLError('You must be logged in to perform this action', {
+      extensions: { code: 'UNAUTHENTICATED' }
+    });
   }
   return context.user;
 }
@@ -398,8 +429,11 @@ function requireRole(context, allowedRoles) {
   const user = requireAuth(context);
 
   if (!allowedRoles.includes(user.role)) {
-    throw new ForbiddenError(
-      `This action requires one of these roles: ${allowedRoles.join(', ')}`
+    throw new GraphQLError(
+      `This action requires one of these roles: ${allowedRoles.join(', ')}`,
+      {
+        extensions: { code: 'FORBIDDEN' }
+      }
     );
   }
 
@@ -411,7 +445,9 @@ function requireOwnership(context, resourceOwnerId) {
   const user = requireAuth(context);
 
   if (user.id !== resourceOwnerId && user.role !== 'admin') {
-    throw new ForbiddenError('You do not have permission to modify this resource');
+    throw new GraphQLError('You do not have permission to modify this resource', {
+      extensions: { code: 'FORBIDDEN' }
+    });
   }
 
   return user;
@@ -443,7 +479,9 @@ const resolvers = {
       const post = await db.posts.findByPk(postId);
 
       if (!post) {
-        throw new UserInputError('Post not found');
+        throw new GraphQLError('Post not found', {
+          extensions: { code: 'BAD_USER_INPUT' }
+        });
       }
 
       requireOwnership(context, post.authorId);
@@ -461,43 +499,63 @@ Create custom error classes for consistent error handling.
 
 ```javascript
 // errors.js - Custom GraphQL error classes
-const { ApolloError } = require('apollo-server');
+const { GraphQLError } = require('graphql');
 
 // Error for validation failures
-class ValidationError extends ApolloError {
+class ValidationError extends GraphQLError {
   constructor(message, validationErrors = []) {
-    super(message, 'VALIDATION_ERROR', { validationErrors });
+    super(message, {
+      extensions: {
+        code: 'VALIDATION_ERROR',
+        validationErrors
+      }
+    });
     this.name = 'ValidationError';
   }
 }
 
 // Error for resource not found
-class NotFoundError extends ApolloError {
+class NotFoundError extends GraphQLError {
   constructor(resource, id) {
     super(
       `${resource} with ID ${id} not found`,
-      'NOT_FOUND',
-      { resource, id }
+      {
+        extensions: {
+          code: 'NOT_FOUND',
+          resource,
+          id
+        }
+      }
     );
     this.name = 'NotFoundError';
   }
 }
 
 // Error for business logic violations
-class BusinessRuleError extends ApolloError {
+class BusinessRuleError extends GraphQLError {
   constructor(message, rule, details = {}) {
-    super(message, 'BUSINESS_RULE_VIOLATION', { rule, ...details });
+    super(message, {
+      extensions: {
+        code: 'BUSINESS_RULE_VIOLATION',
+        rule,
+        ...details
+      }
+    });
     this.name = 'BusinessRuleError';
   }
 }
 
 // Error for rate limiting
-class RateLimitError extends ApolloError {
+class RateLimitError extends GraphQLError {
   constructor(retryAfter) {
     super(
       `Rate limit exceeded. Please try again in ${retryAfter} seconds.`,
-      'RATE_LIMITED',
-      { retryAfter }
+      {
+        extensions: {
+          code: 'RATE_LIMITED',
+          retryAfter
+        }
+      }
     );
     this.name = 'RateLimitError';
   }
@@ -519,20 +577,21 @@ Configure Apollo Server to format errors appropriately for production.
 
 ```javascript
 // server.js - Apollo Server configuration with error formatting
-const { ApolloServer } = require('apollo-server');
+const { ApolloServer } = require('@apollo/server');
+const { startStandaloneServer } = require('@apollo/server/standalone');
 
 const server = new ApolloServer({
   typeDefs,
   resolvers,
 
   // Format errors before sending to client
-  formatError: (error) => {
+  formatError: (formattedError, error) => {
     // Log all errors for debugging
     console.error('GraphQL Error:', {
-      message: error.message,
-      code: error.extensions?.code,
-      path: error.path,
-      stack: error.extensions?.exception?.stacktrace
+      message: formattedError.message,
+      code: formattedError.extensions?.code,
+      path: formattedError.path,
+      stack: error.stack
     });
 
     // In production, hide internal error details
@@ -548,32 +607,43 @@ const server = new ApolloServer({
         'RATE_LIMITED'
       ];
 
-      if (safeErrors.includes(error.extensions?.code)) {
-        return error;
+      if (safeErrors.includes(formattedError.extensions?.code)) {
+        return formattedError;
       }
 
       // Hide internal server errors
-      return new ApolloError(
-        'An unexpected error occurred',
-        'INTERNAL_SERVER_ERROR'
-      );
+      return {
+        message: 'An unexpected error occurred',
+        extensions: {
+          code: 'INTERNAL_SERVER_ERROR'
+        }
+      };
     }
 
     // In development, return full error details
-    return error;
-  },
-
-  // Add request context
-  context: async ({ req }) => {
-    const token = req.headers.authorization?.replace('Bearer ', '');
-    const user = token ? await verifyToken(token) : null;
-
-    return {
-      user,
-      db,
-      loaders: createDataLoaders()
-    };
+    return formattedError;
   }
+});
+
+async function startServer() {
+  await startStandaloneServer(server, {
+    // Add request context
+    context: async ({ req }) => {
+      const token = req.headers.authorization?.replace('Bearer ', '');
+      const user = token ? await verifyToken(token) : null;
+
+      return {
+        user,
+        db,
+        loaders: createDataLoaders()
+      };
+    }
+  });
+}
+
+startServer().catch((error) => {
+  console.error('Failed to start GraphQL server:', error);
+  process.exit(1);
 });
 ```
 
@@ -585,7 +655,8 @@ Handle mutation errors gracefully on the client.
 
 ```javascript
 // React component with proper error handling
-import { useMutation } from '@apollo/client';
+import { gql, useMutation } from '@apollo/client';
+import { CombinedGraphQLErrors } from '@apollo/client/errors';
 import { useState } from 'react';
 
 const CREATE_USER = gql`
@@ -617,44 +688,45 @@ function CreateUserForm() {
       setGeneralError(null);
 
       // Extract GraphQL errors
-      const graphqlErrors = error.graphQLErrors || [];
+      if (CombinedGraphQLErrors.is(error)) {
+        const graphqlErrors = error.errors;
 
-      for (const err of graphqlErrors) {
-        const code = err.extensions?.code;
+        for (const err of graphqlErrors) {
+          const code = err.extensions?.code;
 
-        switch (code) {
-          case 'VALIDATION_ERROR':
-            // Map validation errors to form fields
-            const validationErrors = err.extensions?.validationErrors || [];
-            const fieldErrors = {};
+          switch (code) {
+            case 'VALIDATION_ERROR':
+              // Map validation errors to form fields
+              const validationErrors = err.extensions?.validationErrors || [];
+              const fieldErrors = {};
 
-            validationErrors.forEach(({ field, message }) => {
-              fieldErrors[field] = message;
-            });
+              validationErrors.forEach(({ field, message }) => {
+                fieldErrors[field] = message;
+              });
 
-            setFormErrors(fieldErrors);
-            break;
+              setFormErrors(fieldErrors);
+              break;
 
-          case 'BAD_USER_INPUT':
-            // Handle input errors
-            const invalidArgs = err.extensions?.invalidArgs || [];
-            setGeneralError(err.message);
-            break;
+            case 'BAD_USER_INPUT':
+              // Handle input errors
+              setGeneralError(err.message);
+              break;
 
-          case 'UNAUTHENTICATED':
-            // Redirect to login
-            window.location.href = '/login';
-            break;
+            case 'UNAUTHENTICATED':
+              // Redirect to login
+              window.location.href = '/login';
+              break;
 
-          default:
-            setGeneralError(err.message || 'An error occurred');
+            default:
+              setGeneralError(err.message || 'An error occurred');
+          }
         }
+
+        return;
       }
 
       // Handle network errors
-      if (error.networkError) {
-        setGeneralError('Network error. Please check your connection.');
-      }
+      setGeneralError('Network error. Please check your connection.');
     }
   });
 
