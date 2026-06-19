@@ -320,7 +320,7 @@ policies:
 
 Every on-call engineer needs a quick reference:
 
-```markdown
+````markdown
 # On-Call Quick Reference
 
 ## First 5 Minutes of Your Shift
@@ -372,21 +372,21 @@ kubectl logs -l app=api --tail=100 | grep -i "slow query"
 
 ## Restart if needed
 kubectl rollout restart deployment/api
-```bash
+```
 
 ### Database Connection Pool Exhausted
 ```bash
 ## Kill idle connections
 psql -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity
          WHERE state = 'idle' AND query_start < now() - interval '10 minutes';"
-```bash
+```
 
 ### Out of Memory Pods
 ```bash
 ## Find and restart OOMKilled pods
 kubectl get pods | grep OOMKilled
 kubectl delete pod [POD_NAME]
-```bash
+```
 
 ## When to Escalate
 
@@ -403,7 +403,7 @@ Escalate immediately if:
 - Database Team: [PHONE]
 - Security Team: [PHONE]
 - VP Engineering: [PHONE] (severe outages only)
-```text
+````
 
 ## Track On-Call Health Metrics
 
@@ -491,7 +491,7 @@ class OnCallMetrics:
                 AVG(escalation_rate) as avg_escalation
             FROM oncall_shift_reports
             WHERE team_id = %s
-            AND shift_end > NOW() - INTERVAL '%s weeks'
+            AND shift_end > NOW() - (%s * INTERVAL '1 week')
         """, (team_id, weeks))
 
         health_score = self._calculate_health_score(stats)
@@ -523,6 +523,21 @@ class OnCallMetrics:
             score -= min(30, (stats['avg_escalation'] - 0.2) * 100)
 
         return max(0, score)
+
+    def _get_recommendations(self, stats):
+        """Return improvement suggestions based on team health metrics"""
+        recommendations = []
+
+        if stats['avg_pages'] > 10:
+            recommendations.append("Reduce noisy or low-value alerts")
+        if stats['avg_after_hours'] > 0.3:
+            recommendations.append("Move non-urgent work out of after-hours paging")
+        if stats['avg_ack_time'] > 10:
+            recommendations.append("Improve alert routing and notification reliability")
+        if stats['avg_escalation'] > 0.2:
+            recommendations.append("Improve runbooks and team training")
+
+        return recommendations or ["Maintain current on-call practices"]
 ```
 
 ## Best Practices Summary
