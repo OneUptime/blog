@@ -113,7 +113,7 @@ export function UserProfile({ userId }: { userId: number }) {
 
 ## Proper Cleanup with AbortController
 
-Always clean up ongoing requests to prevent memory leaks and race conditions:
+Clean up ongoing requests to avoid stale updates, unnecessary network work, and race conditions:
 
 ```tsx
 // components/UserProfileWithCleanup.tsx
@@ -210,6 +210,8 @@ export function SearchResults({ query }: { query: string }) {
     // Skip empty queries
     if (!query.trim()) {
       setResults([]);
+      setLoading(false);
+      setError(null);
       return;
     }
 
@@ -419,9 +421,11 @@ export function SearchInput() {
   useEffect(() => {
     if (!debouncedQuery.trim()) {
       setResults([]);
+      setLoading(false);
       return;
     }
 
+    let isCurrent = true;
     const abortController = new AbortController();
 
     const search = async () => {
@@ -436,19 +440,24 @@ export function SearchInput() {
         if (!response.ok) throw new Error('Search failed');
 
         const data: SearchResult[] = await response.json();
-        setResults(data);
+        if (isCurrent) {
+          setResults(data);
+        }
       } catch (err) {
-        if (err instanceof Error && err.name !== 'AbortError') {
+        if (isCurrent && err instanceof Error && err.name !== 'AbortError') {
           console.error('Search error:', err);
         }
       } finally {
-        setLoading(false);
+        if (isCurrent) {
+          setLoading(false);
+        }
       }
     };
 
     search();
 
     return () => {
+      isCurrent = false;
       abortController.abort();
     };
   }, [debouncedQuery]); // Only fetch when debounced value changes
@@ -496,7 +505,7 @@ useEffect(() => {
 ### Mistake 2: Not Handling Cleanup
 
 ```tsx
-// BAD: No cleanup - can cause memory leaks
+// BAD: No cleanup - can leave stale requests running
 useEffect(() => {
   fetch('/api/data')
     .then((res) => res.json())
@@ -577,7 +586,7 @@ sequenceDiagram
 | Pattern | Use Case |
 |---------|----------|
 | Basic fetch | Simple one-time data loading |
-| AbortController | Prevent state updates after unmount |
+| AbortController | Cancel requests during cleanup |
 | Race condition flag | Handle rapid dependency changes |
 | Custom useFetch hook | Reusable fetching logic |
 | Promise.all | Multiple parallel requests |
