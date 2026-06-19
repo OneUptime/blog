@@ -104,7 +104,7 @@ kubectl exec dns-test -- nslookup myservice
 kubectl get svc myservice
 
 # Check service has endpoints
-kubectl get endpoints myservice
+kubectl get endpointslice -l kubernetes.io/service-name=myservice
 
 # Common cause: Service selector does not match pod labels
 kubectl describe svc myservice
@@ -116,9 +116,6 @@ kubectl get pods --show-labels
 ```bash
 # Test external resolution
 kubectl exec dns-test -- nslookup google.com
-
-# If failing, check CoreDNS can reach upstream
-kubectl exec -n kube-system -it coredns-xxx -- cat /etc/resolv.conf
 
 # Check CoreDNS ConfigMap for upstream servers
 kubectl get configmap coredns -n kube-system -o yaml
@@ -153,14 +150,14 @@ spec:
       image: myapp:v1
 ```
 
-Or use FQDN with trailing dot in your code:
+Or use FQDN with a trailing dot when your client and upstream service support it:
 
-```python
+```bash
 # Instead of
-requests.get("http://api.example.com/endpoint")
+curl http://api.example.com/endpoint
 
 # Use trailing dot
-requests.get("http://api.example.com./endpoint")
+curl http://api.example.com./endpoint
 ```
 
 ## Debugging Tools
@@ -190,14 +187,11 @@ kubectl exec dnsutils -- dig @10.96.0.10 myservice.default.svc.cluster.local
 kubectl exec dnsutils -- nslookup -debug kubernetes
 ```
 
-### Testing from CoreDNS Pod
+### Testing the CoreDNS Service Directly
 
 ```bash
-# Get CoreDNS pod name
-COREDNS_POD=$(kubectl get pods -n kube-system -l k8s-app=kube-dns -o jsonpath='{.items[0].metadata.name}')
-
-# Check CoreDNS can resolve
-kubectl exec -n kube-system $COREDNS_POD -- nslookup kubernetes.default
+# Check CoreDNS service can resolve
+kubectl exec dnsutils -- dig @10.96.0.10 kubernetes.default.svc.cluster.local
 ```
 
 ## CoreDNS Configuration
@@ -397,24 +391,18 @@ kubectl autoscale deployment coredns -n kube-system --min=2 --max=10 --cpu-perce
 
 For large clusters, use node-local DNS cache:
 
-```yaml
-apiVersion: apps/v1
-kind: DaemonSet
-metadata:
-  name: node-local-dns
-  namespace: kube-system
-spec:
-  selector:
-    matchLabels:
-      k8s-app: node-local-dns
-  template:
-    metadata:
-      labels:
-        k8s-app: node-local-dns
-    spec:
-      containers:
-        - name: node-cache
-          image: registry.k8s.io/dns/k8s-dns-node-cache:1.22.20
+```bash
+# Download the official sample manifest
+wget https://raw.githubusercontent.com/kubernetes/kubernetes/master/cluster/addons/dns/nodelocaldns/nodelocaldns.yaml
+
+# Substitute the variables for your cluster before applying
+kubedns=$(kubectl get svc kube-dns -n kube-system -o jsonpath='{.spec.clusterIP}')
+domain=cluster.local
+localdns=169.254.20.10
+
+sed -i "s/__PILLAR__LOCAL__DNS__/$localdns/g; s/__PILLAR__DNS__DOMAIN__/$domain/g; s/__PILLAR__DNS__SERVER__/$kubedns/g" nodelocaldns.yaml
+
+kubectl create -f nodelocaldns.yaml
 ```
 
 ## Monitoring DNS
@@ -425,7 +413,7 @@ spec:
 # Key metrics to monitor
 coredns_dns_requests_total        # Total requests
 coredns_dns_responses_total       # Total responses by rcode
-coredns_forward_requests_total    # Forwarded requests
+sum(coredns_proxy_request_duration_seconds_count{proxy_name="forward"})  # Forwarded requests
 coredns_cache_hits_total          # Cache hit rate
 ```
 
@@ -458,9 +446,9 @@ groups:
 ## Quick Fixes Checklist
 
 1. Check CoreDNS pods are running
-2. Verify kube-dns service exists and has endpoints
+2. Verify kube-dns service exists and has EndpointSlices
 3. Test DNS from debug pod
-4. Check service exists and has endpoints
+4. Check service exists and has EndpointSlices
 5. Verify pod network connectivity to DNS service
 6. Review CoreDNS logs for errors
 7. Check if ndots causing slow resolution
