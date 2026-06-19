@@ -301,7 +301,10 @@ class Processor {
   public process(data: string): string;
   private process(data: number): number;  // ERROR
   process(data: string | number): string | number {
-    // ...
+    if (typeof data === 'string') {
+      return data.toUpperCase();
+    }
+    return data * 2;
   }
 }
 
@@ -327,24 +330,30 @@ function processAny(data: string | number): string | number {
 
 ```typescript
 // Instead of multiple overloads
-export function parse<T extends string | number | boolean>(
+type ParseType = 'string' | 'number' | 'boolean';
+type ParsedValue<T extends ParseType> =
+  T extends 'number' ? number :
+  T extends 'boolean' ? boolean :
+  string;
+
+export function parse<T extends ParseType>(
   value: string,
-  type: 'string' | 'number' | 'boolean'
-): T {
+  type: T
+): ParsedValue<T> {
   switch (type) {
     case 'string':
-      return value as T;
+      return value as ParsedValue<T>;
     case 'number':
-      return Number(value) as T;
+      return Number(value) as ParsedValue<T>;
     case 'boolean':
-      return (value === 'true') as T;
+      return (value === 'true') as ParsedValue<T>;
   }
 }
 
 // Usage
-const str = parse<string>('hello', 'string');  // string
-const num = parse<number>('42', 'number');     // number
-const bool = parse<boolean>('true', 'boolean'); // boolean
+const str = parse('hello', 'string');  // string
+const num = parse('42', 'number');     // number
+const bool = parse('true', 'boolean'); // boolean
 ```
 
 ## Decision Flow for Export Modifiers
