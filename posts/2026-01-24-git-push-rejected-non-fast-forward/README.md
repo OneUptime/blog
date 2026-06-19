@@ -12,7 +12,7 @@ You try to push your changes and Git responds with "rejected - non-fast-forward.
 
 ## Understanding the Error
 
-The non-fast-forward error occurs when your local branch has diverged from the remote branch. The remote has commits that you do not have locally.
+The non-fast-forward error occurs when the remote branch is not an ancestor of the commit you are trying to push. Often, your local branch has diverged from the remote branch, and the remote has commits that you do not have locally.
 
 ```bash
 # Attempt to push
@@ -356,7 +356,7 @@ flowchart TD
 
 ## Summary
 
-The non-fast-forward error is Git preventing you from accidentally overwriting commits on the remote. The safe path is always to pull first, integrate remote changes, then push. Force pushing has its place for personal branches and after rebasing, but should never be done on shared branches without coordination.
+The non-fast-forward error is Git preventing you from accidentally overwriting commits on the remote. For ordinary collaboration, the safe path is to pull first, integrate remote changes, then push. Force pushing has its place for personal branches and after rebasing, but should never be done on shared branches without coordination.
 
 Key takeaways:
 - Pull before push to avoid the error
