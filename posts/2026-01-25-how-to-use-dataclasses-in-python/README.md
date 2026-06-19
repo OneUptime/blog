@@ -53,6 +53,8 @@ print(user1 == user2)  # False - different values
 ### Comparing to Traditional Classes
 
 ```python
+from dataclasses import dataclass
+
 # Without dataclasses - lots of boilerplate
 class TraditionalUser:
     def __init__(self, name, email, age):
@@ -116,7 +118,7 @@ print(post.tags)  # [] - empty list, not shared between instances
 print(post.created_at)  # Current timestamp
 
 # IMPORTANT: Never use mutable default values directly
-# BAD: tags: List[str] = []  # This list would be shared!
+# BAD: tags: List[str] = []  # Raises ValueError; use a factory instead
 # GOOD: tags: List[str] = field(default_factory=list)
 ```
 
@@ -215,7 +217,7 @@ try:
 except AttributeError as e:
     print(f"Cannot modify frozen dataclass: {e}")
 
-# Frozen dataclasses can be used in sets and as dict keys
+# Frozen dataclasses with hashable fields can be used in sets and as dict keys
 points = {Point(0, 0), Point(1, 1), Point(0, 0)}
 print(len(points))  # 2 - duplicates removed
 
@@ -289,7 +291,7 @@ admin = Admin(
 ## Comparison and Ordering
 
 ```python
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 @dataclass(order=True)
 class Version:
@@ -483,4 +485,3 @@ Use dataclasses for any class that primarily holds data. They make your code cle
 ---
 
 *Building Python applications with complex data models? [OneUptime](https://oneuptime.com) helps you monitor your applications and catch issues before they impact users.*
-
