@@ -211,19 +211,32 @@ For non-federated architectures, schema stitching provides explicit merge strate
 
 ```javascript
 const { stitchSchemas } = require('@graphql-tools/stitch');
-const { delegateToSchema } = require('@graphql-tools/delegate');
 
 // Stitch multiple schemas together with explicit conflict resolution
 const gatewaySchema = stitchSchemas({
   subschemas: [
     {
       schema: usersSchema,
-      // Transforms modify the schema before stitching
-      transforms: [],
+      // Define how this subschema resolves merged User objects
+      merge: {
+        User: {
+          selectionSet: '{ id }',
+          fieldName: 'user',
+          args: (originalObject) => ({ id: originalObject.id }),
+          canonical: true,
+        },
+      },
     },
     {
       schema: ordersSchema,
-      transforms: [],
+      merge: {
+        User: {
+          selectionSet: '{ id }',
+          // Assumes the orders subschema exposes ordersUser(id: ID!): User
+          fieldName: 'ordersUser',
+          args: (originalObject) => ({ id: originalObject.id }),
+        },
+      },
     },
     {
       schema: productsSchema,
@@ -231,27 +244,14 @@ const gatewaySchema = stitchSchemas({
     },
   ],
 
-  // Type merge configuration resolves conflicts between services
-  typeMergingOptions: {
-    // Define how to merge User type from multiple services
-    User: {
-      // Specify which service is the canonical source for User
-      selectionSet: '{ id }',
-      // Define how to resolve User fields from different services
-      fieldName: 'user',
-      args: (originalObject) => ({ id: originalObject.id }),
-    },
-  },
-
-  // Merge specific types with custom logic
+  // Automatically merge duplicate object, interface, input, enum, and union types
   mergeTypes: true,
 
-  // Custom type merge config for complex cases
+  // Custom candidate selection for complex cases
   typeMergingOptions: {
     typeCandidateMerger: (candidates) => {
-      // Custom logic to pick the winning type definition
-      // when multiple services define the same type
-      return candidates.find(c => c.subschema.name === 'users') || candidates[0];
+      // Prefer the first candidate when no canonical definition is configured
+      return candidates[0];
     },
   },
 });
@@ -309,7 +309,7 @@ flowchart TD
 ```javascript
 // schema/base.js
 // Define shared types and interfaces that all modules use
-const baseTypeDefs = gql`
+const baseTypeDefs = /* GraphQL */ `
   # Standard scalars used across all modules
   scalar DateTime
   scalar JSON
@@ -339,7 +339,7 @@ module.exports = baseTypeDefs;
 ```javascript
 // schema/user.js
 // User module owns all user-related types
-const userTypeDefs = gql`
+const userTypeDefs = /* GraphQL */ `
   # Extend the base Query type - don't redefine it
   extend type Query {
     user(id: ID!): User
@@ -403,7 +403,7 @@ module.exports = userTypeDefs;
 ```javascript
 // schema/order.js
 // Order module extends User without redefining it
-const orderTypeDefs = gql`
+const orderTypeDefs = /* GraphQL */ `
   extend type Query {
     order(id: ID!): Order
     orders(userId: ID, first: Int, after: String): OrderConnection!
@@ -486,7 +486,8 @@ module.exports = orderTypeDefs;
 ### Merging Modular Schemas
 
 ```javascript
-const { makeExecutableSchema, mergeTypeDefs, mergeResolvers } = require('@graphql-tools/schema');
+const { makeExecutableSchema } = require('@graphql-tools/schema');
+const { mergeTypeDefs, mergeResolvers } = require('@graphql-tools/merge');
 
 // Import all type definitions
 const baseTypeDefs = require('./schema/base');
@@ -501,7 +502,7 @@ const orderResolvers = require('./resolvers/order');
 const productResolvers = require('./resolvers/product');
 
 // Root type definitions that other modules extend
-const rootTypeDefs = gql`
+const rootTypeDefs = /* GraphQL */ `
   type Query {
     _empty: String
   }
@@ -549,7 +550,7 @@ Use tooling to catch conflicts early in development.
 
 ```javascript
 // scripts/validate-schema.js
-const { buildSchema, validateSchema, printSchema } = require('graphql');
+const { buildASTSchema, validateSchema } = require('graphql');
 const { mergeTypeDefs } = require('@graphql-tools/merge');
 
 async function validateMergedSchema() {
@@ -560,12 +561,10 @@ async function validateMergedSchema() {
     const merged = mergeTypeDefs(typeDefs, {
       // Throw on conflicts instead of silently picking one
       throwOnConflict: true,
-      // Include comments and descriptions
-      commentDescriptions: true,
     });
 
     // Build and validate the schema
-    const schema = buildSchema(printSchema(merged));
+    const schema = buildASTSchema(merged);
     const errors = validateSchema(schema);
 
     if (errors.length > 0) {
@@ -638,29 +637,15 @@ Enums require special handling when merged from multiple sources.
 ```javascript
 const { mergeTypeDefs } = require('@graphql-tools/merge');
 
-// Custom enum merge strategy
-const mergeEnums = (candidates) => {
-  // Collect all enum values from all candidates
-  const allValues = new Set();
-
-  candidates.forEach(candidate => {
-    candidate.values.forEach(value => {
-      allValues.add(value.name);
-    });
-  });
-
-  return Array.from(allValues);
-};
-
 // Schema with potential enum conflicts
-const schema1 = gql`
+const schema1 = /* GraphQL */ `
   enum Status {
     ACTIVE
     INACTIVE
   }
 `;
 
-const schema2 = gql`
+const schema2 = /* GraphQL */ `
   enum Status {
     ACTIVE
     PENDING
@@ -670,17 +655,8 @@ const schema2 = gql`
 
 // Merge with enum handling
 const merged = mergeTypeDefs([schema1, schema2], {
-  // Custom merge for enum types
-  onTypeConflict: (type1, type2, info) => {
-    if (type1.kind === 'EnumTypeDefinition') {
-      console.warn(`Merging enum ${type1.name.value} from multiple sources`);
-      // Return the type with more values, or merge values
-      const values1 = type1.values?.length || 0;
-      const values2 = type2.values?.length || 0;
-      return values2 > values1 ? type2 : type1;
-    }
-    return type2; // Default: later type wins
-  },
+  // Throw on incompatible fields while allowing enum values to be consolidated
+  throwOnConflict: true,
 });
 ```
 
