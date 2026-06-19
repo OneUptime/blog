@@ -54,7 +54,7 @@ Platform configurations:
 
 Implicit grant and hybrid flows:
 - Access tokens: Disabled (use auth code flow)
-- ID tokens: Enabled if using OpenID Connect
+- ID tokens: Disabled unless using implicit or hybrid OpenID Connect responses
 ```
 
 ### Create Client Secret
@@ -70,21 +70,27 @@ AZURE_AD_TENANT_ID=your-tenant-id-or-common
 AZURE_AD_CLIENT_ID=your-application-client-id
 AZURE_AD_CLIENT_SECRET=your-client-secret
 AZURE_AD_REDIRECT_URI=https://myapp.example.com/auth/callback
+AZURE_AD_FLASK_SECRET_KEY=your-random-flask-secret-key
 ```
 
 ## Implement Authorization Code Flow
 
 ```python
+import base64
+import hashlib
 import os
 import secrets
 import requests
-from flask import Flask, redirect, request, session
+from flask import Flask, redirect, request, session, url_for
 from urllib.parse import urlencode
 
 TENANT_ID = os.environ["AZURE_AD_TENANT_ID"]
 CLIENT_ID = os.environ["AZURE_AD_CLIENT_ID"]
 CLIENT_SECRET = os.environ["AZURE_AD_CLIENT_SECRET"]
 REDIRECT_URI = os.environ["AZURE_AD_REDIRECT_URI"]
+
+app = Flask(__name__)
+app.secret_key = os.environ["AZURE_AD_FLASK_SECRET_KEY"]
 
 AUTHORITY = f"https://login.microsoftonline.com/{TENANT_ID}"
 AUTHORIZE_URL = f"{AUTHORITY}/oauth2/v2.0/authorize"
@@ -93,7 +99,13 @@ TOKEN_URL = f"{AUTHORITY}/oauth2/v2.0/token"
 @app.route("/login")
 def login():
     state = secrets.token_urlsafe(32)
+    code_verifier = secrets.token_urlsafe(64)
+    code_challenge = base64.urlsafe_b64encode(
+        hashlib.sha256(code_verifier.encode()).digest()
+    ).rstrip(b"=").decode()
+
     session["oauth_state"] = state
+    session["code_verifier"] = code_verifier
 
     params = {
         "client_id": CLIENT_ID,
@@ -101,6 +113,8 @@ def login():
         "redirect_uri": REDIRECT_URI,
         "scope": "openid profile email User.Read",
         "state": state,
+        "code_challenge": code_challenge,
+        "code_challenge_method": "S256",
         "prompt": "select_account"
     }
 
@@ -121,6 +135,7 @@ def callback():
         "client_id": CLIENT_ID,
         "client_secret": CLIENT_SECRET,
         "code": code,
+        "code_verifier": session.pop("code_verifier", ""),
         "redirect_uri": REDIRECT_URI,
         "grant_type": "authorization_code"
     })
