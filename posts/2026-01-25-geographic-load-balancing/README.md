@@ -49,12 +49,12 @@ PowerDNS combined with the GeoIP backend provides a solid foundation for geograp
 # Install PowerDNS with GeoIP backend
 
 sudo apt-get update
-sudo apt-get install pdns-server pdns-backend-geoip
+sudo apt-get install pdns-server pdns-backend-geoip geoipupdate
 
 # Download MaxMind GeoLite2 database
-# Note: Requires free registration at maxmind.com
-wget -O /usr/share/GeoIP/GeoLite2-City.mmdb \
-    "https://download.maxmind.com/app/geoip_download?edition_id=GeoLite2-City&suffix=tar.gz"
+# Note: Requires a MaxMind account ID and license key
+# Configure /etc/GeoIP.conf with AccountID, LicenseKey, and EditionIDs GeoLite2-City
+sudo geoipupdate -f /etc/GeoIP.conf
 ```
 
 Configure PowerDNS to use GeoIP:
@@ -74,38 +74,40 @@ domains:
   - domain: example.com
     ttl: 300
     records:
-      # Default record for unknown locations
+      example.com:
+        - soa: ns1.example.com admin.example.com 2026012501 3600 600 86400 60
+        - ns: ns1.example.com
+      ns1.example.com:
+        - a: 192.168.1.10
+
+      # Regional targets
+      us.api.example.com:
+        - a:
+            content: 192.168.1.10  # US East
+            ttl: 60
+      eu.api.example.com:
+        - a:
+            content: 192.168.2.10  # EU West
+            ttl: 60
+      ap.api.example.com:
+        - a:
+            content: 192.168.3.10  # Asia Pacific
+            ttl: 60
       api.example.com:
         - a:
             content: 192.168.1.10
             ttl: 60
 
-      # Geographic overrides
-      api.example.com:
-        - a:
-            content: 192.168.1.10  # US East
-            ttl: 60
-            geoip:
-              continents: ["NA"]
-              countries: ["US", "CA", "MX"]
-
-        - a:
-            content: 192.168.2.10  # EU West
-            ttl: 60
-            geoip:
-              continents: ["EU"]
-
-        - a:
-            content: 192.168.3.10  # Asia Pacific
-            ttl: 60
-            geoip:
-              continents: ["AS", "OC"]
-              countries: ["JP", "KR", "AU", "SG", "IN"]
-
     services:
-      # Health check configuration
       api.example.com:
-        default: ["192.168.1.10"]
+        default: ["%mp.api.example.com", "us.api.example.com"]
+
+    mapping_lookup_formats: ["%cn"]
+    custom_mapping:
+      na: us
+      eu: eu
+      as: ap
+      oc: ap
 ```
 
 ## Implementing with BIND and GeoIP Views
@@ -477,14 +479,13 @@ for ip, description in test_ips:
 Verify your geo routing works correctly from different locations:
 
 ```bash
-# Test using DNS servers in different regions
-# This shows what IP each region would receive
+# Test by sending EDNS Client Subnet hints for different client networks
 
-echo "Testing from US perspective (Google DNS):"
-dig @8.8.8.8 api.example.com +short
+echo "Testing with a US client subnet:"
+dig @8.8.8.8 api.example.com +subnet=8.8.8.0/24 +short
 
-echo "Testing from EU perspective (Cloudflare London):"
-dig @1.1.1.1 api.example.com +short
+echo "Testing with a European client subnet:"
+dig @8.8.8.8 api.example.com +subnet=2.16.0.0/24 +short
 
 # Use online tools for more comprehensive testing
 # - https://www.whatsmydns.net
