@@ -71,8 +71,8 @@ The most common cause of 503 errors is that there are no healthy upstream hosts.
 Verify the target service has healthy endpoints:
 
 ```bash
-# Check if the service has endpoints
-kubectl get endpoints target-service -n your-namespace
+# Check if the service has EndpointSlices
+kubectl get endpointslice -n your-namespace -l kubernetes.io/service-name=target-service
 
 # Check pod readiness
 kubectl get pods -n your-namespace -l app=target-app
@@ -81,7 +81,7 @@ kubectl get pods -n your-namespace -l app=target-app
 kubectl describe pod target-pod -n your-namespace
 ```
 
-If endpoints are empty, your pods might be:
+If EndpointSlices are empty or have no ready endpoints, your pods might be:
 - Not running (check deployment)
 - Not passing readiness probes
 - Not matching the service selector
@@ -151,7 +151,7 @@ spec:
 Ensure you have a matching DestinationRule:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service-dr
@@ -207,7 +207,7 @@ spec:
 
 ## Step 5: Check for mTLS Issues
 
-mTLS misconfigurations often manifest as 503 errors with "UF" (Upstream connection Failure) flags.
+mTLS misconfigurations often manifest as 503 errors with "UF" (Upstream connection failure) flags.
 
 Verify TLS settings are consistent:
 
@@ -223,7 +223,7 @@ Ensure they match:
 
 ```yaml
 # If PeerAuthentication is STRICT
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -231,8 +231,8 @@ spec:
   mtls:
     mode: STRICT
 ---
-# DestinationRule must use ISTIO_MUTUAL
-apiVersion: networking.istio.io/v1beta1
+# DestinationRule should omit tls to allow auto mTLS, or explicitly use ISTIO_MUTUAL
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service-dr
@@ -257,7 +257,7 @@ kubectl get service target-service -o yaml
 kubectl exec -it target-pod -- netstat -tlnp
 ```
 
-Ensure the service port matches the container port:
+Ensure the service targetPort matches the port the application listens on, or a named containerPort:
 
 ```yaml
 apiVersion: v1
@@ -267,7 +267,7 @@ metadata:
 spec:
   ports:
   - port: 8080        # What clients connect to
-    targetPort: 8080  # Must match container port
+    targetPort: 8080  # Must match the application's listening port
     name: http        # Name is important for Istio protocol detection
 ```
 
@@ -304,8 +304,8 @@ For ingress traffic, gateway misconfigurations cause 503 errors.
 Verify the gateway is correctly configured:
 
 ```bash
-# Check gateway status
-kubectl get gateway -n your-namespace -o yaml
+# Check Istio gateway status
+kubectl get gateways.networking.istio.io -n your-namespace -o yaml
 
 # Check if the ingress gateway pod is healthy
 kubectl get pods -n istio-system -l istio=ingressgateway
@@ -314,7 +314,7 @@ kubectl get pods -n istio-system -l istio=ingressgateway
 Ensure the VirtualService is bound to the gateway:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-vs
