@@ -105,6 +105,7 @@ interface User {
   id: string;
   name: string;
   email: string;
+  avatar?: string;
 }
 
 interface UserContextValue {
@@ -206,7 +207,6 @@ import {
   createContext,
   useContext,
   useReducer,
-  useMemo,
   ReactNode,
   Dispatch,
 } from 'react';
@@ -325,6 +325,12 @@ function CartSummary() {
 }
 
 // This component never re-renders due to cart state changes
+interface Product {
+  id: string;
+  name: string;
+  price: number;
+}
+
 function AddToCartButton({ product }: { product: Product }) {
   const dispatch = useCartDispatch();
 
@@ -339,36 +345,9 @@ function AddToCartButton({ product }: { product: Product }) {
 }
 ```
 
-## Solution 3: Use React.memo with Context Selectors
+## Solution 3: Use Context Selectors
 
-Create a selector pattern to prevent unnecessary re-renders:
-
-```tsx
-// hooks/useContextSelector.ts
-import { useContext, useRef, useEffect, useState } from 'react';
-
-export function useContextSelector<T, St>(
-  Context: React.Context<T>,
-  selector: (value: T) => St
-): St {
-  const contextValue = useContext(Context);
-  const selectedValueRef = useRef<St>(selector(contextValue));
-  const [, forceRender] = useState({});
-
-  const selectedValue = selector(contextValue);
-
-  useEffect(() => {
-    if (!Object.is(selectedValueRef.current, selectedValue)) {
-      selectedValueRef.current = selectedValue;
-      forceRender({});
-    }
-  }, [selectedValue]);
-
-  return selectedValue;
-}
-```
-
-For a more robust solution, use the `use-context-selector` library:
+A custom hook built on React's `useContext` still subscribes the component to the whole context value, so it cannot prevent the initial re-render. For selector-based subscriptions, use a library such as `use-context-selector`:
 
 ```tsx
 // Using use-context-selector library
@@ -393,9 +372,9 @@ function ThemeDisplay() {
 }
 ```
 
-## Solution 4: Memoize Consumer Components
+## Solution 4: Memoize Child Components
 
-Wrap consuming components with React.memo:
+Wrapping a component that reads context with `React.memo` does not prevent it from re-rendering when that context changes. Instead, read the context in a small wrapper component and pass the specific values to a memoized child:
 
 ```tsx
 // components/UserProfile.tsx
@@ -403,18 +382,34 @@ import { memo } from 'react';
 import { useUser } from '../contexts/UserContext';
 
 interface UserProfileProps {
+  name: string;
+  avatar?: string;
   showAvatar?: boolean;
 }
 
-export const UserProfile = memo(function UserProfile({ showAvatar = true }: UserProfileProps) {
+export function UserProfile({ showAvatar = true }: Pick<UserProfileProps, 'showAvatar'>) {
   const { user } = useUser();
 
   if (!user) return null;
 
   return (
+    <UserProfileView
+      name={user.name}
+      avatar={user.avatar}
+      showAvatar={showAvatar}
+    />
+  );
+}
+
+const UserProfileView = memo(function UserProfileView({
+  name,
+  avatar,
+  showAvatar = true,
+}: UserProfileProps) {
+  return (
     <div className="user-profile">
-      {showAvatar && <img src={user.avatar} alt={user.name} />}
-      <span>{user.name}</span>
+      {showAvatar && avatar && <img src={avatar} alt={name} />}
+      <span>{name}</span>
     </div>
   );
 });
@@ -435,7 +430,7 @@ flowchart TB
     F -->|No| H{Many Consumers?}
 
     H -->|Yes| I[Use Selectors]
-    H -->|No| J[Memo Components]
+    H -->|No| J[Memo Child Components]
 
     E --> K[Measure Again]
     G --> K
@@ -545,10 +540,10 @@ function Header() {
 
 ## Best Practices Summary
 
-1. **Always memoize context values** using useMemo
+1. **Memoize context values** that contain objects or functions recreated during render
 2. **Split contexts** by update frequency and domain
 3. **Separate state from dispatch** in reducer patterns
-4. **Use React.memo** on context consumers
+4. **Use React.memo** on child components that receive selected context values as props
 5. **Profile before optimizing** with React DevTools
 6. **Consider alternatives** like Zustand for complex state
 
