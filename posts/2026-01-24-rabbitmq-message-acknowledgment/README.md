@@ -251,6 +251,13 @@ class BatchAckConsumer:
             # On error, nack only the failed message
             ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
 
+    def flush_acks(self, ch):
+        """Acknowledge any processed messages that did not fill a batch."""
+        if self.message_count > 0 and self.last_delivery_tag is not None:
+            ch.basic_ack(delivery_tag=self.last_delivery_tag, multiple=True)
+            print(f"Final batch acknowledged: {self.message_count} messages")
+            self.message_count = 0
+
     def process(self, body):
         """Process a single message."""
         print(f"Processing: {body.decode()}")
@@ -266,7 +273,11 @@ channel.basic_consume(
     on_message_callback=consumer.callback,
     auto_ack=False
 )
-channel.start_consuming()
+try:
+    channel.start_consuming()
+finally:
+    # Flush pending acknowledgments so processed messages are not redelivered
+    consumer.flush_acks(channel)
 ```
 
 ## Message Flow with Acknowledgments
@@ -306,7 +317,7 @@ curl -u guest:guest http://localhost:15672/api/queues/%2F/task_queue
 
 ## Implementing Acknowledgment Timeout
 
-RabbitMQ 3.x introduced consumer acknowledgment timeout. Configure it:
+RabbitMQ enforces consumer acknowledgment timeouts. In RabbitMQ 4.3 and later, this timeout is only supported by quorum queues. Configure it:
 
 ```ini
 # In rabbitmq.conf
@@ -315,13 +326,14 @@ RabbitMQ 3.x introduced consumer acknowledgment timeout. Configure it:
 consumer_timeout = 1800000
 ```
 
-For long-running tasks, send heartbeats or increase the timeout:
+For long-running tasks, keep connection I/O running for heartbeats and increase the timeout if processing may exceed it:
 
 ```python
 import pika
 import threading
+from functools import partial
 
-def long_running_task(ch, method, body):
+def long_running_task(connection, ch, method, body):
     """
     For long-running tasks, we need to keep the connection alive
     by processing events periodically.
@@ -332,7 +344,8 @@ def long_running_task(ch, method, body):
         time.sleep(300)  # 5 minutes of processing
 
         # Acknowledge after completion
-        ch.basic_ack(delivery_tag=method.delivery_tag)
+        ack_callback = partial(ch.basic_ack, delivery_tag=method.delivery_tag)
+        connection.add_callback_threadsafe(ack_callback)
 
     # Run processing in a thread
     thread = threading.Thread(target=process)
@@ -342,6 +355,9 @@ def long_running_task(ch, method, body):
     # This sends heartbeats and handles other protocol frames
     while thread.is_alive():
         connection.process_data_events(time_limit=1)
+
+    # Process the acknowledgment callback queued by the worker thread
+    connection.process_data_events(time_limit=0)
 ```
 
 ## Publisher Confirms (Producer Acknowledgments)
@@ -367,7 +383,7 @@ def publish_with_confirm(message):
     Returns True if the broker confirmed receipt, False otherwise.
     """
     try:
-        # publish() returns True if the message was confirmed
+        # In publisher-confirmation mode, basic_publish raises on nack or return
         # mandatory=True ensures message is routed to a queue
         channel.basic_publish(
             exchange='',
