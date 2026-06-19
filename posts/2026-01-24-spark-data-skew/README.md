@@ -92,7 +92,7 @@ for row in top_keys:
 
 ## Solution 1: Salting Technique
 
-Salting adds a random prefix to skewed keys, distributing them across multiple partitions. After processing, you remove the salt and aggregate results.
+Salting adds a random suffix to skewed keys, distributing them across multiple partitions. After processing, you remove the salt and aggregate results if the operation requires it.
 
 ```python
 from pyspark.sql.functions import (
@@ -141,19 +141,15 @@ result = salted_df.join(
 
 ## Solution 2: Broadcast Join for Small Tables
 
-When joining a large skewed table with a smaller table, broadcasting the smaller table eliminates shuffle entirely.
+When joining a large skewed table with a smaller table, broadcasting the smaller table can avoid the large shuffle required by a regular shuffle join.
 
 ```python
 from pyspark.sql.functions import broadcast
 
-# Check if lookup table is small enough to broadcast
-lookup_size_mb = spark.sparkContext._jvm.org.apache.spark.util.SizeEstimator.estimate(
-    lookup_df._jdf
-) / (1024 * 1024)
+# Check the optimized plan statistics Spark can use for join planning
+lookup_df.explain(mode="cost")
 
-print(f"Lookup table size: {lookup_size_mb:.2f} MB")
-
-# Broadcast join - no shuffle, no skew issues
+# Broadcast join - avoids the shuffle of a regular shuffle join
 result = large_skewed_df.join(
     broadcast(lookup_df),
     "customer_id",
@@ -168,7 +164,7 @@ spark.conf.set("spark.sql.autoBroadcastJoinThreshold", "100MB")
 
 ## Solution 3: Adaptive Query Execution (AQE)
 
-Spark 3.0+ includes Adaptive Query Execution that automatically handles skew in shuffle partitions.
+Spark 3.0+ includes Adaptive Query Execution that can automatically handle skewed shuffle partitions in joins.
 
 ```python
 # Enable AQE and skew join optimization
@@ -182,7 +178,7 @@ spark.conf.set("spark.sql.adaptive.skewJoin.skewedPartitionFactor", "5")
 # Minimum size for a partition to be considered skewed
 spark.conf.set("spark.sql.adaptive.skewJoin.skewedPartitionThresholdInBytes", "256MB")
 
-# AQE will automatically split skewed partitions during joins
+# AQE can automatically split skewed partitions during joins
 result = skewed_df.join(other_df, "join_key")
 ```
 
@@ -213,7 +209,7 @@ graph TB
 For extreme skew where a few keys dominate, separate processing for those keys can be effective.
 
 ```python
-from pyspark.sql.functions import col, when, lit
+from pyspark.sql.functions import broadcast, col
 
 # Identify highly skewed keys
 skewed_keys = df.groupBy("customer_id") \
@@ -249,7 +245,10 @@ final_result = result_normal.union(result_skewed)
 When the default hash partitioner causes skew, implement custom partitioning logic.
 
 ```python
-from pyspark.sql.functions import col, hash as spark_hash, abs as spark_abs
+from pyspark.sql.functions import (
+    col, count, hash as spark_hash, abs as spark_abs,
+    sum as spark_sum
+)
 
 # Repartition with a custom expression to spread skewed keys
 # Add secondary key to distribute hot keys
@@ -281,7 +280,7 @@ result = df.groupBy("customer_id") \
 NULL values often cause unexpected skew since they all hash to the same partition.
 
 ```python
-from pyspark.sql.functions import col, coalesce, monotonically_increasing_id
+from pyspark.sql.functions import col, coalesce, concat, lit, monotonically_increasing_id
 
 # Check for NULL concentration
 null_count = df.filter(col("join_key").isNull()).count()
@@ -292,7 +291,7 @@ print(f"NULL percentage: {null_count / total_count * 100:.2f}%")
 df_no_nulls = df.withColumn(
     "join_key_safe",
     coalesce(
-        col("join_key"),
+        col("join_key").cast("string"),
         concat(lit("NULL_"), monotonically_increasing_id())
     )
 )
@@ -301,7 +300,8 @@ df_no_nulls = df.withColumn(
 df_with_keys = df.filter(col("join_key").isNotNull())
 df_nulls = df.filter(col("join_key").isNull())
 
-# Process separately and union
+# Process separately and union. Only match NULLs this way if that is your
+# intended business logic; SQL equality joins do not match NULL to NULL.
 result_with_keys = df_with_keys.join(lookup_df, "join_key")
 result_nulls = df_nulls.crossJoin(
     lookup_df.filter(col("join_key").isNull())
