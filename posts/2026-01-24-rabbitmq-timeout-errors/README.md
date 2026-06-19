@@ -50,7 +50,7 @@ nc -zv rabbitmq-host 5672
 # Check if port is open
 telnet rabbitmq-host 5672
 
-# Test with amqp protocol
+# Test the management API
 rabbitmqadmin -H rabbitmq-host -P 15672 list connections
 ```
 
@@ -90,7 +90,7 @@ async function connectWithTimeout() {
         // Socket connection timeout in milliseconds
         timeout: 30000,
 
-        // Heartbeat interval in seconds (0 to disable)
+        // Heartbeat timeout in seconds (0 to disable)
         // Lower values detect dead connections faster but increase traffic
         heartbeat: 60
     };
@@ -156,8 +156,8 @@ def connect_with_timeout(host: str, timeout_seconds: int = 30):
         # Timeout for blocking connection operations
         blocked_connection_timeout=timeout_seconds,
 
-        # Heartbeat interval (seconds)
-        # RabbitMQ will close connection if no heartbeat for 2x this value
+        # Heartbeat timeout (seconds)
+        # Heartbeat frames are sent about every timeout / 2 seconds
         heartbeat=60,
 
         # Retry connection on failure
@@ -216,7 +216,7 @@ sequenceDiagram
     C->>R: Heartbeat
     R->>C: Heartbeat
 
-    Note over C,R: 60 seconds later...
+    Note over C,R: About 30 seconds later...
     C->>R: Heartbeat
     R->>C: Heartbeat
 
@@ -254,11 +254,12 @@ import pika
 # Increase heartbeat timeout for slow networks or loaded systems
 parameters = pika.ConnectionParameters(
     host='rabbitmq-host',
-    # Set heartbeat to 120 seconds (RabbitMQ closes after 2x = 240s)
+    # Set heartbeat timeout to 120 seconds
+    # Heartbeat frames are sent about every timeout / 2 seconds
     heartbeat=120
 )
 
-# For very unreliable networks, disable heartbeats (not recommended)
+# For very unreliable networks, disable heartbeats only if both peers are configured for it (not recommended)
 # heartbeat=0
 ```
 
@@ -359,7 +360,7 @@ RPC timeout
 rabbitmqctl status
 
 # Check for memory/disk alarms
-rabbitmqctl list_alarms
+rabbitmq-diagnostics alarms
 
 # Check queue depths
 rabbitmqctl list_queues name messages messages_ready messages_unacknowledged
@@ -379,7 +380,7 @@ const amqp = require('amqplib');
 
 async function operationsWithTimeout() {
     const connection = await amqp.connect('amqp://localhost');
-    const channel = await connection.createChannel();
+    const channel = await connection.createConfirmChannel();
 
     // Set channel prefetch to limit outstanding messages
     // This prevents the broker from sending too many messages at once
@@ -398,7 +399,7 @@ async function operationsWithTimeout() {
         }
     });
 
-    // For operations that might timeout, implement manual timeout
+    // For publish operations that might timeout, use publisher confirms
     const publishWithTimeout = (exchange, routingKey, content, timeout = 5000) => {
         return new Promise((resolve, reject) => {
             const timer = setTimeout(() => {
@@ -406,9 +407,15 @@ async function operationsWithTimeout() {
             }, timeout);
 
             try {
-                const result = channel.publish(exchange, routingKey, content);
-                clearTimeout(timer);
-                resolve(result);
+                channel.publish(exchange, routingKey, content, {}, (error, ok) => {
+                    clearTimeout(timer);
+
+                    if (error) {
+                        reject(error);
+                    } else {
+                        resolve(ok);
+                    }
+                });
             } catch (error) {
                 clearTimeout(timer);
                 reject(error);
@@ -430,7 +437,7 @@ flowchart LR
         R[RabbitMQ] -->|Deliver| C[Consumer]
         C -->|Processing...| C
         C -->|30min timeout| R
-        R -->|Requeue or<br/>Dead Letter| Q[Queue/DLX]
+        R -->|Close channel and<br/>requeue unacked deliveries| Q[Queue]
     end
 ```
 
@@ -442,9 +449,9 @@ Delivery acknowledgement timed out
 Channel exception: delivery acknowledgement timeout
 ```
 
-### RabbitMQ 3.12+ Default Timeout
+### RabbitMQ Default Timeout
 
-Starting with RabbitMQ 3.12, there is a default 30-minute consumer acknowledgment timeout. Messages not acknowledged within this period are requeued.
+RabbitMQ has a default 30-minute consumer acknowledgment timeout. If a consumer does not acknowledge a delivery within this period, RabbitMQ closes the channel with a `PRECONDITION_FAILED` exception and requeues all unacknowledged deliveries on that channel.
 
 ### Configuring Ack Timeout
 
@@ -456,12 +463,21 @@ Starting with RabbitMQ 3.12, there is a default 30-minute consumer acknowledgmen
 # Consumer acknowledgment timeout (milliseconds)
 # Default is 1800000 (30 minutes)
 consumer_timeout = 3600000  # 1 hour
+```
 
-# Or disable timeout entirely (not recommended for production)
-# consumer_timeout = infinity
+To disable the timeout entirely, use `advanced.config` instead of `rabbitmq.conf`:
+
+```erlang
+[
+  {rabbit, [
+    {consumer_timeout, undefined}
+  ]}
+].
 ```
 
 **Per-queue configuration:**
+
+Starting with RabbitMQ 3.12, the timeout can also be configured per queue.
 
 ```javascript
 // per-queue-timeout.js
@@ -494,12 +510,12 @@ async function createQueueWithTimeout() {
 # long_running_consumer.py
 import pika
 import threading
-import time
 
 class LongTaskConsumer:
     """
     Consumer that handles tasks potentially exceeding ack timeout.
-    Uses a heartbeat-like pattern to track progress.
+    For very long tasks, prefer breaking work into smaller messages or
+    offloading processing so the connection thread can keep servicing I/O.
     """
 
     def __init__(self, host: str):
@@ -537,7 +553,7 @@ class LongTaskConsumer:
                 raise Exception("Connection lost during processing")
 
             # Process step
-            time.sleep(1)  # Simulate work
+            self.connection.sleep(1)  # Simulate work while servicing I/O
 
             # Log progress
             if step % 10 == 0:
@@ -726,7 +742,7 @@ from typing import List, Optional
 @dataclass
 class ConnectionStats:
     total: int
-    timeout_count: int
+    blocking_count: int
     blocked_count: int
 
 @dataclass
@@ -747,10 +763,10 @@ def get_connection_stats() -> ConnectionStats:
     connections = json.loads(result.stdout)
 
     total = len(connections)
-    timeout_count = sum(1 for c in connections if c.get('state') == 'timeout')
+    blocking_count = sum(1 for c in connections if c.get('state') == 'blocking')
     blocked_count = sum(1 for c in connections if c.get('state') == 'blocked')
 
-    return ConnectionStats(total, timeout_count, blocked_count)
+    return ConnectionStats(total, blocking_count, blocked_count)
 
 def get_queue_stats() -> List[QueueStats]:
     """Get queue statistics"""
@@ -780,8 +796,8 @@ def check_for_issues():
 
     # Check connections
     conn_stats = get_connection_stats()
-    if conn_stats.timeout_count > 0:
-        issues.append(f"WARN: {conn_stats.timeout_count} connections in timeout state")
+    if conn_stats.blocking_count > 0:
+        issues.append(f"WARN: {conn_stats.blocking_count} connections in blocking state")
     if conn_stats.blocked_count > 0:
         issues.append(f"WARN: {conn_stats.blocked_count} connections blocked")
 
@@ -819,7 +835,7 @@ if __name__ == '__main__':
 
 3. **Implement reconnection logic** - Timeouts will happen; be prepared to reconnect
 
-4. **Monitor connection states** - Track blocked and timeout connections
+4. **Monitor connection states** - Track blocking and blocked connections
 
 5. **Limit queue sizes** - Unbounded queues lead to timeout issues under load
 
