@@ -57,7 +57,7 @@ curl -v http://eureka-server:8761/eureka/apps
 
 # Check Kubernetes service connectivity
 kubectl run test-pod --rm -it --image=busybox --restart=Never -- \
-    wget -qO- http://kubernetes.default.svc.cluster.local/healthz
+    wget -qO- --no-check-certificate https://kubernetes.default.svc.cluster.local/readyz
 ```
 
 ### 2. Authentication and Authorization Failures
@@ -70,6 +70,7 @@ import (
     "fmt"
     "log"
     "os"
+    "strings"
 
     "github.com/hashicorp/consul/api"
 )
@@ -121,13 +122,9 @@ func registerServiceWithConsul() error {
 }
 
 func isACLError(err error) bool {
-    return err != nil && (
-        contains(err.Error(), "Permission denied") ||
-        contains(err.Error(), "ACL not found"))
-}
-
-func contains(s, substr string) bool {
-    return len(s) >= len(substr) && s[:len(substr)] == substr
+    return err != nil &&
+        (strings.Contains(err.Error(), "Permission denied") ||
+            strings.Contains(err.Error(), "ACL not found"))
 }
 
 func getLocalIP() string {
@@ -176,6 +173,8 @@ eureka:
   client:
     serviceUrl:
       defaultZone: http://eureka-server:8761/eureka/
+    healthcheck:
+      enabled: true
     # Retry configuration for registration
     eureka-connection-idle-timeout-seconds: 30
     eureka-server-connect-timeout-seconds: 5
@@ -248,7 +247,7 @@ public class ServiceDependencyHealthIndicator implements HealthIndicator {
 
 ## Kubernetes Service Registration Issues
 
-In Kubernetes, services are registered via endpoints when pods become ready.
+In Kubernetes, services are registered via EndpointSlices (and legacy Endpoints objects) when pods become ready.
 
 ```yaml
 # deployment.yaml with proper readiness configuration
@@ -317,6 +316,9 @@ spec:
 kubectl describe pod my-service-xxx
 
 # Check endpoint registration
+kubectl get endpointslice -l kubernetes.io/service-name=my-service -o yaml
+
+# Legacy Endpoints view, if your cluster or tooling still uses it
 kubectl get endpoints my-service -o yaml
 
 # Check if readiness probe is passing
@@ -476,7 +478,7 @@ When the same service ID is registered multiple times, conflicts can occur.
 
 ```typescript
 // TypeScript - Unique service ID generation and conflict handling
-import { Consul } from 'consul';
+import Consul = require('consul');
 import { v4 as uuidv4 } from 'uuid';
 import * as os from 'os';
 
