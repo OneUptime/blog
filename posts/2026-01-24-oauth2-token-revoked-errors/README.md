@@ -8,7 +8,7 @@ Description: Learn how to diagnose and fix OAuth2 token revoked errors, includin
 
 ---
 
-A "token revoked" error occurs when an OAuth2 access token is no longer valid because it was explicitly invalidated. Unlike expired tokens, revoked tokens cannot be refreshed and require the user to re-authenticate.
+A "token revoked" error occurs when an OAuth2 access token or refresh token is no longer valid because it was explicitly invalidated. Unlike expired access tokens, a revoked refresh token or revoked underlying authorization grant cannot be used to obtain new access tokens and requires the user to re-authenticate.
 
 ## Why Tokens Get Revoked
 
@@ -38,14 +38,14 @@ Different OAuth2 providers return this error in various formats.
 ```python
 # Common error formats
 
-# Standard OAuth2
-{"error": "invalid_token", "error_description": "The access token has been revoked"}
+# OAuth2 Bearer token (WWW-Authenticate header)
+'Bearer realm="example", error="invalid_token", error_description="The access token has been revoked"'
 
 # GitHub
 {"message": "Bad credentials"}
 
-# Microsoft Azure AD
-{"error": "invalid_grant", "error_description": "AADSTS70000: The refresh token has been revoked."}
+# Microsoft Entra ID
+{"error": "invalid_grant", "error_description": "AADSTS50173: The provided grant has expired due to it being revoked, a fresh auth token is needed."}
 ```
 
 ### Detection Logic
@@ -59,18 +59,20 @@ class TokenRevokedError(Exception):
         self.provider = provider
         super().__init__(self.message)
 
-def is_token_revoked(response: dict, status_code: int) -> bool:
-    """Detect if an API response indicates a revoked token."""
+def is_token_revoked(response: dict, status_code: int, headers: dict | None = None) -> bool:
+    """Detect if an API response indicates a revoked token or grant."""
     if status_code not in [401, 403]:
         return False
 
-    response_str = str(response).lower()
+    response_str = f"{response} {headers or {}}".lower()
 
     revoked_patterns = [
         r"token.*revoked",
-        r"invalid.*token",
+        r"grant.*revoked",
+        r"expired due to it being revoked",
+        r"fresh auth token is needed",
+        r"aadsts50173",
         r"bad.*credentials",
-        r"unauthorized"
     ]
 
     for pattern in revoked_patterns:
@@ -78,13 +80,15 @@ def is_token_revoked(response: dict, status_code: int) -> bool:
             return True
 
     error = response.get("error", "")
-    return error in ["invalid_token", "invalid_grant", "access_denied"]
+    description = response.get("error_description", "").lower()
+    return error in ["invalid_token", "invalid_grant"] and "revoked" in description
 ```
 
 ## Handling Revoked Tokens
 
 ```python
 from functools import wraps
+from flask import flash, redirect, session, url_for
 
 def handle_token_revoked(redirect_to: str = "login"):
     """Decorator to handle revoked tokens gracefully."""
