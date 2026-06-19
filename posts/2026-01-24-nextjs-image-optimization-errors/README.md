@@ -44,7 +44,7 @@ External images require explicit domain configuration for security reasons.
 
 ### The Solution
 
-Configure allowed domains in `next.config.js`:
+Configure allowed remote image patterns in `next.config.js`:
 
 ```javascript
 // next.config.js
@@ -52,7 +52,6 @@ Configure allowed domains in `next.config.js`:
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   images: {
-    // Modern approach (Next.js 12.3+)
     remotePatterns: [
       {
         protocol: 'https',
@@ -70,9 +69,6 @@ const nextConfig = {
         pathname: '/uploads/**',
       },
     ],
-
-    // Legacy approach (still supported)
-    domains: ['example.com', 'cdn.example.com'],
   },
 };
 
@@ -142,7 +138,7 @@ export function ExplicitDimensions() {
       alt="Hero image"
       width={1200}
       height={600}
-      priority // Load immediately for above-the-fold images
+      preload // Preload LCP or critical above-the-fold images
     />
   );
 }
@@ -204,6 +200,12 @@ const nextConfig = {
   },
 };
 
+module.exports = nextConfig;
+```
+
+```javascript
+// next.config.js
+
 // Option 2: Use a custom loader
 const nextConfig = {
   output: 'export',
@@ -220,6 +222,8 @@ Create a custom loader:
 
 ```javascript
 // my-loader.js
+
+'use client';
 
 // Cloudinary loader example
 export default function cloudinaryLoader({ src, width, quality }) {
@@ -251,7 +255,18 @@ Expected a number from 1 to 100 but received 150.
 
 ### The Solution
 
-Use valid quality values:
+Use valid quality values, and allowlist them in `next.config.js` when using Next.js 16 or later:
+
+```javascript
+// next.config.js
+const nextConfig = {
+  images: {
+    qualities: [50, 75, 90],
+  },
+};
+
+module.exports = nextConfig;
+```
 
 ```tsx
 import Image from 'next/image';
@@ -370,7 +385,7 @@ Install sharp for production optimization:
 npm install sharp
 
 # For specific platforms
-npm install --platform=linux --arch=x64 sharp
+npm install --os=linux --cpu=x64 --libc=glibc sharp
 ```
 
 Configure for standalone builds:
@@ -418,12 +433,12 @@ CMD ["node", "server.js"]
 ### The Error
 
 ```text
-Error: The requested resource exceeds the maximum size limit (10MB)
+Error: The requested resource exceeds the maximum size limit (50MB)
 ```
 
 ### The Solution
 
-Configure device sizes and image sizes:
+Configure device sizes, image sizes, and the maximum source image response size:
 
 ```javascript
 // next.config.js
@@ -435,7 +450,10 @@ const nextConfig = {
     // Configure image widths for srcset
     imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
 
-    // Limit response size
+    // Limit source image response size to 10 MB
+    maximumResponseBody: 10_000_000,
+
+    // Cache optimized images for at least 60 seconds
     minimumCacheTTL: 60,
 
     // Format priority
@@ -593,7 +611,7 @@ module.exports = nextConfig;
 flowchart TD
     subgraph Loading["Loading Strategy"]
         A[Image Component] --> B{Above Fold?}
-        B -->|Yes| C[priority=true]
+        B -->|Yes| C[preload=true]
         B -->|No| D[Default lazy loading]
         C --> E[Preload via Link]
         D --> F[Load when visible]
@@ -614,7 +632,7 @@ import Image from 'next/image';
 interface OptimizedImageProps {
   src: string;
   alt: string;
-  priority?: boolean;
+  preload?: boolean;
   aspectRatio?: '16/9' | '4/3' | '1/1' | 'auto';
   objectFit?: 'cover' | 'contain' | 'fill';
 }
@@ -622,7 +640,7 @@ interface OptimizedImageProps {
 export function OptimizedImage({
   src,
   alt,
-  priority = false,
+  preload = false,
   aspectRatio = '16/9',
   objectFit = 'cover',
 }: OptimizedImageProps) {
@@ -642,7 +660,7 @@ export function OptimizedImage({
         src={src}
         alt={alt}
         fill
-        priority={priority}
+        preload={preload}
         sizes="(max-width: 640px) 100vw, (max-width: 1024px) 75vw, 50vw"
         style={{ objectFit }}
         // Generate blur placeholder for known images
