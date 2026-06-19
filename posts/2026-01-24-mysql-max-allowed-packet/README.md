@@ -48,9 +48,9 @@ First, check your current packet size limit:
 
 ```sql
 -- Check server setting
-SHOW VARIABLES LIKE 'max_allowed_packet';
+SHOW GLOBAL VARIABLES LIKE 'max_allowed_packet';
 
--- Typical output: 16777216 (16 MB default)
+-- Typical output on current MySQL: 67108864 (64 MB default)
 ```
 
 Check both client and server values since they can differ:
@@ -58,7 +58,7 @@ Check both client and server values since they can differ:
 ```bash
 # Check server value via command line
 
-mysql -e "SHOW VARIABLES LIKE 'max_allowed_packet';"
+mysql -e "SHOW GLOBAL VARIABLES LIKE 'max_allowed_packet';"
 
 # Check what the client sees
 mysql -e "SELECT @@max_allowed_packet;"
@@ -73,7 +73,7 @@ You can increase the limit without restarting MySQL:
 SET GLOBAL max_allowed_packet = 67108864;
 
 -- Verify the change
-SHOW VARIABLES LIKE 'max_allowed_packet';
+SHOW GLOBAL VARIABLES LIKE 'max_allowed_packet';
 ```
 
 Important: The session variable cannot be set directly. You must set the global variable, then reconnect for the change to apply to your session:
@@ -120,7 +120,7 @@ sudo systemctl restart mysql
 sudo systemctl restart mysqld
 
 # Verify after restart
-mysql -e "SHOW VARIABLES LIKE 'max_allowed_packet';"
+mysql -e "SHOW GLOBAL VARIABLES LIKE 'max_allowed_packet';"
 ```
 
 ## Fixing mysqldump Errors
@@ -150,15 +150,17 @@ mysqldump \
 
 ## Fixing Replication Errors
 
-In replication setups, both master and replica need matching settings:
+In replication setups, both source and replica need settings large enough for the data being replicated:
 
 ```sql
--- On the master
+-- On the source
 SET GLOBAL max_allowed_packet = 268435456;
 
 -- On each replica
 SET GLOBAL max_allowed_packet = 268435456;
 ```
+
+On MySQL 8.0 and later, replicas also have `replica_max_allowed_packet`, which defaults to 1 GB. For multi-threaded replicas, make sure `replica_pending_jobs_size_max` is large enough for the events you expect.
 
 If replication stops due to a packet error:
 
@@ -213,7 +215,7 @@ Instead of one massive INSERT, break it into chunks:
 # cursor.execute("INSERT INTO table VALUES " + ",".join(thousands_of_values))
 
 # Good: Chunked inserts
-def chunked_insert(cursor, table, values, chunk_size=1000):
+def chunked_insert(connection, cursor, table, values, chunk_size=1000):
     """Insert values in chunks to avoid packet size limits."""
     for i in range(0, len(values), chunk_size):
         chunk = values[i:i + chunk_size]
@@ -223,7 +225,7 @@ def chunked_insert(cursor, table, values, chunk_size=1000):
         connection.commit()
 
 # Usage
-chunked_insert(cursor, "orders", order_data, chunk_size=500)
+chunked_insert(connection, cursor, "orders", order_data, chunk_size=500)
 ```
 
 ### Streaming Large Data
@@ -338,15 +340,18 @@ Use this script to verify your configuration:
 # verify-packet-size.sh
 
 echo "Server max_allowed_packet:"
-mysql -e "SHOW VARIABLES LIKE 'max_allowed_packet';"
+mysql -e "SHOW GLOBAL VARIABLES LIKE 'max_allowed_packet';"
 
 echo ""
 echo "Testing with a large query..."
 # Generate a query slightly under your limit to test
 SIZE_MB=50
-LARGE_STRING=$(python3 -c "print('x' * ($SIZE_MB * 1024 * 1024))")
 
-if mysql -e "SELECT LENGTH('$LARGE_STRING');" 2>/dev/null; then
+if python3 - <<PY | mysql 2>/dev/null
+size_mb = $SIZE_MB
+print("SELECT LENGTH('" + ("x" * (size_mb * 1024 * 1024)) + "');")
+PY
+then
     echo "Success: ${SIZE_MB}MB query works"
 else
     echo "Failed: ${SIZE_MB}MB query exceeds limit"
@@ -359,7 +364,7 @@ fi
 
 2. **Do not set arbitrarily high values.** 1 GB max packet with 200 connections could theoretically use 200 GB of memory.
 
-3. **Match the setting on replicas.** Replication breaks if the replica cannot accept packets that the master sends.
+3. **Use large enough settings on replicas.** Replication breaks if the replica cannot accept packets that the source sends.
 
 4. **Consider application-level solutions first.** Chunked inserts and external file storage often work better than huge packets.
 
