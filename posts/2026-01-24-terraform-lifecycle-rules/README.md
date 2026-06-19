@@ -142,7 +142,7 @@ resource "aws_s3_bucket" "important_data" {
 }
 ```
 
-When you actually need to destroy the resource, remove the lifecycle block first, run `terraform apply`, then destroy.
+When you actually need to destroy the resource, remove `prevent_destroy` from the configuration first, then destroy.
 
 ```hcl
 # To destroy a prevent_destroy resource:
@@ -155,37 +155,20 @@ resource "aws_db_instance" "production" {
   }
 }
 
-# 2. Run terraform apply to update state
-# 3. Run terraform destroy (or remove resource block and apply)
+# 2. Run terraform destroy (or remove resource block and apply)
 ```
 
 ### Conditional prevent_destroy
 
-You cannot use variables directly in lifecycle blocks, but you can work around this with module composition.
+You cannot use variables directly in lifecycle blocks, because Terraform processes lifecycle rules before evaluating arbitrary expressions. If you need different protection policies for different environments, use separate module compositions and avoid toggling an existing protected resource without a deliberate state migration.
 
 ```hcl
-# modules/database/main.tf
-variable "protect" {
-  type    = bool
-  default = true
-}
-
+# modules/protected_database/main.tf
 resource "aws_db_instance" "main" {
-  count = var.protect ? 0 : 1
-  # ... configuration without prevent_destroy ...
-}
-
-resource "aws_db_instance" "protected" {
-  count = var.protect ? 1 : 0
-  # ... same configuration ...
-
+  # ... configuration ...
   lifecycle {
     prevent_destroy = true
   }
-}
-
-output "db_endpoint" {
-  value = var.protect ? aws_db_instance.protected[0].endpoint : aws_db_instance.main[0].endpoint
 }
 ```
 
@@ -301,10 +284,8 @@ resource "aws_instance" "web" {
 }
 
 # Trigger replacement when configuration changes
-resource "null_resource" "config_version" {
-  triggers = {
-    config_hash = filesha256("${path.module}/config/app.conf")
-  }
+resource "terraform_data" "config_version" {
+  input = filesha256("${path.module}/config/app.conf")
 }
 
 resource "aws_instance" "app" {
@@ -313,7 +294,7 @@ resource "aws_instance" "app" {
 
   lifecycle {
     replace_triggered_by = [
-      null_resource.config_version
+      terraform_data.config_version
     ]
   }
 }
@@ -328,6 +309,10 @@ module "network" {
   cidr   = var.vpc_cidr
 }
 
+resource "terraform_data" "network_version" {
+  input = module.network.vpc_id
+}
+
 resource "aws_instance" "web" {
   ami           = var.ami_id
   instance_type = "t3.medium"
@@ -336,7 +321,7 @@ resource "aws_instance" "web" {
   lifecycle {
     replace_triggered_by = [
       # Replace when VPC configuration changes
-      module.network.vpc_id
+      terraform_data.network_version
     ]
   }
 }
@@ -379,7 +364,7 @@ resource "aws_db_instance" "main" {
 
 ## Lifecycle with Provisioners
 
-Lifecycle rules also affect provisioner behavior.
+Lifecycle rules also affect provisioner behavior. In particular, enabling `create_before_destroy` prevents destroy-time provisioners from running.
 
 ```hcl
 resource "aws_instance" "web" {
