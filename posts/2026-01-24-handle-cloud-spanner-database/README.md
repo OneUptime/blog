@@ -117,6 +117,7 @@ CREATE TABLE Customers (
     CustomerId STRING(36) NOT NULL,
     Email STRING(255) NOT NULL,
     Name STRING(100),
+    CreatedAt TIMESTAMP OPTIONS (allow_commit_timestamp=true),
 ) PRIMARY KEY (CustomerId);
 
 -- Interleaved child table
@@ -125,6 +126,8 @@ CREATE TABLE Orders (
     OrderId STRING(36) NOT NULL,
     Amount NUMERIC,
     Status STRING(20),
+    DiscountCode STRING(50),
+    CreatedAt TIMESTAMP OPTIONS (allow_commit_timestamp=true),
 ) PRIMARY KEY (CustomerId, OrderId),
   INTERLEAVE IN PARENT Customers ON DELETE CASCADE;
 
@@ -163,6 +166,7 @@ flowchart TB
 # spanner_client.py
 from google.cloud import spanner
 from google.cloud.spanner_v1 import param_types
+import datetime
 import uuid
 
 # Initialize client
@@ -177,8 +181,8 @@ def create_customer(email: str, name: str) -> str:
     def insert_customer(transaction):
         transaction.insert(
             table='Customers',
-            columns=['CustomerId', 'Email', 'Name'],
-            values=[(customer_id, email, name)]
+            columns=['CustomerId', 'Email', 'Name', 'CreatedAt'],
+            values=[(customer_id, email, name, spanner.COMMIT_TIMESTAMP)]
         )
 
     database.run_in_transaction(insert_customer)
@@ -234,8 +238,8 @@ def batch_insert_orders(orders: list):
     with database.batch() as batch:
         batch.insert(
             table='Orders',
-            columns=['CustomerId', 'OrderId', 'Amount', 'Status'],
-            values=[(o['customer_id'], str(uuid.uuid4()), o['amount'], 'pending')
+            columns=['CustomerId', 'OrderId', 'Amount', 'Status', 'CreatedAt'],
+            values=[(o['customer_id'], str(uuid.uuid4()), o['amount'], 'pending', spanner.COMMIT_TIMESTAMP)
                     for o in orders]
         )
 ```
@@ -249,7 +253,6 @@ package main
 import (
     "context"
     "fmt"
-    "time"
 
     "cloud.google.com/go/spanner"
     "google.golang.org/api/iterator"
@@ -273,8 +276,8 @@ func (s *SpannerClient) CreateCustomer(ctx context.Context, email, name string) 
 
     _, err := s.client.Apply(ctx, []*spanner.Mutation{
         spanner.Insert("Customers",
-            []string{"CustomerId", "Email", "Name"},
-            []interface{}{customerID, email, name},
+            []string{"CustomerId", "Email", "Name", "CreatedAt"},
+            []interface{}{customerID, email, name, spanner.CommitTimestamp},
         ),
     })
 
@@ -322,7 +325,7 @@ func (s *SpannerClient) GetOrdersByCustomer(ctx context.Context, customerID stri
 
 type Order struct {
     ID     string
-    Amount float64
+    Amount spanner.NullNumeric
     Status string
 }
 ```
@@ -417,7 +420,7 @@ def transfer_funds(from_account: str, to_account: str, amount: float):
 ### Read-Only Transactions for Consistency
 
 ```python
-def generate_report(start_date: str, end_date: str) -> dict:
+def generate_report(start_date: datetime.datetime, end_date: datetime.datetime) -> dict:
     """Generate a consistent report across multiple tables."""
 
     # Use exact staleness for slightly stale but faster reads
@@ -427,13 +430,13 @@ def generate_report(start_date: str, end_date: str) -> dict:
         orders = list(snapshot.execute_sql(
             "SELECT COUNT(*), SUM(Amount) FROM Orders WHERE CreatedAt BETWEEN @start AND @end",
             params={'start': start_date, 'end': end_date},
-            param_types={'start': param_types.STRING, 'end': param_types.STRING}
+            param_types={'start': param_types.TIMESTAMP, 'end': param_types.TIMESTAMP}
         ))
 
         customers = list(snapshot.execute_sql(
             "SELECT COUNT(*) FROM Customers WHERE CreatedAt BETWEEN @start AND @end",
             params={'start': start_date, 'end': end_date},
-            param_types={'start': param_types.STRING, 'end': param_types.STRING}
+            param_types={'start': param_types.TIMESTAMP, 'end': param_types.TIMESTAMP}
         ))
 
         return {
@@ -449,12 +452,14 @@ def generate_report(start_date: str, end_date: str) -> dict:
 
 ```bash
 # CPU utilization (should stay under 65% for headroom)
-gcloud spanner instances describe my-instance --format='value(state)'
+gcloud monitoring time-series list \
+    --filter='metric.type="spanner.googleapis.com/instance/cpu/utilization_by_priority" AND resource.labels.instance_id="my-instance" AND metric.labels.priority="high"' \
+    --limit=10
 
 # Check database size
 gcloud spanner databases execute-sql my-database \
     --instance=my-instance \
-    --sql="SELECT table_name, SUM(row_count) as rows FROM INFORMATION_SCHEMA.TABLE_SIZES GROUP BY 1"
+    --sql="SELECT table_name, used_bytes FROM SPANNER_SYS.TABLE_SIZES_STATS_1HOUR WHERE interval_end = (SELECT MAX(interval_end) FROM SPANNER_SYS.TABLE_SIZES_STATS_1HOUR) ORDER BY used_bytes DESC"
 ```
 
 ### Scaling Operations
@@ -474,8 +479,7 @@ gcloud spanner instances update my-instance --processing-units=2000
 gcloud spanner backups create my-backup \
     --instance=my-instance \
     --database=my-database \
-    --retention-period=7d \
-    --expire-time=2026-02-01T00:00:00Z
+    --retention-period=7d
 
 # Restore from backup
 gcloud spanner databases restore \
