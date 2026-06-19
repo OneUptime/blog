@@ -41,13 +41,13 @@ flowchart TD
 ```bash
 # postgresql.conf on primary
 
-# Enable WAL archiving
+# Enable WAL for streaming replication
 
 wal_level = replica
 max_wal_senders = 10
 wal_keep_size = 1GB
 
-# Synchronous replication (optional - impacts write latency)
+# Synchronous replication (optional - impacts write latency when a standby is configured)
 # synchronous_standby_names = 'replica1,replica2'
 synchronous_commit = on
 
@@ -151,7 +151,7 @@ gtid_mode = ON
 enforce_gtid_consistency = ON
 ```
 
-Start replication:
+After seeding the replica from a consistent backup, start replication:
 
 ```sql
 -- On replica
@@ -271,7 +271,7 @@ const user = await db.readFromPrimary('SELECT * FROM users WHERE id = $1', [user
 ### Python Implementation with SQLAlchemy
 
 ```python
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.pool import QueuePool
 import random
@@ -318,7 +318,8 @@ class DatabaseRouter:
         """Execute read query on replica."""
         session = self.get_read_session()
         try:
-            result = session.execute(query, params or {})
+            statement = text(query) if isinstance(query, str) else query
+            result = session.execute(statement, params or {})
             return result.fetchall()
         finally:
             session.close()
@@ -327,7 +328,8 @@ class DatabaseRouter:
         """Execute write query on primary."""
         session = self.get_write_session()
         try:
-            result = session.execute(query, params or {})
+            statement = text(query) if isinstance(query, str) else query
+            result = session.execute(statement, params or {})
             session.commit()
             return result
         except Exception:
@@ -377,6 +379,8 @@ SHOW REPLICA STATUS\G
 ### Lag-Aware Routing
 
 ```javascript
+const { Pool } = require('pg');
+
 class LagAwareRouter {
   constructor(config) {
     this.primary = new Pool(config.primary);
@@ -431,6 +435,10 @@ class LagAwareRouter {
     }
 
     return replica.pool.query(query, params);
+  }
+
+  async write(query, params) {
+    return this.primary.query(query, params);
   }
 
   async readAfterWrite(query, params, writeTimestamp) {
