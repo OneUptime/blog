@@ -61,7 +61,7 @@ If you see a policy like this, non-mesh traffic will be rejected:
 
 ```yaml
 # Strict mTLS policy (blocks non-mesh traffic)
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -75,7 +75,7 @@ spec:
 
 ```yaml
 # Permissive policy allows both mTLS and plain-text
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -88,18 +88,21 @@ spec:
 **Solution 2**: Exclude specific ports from mTLS:
 
 ```yaml
-# Allow plain-text on specific ports
-apiVersion: security.istio.io/v1beta1
+# Allow plain-text on a specific workload port
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
   namespace: your-namespace
 spec:
+  selector:
+    matchLabels:
+      app: my-service
   mtls:
     mode: STRICT
   portLevelMtls:
     8080:
-      mode: DISABLE  # This port accepts plain-text
+      mode: DISABLE  # Workload port 8080 accepts plain-text
 ```
 
 ## Common Error 2: DestinationRule TLS Mode Mismatch
@@ -110,7 +113,7 @@ Here's a problematic scenario where the client tries plain-text but the server r
 
 ```yaml
 # This DestinationRule disables TLS
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service-dr
@@ -121,7 +124,7 @@ spec:
       mode: DISABLE  # Client sends plain-text
 ---
 # But the server requires mTLS
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: my-service-auth
@@ -138,7 +141,7 @@ The fix is to align the DestinationRule with the PeerAuthentication:
 
 ```yaml
 # DestinationRule matching the server's mTLS requirement
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service-dr
@@ -164,7 +167,7 @@ kubectl logs your-pod -c istio-proxy | grep -i cert
 
 # Verify the certificate chain
 istioctl proxy-config secret your-pod.your-namespace -o json | \
-  jq -r '.dynamicActiveSecrets[0].secret.tlsCertificate.certificateChain.inlineBytes' | \
+  jq -r '[.dynamicActiveSecrets[] | select(.name == "default")][0].secret.tlsCertificate.certificateChain.inlineBytes' | \
   base64 -d | openssl x509 -text -noout
 ```
 
@@ -181,15 +184,15 @@ kubectl wait --for=condition=ready pod -l app=istiod -n istio-system --timeout=6
 kubectl rollout restart deployment -n your-namespace
 ```
 
-## Common Error 4: Service Entry Without TLS Settings
+## Common Error 4: Service Entry TLS Origination Mistakes
 
-When calling external services through ServiceEntry, you need to configure TLS settings correctly. Without them, Istio might try to initiate mTLS with services that don't support it.
+When calling external services through ServiceEntry, you need to configure TLS settings correctly. If you configure TLS origination for traffic that is already HTTPS, the sidecar can create a double TLS connection that the external service doesn't understand.
 
-Here's how to properly configure an external service:
+Here's how to configure TLS origination when the application sends plain HTTP and you want Istio to originate HTTPS:
 
 ```yaml
-# ServiceEntry for an external HTTPS API
-apiVersion: networking.istio.io/v1beta1
+# ServiceEntry for an external API reached by plain HTTP from the app
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-api
@@ -197,6 +200,10 @@ spec:
   hosts:
   - api.external-service.com
   ports:
+  - number: 80
+    name: http
+    protocol: HTTP
+    targetPort: 443
   - number: 443
     name: https
     protocol: HTTPS
@@ -204,16 +211,19 @@ spec:
   resolution: DNS
 ---
 # DestinationRule to handle TLS origination
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: external-api-dr
 spec:
   host: api.external-service.com
   trafficPolicy:
-    tls:
-      mode: SIMPLE  # Standard TLS, not mTLS
-      sni: api.external-service.com
+    portLevelSettings:
+    - port:
+        number: 80
+      tls:
+        mode: SIMPLE  # Standard TLS, not mTLS
+        sni: api.external-service.com
 ```
 
 ## Common Error 5: Auto mTLS Not Working
@@ -241,8 +251,8 @@ spec:
 These commands help you diagnose mTLS problems:
 
 ```bash
-# Check the actual TLS mode being used between services
-istioctl x authz check your-pod.your-namespace
+# Inspect the Istio config affecting a pod
+istioctl experimental describe pod your-pod.your-namespace
 
 # View TLS configuration for a specific route
 istioctl proxy-config cluster your-pod.your-namespace --fqdn your-service.your-namespace.svc.cluster.local -o json | jq '.[] | .transportSocket'
@@ -254,7 +264,7 @@ istioctl analyze -n your-namespace
 kubectl get peerauthentication --all-namespaces
 
 # Test connectivity with debug logging
-kubectl exec -it your-pod -c istio-proxy -- curl -v https://target-service:8080
+kubectl exec -it your-pod -c your-app-container -- curl -v http://target-service:8080
 ```
 
 ## Migration Strategy: Plain-text to mTLS
@@ -278,7 +288,7 @@ graph LR
 Step 1: Set mesh-wide PERMISSIVE mode:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
