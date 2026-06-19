@@ -46,7 +46,7 @@ ps
 
 ```bash
 # Show all processes with full format (BSD style)
-# a = show processes for all users
+# a = include processes with a terminal from all users
 # u = display user-oriented format with detailed info
 # x = show processes without a controlling terminal
 ps aux
@@ -160,7 +160,8 @@ Common process states in `ps` output:
 | S | Interruptible sleep (waiting for event) |
 | D | Uninterruptible sleep (usually I/O) |
 | Z | Zombie (terminated but not reaped) |
-| T | Stopped (by signal or debugger) |
+| T | Stopped by job control signal |
+| t | Stopped by debugger during tracing |
 | I | Idle kernel thread |
 
 ## The kill Command: Sending Signals
@@ -293,7 +294,7 @@ pkill -u username
 # Force kill all user processes
 pkill -9 -u username
 
-# More aggressive - kill user's processes and log them out
+# More aggressive - kill user's processes, which may log them out
 # WARNING: Use with caution
 killall -u username
 ```
@@ -339,7 +340,7 @@ flowchart TD
 ```bash
 # Find zombie processes
 # Zombies have 'Z' in the STAT column
-ps aux | awk '$8=="Z" {print}'
+ps aux | awk '$8 ~ /^Z/ {print}'
 
 # Find parent of zombie
 # First, get the PPID
