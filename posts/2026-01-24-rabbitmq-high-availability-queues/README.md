@@ -20,7 +20,7 @@ RabbitMQ offers multiple approaches to high availability. Understanding when to 
 flowchart TD
     subgraph "RabbitMQ HA Options"
         QQ[Quorum Queues] -->|Recommended| R1[Raft consensus<br/>Strong consistency<br/>Automatic failover]
-        MQ[Mirrored Queues] -->|Deprecated| R2[Classic mirroring<br/>Eventual consistency<br/>Manual policies]
+        MQ[Mirrored Queues] -->|Deprecated/removed| R2[Classic mirroring<br/>RabbitMQ 3.13 and earlier<br/>Manual policies]
         SQ[Streams] -->|Append-only| R3[Log-based<br/>Replay support<br/>High throughput]
     end
 ```
@@ -99,19 +99,19 @@ networks:
 # cluster-setup.sh
 
 # Run on rabbitmq-2 to join the cluster
-docker exec rabbitmq-2 rabbitmqctl stop_app
-docker exec rabbitmq-2 rabbitmqctl reset
-docker exec rabbitmq-2 rabbitmqctl join_cluster rabbit@rabbitmq-1
-docker exec rabbitmq-2 rabbitmqctl start_app
+docker compose exec rabbitmq-2 rabbitmqctl stop_app
+docker compose exec rabbitmq-2 rabbitmqctl reset
+docker compose exec rabbitmq-2 rabbitmqctl join_cluster rabbit@rabbitmq-1
+docker compose exec rabbitmq-2 rabbitmqctl start_app
 
 # Run on rabbitmq-3 to join the cluster
-docker exec rabbitmq-3 rabbitmqctl stop_app
-docker exec rabbitmq-3 rabbitmqctl reset
-docker exec rabbitmq-3 rabbitmqctl join_cluster rabbit@rabbitmq-1
-docker exec rabbitmq-3 rabbitmqctl start_app
+docker compose exec rabbitmq-3 rabbitmqctl stop_app
+docker compose exec rabbitmq-3 rabbitmqctl reset
+docker compose exec rabbitmq-3 rabbitmqctl join_cluster rabbit@rabbitmq-1
+docker compose exec rabbitmq-3 rabbitmqctl start_app
 
 # Verify cluster status
-docker exec rabbitmq-1 rabbitmqctl cluster_status
+docker compose exec rabbitmq-1 rabbitmqctl cluster_status
 ```
 
 ---
@@ -151,14 +151,14 @@ async function createQuorumQueue() {
     const channel = await connection.createChannel();
 
     // Declare a quorum queue
-    // Quorum queues are always durable - the durable flag is ignored
+    // Quorum queues are always durable, so keep durable set to true
     await channel.assertQueue('orders-queue', {
         durable: true,
         arguments: {
             // This is what makes it a quorum queue
             'x-queue-type': 'quorum',
 
-            // Number of replicas (default: cluster size, max 5 recommended)
+            // Number of replicas (default: 3, max 5 recommended)
             // Odd numbers work best for Raft consensus
             'x-quorum-initial-group-size': 3,
 
@@ -213,21 +213,18 @@ def create_quorum_queue():
         # Initial number of replicas
         'x-quorum-initial-group-size': 3,
 
-        # Maximum delivery attempts
+        # Maximum failed delivery attempts
         'x-delivery-limit': 5,
 
         # Configure dead lettering
         'x-dead-letter-exchange': 'dlx',
-        'x-dead-letter-routing-key': 'orders.failed',
-
-        # Optional: Set memory limit per queue member
-        'x-max-in-memory-length': 10000
+        'x-dead-letter-routing-key': 'orders.failed'
     }
 
     # Declare the quorum queue
     channel.queue_declare(
         queue='orders-queue',
-        durable=True,  # Always true for quorum queues
+        durable=True,  # Quorum queues are always durable
         arguments=queue_args
     )
 
@@ -263,10 +260,10 @@ if __name__ == '__main__':
 | Property | Description |
 |----------|-------------|
 | `x-queue-type` | Set to `quorum` |
-| `x-quorum-initial-group-size` | Number of replicas (default: cluster size) |
-| `x-delivery-limit` | Max redeliveries before dead-lettering |
-| `x-max-in-memory-length` | Messages kept in memory per replica |
-| `x-max-in-memory-bytes` | Memory limit per replica |
+| `x-quorum-initial-group-size` | Number of replicas (default: 3) |
+| `x-delivery-limit` | Max failed deliveries before dead-lettering |
+| `x-dead-letter-exchange` | Exchange used for dead-lettered messages |
+| `x-dead-letter-routing-key` | Routing key used for dead-lettered messages |
 
 ---
 
@@ -495,7 +492,7 @@ class HAConsumer:
             except Exception as e:
                 print(f"Message processing failed: {e}")
                 # Requeue on failure (will be redelivered)
-                ch.basic_nack(
+                ch.basic_reject(
                     delivery_tag=method.delivery_tag,
                     requeue=True
                 )
@@ -540,15 +537,16 @@ if __name__ == '__main__':
 #!/bin/bash
 # monitor-quorum-queues.sh
 
-# List all quorum queues with their status
+# List all quorum queues
 rabbitmqctl list_queues \
     name \
     type \
-    leader \
-    members \
-    online \
+    state \
     messages \
     --formatter=json | jq '.[] | select(.type == "quorum")'
+
+# Check leader and follower status for a quorum queue
+rabbitmq-queues quorum_status "orders-queue"
 
 # Check quorum queue metrics
 rabbitmqctl list_queues \
@@ -559,9 +557,8 @@ rabbitmqctl list_queues \
     consumers \
     --formatter=json | jq '.'
 
-# Check for queues with unavailable members
-rabbitmqctl list_queues name online members --formatter=json | \
-    jq '.[] | select((.online | length) < (.members | length))'
+# Check whether taking this node down would break any quorum
+rabbitmq-diagnostics check_if_node_is_quorum_critical
 ```
 
 **Python monitoring script:**
@@ -570,72 +567,51 @@ rabbitmqctl list_queues name online members --formatter=json | \
 # monitor_ha.py
 import subprocess
 import json
-from dataclasses import dataclass
 from typing import List
 
-@dataclass
-class QuorumQueueStatus:
-    name: str
-    leader: str
-    members: List[str]
-    online: List[str]
-    messages: int
-
-    @property
-    def is_healthy(self) -> bool:
-        """Queue is healthy if majority of members are online"""
-        return len(self.online) > len(self.members) // 2
-
-    @property
-    def replication_factor(self) -> int:
-        return len(self.members)
-
-    @property
-    def available_replicas(self) -> int:
-        return len(self.online)
-
-def get_quorum_queue_status() -> List[QuorumQueueStatus]:
-    """Get status of all quorum queues"""
+def get_quorum_queue_names() -> List[str]:
+    """Get names of all quorum queues"""
 
     result = subprocess.run(
         ['rabbitmqctl', 'list_queues',
-         'name', 'type', 'leader', 'members', 'online', 'messages',
+         'name', 'type',
          '--formatter=json'],
+        capture_output=True,
+        text=True,
+        check=True
+    )
+
+    queues = json.loads(result.stdout)
+    return [q['name'] for q in queues if q.get('type') == 'quorum']
+
+def quorum_status(queue: str) -> subprocess.CompletedProcess:
+    """Run RabbitMQ's quorum status check for a queue"""
+
+    return subprocess.run(
+        ['rabbitmq-queues', 'quorum_status', queue],
         capture_output=True,
         text=True
     )
 
-    queues = json.loads(result.stdout)
-
-    return [
-        QuorumQueueStatus(
-            name=q['name'],
-            leader=q.get('leader', ''),
-            members=q.get('members', []),
-            online=q.get('online', []),
-            messages=q.get('messages', 0)
-        )
-        for q in queues
-        if q.get('type') == 'quorum'
-    ]
-
 def check_ha_health():
     """Check health of all quorum queues"""
 
-    queues = get_quorum_queue_status()
+    queues = get_quorum_queue_names()
     issues = []
 
-    for q in queues:
-        if not q.is_healthy:
-            issues.append(
-                f"CRITICAL: Queue {q.name} has only {q.available_replicas}/"
-                f"{q.replication_factor} replicas online"
-            )
-        elif q.available_replicas < q.replication_factor:
-            issues.append(
-                f"WARNING: Queue {q.name} has {q.available_replicas}/"
-                f"{q.replication_factor} replicas online"
-            )
+    for queue in queues:
+        status = quorum_status(queue)
+        if status.returncode != 0:
+            issues.append(f"CRITICAL: quorum_status failed for {queue}: {status.stderr}")
+
+    critical = subprocess.run(
+        ['rabbitmq-diagnostics', 'check_if_node_is_quorum_critical'],
+        capture_output=True,
+        text=True
+    )
+
+    if critical.returncode != 0:
+        issues.append("WARNING: this node is quorum-critical for at least one queue")
 
     return issues
 
@@ -673,7 +649,7 @@ flowchart TD
     end
 ```
 
-Configure partition handling in `rabbitmq.conf`:
+In RabbitMQ 3.13 and earlier, configure partition handling in `rabbitmq.conf`:
 
 ```ini
 # rabbitmq.conf
@@ -682,8 +658,8 @@ Configure partition handling in `rabbitmq.conf`:
 # Options: ignore, pause_minority, autoheal
 cluster_partition_handling = pause_minority
 
-# For quorum queues, Raft handles partitions automatically
-# pause_minority is recommended for classic queues
+# For quorum queues, Raft requires a majority of replicas to be online
+# pause_minority is recommended for classic queues in RabbitMQ 3.13 and earlier
 ```
 
 **Partition handling modes:**
@@ -693,6 +669,8 @@ cluster_partition_handling = pause_minority
 | `ignore` | Do nothing (may cause split-brain) |
 | `pause_minority` | Pause nodes in minority partition |
 | `autoheal` | Restart nodes in losing partition |
+
+Starting with RabbitMQ 4.3, partition handling strategies were removed because the metadata store and replicated queue types are Raft-based.
 
 ---
 
