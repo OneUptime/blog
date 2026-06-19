@@ -27,7 +27,7 @@ flowchart LR
 
 ## Setting Up Retry Topics
 
-Create topics for each retry level with different retention settings.
+Create topics for each retry level and set a longer retention period on the DLQ.
 
 ```bash
 # Main topic
@@ -47,6 +47,12 @@ kafka-topics.sh --create \
 
 kafka-topics.sh --create \
   --topic orders-retry-2 \
+  --bootstrap-server localhost:9092 \
+  --partitions 6 \
+  --replication-factor 3
+
+kafka-topics.sh --create \
+  --topic orders-retry-3 \
   --bootstrap-server localhost:9092 \
   --partitions 6 \
   --replication-factor 3
@@ -71,7 +77,11 @@ public class OrderProcessor {
     private final KafkaTemplate<String, String> kafkaTemplate;
     private static final int MAX_RETRIES = 3;
 
-    @KafkaListener(topics = {"orders", "orders-retry-1", "orders-retry-2"})
+    public OrderProcessor(KafkaTemplate<String, String> kafkaTemplate) {
+        this.kafkaTemplate = kafkaTemplate;
+    }
+
+    @KafkaListener(topics = "orders")
     public void processOrder(ConsumerRecord<String, String> record) {
         int retryCount = getRetryCount(record);
 
@@ -98,9 +108,6 @@ public class OrderProcessor {
 
         // Determine next retry topic
         String nextTopic = "orders-retry-" + (retryCount + 1);
-        if (retryCount + 1 > 2) {
-            nextTopic = "orders-dlq";
-        }
 
         // Build retry record with incremented count
         ProducerRecord<String, String> retryRecord = new ProducerRecord<>(
@@ -167,6 +174,10 @@ public class DelayedRetryConsumer {
         3, 300000L     // 5 minutes
     );
 
+    public DelayedRetryConsumer(KafkaTemplate<String, String> kafkaTemplate) {
+        this.kafkaTemplate = kafkaTemplate;
+    }
+
     @KafkaListener(topics = "orders-retry-1", groupId = "retry-consumer-1")
     public void processRetry1(ConsumerRecord<String, String> record) {
         processWithDelay(record, 1);
@@ -175,6 +186,11 @@ public class DelayedRetryConsumer {
     @KafkaListener(topics = "orders-retry-2", groupId = "retry-consumer-2")
     public void processRetry2(ConsumerRecord<String, String> record) {
         processWithDelay(record, 2);
+    }
+
+    @KafkaListener(topics = "orders-retry-3", groupId = "retry-consumer-3")
+    public void processRetry3(ConsumerRecord<String, String> record) {
+        processWithDelay(record, 3);
     }
 
     private void processWithDelay(ConsumerRecord<String, String> record,
@@ -196,7 +212,13 @@ public class DelayedRetryConsumer {
                     Thread.currentThread().interrupt();
                 }
                 // Requeue to same topic for later processing
-                kafkaTemplate.send(record.topic(), record.key(), record.value());
+                ProducerRecord<String, String> retryRecord = new ProducerRecord<>(
+                    record.topic(),
+                    record.key(),
+                    record.value()
+                );
+                record.headers().forEach(h -> retryRecord.headers().add(h));
+                kafkaTemplate.send(retryRecord);
                 return;
             }
         }
@@ -213,7 +235,7 @@ public class DelayedRetryConsumer {
 }
 ```
 
-## Using Spring Kafka Retry Template
+## Using Spring Kafka Error Handling
 
 Spring Kafka provides built-in retry support with customizable backoff.
 
@@ -232,12 +254,18 @@ public class KafkaRetryConfig {
         factory.setConsumerFactory(cf);
 
         // Configure retry with exponential backoff
+        ExponentialBackOffWithMaxRetries backOff =
+            new ExponentialBackOffWithMaxRetries(4);
+        backOff.setInitialInterval(1000L);
+        backOff.setMultiplier(2.0);
+        backOff.setMaxInterval(8000L);
+
         DefaultErrorHandler errorHandler = new DefaultErrorHandler(
             // Dead letter publisher
             new DeadLetterPublishingRecoverer(template,
                 (record, ex) -> new TopicPartition("orders-dlq", -1)),
             // Backoff: 1s, 2s, 4s, 8s, then give up
-            new ExponentialBackOff(1000L, 2.0)
+            backOff
         );
 
         // Only retry on transient exceptions
@@ -277,16 +305,21 @@ public class DlqReprocessor {
     private final ConsumerFactory<String, String> consumerFactory;
     private final KafkaTemplate<String, String> kafkaTemplate;
 
+    public DlqReprocessor(ConsumerFactory<String, String> consumerFactory,
+                          KafkaTemplate<String, String> kafkaTemplate) {
+        this.consumerFactory = consumerFactory;
+        this.kafkaTemplate = kafkaTemplate;
+    }
+
     // Reprocess messages matching specific criteria
     public int reprocessByKey(String keyPattern, String targetTopic) {
+        String groupId = "dlq-reprocessor-" + UUID.randomUUID();
         Properties props = new Properties();
-        props.put(ConsumerConfig.GROUP_ID_CONFIG,
-            "dlq-reprocessor-" + UUID.randomUUID());
         props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
         props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
 
         try (Consumer<String, String> consumer =
-                 consumerFactory.createConsumer("dlq-reprocessor", "")) {
+                 consumerFactory.createConsumer(groupId, null, null, props)) {
 
             consumer.subscribe(List.of("orders-dlq"));
             int reprocessed = 0;
