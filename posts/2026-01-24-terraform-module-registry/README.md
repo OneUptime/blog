@@ -8,7 +8,7 @@ Description: A complete guide to publishing reusable Terraform modules to the pu
 
 ---
 
-Publishing Terraform modules to a registry makes them reusable across teams and projects. The public Terraform Registry hosts thousands of modules, and private registries in Terraform Cloud or Enterprise provide internal sharing. This guide covers everything from structuring your module to publishing and maintaining it.
+Publishing Terraform modules to a registry makes them reusable across teams and projects. The public Terraform Registry hosts thousands of modules, and private registries in HCP Terraform or Terraform Enterprise provide internal sharing. This guide covers everything from structuring your module to publishing and maintaining it.
 
 ## Module Structure Requirements
 
@@ -16,12 +16,12 @@ The Terraform Registry expects modules to follow a standard structure.
 
 ```text
 terraform-aws-vpc/
-|-- README.md           # Required: module documentation
-|-- main.tf             # Required: primary resources
-|-- variables.tf        # Required: input variables
-|-- outputs.tf          # Required: output values
+|-- README.md           # Recommended: module documentation
+|-- main.tf             # Recommended: primary resources
+|-- variables.tf        # Recommended: input variables
+|-- outputs.tf          # Recommended: output values
 |-- versions.tf         # Provider version constraints
-|-- examples/           # Required: usage examples
+|-- examples/           # Recommended: usage examples
 |   |-- simple/
 |   |   |-- main.tf
 |   |   |-- outputs.tf
@@ -34,7 +34,7 @@ terraform-aws-vpc/
 |       |-- main.tf
 |       |-- variables.tf
 |       |-- outputs.tf
-|-- LICENSE             # Required: open source license
+|-- LICENSE             # Recommended: license
 ```
 
 ## Repository Naming Convention
@@ -44,6 +44,8 @@ Public registry modules must be hosted on GitHub with a specific naming pattern:
 ```text
 terraform-<PROVIDER>-<NAME>
 ```
+
+The GitHub repository must be public and should include a one-sentence repository description.
 
 Examples:
 - `terraform-aws-vpc`
@@ -235,7 +237,7 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = ">= 4.0, < 6.0"
+      version = ">= 5.0"
     }
   }
 }
@@ -245,7 +247,7 @@ terraform {
 
 ### README.md
 
-```markdown
+````markdown
 # AWS VPC Terraform Module
 
 Terraform module which creates VPC resources on AWS.
@@ -265,19 +267,19 @@ module "vpc" {
     Environment = "production"
   }
 }
-```bash
+```
 
 ## Examples
 
 - [Simple VPC](examples/simple)
-- [Complete VPC with NAT Gateways](examples/complete)
+- [Complete VPC](examples/complete)
 
 ## Requirements
 
 | Name | Version |
 |------|---------|
 | terraform | >= 1.0 |
-| aws | >= 4.0, < 6.0 |
+| aws | >= 5.0 |
 
 ## Inputs
 
@@ -301,7 +303,7 @@ module "vpc" {
 ## License
 
 Apache 2.0 Licensed. See LICENSE for full details.
-```text
+````
 
 ## Creating Examples
 
@@ -309,7 +311,8 @@ Apache 2.0 Licensed. See LICENSE for full details.
 
 ```hcl
 module "vpc" {
-  source = "../../"
+  source  = "your-org/vpc/aws"
+  version = "1.0.0"
 
   name               = "simple-vpc"
   cidr_block         = "10.0.0.0/16"
@@ -319,13 +322,19 @@ module "vpc" {
     Example = "simple"
   }
 }
+
+output "vpc_id" {
+  description = "The ID of the VPC"
+  value       = module.vpc.vpc_id
+}
 ```
 
 ### examples/complete/main.tf
 
 ```hcl
 module "vpc" {
-  source = "../../"
+  source  = "your-org/vpc/aws"
+  version = "1.0.0"
 
   name               = "complete-vpc"
   cidr_block         = "10.0.0.0/16"
@@ -383,7 +392,7 @@ git push origin v2.0.0
 ## Publishing to Public Registry
 
 1. Sign in to the [Terraform Registry](https://registry.terraform.io/) with GitHub
-2. Click "Publish" and select "Module"
+2. Click "Upload" in the top navigation
 3. Authorize the Terraform Registry GitHub App
 4. Select your repository
 5. The registry automatically imports tags as versions
@@ -396,9 +405,9 @@ flowchart LR
     D --> E[Users Can Reference]
 ```
 
-## Private Registry with Terraform Cloud
+## Private Registry with HCP Terraform
 
-For internal modules, use Terraform Cloud's private registry.
+For internal modules, use HCP Terraform's private registry.
 
 ```hcl
 # Using a private module
@@ -412,10 +421,10 @@ module "vpc" {
 ```
 
 Publishing process:
-1. Connect your VCS provider to Terraform Cloud
-2. Go to Registry > Modules > Add Module
+1. Connect your VCS provider to HCP Terraform
+2. Go to Registry, choose Module from the Publish drop-down, and select your VCS connection
 3. Select your repository
-4. Terraform Cloud imports versions from tags
+4. HCP Terraform imports versions from tags
 
 ## Testing Your Module
 
@@ -460,14 +469,14 @@ func TestVPCModule(t *testing.T) {
 
 7. **Support multiple use cases** - Use boolean flags to enable optional features.
 
-8. **Keep provider constraints loose** - Use `>= 4.0, < 6.0` not `= 4.5.0`.
+8. **Keep provider constraints loose** - Use `>= 5.0` not `= 5.45.0`.
 
 ```hcl
-# Good: range constraint
+# Good: minimum constraint
 required_providers {
   aws = {
     source  = "hashicorp/aws"
-    version = ">= 4.0, < 6.0"
+    version = ">= 5.0"
   }
 }
 
@@ -475,7 +484,7 @@ required_providers {
 required_providers {
   aws = {
     source  = "hashicorp/aws"
-    version = "= 4.5.0"
+    version = "= 5.45.0"
   }
 }
 ```
