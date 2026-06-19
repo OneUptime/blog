@@ -24,9 +24,9 @@ flowchart TD
     A --> E[ksh]
     A --> F[ash/busybox]
 
-    B --> G[Linux default]
+    B --> G[Common Linux login shell]
     C --> H[Debian/Ubuntu /bin/sh]
-    D --> I[macOS default]
+    D --> I[macOS interactive default]
     E --> J[Commercial Unix]
     F --> K[Alpine/Embedded]
 
@@ -80,8 +80,8 @@ flowchart TD
 # Works even if bash is in non-standard location
 
 #!/usr/bin/env sh
-# Portable POSIX shell via env
-# Recommended for maximum compatibility
+# POSIX shell found via PATH
+# Useful when /bin/sh is not the desired shell
 ```
 
 ### Platform Detection
@@ -329,11 +329,10 @@ item3="three"
 
 # Portable in-place edit:
 portable_sed_inplace() {
-    local pattern="$1"
-    local file="$2"
-    local temp_file
+    pattern=$1
+    file=$2
 
-    temp_file=$(mktemp)
+    temp_file=$(mktemp) || return 1
     sed "$pattern" "$file" > "$temp_file"
     mv "$temp_file" "$file"
 }
@@ -394,11 +393,10 @@ find . -type f -exec grep -l "pattern" {} \;
 
 # Or portable recursive:
 grep_recursive() {
-    local pattern="$1"
-    local dir="${2:-.}"
+    pattern=$1
+    dir=${2:-.}
 
-    find "$dir" -type f -print0 2>/dev/null | \
-        xargs -0 grep -l "$pattern" 2>/dev/null
+    find "$dir" -type f -exec grep -l "$pattern" {} + 2>/dev/null
 }
 ```
 
@@ -420,8 +418,8 @@ grep_recursive() {
 
 # Portable date arithmetic:
 add_days() {
-    local days="$1"
-    local base_date="${2:-$(date +%Y-%m-%d)}"
+    days=$1
+    base_date=${2:-$(date +%Y-%m-%d)}
 
     if date --version 2>/dev/null | grep -q GNU; then
         # GNU date
@@ -440,7 +438,7 @@ date +%Y-%m-%dT%H:%M:%S
 # GNU: date -d @1234567890
 # BSD: date -r 1234567890
 epoch_to_date() {
-    local epoch="$1"
+    epoch=$1
 
     if date --version 2>/dev/null | grep -q GNU; then
         date -d "@$epoch" +%Y-%m-%d
@@ -539,9 +537,9 @@ create_temp_file() {
     if command -v mktemp > /dev/null 2>&1; then
         mktemp
     else
-        # Fallback using PID and random
-        local temp="/tmp/tmp.$$.$RANDOM"
-        touch "$temp"
+        # Fallback using PID and noclobber
+        temp="${TMPDIR:-/tmp}/tmp.$$"
+        ( set -C; : > "$temp" ) 2>/dev/null || return 1
         echo "$temp"
     fi
 }
@@ -557,14 +555,17 @@ trap 'rm -rf "$temp_file" "$temp_dir"' EXIT
 # Portable path handling
 
 # Get script directory
-# POSIX-compliant way
+# Common portable approach
 get_script_dir() {
-    local script_path
-
     # Handle symlinks
     script_path="$0"
-    while [ -L "$script_path" ]; do
+    while [ -L "$script_path" ] && command -v readlink > /dev/null 2>&1; do
+        script_dir=$(dirname "$script_path")
         script_path=$(readlink "$script_path")
+        case "$script_path" in
+            /*) ;;
+            *) script_path="$script_dir/$script_path" ;;
+        esac
     done
 
     # Get directory
@@ -575,7 +576,7 @@ SCRIPT_DIR=$(get_script_dir)
 
 # Get absolute path
 get_absolute_path() {
-    local path="$1"
+    path=$1
 
     if [ -d "$path" ]; then
         (cd "$path" && pwd)
@@ -587,7 +588,7 @@ get_absolute_path() {
 # readlink -f is GNU-specific
 # Portable alternative:
 realpath_portable() {
-    local path="$1"
+    path=$1
 
     if command -v realpath > /dev/null 2>&1; then
         realpath "$path"
@@ -645,8 +646,8 @@ echo "Hello, $name"
 
 # Portable prompt + read
 prompt_read() {
-    local prompt="$1"
-    local var_name="$2"
+    prompt=$1
+    var_name=$2
 
     printf '%s' "$prompt"
     read -r "$var_name"
@@ -655,7 +656,7 @@ prompt_read() {
 # Read password (hide input)
 # stty is POSIX
 read_password() {
-    local prompt="${1:-Password: }"
+    prompt=${1:-Password: }
 
     printf '%s' "$prompt"
     stty -echo
@@ -668,8 +669,8 @@ read_password() {
 
 # Read with default
 read_with_default() {
-    local prompt="$1"
-    local default="$2"
+    prompt=$1
+    default=$2
 
     printf '%s [%s]: ' "$prompt" "$default"
     read -r value
@@ -799,7 +800,7 @@ Key portability guidelines:
 | Output | `printf` | `echo -e` |
 | Regex | `case` pattern | `[[ =~ ]]` |
 | Arithmetic | `$((expr))` | `let` |
-| Local vars | `local` (widely supported) | - |
+| Function vars | Plain assignments | `local` |
 
 Best practices:
 1. Use `#!/bin/sh` for maximum portability
