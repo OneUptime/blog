@@ -21,15 +21,15 @@ flowchart TD
     C --> D{Rotation Needed?}
     D -->|Size/Age/Force| E[Rotate Log]
     D -->|No| F[Skip]
-    E --> G[Rename Current Log]
-    G --> H{Compress?}
-    H -->|Yes| I[Compress Old Logs]
-    H -->|No| J[Continue]
-    I --> J
-    J --> K{copytruncate?}
-    K -->|Yes| L[Copy and Truncate]
-    K -->|No| M[Create New Empty Log]
-    L --> N[Run postrotate Scripts]
+    E --> G{copytruncate?}
+    G -->|Yes| H[Copy Current Log<br>and Truncate Original]
+    G -->|No| I[Rename Current Log]
+    I --> J[Create New Empty Log<br>if create enabled]
+    H --> K[Run postrotate Scripts]
+    J --> K
+    K --> L{Compress?}
+    L -->|Yes| M[Compress Old Logs]
+    L -->|No| N[Continue]
     M --> N
     N --> O{Delete Old?}
     O -->|rotate count exceeded| P[Delete Oldest Logs]
@@ -82,7 +82,7 @@ delaycompress
 # Include configurations from /etc/logrotate.d/
 include /etc/logrotate.d
 
-# Special handling for wtmp and btmp
+# Special handling for wtmp
 /var/log/wtmp {
     monthly
     create 0664 root utmp
@@ -131,7 +131,7 @@ Create a configuration file for your application's logs.
 
     # Run this command after rotation
     postrotate
-        # Send SIGUSR1 to reload log files
+        # Reload the service so it reopens log files
         /usr/bin/systemctl reload myapp > /dev/null 2>&1 || true
     endscript
 }
@@ -222,7 +222,7 @@ Here are the most frequently used configuration options.
 
     # Nginx needs to reopen log files after rotation
     postrotate
-        # Test nginx config and reload if valid
+        # Test nginx config before signaling the master process
         if nginx -t 2>/dev/null; then
             # Send USR1 signal to reopen log files
             [ -f /var/run/nginx.pid ] && kill -USR1 $(cat /var/run/nginx.pid)
@@ -242,7 +242,7 @@ Here are the most frequently used configuration options.
     delaycompress
     missingok
     notifempty
-    copytruncate    # Docker keeps files open, must use copytruncate
+    copytruncate    # If rotating externally, Docker keeps files open
     maxsize 100M    # Rotate if file exceeds 100MB regardless of time
 }
 ```
@@ -292,7 +292,7 @@ Here are the most frequently used configuration options.
     notifempty
     copytruncate
 
-    # Delete files older than 7 days
+    # Delete rotated files older than 7 days when this log is rotated
     maxage 7
 }
 ```
@@ -477,7 +477,7 @@ ALERT_EMAIL="admin@example.com"
 large_files=$(find "$LOG_DIR" -name "*.log" -size +${MAX_SIZE_MB}M 2>/dev/null)
 
 if [ -n "$large_files" ]; then
-    echo "Large log files detected:" | mail -s "Log Rotation Alert" "$ALERT_EMAIL" << EOF
+    mail -s "Log Rotation Alert" "$ALERT_EMAIL" << EOF
 The following log files exceed ${MAX_SIZE_MB}MB:
 
 $large_files
