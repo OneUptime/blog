@@ -4,25 +4,25 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Apache Kafka, Troubleshooting, Error Handling, Data Integrity, DevOps, Streaming
 
-Description: Learn how to diagnose and fix CorruptRecordException errors in Kafka, including causes like serialization issues, version mismatches, and disk corruption.
+Description: Learn how to diagnose and fix CorruptRecordException errors in Kafka, including causes like checksum failures, network issues, and disk corruption.
 
 ---
 
-CorruptRecordException is one of the most frustrating errors in Kafka. It occurs when Kafka cannot properly read a record due to data corruption, serialization mismatches, or checksum failures. This guide covers how to identify the root cause and implement fixes to prevent data loss.
+CorruptRecordException is one of the most frustrating errors in Kafka. It occurs when Kafka cannot properly read a record because the record fails Kafka's internal integrity checks, such as CRC validation, which generally points to network or disk corruption. Serialization and schema mismatches usually raise deserialization errors instead, but they can look similar at the consumer level. This guide covers how to identify the root cause and implement fixes to prevent data loss.
 
 ## Understanding CorruptRecordException
 
 ```mermaid
 flowchart TD
     A[CorruptRecordException] --> B{Identify Cause}
-    B --> C[Serialization Mismatch]
-    B --> D[Version Incompatibility]
+    B --> C[Deserializer/Schema Error]
+    B --> D[Record Format Issue]
     B --> E[Disk Corruption]
     B --> F[Network Issues]
     B --> G[Schema Evolution]
 
     C --> C1[Fix deserializer config]
-    D --> D1[Upgrade brokers/clients]
+    D --> D1[Check broker/client compatibility]
     E --> E1[Replace corrupted segments]
     F --> F1[Check network reliability]
     G --> G1[Update schema registry]
@@ -37,15 +37,15 @@ flowchart TD
 
 ## Common Causes and Solutions
 
-### 1. Serialization/Deserialization Mismatch
+### 1. Deserialization and Schema Mismatch
 
-The most common cause is a mismatch between how messages were serialized and how you are trying to deserialize them.
+The most common consumer-side issue that looks like record corruption is a mismatch between how messages were serialized and how you are trying to deserialize them. These failures are normally `SerializationException` or schema-registry errors, not true `CorruptRecordException`, but they should be ruled out before investigating broker storage.
 
 ```java
-// WRONG: Trying to deserialize Avro data with String deserializer
+// WRONG: Trying to deserialize JSON or String data with Avro deserializer
 Properties wrongProps = new Properties();
 wrongProps.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG,
-    StringDeserializer.class.getName()); // This will fail for Avro data
+    KafkaAvroDeserializer.class.getName()); // This will fail for non-Avro data
 
 // CORRECT: Use matching deserializer for your data format
 public class DeserializerConfiguration {
@@ -101,10 +101,10 @@ public class DeserializerConfiguration {
 
 ### 2. Error-Tolerant Deserialization
 
-Implement a custom deserializer that handles corrupt records gracefully instead of crashing.
+Implement a custom deserializer that handles malformed payloads gracefully instead of crashing. This pattern handles deserialization failures after Kafka has fetched the record; it cannot recover a record batch that fails Kafka's internal CRC checks before delivery.
 
 ```java
-// Error-tolerant deserializer that logs and skips corrupt records
+// Error-tolerant deserializer that logs and skips malformed records
 public class ErrorTolerantDeserializer<T> implements Deserializer<T> {
 
     private final Deserializer<T> delegate;
@@ -131,7 +131,7 @@ public class ErrorTolerantDeserializer<T> implements Deserializer<T> {
         try {
             return delegate.deserialize(topic, data);
         } catch (Exception e) {
-            // Log the corruption but do not crash
+            // Log the deserialization failure but do not crash
             corruptRecordCounter.increment();
 
             System.err.println("Failed to deserialize record from topic " + topic +
@@ -186,19 +186,22 @@ public class ErrorTolerantDeserializer<T> implements Deserializer<T> {
         StringBuilder sb = new StringBuilder();
         for (Header header : headers) {
             sb.append(header.key()).append("=")
-              .append(new String(header.value())).append(", ");
+              .append(header.value() == null
+                  ? "null"
+                  : new String(header.value(), StandardCharsets.UTF_8))
+              .append(", ");
         }
         return sb.toString();
     }
 }
 ```
 
-### 3. Dead Letter Queue for Corrupt Records
+### 3. Dead Letter Queue for Malformed Records
 
-Instead of losing corrupt records, send them to a dead letter queue for manual inspection and recovery.
+Instead of losing records that fail application-level deserialization or processing, send them to a dead letter queue for manual inspection and recovery. For a true broker-level corrupt record that cannot be fetched, use the broker-level recovery steps later in this guide.
 
 ```java
-// Dead letter queue handler for corrupt records
+// Dead letter queue handler for malformed records
 public class DeadLetterQueueHandler<K, V> {
 
     private final KafkaProducer<byte[], byte[]> dlqProducer;
@@ -220,7 +223,7 @@ public class DeadLetterQueueHandler<K, V> {
         this.dlqProducer = new KafkaProducer<>(props);
     }
 
-    // Send corrupt record to DLQ with metadata
+    // Send malformed record to DLQ with metadata
     public void sendToDeadLetterQueue(ConsumerRecord<byte[], byte[]> record,
                                        Exception error) {
         try {
@@ -234,17 +237,25 @@ public class DeadLetterQueueHandler<K, V> {
 
             // Add headers with error context
             dlqRecord.headers()
-                .add("dlq.original.topic", record.topic().getBytes())
+                .add("dlq.original.topic",
+                    record.topic().getBytes(StandardCharsets.UTF_8))
                 .add("dlq.original.partition",
-                    String.valueOf(record.partition()).getBytes())
+                    String.valueOf(record.partition())
+                        .getBytes(StandardCharsets.UTF_8))
                 .add("dlq.original.offset",
-                    String.valueOf(record.offset()).getBytes())
+                    String.valueOf(record.offset())
+                        .getBytes(StandardCharsets.UTF_8))
                 .add("dlq.original.timestamp",
-                    String.valueOf(record.timestamp()).getBytes())
-                .add("dlq.error.message", error.getMessage().getBytes())
-                .add("dlq.error.class", error.getClass().getName().getBytes())
+                    String.valueOf(record.timestamp())
+                        .getBytes(StandardCharsets.UTF_8))
+                .add("dlq.error.message",
+                    String.valueOf(error.getMessage())
+                        .getBytes(StandardCharsets.UTF_8))
+                .add("dlq.error.class",
+                    error.getClass().getName().getBytes(StandardCharsets.UTF_8))
                 .add("dlq.timestamp",
-                    String.valueOf(System.currentTimeMillis()).getBytes());
+                    String.valueOf(System.currentTimeMillis())
+                        .getBytes(StandardCharsets.UTF_8));
 
             // Copy original headers
             for (Header header : record.headers()) {
@@ -252,17 +263,11 @@ public class DeadLetterQueueHandler<K, V> {
                     header.value());
             }
 
-            dlqProducer.send(dlqRecord, (metadata, exception) -> {
-                if (exception != null) {
-                    System.err.println("Failed to send to DLQ: " +
-                        exception.getMessage());
-                } else {
-                    dlqCounter.increment();
-                    System.out.println("Sent corrupt record to DLQ: " +
-                        metadata.topic() + "-" + metadata.partition() +
-                        "@" + metadata.offset());
-                }
-            });
+            RecordMetadata metadata = dlqProducer.send(dlqRecord).get();
+            dlqCounter.increment();
+            System.out.println("Sent record to DLQ: " +
+                metadata.topic() + "-" + metadata.partition() +
+                "@" + metadata.offset());
 
         } catch (Exception e) {
             System.err.println("Error sending to DLQ: " + e.getMessage());
@@ -277,10 +282,10 @@ public class DeadLetterQueueHandler<K, V> {
 
 ### 4. Consumer with Corruption Handling
 
-Complete consumer implementation that handles corrupt records gracefully.
+Complete consumer implementation that handles deserialization failures gracefully by reading raw bytes first.
 
 ```java
-// Consumer that handles corrupt records with DLQ
+// Consumer that handles malformed records with DLQ
 public class CorruptionTolerantConsumer {
 
     private final KafkaConsumer<byte[], byte[]> consumer;
@@ -407,15 +412,14 @@ $KAFKA_HOME/bin/kafka-dump-log.sh \
     --print-data-log \
     --deep-iteration
 
-# Verify log segment integrity
-$KAFKA_HOME/bin/kafka-dump-log.sh \
-    --files $LOG_DIR/$TOPIC-$PARTITION/00000000000000000000.log \
-    --verify-index-only
-
-# Check for index corruption
+# Verify index integrity
 $KAFKA_HOME/bin/kafka-dump-log.sh \
     --files $LOG_DIR/$TOPIC-$PARTITION/00000000000000000000.index \
-    --print-data-log
+    --verify-index-only
+
+# Dump index file for inspection
+$KAFKA_HOME/bin/kafka-dump-log.sh \
+    --files $LOG_DIR/$TOPIC-$PARTITION/00000000000000000000.index
 ```
 
 ### Rebuild Corrupted Indexes
@@ -446,7 +450,7 @@ ls -la $LOG_DIR/$TOPIC-$PARTITION/
 
 ## Handling Schema Evolution Issues
 
-Schema changes can cause deserialization failures. Use proper schema evolution with backward/forward compatibility.
+Schema changes can cause deserialization failures. Use proper schema evolution with backward/forward compatibility. With Confluent Schema Registry Avro data, the payload begins with a magic byte and schema ID before the Avro binary payload.
 
 ```java
 // Schema registry client for handling schema evolution
@@ -487,14 +491,14 @@ public class SchemaEvolutionHandler {
         byte magicByte = buffer.get();
 
         if (magicByte != 0) {
-            throw new CorruptRecordException(
+            throw new SerializationException(
                 "Unknown magic byte: " + magicByte);
         }
 
         int writerSchemaId = buffer.getInt();
         Schema writerSchema = getSchema(writerSchemaId);
 
-        // Check compatibility
+        // Check whether the current reader schema can read the writer schema
         if (!isCompatible(writerSchema, readerSchema)) {
             System.out.println("Schema evolution detected: v" + writerSchemaId +
                 " -> current");
@@ -527,22 +531,25 @@ public class SchemaEvolutionHandler {
 }
 ```
 
-## Preventing Corruption
+## Preventing Bad Payloads and Detecting Corruption
 
 ### Producer-Side Validation
 
 ```java
-// Validate messages before sending to prevent corruption
+// Validate messages before sending to prevent malformed payloads
 public class ValidatingProducer<K, V> {
 
     private final KafkaProducer<K, V> producer;
     private final Validator<V> validator;
+    private final Function<V, byte[]> checksumEncoder;
     private final Counter validationFailures;
 
     public ValidatingProducer(Properties props, Validator<V> validator,
+                               Function<V, byte[]> checksumEncoder,
                                MeterRegistry meterRegistry) {
         this.producer = new KafkaProducer<>(props);
         this.validator = validator;
+        this.checksumEncoder = checksumEncoder;
         this.validationFailures = meterRegistry.counter(
             "kafka.producer.validation.failures");
     }
@@ -566,10 +573,8 @@ public class ValidatingProducer<K, V> {
 
     private byte[] calculateChecksum(V value) {
         try {
-            MessageDigest md = MessageDigest.getInstance("MD5");
-            // Serialize value and calculate checksum
-            // Implementation depends on your serialization format
-            return md.digest(value.toString().getBytes());
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            return md.digest(checksumEncoder.apply(value));
         } catch (NoSuchAlgorithmException e) {
             throw new RuntimeException(e);
         }
@@ -629,7 +634,7 @@ public class ChecksumVerifyingConsumer {
 
     private byte[] calculateChecksum(byte[] data) {
         try {
-            MessageDigest md = MessageDigest.getInstance("MD5");
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
             return md.digest(data);
         } catch (NoSuchAlgorithmException e) {
             throw new RuntimeException(e);
@@ -652,16 +657,16 @@ public class ChecksumVerifyingConsumer {
 flowchart TD
     A[Detect Corruption] --> B{Corruption Type?}
     B --> |Index| C[Delete Index Files]
-    B --> |Log Segment| D{Have Replicas?}
+    B --> |Log Segment| D{Have Healthy Replica?}
     B --> |Checksum| E[Skip Record]
 
     C --> F[Restart Broker]
     F --> G[Index Rebuilt]
 
-    D --> |Yes| H[Reassign Partition]
+    D --> |Yes| H[Move Leadership or Replace Replica]
     D --> |No| I[Restore from Backup]
 
-    H --> J[Healthy Replica Takes Over]
+    H --> J[Healthy Replica Serves Data]
     I --> K[Manual Recovery]
 
     E --> L[Send to DLQ]
@@ -709,11 +714,11 @@ $KAFKA_HOME/bin/kafka-leader-election.sh \
 
 | Issue | Solution |
 |-------|----------|
-| **Serializer mismatch** | Use matching deserializer for data format |
+| **Deserializer/schema mismatch** | Use matching deserializer for data format |
 | **Schema evolution** | Use schema registry with compatibility settings |
 | **Index corruption** | Delete index files and restart broker |
-| **Log corruption** | Reassign partition to healthy replica |
+| **Log corruption** | Recover from a healthy replica or backup |
 | **Transient errors** | Implement retry with DLQ |
-| **Prevention** | Add checksums and validation |
+| **Prevention** | Add validation and optional payload checksums |
 
-CorruptRecordException can be caused by various issues from serialization mismatches to actual disk corruption. Implement error-tolerant deserialization with dead letter queues to handle corrupt records gracefully, and use checksums and validation to prevent corruption at the source.
+CorruptRecordException generally indicates that Kafka could not validate a record's stored or transmitted bytes. Rule out deserialization and schema issues first, then inspect broker logs and replicas for true corruption. Use dead letter queues for malformed payloads that can still be fetched, and use checksums and validation to detect bad data at the application boundary.
