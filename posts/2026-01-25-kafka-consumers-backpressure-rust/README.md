@@ -65,7 +65,7 @@ async fn naive_consumer() {
 
     consumer.subscribe(&["my-topic"]).unwrap();
 
-    // This will buffer messages as fast as Kafka can deliver them
+    // This can let librdkafka's internal queue grow while processing is slow
     let mut stream = consumer.stream();
 
     while let Some(result) = stream.next().await {
@@ -81,19 +81,20 @@ async fn naive_consumer() {
 }
 ```
 
-This consumer fetches messages as fast as possible and processes them sequentially. If Kafka delivers 1000 messages per second but processing takes 100ms each, you can only handle 10 messages per second. The remaining 990 messages per second accumulate in memory.
+This consumer processes messages sequentially while librdkafka continues to fetch in the background. If Kafka delivers 1000 messages per second but processing takes 100ms each, you can only handle 10 messages per second. The remaining messages build up as consumer lag and can also accumulate in librdkafka's local queues until client-side queue limits apply.
 
 ## Building a Backpressure-Aware Consumer
 
-The fix is to decouple fetching from processing using a bounded channel. When the channel is full, the fetch loop blocks, which naturally slows down consumption from Kafka.
+The fix is to decouple fetching from processing using a bounded channel. When the channel is full, the fetch loop waits on `send().await`, which naturally slows down consumption from Kafka.
 
 ```rust
-use rdkafka::consumer::{Consumer, StreamConsumer, CommitMode};
+use rdkafka::consumer::{Consumer, StreamConsumer};
 use rdkafka::config::ClientConfig;
 use rdkafka::message::OwnedMessage;
 use rdkafka::Message;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, Mutex};
 use futures::StreamExt;
+use std::sync::Arc;
 use std::time::Duration;
 
 // Configuration for backpressure control
@@ -106,12 +107,13 @@ async fn main() {
 
     // Bounded channel provides backpressure
     let (tx, rx) = mpsc::channel::<OwnedMessage>(CHANNEL_CAPACITY);
+    let rx = Arc::new(Mutex::new(rx));
 
     let consumer: StreamConsumer = ClientConfig::new()
         .set("bootstrap.servers", "localhost:9092")
         .set("group.id", "backpressure-group")
         .set("auto.offset.reset", "earliest")
-        .set("enable.auto.commit", "false")  // Manual commits for reliability
+        .set("enable.auto.commit", "false")  // Add explicit commits after processing
         .set("fetch.max.bytes", "1048576")   // Limit fetch size
         .set("max.poll.interval.ms", "300000")
         .create()
@@ -123,8 +125,8 @@ async fn main() {
     let fetch_handle = tokio::spawn(fetch_loop(consumer, tx));
 
     // Spawn worker tasks
-    let worker_handles: Vec<_> = (0..WORKER_COUNT)
-        .map(|id| tokio::spawn(process_messages(id, rx.clone())))
+    let _worker_handles: Vec<_> = (0..WORKER_COUNT)
+        .map(|id| tokio::spawn(process_messages(id, Arc::clone(&rx))))
         .collect();
 
     // Note: In production, handle graceful shutdown here
@@ -140,7 +142,7 @@ async fn fetch_loop(consumer: StreamConsumer, tx: mpsc::Sender<OwnedMessage>) {
                 // Convert to owned message so we can send across threads
                 let owned = borrowed_msg.detach();
 
-                // This send() will block when channel is full
+                // This send().await will wait when the channel is full
                 // That's the backpressure mechanism at work
                 if tx.send(owned).await.is_err() {
                     tracing::error!("Receiver dropped, shutting down fetch loop");
@@ -154,8 +156,20 @@ async fn fetch_loop(consumer: StreamConsumer, tx: mpsc::Sender<OwnedMessage>) {
     }
 }
 
-async fn process_messages(worker_id: usize, mut rx: mpsc::Receiver<OwnedMessage>) {
-    while let Some(msg) = rx.recv().await {
+async fn process_messages(
+    worker_id: usize,
+    rx: Arc<Mutex<mpsc::Receiver<OwnedMessage>>>,
+) {
+    loop {
+        let msg = {
+            let mut rx = rx.lock().await;
+            rx.recv().await
+        };
+
+        let Some(msg) = msg else {
+            break;
+        };
+
         let payload = msg.payload()
             .map(|p| String::from_utf8_lossy(p).to_string())
             .unwrap_or_default();
@@ -184,7 +198,8 @@ async fn process_single_message(payload: &str) -> Result<(), Box<dyn std::error:
     tokio::time::sleep(Duration::from_millis(50)).await;
 
     // Your business logic here
-    tracing::info!("Processing: {}", &payload[..payload.len().min(50)]);
+    let preview: String = payload.chars().take(50).collect();
+    tracing::info!("Processing: {}", preview);
 
     Ok(())
 }
@@ -194,9 +209,9 @@ async fn process_single_message(payload: &str) -> Result<(), Box<dyn std::error:
 
 **Bounded Channel Capacity**: The `CHANNEL_CAPACITY` constant controls how many messages can be buffered. Set this based on your memory budget and processing latency. A smaller buffer means tighter backpressure but potentially lower throughput due to more frequent blocking.
 
-**Worker Pool**: Multiple workers process messages in parallel, increasing throughput. The workers share the receiving end of the channel, and Tokio's mpsc receiver handles the distribution automatically.
+**Worker Pool**: Multiple workers process messages in parallel, increasing throughput. Tokio's mpsc channel has a single receiver, so the example shares that receiver behind an async mutex. Each worker takes one message and releases the lock before running the processing logic.
 
-**Manual Commits**: We disabled auto-commit so we can commit offsets only after successful processing. This prevents message loss during crashes.
+**Manual Commits**: We disabled auto-commit so offsets are not acknowledged before processing. In production, add explicit commits after successful processing or after a successful batch.
 
 **Owned Messages**: We call `detach()` to convert borrowed messages to owned ones. This lets us send messages across task boundaries without lifetime issues.
 
@@ -263,8 +278,6 @@ You cannot improve what you cannot measure. Add these metrics to understand your
 
 ```rust
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
-
 struct Metrics {
     messages_received: AtomicU64,
     messages_processed: AtomicU64,
