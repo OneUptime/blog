@@ -10,26 +10,35 @@ Description: Learn how to deploy the Kubernetes Dashboard securely with proper a
 
 The Kubernetes Dashboard provides a web-based UI for managing your cluster. Out of the box, it can be a security risk if not configured properly. This guide walks through deploying the dashboard securely with proper authentication and authorization.
 
+Note: The Kubernetes Dashboard project is archived and no longer actively maintained; consider a maintained alternative for new production deployments.
+
 ## Why Security Matters
 
 The Kubernetes Dashboard has full visibility into your cluster and, with the right permissions, can create, modify, and delete resources. In 2018, Tesla's cloud infrastructure was compromised through an unsecured Kubernetes Dashboard. Do not let that be you.
 
 ## Installing the Dashboard
 
-Deploy the official dashboard using the recommended manifest:
+Deploy the dashboard using the Helm chart from the archived Kubernetes Dashboard project:
 
 ```bash
-# Install the latest stable version
+# Add the archived Kubernetes Dashboard repository
+helm repo add kubernetes-dashboard https://kubernetes-retired.github.io/dashboard/
 
-kubectl apply -f https://raw.githubusercontent.com/kubernetes/dashboard/v2.7.0/aio/deploy/recommended.yaml
+# Install the dashboard
+helm upgrade --install kubernetes-dashboard kubernetes-dashboard/kubernetes-dashboard \
+  --create-namespace \
+  --namespace kubernetes-dashboard
 
 # Verify installation
 kubectl get pods -n kubernetes-dashboard
 
 # Expected output:
-# NAME                                         READY   STATUS
-# dashboard-metrics-scraper-5cb4f4bb9c-xxxxx   1/1     Running
-# kubernetes-dashboard-6967859bff-xxxxx        1/1     Running
+# NAME                                                   READY   STATUS
+# kubernetes-dashboard-api-xxxxx                         1/1     Running
+# kubernetes-dashboard-auth-xxxxx                        1/1     Running
+# kubernetes-dashboard-kong-xxxxx                        1/1     Running
+# kubernetes-dashboard-metrics-scraper-xxxxx             1/1     Running
+# kubernetes-dashboard-web-xxxxx                         1/1     Running
 ```
 
 The dashboard is now running but not accessible from outside the cluster.
@@ -62,10 +71,10 @@ The simplest and safest method for local development:
 kubectl proxy
 
 # Access the dashboard at:
-# http://localhost:8001/api/v1/namespaces/kubernetes-dashboard/services/https:kubernetes-dashboard:/proxy/
+# http://localhost:8001/api/v1/namespaces/kubernetes-dashboard/services/https:kubernetes-dashboard-kong-proxy:/proxy/
 ```
 
-This only works from your local machine and uses your kubeconfig credentials.
+This only works from your local machine and uses your kubeconfig credentials for the API server connection. The dashboard login still requires a token.
 
 ## Method 2: Port Forwarding (Development)
 
@@ -77,7 +86,7 @@ kubectl get pods -n kubernetes-dashboard
 
 # Forward the port
 kubectl port-forward -n kubernetes-dashboard \
-  service/kubernetes-dashboard 8443:443
+  service/kubernetes-dashboard-kong-proxy 8443:443
 
 # Access at https://localhost:8443
 ```
@@ -104,7 +113,7 @@ metadata:
   name: dashboard-readonly
 rules:
   - apiGroups: [""]
-    resources: ["pods", "services", "configmaps", "secrets", "nodes", "namespaces"]
+    resources: ["pods", "services", "configmaps", "nodes", "namespaces"]
     verbs: ["get", "list", "watch"]
   - apiGroups: ["apps"]
     resources: ["deployments", "statefulsets", "daemonsets", "replicasets"]
@@ -289,7 +298,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: kubernetes-dashboard
+                name: kubernetes-dashboard-kong-proxy
                 port:
                   number: 443
 ```
@@ -321,7 +330,7 @@ spec:
           args:
             - --provider=github
             - --email-domain=*
-            - --upstream=https://kubernetes-dashboard.kubernetes-dashboard.svc:443
+            - --upstream=https://kubernetes-dashboard-kong-proxy.kubernetes-dashboard.svc:443
             - --http-address=0.0.0.0:4180
             - --ssl-upstream-insecure-skip-verify
             - --cookie-secure=true
@@ -375,7 +384,9 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/name: kubernetes-dashboard
+      app.kubernetes.io/name: kong
+      app.kubernetes.io/component: app
+      app.kubernetes.io/instance: kubernetes-dashboard
   policyTypes:
     - Ingress
   ingress:
@@ -412,12 +423,12 @@ rules:
 
 ```bash
 # DO NOT expose dashboard via NodePort without auth
-kubectl expose deployment kubernetes-dashboard \
+kubectl expose deployment kubernetes-dashboard-kong \
   --type=NodePort \
   -n kubernetes-dashboard  # Dangerous!
 
 # DO NOT use LoadBalancer without authentication
-kubectl patch svc kubernetes-dashboard \
+kubectl patch svc kubernetes-dashboard-kong-proxy \
   -n kubernetes-dashboard \
   -p '{"spec": {"type": "LoadBalancer"}}'  # Dangerous!
 
@@ -458,10 +469,10 @@ kubectl auth can-i get pods --as=system:serviceaccount:kubernetes-dashboard:dash
 kubectl get pods -n kubernetes-dashboard
 
 # Check pod logs
-kubectl logs -n kubernetes-dashboard -l app.kubernetes.io/name=kubernetes-dashboard
+kubectl logs -n kubernetes-dashboard -l app.kubernetes.io/instance=kubernetes-dashboard
 
 # Check service endpoints
-kubectl get endpoints kubernetes-dashboard -n kubernetes-dashboard
+kubectl get endpoints kubernetes-dashboard-kong-proxy -n kubernetes-dashboard
 ```
 
 ---
