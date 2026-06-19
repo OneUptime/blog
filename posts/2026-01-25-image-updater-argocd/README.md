@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ArgoCD, Image Updater, Kubernetes, Container Registry, Automation, GitOps
 
-Description: Learn how to use ArgoCD Image Updater to automatically update container image versions in your Git repository when new images are pushed to your registry.
+Description: Learn how to use ArgoCD Image Updater to automatically update container image versions when new images are pushed to your registry.
 
 ---
 
-Keeping container images up to date is tedious. Every time you push a new image, you need to update the tag in your Git repository. ArgoCD Image Updater automates this by watching your container registry and updating your Git repo when new images appear.
+Keeping container images up to date is tedious. Every time you push a new image, you need to update the tag in your Git repository. ArgoCD Image Updater automates this by watching your container registry and updating your Git repo or ArgoCD Application when new images appear.
 
 ## How Image Updater Works
 
@@ -24,7 +24,7 @@ flowchart LR
 The flow:
 1. CI builds and pushes new image to registry
 2. Image Updater polls the registry for new tags
-3. When found, it commits the update to Git
+3. When found, it writes the update back to Git or the ArgoCD Application
 4. ArgoCD detects the change and syncs
 
 ## Installing Image Updater
@@ -50,7 +50,21 @@ kubectl get pods -n argocd | grep image-updater
 
 ## Basic Configuration
 
-Enable Image Updater on an Application using annotations:
+Create an ImageUpdater resource that reads configuration from matching Application annotations:
+
+```yaml
+apiVersion: argocd-image-updater.argoproj.io/v1alpha1
+kind: ImageUpdater
+metadata:
+  name: my-image-updater
+  namespace: argocd
+spec:
+  applicationRefs:
+    - namePattern: "myapp"
+      useAnnotations: true
+```
+
+Then enable Image Updater on an Application using annotations:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -63,12 +77,14 @@ metadata:
     argocd-image-updater.argoproj.io/image-list: myapp=myregistry.io/myapp
     # Update strategy: use the latest semver tag
     argocd-image-updater.argoproj.io/myapp.update-strategy: semver
+    # Persist updates in Git
+    argocd-image-updater.argoproj.io/write-back-method: git
 spec:
   project: default
   source:
     repoURL: https://github.com/myorg/myapp-config.git
     path: k8s
-    targetRevision: HEAD
+    targetRevision: main
   destination:
     server: https://kubernetes.default.svc
     namespace: myapp
@@ -89,24 +105,24 @@ annotations:
   argocd-image-updater.argoproj.io/myapp.allow-tags: "regexp:^v?[0-9]+\\.[0-9]+\\.[0-9]+$"
 ```
 
-### Latest Strategy
+### Newest Build Strategy
 
-Always use the most recently pushed image:
+Use the image with the most recent build date:
 
 ```yaml
 annotations:
   argocd-image-updater.argoproj.io/image-list: myapp=myregistry.io/myapp
-  argocd-image-updater.argoproj.io/myapp.update-strategy: latest
+  argocd-image-updater.argoproj.io/myapp.update-strategy: newest-build
 ```
 
-### Name Strategy
+### Alphabetical Strategy
 
 Sort tags alphabetically and use the last one:
 
 ```yaml
 annotations:
   argocd-image-updater.argoproj.io/image-list: myapp=myregistry.io/myapp
-  argocd-image-updater.argoproj.io/myapp.update-strategy: name
+  argocd-image-updater.argoproj.io/myapp.update-strategy: alphabetical
 ```
 
 ### Digest Strategy
@@ -207,8 +223,6 @@ kind: Secret
 metadata:
   name: dockerhub-creds
   namespace: argocd
-  labels:
-    argocd-image-updater.argoproj.io/secret-type: pullsecret
 type: kubernetes.io/dockerconfigjson
 stringData:
   .dockerconfigjson: |
@@ -227,7 +241,7 @@ Reference in the Application:
 ```yaml
 annotations:
   argocd-image-updater.argoproj.io/image-list: myapp=docker.io/myuser/myapp
-  argocd-image-updater.argoproj.io/myapp.pull-secret: argocd/dockerhub-creds
+  argocd-image-updater.argoproj.io/myapp.pull-secret: pullsecret:argocd/dockerhub-creds
 ```
 
 ### GitHub Container Registry
@@ -238,8 +252,6 @@ kind: Secret
 metadata:
   name: ghcr-creds
   namespace: argocd
-  labels:
-    argocd-image-updater.argoproj.io/secret-type: pullsecret
 type: kubernetes.io/dockerconfigjson
 stringData:
   .dockerconfigjson: |
@@ -261,8 +273,6 @@ kind: Secret
 metadata:
   name: ecr-creds
   namespace: argocd
-  labels:
-    argocd-image-updater.argoproj.io/secret-type: pullsecret
 type: kubernetes.io/dockerconfigjson
 stringData:
   .dockerconfigjson: |
@@ -299,8 +309,6 @@ kind: Secret
 metadata:
   name: gcr-creds
   namespace: argocd
-  labels:
-    argocd-image-updater.argoproj.io/secret-type: pullsecret
 type: kubernetes.io/dockerconfigjson
 stringData:
   .dockerconfigjson: |
@@ -358,7 +366,7 @@ annotations:
     worker=myregistry.io/worker
   argocd-image-updater.argoproj.io/frontend.update-strategy: semver
   argocd-image-updater.argoproj.io/backend.update-strategy: semver
-  argocd-image-updater.argoproj.io/worker.update-strategy: latest
+  argocd-image-updater.argoproj.io/worker.update-strategy: newest-build
 ```
 
 ## Commit Message Customization
@@ -366,10 +374,18 @@ annotations:
 Customize the Git commit message:
 
 ```yaml
-annotations:
-  argocd-image-updater.argoproj.io/git-commit-message: |
-    chore: update image {{range .Updated}}{{.Name}}={{.NewTag}} {{end}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-image-updater-config
+  namespace: argocd
+data:
+  git.commit-message-template: |
+    chore: update images for {{ .AppName }}
 
+    {{ range .AppChanges -}}
+    updates image {{ .Image }} from {{ .OldTag }} to {{ .NewTag }}
+    {{ end -}}
     Signed-off-by: ArgoCD Image Updater <argocd-image-updater@example.com>
 ```
 
@@ -378,7 +394,7 @@ annotations:
 ### Logs
 
 ```bash
-kubectl logs -n argocd deployment/argocd-image-updater -f
+kubectl logs -n argocd deployment/argocd-image-updater-controller -f
 ```
 
 ### Metrics
@@ -397,7 +413,7 @@ spec:
     matchLabels:
       app.kubernetes.io/name: argocd-image-updater
   endpoints:
-    - port: metrics
+    - port: https
 ```
 
 ## Troubleshooting
@@ -406,13 +422,13 @@ spec:
 
 ```bash
 # Check Image Updater logs
-kubectl logs -n argocd deployment/argocd-image-updater
+kubectl logs -n argocd deployment/argocd-image-updater-controller
 
 # Verify annotations are correct
 kubectl get application myapp -n argocd -o yaml | grep -A 20 annotations
 
 # Test registry access
-kubectl run test --image=myregistry.io/myapp:latest --dry-run=client
+kubectl exec -n argocd deployment/argocd-image-updater-controller -- argocd-image-updater test myregistry.io/myapp
 ```
 
 ### Git Write-Back Failing
@@ -474,7 +490,7 @@ Then merge to main through PR.
 
 ### Rate Limiting
 
-Configure polling interval to avoid hitting rate limits:
+Configure the registry request rate limit to avoid hitting rate limits:
 
 ```yaml
 # argocd-image-updater-config ConfigMap
@@ -485,8 +501,8 @@ data:
         prefix: docker.io
         api_url: https://registry-1.docker.io
         default: true
-        # Check every 5 minutes
-        interval: 5m
+        # Maximum requests per second
+        limit: 10
 ```
 
 ArgoCD Image Updater bridges the gap between CI and GitOps. It keeps your deployments current without manual intervention while maintaining the Git-as-source-of-truth principle. Start with semver strategy for predictable updates, then explore digest tracking for mutable tags like latest.
