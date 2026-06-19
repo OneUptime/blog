@@ -66,7 +66,7 @@ while (true) {
 
 ### Cause 2: Session Timeout
 
-If heartbeats are not sent within `session.timeout.ms`, the consumer is considered dead:
+If heartbeats are not sent within `session.timeout.ms`, the consumer is considered dead. In modern Kafka clients, heartbeats are sent by a background thread, so this usually points to a process stall, network issue, or coordinator problem rather than normal record processing:
 
 ```mermaid
 sequenceDiagram
@@ -74,7 +74,7 @@ sequenceDiagram
     participant Coordinator
 
     Consumer->>Coordinator: Heartbeat
-    Note over Consumer: Processing messages...
+    Note over Consumer: Process stalled or network interrupted
     Note over Coordinator: Waiting for heartbeat
     Note over Coordinator: session.timeout.ms elapsed
     Coordinator->>Coordinator: Remove consumer from group
@@ -157,15 +157,16 @@ Process messages asynchronously to keep the poll loop responsive:
 
 ```java
 import org.apache.kafka.clients.consumer.*;
+import org.apache.kafka.common.TopicPartition;
 import java.util.*;
 import java.util.concurrent.*;
 import java.time.Duration;
+import java.util.stream.Collectors;
 
 public class AsyncProcessingConsumer {
 
     private final KafkaConsumer<String, String> consumer;
     private final ExecutorService executor;
-    private final BlockingQueue<ConsumerRecord<String, String>> processingQueue;
     private volatile boolean running = true;
 
     public AsyncProcessingConsumer(String bootstrapServers, String groupId,
@@ -185,64 +186,67 @@ public class AsyncProcessingConsumer {
         this.consumer = new KafkaConsumer<>(props);
         this.consumer.subscribe(Collections.singletonList(topic));
 
-        // Processing queue with bounded capacity
-        this.processingQueue = new LinkedBlockingQueue<>(10000);
-
         // Create processing thread pool
         this.executor = Executors.newFixedThreadPool(processingThreads);
-
-        // Start processing workers
-        for (int i = 0; i < processingThreads; i++) {
-            executor.submit(this::processingWorker);
-        }
     }
 
     /**
-     * Main poll loop - keeps polling and adding to queue.
+     * Main poll loop - keeps polling while worker threads process records.
      * This loop stays responsive because actual processing is async.
      */
     public void pollLoop() {
         while (running) {
-            try {
-                ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(100));
+            ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(100));
 
-                for (ConsumerRecord<String, String> record : records) {
-                    // Add to processing queue (blocks if queue is full)
-                    if (!processingQueue.offer(record, 5, TimeUnit.SECONDS)) {
-                        System.err.println("Processing queue full, applying backpressure");
-                        // Could pause consumption here
-                    }
-                }
-
-                // Commit periodically if queue is being processed
-                if (processingQueue.size() < 5000) {
-                    consumer.commitSync();
-                }
-
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                break;
+            if (records.isEmpty()) {
+                continue;
             }
-        }
-    }
 
-    /**
-     * Worker that processes messages from the queue.
-     */
-    private void processingWorker() {
-        while (running) {
+            Set<TopicPartition> partitions = records.partitions();
+            consumer.pause(partitions);
+
+            List<CompletableFuture<Void>> futures = new ArrayList<>();
+            Map<TopicPartition, OffsetAndMetadata> offsetsToCommit = new HashMap<>();
+
             try {
-                ConsumerRecord<String, String> record =
-                    processingQueue.poll(100, TimeUnit.MILLISECONDS);
-
-                if (record != null) {
-                    processMessage(record);
+                for (ConsumerRecord<String, String> record : records) {
+                    CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
+                        processMessage(record);
+                    }, executor).thenRun(() -> {
+                        TopicPartition partition =
+                            new TopicPartition(record.topic(), record.partition());
+                        synchronized (offsetsToCommit) {
+                            offsetsToCommit.merge(partition,
+                                new OffsetAndMetadata(record.offset() + 1),
+                                (current, next) -> next.offset() > current.offset()
+                                    ? next : current);
+                        }
+                    });
+                    futures.add(future);
                 }
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                break;
-            } catch (Exception e) {
-                System.err.println("Processing error: " + e.getMessage());
+
+                while (futures.stream().anyMatch(future -> !future.isDone())) {
+                    // Keep polling while partitions are paused so the consumer stays in the group.
+                    consumer.poll(Duration.ofMillis(100));
+                }
+
+                List<Throwable> failures = futures.stream()
+                    .map(future -> {
+                        try {
+                            future.join();
+                            return null;
+                        } catch (CompletionException e) {
+                            return e.getCause();
+                        }
+                    })
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toList());
+
+                if (failures.isEmpty() && !offsetsToCommit.isEmpty()) {
+                    consumer.commitSync(offsetsToCommit);
+                }
+            } finally {
+                consumer.resume(partitions);
             }
         }
     }
@@ -308,6 +312,7 @@ public class PauseResumeConsumer {
 
             long startTime = System.currentTimeMillis();
             Set<TopicPartition> partitions = records.partitions();
+            Map<TopicPartition, OffsetAndMetadata> offsetsToCommit = new HashMap<>();
 
             // Pause partitions while processing
             consumer.pause(partitions);
@@ -315,18 +320,24 @@ public class PauseResumeConsumer {
             try {
                 for (ConsumerRecord<String, String> record : records) {
                     processMessage(record);
+                    offsetsToCommit.merge(
+                        new TopicPartition(record.topic(), record.partition()),
+                        new OffsetAndMetadata(record.offset() + 1),
+                        (current, next) -> next.offset() > current.offset()
+                            ? next : current);
 
                     // Check if we are running out of time
                     long elapsed = System.currentTimeMillis() - startTime;
                     if (elapsed > maxProcessingTimeMs) {
                         System.out.println("Processing time limit reached, " +
-                            "committing and continuing");
-                        break;
+                            "finish this batch soon or lower max.poll.records");
                     }
                 }
 
                 // Commit processed records
-                consumer.commitSync();
+                if (!offsetsToCommit.isEmpty()) {
+                    consumer.commitSync(offsetsToCommit);
+                }
 
             } finally {
                 // Resume partitions
@@ -348,7 +359,7 @@ public class PauseResumeConsumer {
 ## Python Solutions
 
 ```python
-from confluent_kafka import Consumer, KafkaError, KafkaException
+from confluent_kafka import Consumer, KafkaError, KafkaException, TopicPartition
 import threading
 from queue import Queue, Full
 from typing import Callable
@@ -376,8 +387,9 @@ class ResilientConsumer:
             'session.timeout.ms': 60000,          # 60 seconds
             'heartbeat.interval.ms': 10000,       # 10 seconds
 
-            # Reduce batch size for faster processing
-            'max.poll.records': 100
+            # Reduce local prefetching for long processing applications
+            'queued.max.messages.kbytes': 1024,
+            'enable.auto.offset.store': False
         }
 
         self.consumer = Consumer(self.config)
@@ -405,6 +417,7 @@ class ResilientConsumer:
                 # Process message
                 try:
                     message_handler(msg)
+                    self.consumer.store_offsets(msg)
                     self.consumer.commit(msg)
                 except Exception as e:
                     logger.error(f"Processing error: {e}")
@@ -427,13 +440,14 @@ class AsyncProcessingConsumer:
     """
 
     def __init__(self, bootstrap_servers: str, group_id: str, topics: list,
-                 num_workers: int = 4):
+                 num_workers: int = 1):
         self.config = {
             'bootstrap.servers': bootstrap_servers,
             'group.id': group_id,
             'auto.offset.reset': 'earliest',
             'enable.auto.commit': False,
-            'max.poll.records': 500
+            'enable.auto.offset.store': False,
+            'queued.max.messages.kbytes': 1024
         }
 
         self.consumer = Consumer(self.config)
@@ -443,7 +457,7 @@ class AsyncProcessingConsumer:
         self.queue = Queue(maxsize=10000)
         self.running = True
 
-        # Start worker threads
+        # Start worker threads. Use one worker per consumer to preserve commit order.
         self.workers = []
         for i in range(num_workers):
             worker = threading.Thread(target=self._worker_loop, daemon=True)
@@ -505,10 +519,13 @@ class AsyncProcessingConsumer:
                                 self.pending_offsets[key] = m.offset()
 
                 try:
+                    self.consumer.pause(self.consumer.assignment())
                     self.queue.put((msg, completion_callback), timeout=5.0)
                 except Full:
                     logger.warning("Queue full, applying backpressure")
                     time.sleep(1)
+                finally:
+                    self.consumer.resume(self.consumer.assignment())
 
             except KafkaException as e:
                 logger.error(f"Kafka error: {e}")
@@ -522,11 +539,9 @@ class AsyncProcessingConsumer:
                 return
 
             for (topic, partition), offset in self.pending_offsets.items():
-                self.consumer.commit(offsets=[{
-                    'topic': topic,
-                    'partition': partition,
-                    'offset': offset + 1
-                }], asynchronous=False)
+                self.consumer.commit(offsets=[
+                    TopicPartition(topic, partition, offset + 1)
+                ], asynchronous=False)
 
             self.pending_offsets.clear()
 
