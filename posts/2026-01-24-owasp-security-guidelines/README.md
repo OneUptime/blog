@@ -46,7 +46,7 @@ flowchart TB
 
 ## Implementing ASVS Requirements
 
-The Application Security Verification Standard (ASVS) defines security requirements across three levels. Level 1 is for all applications, Level 2 for applications handling sensitive data, and Level 3 for critical applications.
+The Application Security Verification Standard (ASVS) defines security requirements across three levels. Level 1 is for all applications, Level 2 for applications handling sensitive data, and Level 3 for critical applications. The examples below use ASVS 4.0.3 requirement IDs.
 
 ### Authentication Requirements (V2)
 
@@ -55,45 +55,28 @@ The Application Security Verification Standard (ASVS) defines security requireme
 const express = require('express');
 const bcrypt = require('bcrypt');
 const speakeasy = require('speakeasy');
-const rateLimit = require('express-rate-limit');
+const { rateLimit } = require('express-rate-limit');
 
 // V2.1.1: Passwords must be at least 12 characters
-// V2.1.2: Passwords up to 128 characters must be permitted
+// V2.1.2: Passwords of at least 64 characters must be permitted, and passwords over 128 characters may be denied
+// V2.1.4 and V2.1.9: Printable Unicode characters, including spaces, must be permitted without composition rules
 // V2.1.7: Passwords must be checked against breached password lists
 const passwordPolicy = {
     minLength: 12,
-    maxLength: 128,
-    requireUppercase: true,
-    requireLowercase: true,
-    requireNumber: true,
-    requireSpecial: true
+    maxLength: 128
 };
 
 async function validatePassword(password) {
     const errors = [];
+    const normalizedPassword = password.replace(/ {2,}/g, ' ');
+    const passwordLength = Array.from(normalizedPassword).length;
 
-    if (password.length < passwordPolicy.minLength) {
+    if (passwordLength < passwordPolicy.minLength) {
         errors.push(`Password must be at least ${passwordPolicy.minLength} characters`);
     }
 
-    if (password.length > passwordPolicy.maxLength) {
+    if (passwordLength > passwordPolicy.maxLength) {
         errors.push(`Password cannot exceed ${passwordPolicy.maxLength} characters`);
-    }
-
-    if (passwordPolicy.requireUppercase && !/[A-Z]/.test(password)) {
-        errors.push('Password must contain at least one uppercase letter');
-    }
-
-    if (passwordPolicy.requireLowercase && !/[a-z]/.test(password)) {
-        errors.push('Password must contain at least one lowercase letter');
-    }
-
-    if (passwordPolicy.requireNumber && !/\d/.test(password)) {
-        errors.push('Password must contain at least one number');
-    }
-
-    if (passwordPolicy.requireSpecial && !/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
-        errors.push('Password must contain at least one special character');
     }
 
     // V2.1.7: Check against breached password list
@@ -139,9 +122,10 @@ async function checkBreachedPassword(password) {
 // V2.2.1: Anti-automation controls
 const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,  // 15 minutes
-    max: 10,                    // 10 attempts per window
+    limit: 10,                  // 10 attempts per window
     message: { error: 'Too many login attempts. Please try again later.' },
-    standardHeaders: true,
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
     skipSuccessfulRequests: true
 });
 
@@ -174,15 +158,19 @@ function verifyMFA(secret, token) {
 ```javascript
 // Implementing ASVS V3: Session management
 const session = require('express-session');
-const RedisStore = require('connect-redis').default;
-const Redis = require('ioredis');
+const { RedisStore } = require('connect-redis');
+const { createClient } = require('redis');
 const crypto = require('crypto');
 
-const redisClient = new Redis({
-    host: process.env.REDIS_HOST,
-    port: 6379,
+const redisClient = createClient({
+    socket: {
+        host: process.env.REDIS_HOST,
+        port: 6379
+    },
     password: process.env.REDIS_PASSWORD
 });
+redisClient.on('error', (err) => console.error('Redis error', err));
+redisClient.connect().catch(console.error);
 
 // V3.2: Session binding requirements
 const sessionConfig = {
@@ -208,7 +196,7 @@ const sessionConfig = {
     resave: false,
     saveUninitialized: false,
 
-    // V3.3.2: Regenerate session on authentication
+    // Refresh cookie expiry on active sessions
     rolling: true
 };
 
@@ -579,7 +567,7 @@ const securityHeaders = helmet({
     contentSecurityPolicy: {
         directives: {
             defaultSrc: ["'self'"],
-            scriptSrc: ["'self'", "'strict-dynamic'"],
+            scriptSrc: ["'self'"],
             styleSrc: ["'self'", "'unsafe-inline'"],
             imgSrc: ["'self'", 'data:', 'https:'],
             fontSrc: ["'self'"],
@@ -597,35 +585,35 @@ const securityHeaders = helmet({
     crossOriginResourcePolicy: { policy: 'same-origin' },
 
     // DNS prefetch control
-    dnsPrefetchControl: { allow: false },
+    xDnsPrefetchControl: { allow: false },
 
     // Frameguard (X-Frame-Options)
-    frameguard: { action: 'deny' },
+    xFrameOptions: { action: 'deny' },
 
     // HSTS
-    hsts: {
+    strictTransportSecurity: {
         maxAge: 31536000,
         includeSubDomains: true,
         preload: true
     },
 
-    // IE No Open
-    ieNoOpen: true,
+    // X-Download-Options
+    xDownloadOptions: true,
 
     // No Sniff
-    noSniff: true,
+    xContentTypeOptions: true,
 
     // Origin Agent Cluster
     originAgentCluster: true,
 
     // Permitted Cross Domain Policies
-    permittedCrossDomainPolicies: { permittedPolicies: 'none' },
+    xPermittedCrossDomainPolicies: { permittedPolicies: 'none' },
 
     // Referrer Policy
     referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
 
-    // XSS Filter
-    xssFilter: true
+    // Disable the legacy X-XSS-Protection filter
+    xXssProtection: true
 });
 
 app.use(securityHeaders);
