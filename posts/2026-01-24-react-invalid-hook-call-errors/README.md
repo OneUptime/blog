@@ -288,13 +288,12 @@ npm ls react
 ### Fixing Multiple React Copies
 
 ```json
-// package.json - Add resolutions (Yarn) or overrides (npm)
 {
   "name": "my-app",
   "version": "1.0.0",
   "dependencies": {
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react": "18.2.0",
+    "react-dom": "18.2.0"
   },
   "resolutions": {
     "react": "18.2.0",
@@ -315,7 +314,7 @@ npm install
 
 ## Cause 5: Version Mismatch
 
-React and ReactDOM must be the same version.
+React and ReactDOM should use compatible versions. Matching the exact package versions is the safest default.
 
 ### Check Versions
 
@@ -331,18 +330,17 @@ npm ls react react-dom
 ### Fix Version Mismatch
 
 ```json
-// package.json - Ensure versions match
 {
   "dependencies": {
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react": "18.2.0",
+    "react-dom": "18.2.0"
   }
 }
 ```
 
 ## Cause 6: Custom Hook Naming
 
-Custom hooks must start with "use" to be recognized by React.
+Custom hooks must start with "use" so React tooling can recognize them as hooks and enforce the Rules of Hooks.
 
 ### Wrong: Incorrectly Named Custom Hook
 
@@ -350,7 +348,7 @@ Custom hooks must start with "use" to be recognized by React.
 // WRONG: Custom hook without "use" prefix
 import { useState, useEffect } from 'react';
 
-// React does not recognize this as a hook
+// React Hooks linting does not recognize this as a hook
 function fetchUserData(userId: string) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -417,7 +415,7 @@ function useUserData(userId: string) {
 }
 
 export function Profile({ userId }: { userId: string }) {
-  // Now React properly tracks this as a hook
+  // Now React Hooks linting properly tracks this as a hook
   const { user, loading, error } = useUserData(userId);
 
   if (loading) return <div>Loading...</div>;
@@ -437,7 +435,6 @@ npm install -D eslint-plugin-react-hooks
 ```
 
 ```json
-// .eslintrc.json
 {
   "plugins": ["react-hooks"],
   "rules": {
