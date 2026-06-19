@@ -139,10 +139,10 @@ Symptoms: Default system font appears instead of custom font.
 ```typescript
 // WRONG - Font file path incorrect
 const myFont = localFont({
-  src: './fonts/MyFont.woff2', // Relative path may not resolve
+  src: './fonts/MyFont.woff2', // Resolves relative to app/layout.tsx
 });
 
-// CORRECT - Use path from project root
+// CORRECT - Match the path to where localFont is called
 const myFont = localFont({
   src: '../public/fonts/MyFont.woff2',
 });
@@ -200,7 +200,7 @@ flowchart LR
     subgraph "With Optimization"
         E["Page Load"] --> F["Preloaded Font Ready"]
         F --> G["Custom Font Renders"]
-        G --> H["No Layout Shift"]
+        G --> H["Reduced Layout Shift"]
     end
 ```
 
@@ -357,7 +357,7 @@ import { Inter } from 'next/font/google';
 const inter = Inter({
   subsets: ['latin'],
   // Variable font supports range
-  weight: ['100', '200', '300', '400', '500', '600', '700', '800', '900'],
+  weight: '100 900',
   // Or use 'variable' for automatic
   // weight: 'variable',
 });
@@ -452,7 +452,7 @@ const inter = Inter({
 // Only load characters you need
 const inter = Inter({
   subsets: ['latin'],
-  // Optionally specify exact characters
+  // Optionally specify only the subsets you need
   // This reduces font file size
 });
 ```
@@ -548,6 +548,6 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
 | Font not applied | Apply `className` to body/html |
 | Missing characters | Add required subsets |
 | Production issues | Define fonts at module level, not in effects |
-| Variable weight not working | Specify weight array or 'variable' |
+| Variable weight not working | Specify a weight range or use 'variable' |
 
 Using `next/font` provides automatic optimization including self-hosting, preloading, and CSS size-adjust for fallback fonts. Always define fonts at the module level, use CSS variables for flexibility, and include only the subsets you need for optimal performance.
