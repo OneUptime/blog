@@ -151,7 +151,7 @@ sudo umount /data
 sudo fsck.ext4 -y -f /dev/sda2
 
 # For XFS filesystems, use xfs_repair instead
-# XFS does not use fsck - always use xfs_repair
+# fsck.xfs does not repair XFS filesystems - use xfs_repair
 sudo xfs_repair /dev/sda2
 ```
 
@@ -164,13 +164,13 @@ When the root filesystem is read-only, you need special handling since you canno
 # Then remount root as read-write for maintenance
 mount -o remount,rw /
 
-# After making changes, you can check the filesystem at next boot
-# This creates a file that triggers fsck on reboot
+# After making changes, some non-systemd systems can check the filesystem at next boot
+# This creates a file that triggers fsck on reboot on systems that support it
 sudo touch /forcefsck
 
-# For systemd-based systems, use this command instead
-# This schedules a filesystem check at the next boot
-sudo systemctl --force --force reboot
+# For systemd-based systems, add these kernel parameters
+# at the bootloader prompt for the next boot:
+# fsck.mode=force fsck.repair=yes
 ```
 
 ### Method 4: Check and Fix fstab Configuration
