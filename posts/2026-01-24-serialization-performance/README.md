@@ -26,10 +26,10 @@ graph LR
     style E fill:#f96,stroke:#333
 ```
 
-Every serialization operation involves:
+Serialization overhead often comes from:
 - Traversing the object graph
 - Type checking and conversion
-- String allocation and manipulation
+- String or buffer allocation and manipulation
 - Memory copying
 
 ---
@@ -129,9 +129,9 @@ if (isMainThread) {
 ```mermaid
 graph TD
     subgraph "Serialization Format Comparison"
-        A[JSON] -->|Human readable| B[Slower, Larger]
-        C[MessagePack] -->|Binary| D[Faster, Smaller]
-        E[Protocol Buffers] -->|Schema-based| F[Fastest, Smallest]
+        A[JSON] -->|Text, human readable| B[Often larger]
+        C[MessagePack] -->|Compact binary| D[Often smaller]
+        E[Protocol Buffers] -->|Schema-based binary| F[Often small and fast]
         G[BSON] -->|MongoDB native| H[Good for documents]
     end
 ```
@@ -306,10 +306,17 @@ if __name__ == '__main__':
 // custom-serializer.js
 // When you know your data structure, custom serializers can be much faster
 
-class FastUserSerializer {
-    // Pre-compile the field names to avoid repeated string operations
-    static FIELDS = ['id', 'name', 'email', 'active'];
+const JSON_ESCAPE_MAP = {
+    '"': '\\"',
+    '\\': '\\\\',
+    '\b': '\\b',
+    '\f': '\\f',
+    '\n': '\\n',
+    '\r': '\\r',
+    '\t': '\\t'
+};
 
+class FastUserSerializer {
     static serialize(users) {
         // Use array join instead of string concatenation
         const parts = ['['];
@@ -337,14 +344,11 @@ class FastUserSerializer {
 
     static escapeString(str) {
         // Fast path for strings without special characters
-        if (!/["\\\n\r\t]/.test(str)) return str;
+        if (!/["\\\u0000-\u001F]/.test(str)) return str;
 
-        return str
-            .replace(/\\/g, '\\\\')
-            .replace(/"/g, '\\"')
-            .replace(/\n/g, '\\n')
-            .replace(/\r/g, '\\r')
-            .replace(/\t/g, '\\t');
+        return str.replace(/["\\\u0000-\u001F]/g, char => {
+            return JSON_ESCAPE_MAP[char] || `\\u${char.charCodeAt(0).toString(16).padStart(4, '0')}`;
+        });
     }
 }
 
@@ -434,11 +438,11 @@ function handleRequest(req, res) {
 
 | Format | Encode Speed | Decode Speed | Size | Human Readable |
 |--------|--------------|--------------|------|----------------|
-| JSON | Medium | Medium | Large | Yes |
-| MessagePack | Fast | Fast | Small | No |
-| Protocol Buffers | Fastest | Fastest | Smallest | No |
-| BSON | Medium | Fast | Medium | No |
-| Avro | Fast | Fast | Small | No |
+| JSON | Medium | Medium | Often larger | Yes |
+| MessagePack | Often fast | Often fast | Often small | No |
+| Protocol Buffers | Often very fast | Often very fast | Often very small | No |
+| BSON | Medium | Medium/Fast | Medium | No |
+| Avro | Often fast | Often fast | Often small | No |
 
 ---
 
