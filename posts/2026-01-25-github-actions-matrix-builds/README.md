@@ -8,7 +8,7 @@ Description: Master matrix builds in GitHub Actions to test across multiple oper
 
 ---
 
-Matrix builds let you run the same job across multiple configurations in parallel. Instead of writing separate jobs for Node.js 18, 19, and 20, you define a matrix and GitHub Actions creates a job for each combination automatically. This guide shows you how to use matrices effectively for cross-platform and multi-version testing.
+Matrix builds let you run the same job across multiple configurations in parallel. Instead of writing separate jobs for Node.js 22, 24, and 26, you define a matrix and GitHub Actions creates a job for each combination automatically. This guide shows you how to use matrices effectively for cross-platform and multi-version testing.
 
 ## Basic Matrix Syntax
 
@@ -28,14 +28,14 @@ jobs:
     # Define the matrix
     strategy:
       matrix:
-        node-version: [18, 19, 20]
+        node-version: [22, 24, 26]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # Use the current matrix value
       - name: Setup Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: ${{ matrix.node-version }}
 
@@ -59,14 +59,14 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        node-version: [18, 20]
+        node-version: [22, 24]
         # This creates 6 jobs: 3 OS x 2 Node versions
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup Node.js ${{ matrix.node-version }} on ${{ matrix.os }}
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: ${{ matrix.node-version }}
 
@@ -78,12 +78,12 @@ jobs:
 ```
 
 The matrix expansion creates all combinations:
-- ubuntu-latest + Node 18
-- ubuntu-latest + Node 20
-- windows-latest + Node 18
-- windows-latest + Node 20
-- macos-latest + Node 18
-- macos-latest + Node 20
+- ubuntu-latest + Node 22
+- ubuntu-latest + Node 24
+- windows-latest + Node 22
+- windows-latest + Node 24
+- macos-latest + Node 22
+- macos-latest + Node 24
 
 ## Including and Excluding Combinations
 
@@ -97,26 +97,26 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        node-version: [18, 20]
+        node-version: [22, 24]
 
         # Remove specific combinations
         exclude:
-          # Skip Node 18 on macOS to save runner minutes
+          # Skip Node 22 on macOS to save runner minutes
           - os: macos-latest
-            node-version: 18
+            node-version: 22
 
         # Add specific combinations with extra variables
         include:
-          # Test Node 21 only on Ubuntu
+          # Test Node 26 only on Ubuntu
           - os: ubuntu-latest
-            node-version: 21
+            node-version: 26
             experimental: true
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: ${{ matrix.node-version }}
 
@@ -145,13 +145,13 @@ jobs:
       max-parallel: 3
 
       matrix:
-        version: [16, 18, 20]
+        version: [22, 24, 26]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup Node.js ${{ matrix.version }}
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: ${{ matrix.version }}
 
@@ -174,7 +174,7 @@ jobs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # Generate matrix based on changed files or other logic
       - name: Determine matrix
@@ -184,7 +184,7 @@ jobs:
           if [ -f ".node-versions" ]; then
             VERSIONS=$(cat .node-versions | jq -R -s -c 'split("\n") | map(select(. != ""))')
           else
-            VERSIONS='["18", "20"]'
+            VERSIONS='["22", "24"]'
           fi
           echo "matrix={\"node-version\":$VERSIONS}" >> $GITHUB_OUTPUT
 
@@ -197,10 +197,10 @@ jobs:
       matrix: ${{ fromJson(needs.setup.outputs.matrix) }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: ${{ matrix.node-version }}
 
@@ -234,10 +234,10 @@ jobs:
       url: ${{ matrix.environment.url }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Configure AWS
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6.1.0
         with:
           aws-region: ${{ matrix.environment.aws_region }}
           role-to-assume: arn:aws:iam::123456789:role/deploy-role
@@ -278,12 +278,12 @@ jobs:
           --health-retries 5
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 24
 
       - name: Run database tests
         env:
@@ -307,12 +307,12 @@ jobs:
         browser: [chromium, firefox, webkit]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 24
 
       - name: Install dependencies
         run: npm ci
@@ -345,7 +345,7 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # Linux-specific setup
       - name: Install Linux dependencies
@@ -388,7 +388,7 @@ jobs:
         shard: [1, 2, 3, 4]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Run tests (shard ${{ matrix.shard }}/4)
         run: npm test -- --shard=${{ matrix.shard }}/4
@@ -405,10 +405,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Download all coverage reports
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           pattern: coverage-*
           merge-multiple: true
@@ -431,7 +431,7 @@ jobs:
   quick-check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - run: npm ci
       - run: npm run lint && npm run typecheck
 
@@ -444,13 +444,13 @@ jobs:
       fail-fast: true
       matrix:
         os: [ubuntu-latest, windows-latest]
-        node-version: [18, 20]
+        node-version: [22, 24]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: ${{ matrix.node-version }}
           cache: 'npm'
