@@ -71,8 +71,8 @@ curl -v https://github.com
 # Flush DNS cache (macOS)
 sudo dscacheutil -flushcache; sudo killall -HUP mDNSResponder
 
-# Flush DNS cache (Linux)
-sudo systemd-resolve --flush-caches
+# Flush DNS cache (Linux with systemd-resolved)
+sudo resolvectl flush-caches
 
 # Flush DNS cache (Windows)
 ipconfig /flushdns
@@ -121,13 +121,13 @@ GitHub no longer accepts passwords for HTTPS authentication. You need a Personal
 # Generate a PAT at: GitHub Settings > Developer settings > Personal access tokens
 
 # Option 1: Include token in URL (not recommended for shared machines)
-git clone https://YOUR_TOKEN@github.com/user/repo.git
+git clone https://USERNAME:YOUR_TOKEN@github.com/user/repo.git
 
 # Option 2: Store credentials securely
 git config --global credential.helper store   # Stores in plain text
 git config --global credential.helper cache   # Caches for 15 minutes
 git config --global credential.helper osxkeychain   # macOS Keychain
-git config --global credential.helper manager-core  # Git Credential Manager
+git config --global credential.helper manager  # Git Credential Manager
 
 # Clear stored credentials
 git credential-cache exit
@@ -153,7 +153,7 @@ rm ~/.git-credentials
 
 ```bash
 # GitLab: Use Personal Access Token or Deploy Token
-# Bitbucket: Use App Password
+# Bitbucket: Use API Token
 # Azure DevOps: Use Personal Access Token
 
 git remote set-url origin https://oauth2:YOUR_TOKEN@gitlab.com/user/repo.git
@@ -355,7 +355,7 @@ remote: Permission to user/repo.git denied to other-user.
 **Verify repository exists and you have access:**
 
 ```bash
-# Check if repository exists
+# Check if repository URL is publicly reachable
 curl -I https://github.com/user/repo
 
 # List your GitHub repos via API
@@ -365,7 +365,7 @@ curl -H "Authorization: token YOUR_TOKEN" https://api.github.com/user/repos
 **Check which account Git is using:**
 
 ```bash
-# Check configured user
+# Check commit identity (this does not control remote authentication)
 git config user.name
 git config user.email
 
