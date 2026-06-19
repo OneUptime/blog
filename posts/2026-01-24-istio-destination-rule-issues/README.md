@@ -61,7 +61,7 @@ Make sure every subset referenced in VirtualServices is defined:
 
 ```yaml
 # VirtualService references subset "v2"
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: reviews-route
@@ -77,7 +77,7 @@ spec:
 
 ```yaml
 # DestinationRule must define "v2"
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: reviews-destination
@@ -94,15 +94,15 @@ spec:
 
 ## Problem 2: Host Mismatch
 
-The `host` field in DestinationRule must match how clients address the service.
+The `host` field in DestinationRule must match the destination service host used by the route.
 
 ### Short Name vs FQDN
 
-If your VirtualService uses the short name but the DestinationRule uses the FQDN, they might not match:
+Short names are resolved relative to the namespace of the DestinationRule. If the service is in another namespace, a short name can point at the wrong host:
 
 ```yaml
 # This DestinationRule only applies to "reviews" short name
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: reviews-dr
@@ -118,7 +118,7 @@ spec:
 For cross-namespace traffic, use the full name:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: reviews-dr
@@ -154,7 +154,7 @@ You have a service outside the mesh (no sidecar) and try to connect with mTLS:
 
 ```yaml
 # Wrong - external service doesn't have a sidecar
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: external-db
@@ -170,7 +170,7 @@ spec:
 For services without sidecars, disable mTLS:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: external-db
@@ -184,8 +184,8 @@ spec:
 ### Check mTLS Status
 
 ```bash
-# See mTLS status for all services
-istioctl x authz check <pod-name>
+# See the TLS mode and DestinationRules affecting a pod
+istioctl x describe pod <pod-name>
 
 # Or check specific destination
 istioctl proxy-config clusters <pod-name> -o json | jq '.[] | select(.name | contains("mysql")) | .transportSocketMatches'
@@ -235,7 +235,7 @@ Connection pool settings can cause failures under load if set too conservatively
 ### Configuration
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: reviews-connection-pool
@@ -257,7 +257,7 @@ spec:
 ### Tuning for High Traffic
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: high-traffic-service
@@ -291,7 +291,7 @@ With default settings, a pod that returns 5 consecutive 5xx errors gets ejected 
 ### Conservative Configuration
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: reviews-outlier
@@ -311,7 +311,7 @@ spec:
 For debugging, you can disable it entirely:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: reviews-no-outlier
@@ -324,12 +324,12 @@ spec:
 
 ## Problem 7: Load Balancing Not Working as Expected
 
-By default, Istio uses round-robin load balancing. If you need something different, configure it explicitly.
+By default, Istio uses least-request load balancing. If you need something different, configure it explicitly.
 
 ### Available Algorithms
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: reviews-lb
@@ -337,7 +337,7 @@ spec:
   host: reviews
   trafficPolicy:
     loadBalancer:
-      simple: LEAST_CONN  # Options: ROUND_ROBIN, LEAST_CONN, RANDOM, PASSTHROUGH
+      simple: LEAST_REQUEST  # Options: ROUND_ROBIN, LEAST_REQUEST, RANDOM, PASSTHROUGH
 ```
 
 ### Consistent Hashing
@@ -345,7 +345,7 @@ spec:
 For sticky sessions based on headers, cookies, or source IP:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: reviews-sticky
@@ -390,7 +390,7 @@ istioctl proxy-config clusters <pod-name> -o json | jq '.[] | select(.name | con
 istioctl analyze -n default
 
 # Common output:
-# Warning [IST0101] (DestinationRule reviews.default) Referenced subset not found
+# Error [IST0101] (VirtualService reviews-route.default) Referenced resource not found
 ```
 
 ### Check Endpoints
