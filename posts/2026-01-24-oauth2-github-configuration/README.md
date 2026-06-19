@@ -82,6 +82,9 @@ GITHUB_CLIENT_ID = os.environ.get("GITHUB_CLIENT_ID")
 GITHUB_CLIENT_SECRET = os.environ.get("GITHUB_CLIENT_SECRET")
 GITHUB_CALLBACK_URL = os.environ.get("GITHUB_CALLBACK_URL")
 
+# Demo token store. Use a durable server-side session store or database in production.
+token_store = {}
+
 @app.route("/login/github")
 def github_login():
     # Generate state parameter to prevent CSRF attacks
@@ -142,8 +145,10 @@ def github_callback():
 
     access_token = token_data["access_token"]
 
-    # Store token securely (typically in session or database)
-    session["github_token"] = access_token
+    # Store token securely on the server side
+    github_session_id = secrets.token_urlsafe(32)
+    token_store[github_session_id] = access_token
+    session["github_session_id"] = github_session_id
 
     return redirect("/dashboard")
 ```
@@ -155,7 +160,8 @@ Make authenticated requests to the GitHub API.
 ```python
 @app.route("/dashboard")
 def dashboard():
-    access_token = session.get("github_token")
+    github_session_id = session.get("github_session_id")
+    access_token = token_store.get(github_session_id)
     if not access_token:
         return redirect("/login/github")
 
@@ -169,7 +175,8 @@ def dashboard():
     )
 
     if user_response.status_code != 200:
-        session.pop("github_token", None)
+        token_store.pop(github_session_id, None)
+        session.pop("github_session_id", None)
         return redirect("/login/github")
 
     user_data = user_response.json()
@@ -182,7 +189,7 @@ Scopes define what access your application requests. Only request what you need.
 
 | Scope | Access Level |
 |-------|--------------|
-| (no scope) | Public user info only |
+| (no scope) | Read-only access to public information, including user profile info, repository info, and gists |
 | user:email | Read user email addresses |
 | read:user | Read all user profile data |
 | user | Read and write user profile data |
@@ -205,6 +212,6 @@ def generate_state():
 
 ### Secure Token Storage
 
-Never store tokens in localStorage or expose them to client-side JavaScript. Store in server-side session with secure cookies.
+Never store tokens in localStorage, client-side cookies, or expose them to client-side JavaScript. Store tokens on the server side, such as in a server-side session store or database, and use secure, HttpOnly cookies for the user's session identifier.
 
 GitHub OAuth2 provides a secure, familiar authentication experience for your users. Always follow security best practices and request only necessary scopes.
