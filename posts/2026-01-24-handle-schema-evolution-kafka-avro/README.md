@@ -66,7 +66,10 @@ services:
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
 
   schema-registry:
@@ -77,7 +80,7 @@ services:
       - "8081:8081"
     environment:
       SCHEMA_REGISTRY_HOST_NAME: schema-registry
-      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: kafka:9092
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: PLAINTEXT://kafka:29092
       SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
 ```
 
@@ -410,7 +413,7 @@ public class AvroProducer {
         // Automatically register new schemas
         props.put(KafkaAvroSerializerConfig.AUTO_REGISTER_SCHEMAS, true);
 
-        // Use specific Avro reader (recommended for schema evolution)
+        // Use the schema from each GenericRecord instead of forcing the latest subject version
         props.put(KafkaAvroSerializerConfig.USE_LATEST_VERSION, false);
 
         this.producer = new KafkaProducer<>(props);
@@ -504,7 +507,7 @@ public class AvroConsumer {
         // Schema Registry configuration
         props.put(KafkaAvroDeserializerConfig.SCHEMA_REGISTRY_URL_CONFIG, schemaRegistryUrl);
 
-        // Use specific Avro reader - important for schema evolution
+        // Return GenericRecord values instead of generated SpecificRecord classes
         props.put(KafkaAvroDeserializerConfig.SPECIFIC_AVRO_READER_CONFIG, false);
 
         props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
@@ -629,6 +632,17 @@ Place schema files in `src/main/avro/`:
 ### Pattern 1: Adding New Fields Safely
 
 ```java
+import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericDatumReader;
+import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.io.Decoder;
+import org.apache.avro.io.DecoderFactory;
+import org.apache.avro.io.Encoder;
+import org.apache.avro.io.EncoderFactory;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+
 public class SchemaEvolutionExample {
 
     // V1: Original schema
@@ -664,7 +678,7 @@ public class SchemaEvolutionExample {
     /**
      * Demonstrates reading V1 data with V2 schema (backward compatible).
      */
-    public static void readWithEvolution() {
+    public static void readWithEvolution() throws IOException {
         Schema writerSchema = new Schema.Parser().parse(SCHEMA_V1);
         Schema readerSchema = new Schema.Parser().parse(SCHEMA_V2);
 
@@ -674,13 +688,21 @@ public class SchemaEvolutionExample {
         v1Record.put("event_type", "user.created");
         v1Record.put("timestamp", System.currentTimeMillis());
 
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        Encoder encoder = EncoderFactory.get().binaryEncoder(out, null);
+        new org.apache.avro.generic.GenericDatumWriter<GenericRecord>(writerSchema)
+            .write(v1Record, encoder);
+        encoder.flush();
+
         // Read with V2 schema - default values are applied
         GenericDatumReader<GenericRecord> reader =
             new GenericDatumReader<>(writerSchema, readerSchema);
+        Decoder decoder = DecoderFactory.get().binaryDecoder(out.toByteArray(), null);
+        GenericRecord evolvedRecord = reader.read(null, decoder);
 
         // After reading, new fields have default values
-        // source = "unknown"
-        // metadata = null
+        // evolvedRecord.get("source") = "unknown"
+        // evolvedRecord.get("metadata") = null
     }
 }
 ```
@@ -688,6 +710,12 @@ public class SchemaEvolutionExample {
 ### Pattern 2: Deprecating and Removing Fields
 
 ```java
+import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericRecord;
+import org.apache.kafka.clients.producer.KafkaProducer;
+import org.apache.kafka.clients.producer.ProducerRecord;
+
 public class FieldDeprecationExample {
 
     /**
@@ -745,6 +773,8 @@ public class FieldDeprecationExample {
 ### Pattern 3: Type Evolution with Unions
 
 ```java
+import org.apache.avro.generic.GenericRecord;
+
 public class TypeEvolutionExample {
 
     // V1: Single type field
@@ -759,7 +789,9 @@ public class TypeEvolutionExample {
         }
         """;
 
-    // V2: Allow multiple types using union
+    // V2: Allow multiple types using union. Consumers should be updated before
+    // producers start writing long or string values, because old readers that
+    // expect only double cannot read those new union branches.
     private static final String SCHEMA_V2 = """
         {
           "type": "record",
@@ -988,7 +1020,7 @@ if __name__ == '__main__':
 # Always test compatibility before deploying new schema
 curl -X POST \
     -H "Content-Type: application/vnd.schemaregistry.v1+json" \
-    --data @new-schema.json \
+    --data @compatibility-request.json \
     http://localhost:8081/compatibility/subjects/my-topic-value/versions/latest
 ```
 
