@@ -68,6 +68,10 @@ rest.port=8083
 
 # Plugin path for connectors
 plugin.path=/usr/share/java,/usr/share/confluent-hub-components
+
+# Config provider for file-based secrets
+config.providers=file
+config.providers.file.class=org.apache.kafka.common.config.provider.FileConfigProvider
 ```
 
 ---
@@ -88,7 +92,6 @@ plugin.path=/usr/share/java,/usr/share/confluent-hub-components
     "database.user": "debezium",
     "database.password": "${file:/secrets/postgres:password}",
     "database.dbname": "myapp",
-    "database.server.name": "myapp-db",
 
     "schema.include.list": "public",
     "table.include.list": "public.users,public.orders,public.products",
@@ -107,12 +110,11 @@ plugin.path=/usr/share/java,/usr/share/confluent-hub-components
     "time.precision.mode": "adaptive_time_microseconds",
 
     "heartbeat.interval.ms": "10000",
-    "heartbeat.topics.prefix": "__debezium-heartbeat",
+    "topic.heartbeat.prefix": "__debezium-heartbeat",
 
     "transforms": "unwrap,route",
     "transforms.unwrap.type": "io.debezium.transforms.ExtractNewRecordState",
-    "transforms.unwrap.drop.tombstones": "false",
-    "transforms.unwrap.delete.handling.mode": "rewrite",
+    "transforms.unwrap.delete.tombstone.handling.mode": "rewrite-with-tombstone",
     "transforms.route.type": "org.apache.kafka.connect.transforms.RegexRouter",
     "transforms.route.regex": "myapp\\.public\\.(.*)",
     "transforms.route.replacement": "db.$1"
@@ -176,12 +178,11 @@ plugin.path=/usr/share/java,/usr/share/confluent-hub-components
     "connection.username": "elastic",
     "connection.password": "${file:/secrets/elastic:password}",
 
-    "type.name": "_doc",
     "key.ignore": "false",
     "schema.ignore": "false",
 
-    "write.method": "upsert",
-    "behavior.on.null.values": "delete",
+    "write.method": "UPSERT",
+    "behavior.on.null.values": "DELETE",
 
     "batch.size": "2000",
     "max.buffered.records": "20000",
@@ -246,6 +247,7 @@ sequenceDiagram
     "aws.secret.access.key": "${file:/secrets/aws:secret_key}",
 
     "topics.dir": "kafka-connect",
+    "partitioner.class": "io.confluent.connect.storage.partitioner.TimeBasedPartitioner",
     "path.format": "'year'=YYYY/'month'=MM/'day'=dd/'hour'=HH",
     "partition.duration.ms": "3600000",
 
@@ -286,10 +288,9 @@ sequenceDiagram
     "transforms": "filter,mask,rename,addField,flatten,route",
 
     "transforms.filter.type": "org.apache.kafka.connect.transforms.Filter",
-    "transforms.filter.predicate": "isActive",
-    "predicates": "isActive",
-    "predicates.isActive.type": "org.apache.kafka.connect.transforms.predicates.RecordIsTombstone",
-    "predicates.isActive.negate": "true",
+    "transforms.filter.predicate": "isTombstone",
+    "predicates": "isTombstone",
+    "predicates.isTombstone.type": "org.apache.kafka.connect.transforms.predicates.RecordIsTombstone",
 
     "transforms.mask.type": "org.apache.kafka.connect.transforms.MaskField$Value",
     "transforms.mask.fields": "credit_card,ssn,password",
@@ -354,7 +355,7 @@ curl -X DELETE http://connect:8083/connectors/postgres-source-connector
 # Validate connector config without creating
 curl -X PUT http://connect:8083/connector-plugins/io.debezium.connector.postgresql.PostgresConnector/config/validate \
   -H "Content-Type: application/json" \
-  -d @connector-config.json
+  -d @connector-config-only.json
 ```
 
 ---
@@ -418,7 +419,7 @@ class KafkaConnectManager:
             f"{self.base_url}/connectors/{name}/restart",
             params=params
         )
-        return response.status_code in [200, 204]
+        return response.status_code in [200, 202, 204]
 
     def get_failed_connectors(self) -> List[Dict]:
         """Get all connectors in FAILED state."""
