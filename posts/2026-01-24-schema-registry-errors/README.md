@@ -83,8 +83,7 @@ curl -X GET http://schema-registry:8081/subjects/orders-value/versions/latest
 
 ```python
 # Python: Check compatibility before registering
-from confluent_kafka.schema_registry import SchemaRegistryClient
-from confluent_kafka.schema_registry.avro import AvroSerializer
+from confluent_kafka.schema_registry import Schema, SchemaRegistryClient
 import json
 
 schema_registry_conf = {'url': 'http://schema-registry:8081'}
@@ -132,13 +131,13 @@ def analyze_incompatibility(subject, new_schema_str):
     current_fields = {f['name']: f for f in current_schema.get('fields', [])}
     new_fields = {f['name']: f for f in new_schema.get('fields', [])}
 
-    # Check for removed fields (breaks BACKWARD compatibility)
+    # Check for removed fields (can break FORWARD compatibility)
     removed = set(current_fields.keys()) - set(new_fields.keys())
     if removed:
         print(f"INCOMPATIBLE: Removed fields: {removed}")
-        print("  Fix: Add default values or keep fields")
+        print("  Fix: Keep fields, or ensure old reader schemas had defaults before removal")
 
-    # Check for added required fields (breaks FORWARD compatibility)
+    # Check for added required fields (breaks BACKWARD compatibility)
     added = set(new_fields.keys()) - set(current_fields.keys())
     for field_name in added:
         field = new_fields[field_name]
@@ -230,6 +229,9 @@ curl -X GET http://schema-registry:8081/subjects/orders-value/versions
 
 ```python
 # Restore schema from backup or re-register
+from confluent_kafka.schema_registry import Schema, SchemaRegistryClient
+import json
+
 def restore_or_register_schema(subject, schema_str, expected_id=None):
     """Restore schema, optionally with specific ID"""
 
@@ -327,6 +329,8 @@ Found string, expecting union
 
 ```python
 # Debug serialization issues
+from confluent_kafka.schema_registry import SchemaRegistryClient
+
 def debug_message_schema(topic, message_bytes):
     """Extract and analyze schema from message"""
 
@@ -358,6 +362,7 @@ def debug_message_schema(topic, message_bytes):
 ```python
 # Consumer with proper schema handling
 from confluent_kafka import DeserializingConsumer
+from confluent_kafka.error import ValueDeserializationError
 from confluent_kafka.schema_registry.avro import AvroDeserializer
 from confluent_kafka.schema_registry import SchemaRegistryClient
 
@@ -420,16 +425,19 @@ def consume_with_error_handling(consumer, topic):
             order = msg.value()
             process_order(order)
 
-        except SerializationException as e:
+        except ValueDeserializationError as e:
             # Log problematic message for investigation
             print(f"Deserialization error: {e}")
-            print(f"Topic: {msg.topic()}, Partition: {msg.partition()}, Offset: {msg.offset()}")
+            failed_msg = e.kafka_message
+            if failed_msg is not None:
+                print(f"Topic: {failed_msg.topic()}, Partition: {failed_msg.partition()}, Offset: {failed_msg.offset()}")
 
             # Option 1: Skip and continue
             # consumer.commit()
 
             # Option 2: Send to dead letter queue
-            send_to_dlq(msg.value(), str(e))
+            if failed_msg is not None:
+                send_to_dlq(failed_msg.value(), str(e))
 
         except Exception as e:
             print(f"Unexpected error: {e}")
@@ -561,6 +569,11 @@ Subject 'my-topic-value' not found; error code: 40401
 ```python
 # Configure subject naming strategy
 from confluent_kafka import SerializingProducer
+from confluent_kafka.schema_registry import (
+    SchemaRegistryClient,
+    record_subject_name_strategy,
+    topic_record_subject_name_strategy
+)
 from confluent_kafka.schema_registry.avro import AvroSerializer
 from confluent_kafka.serialization import StringSerializer
 
@@ -575,12 +588,13 @@ def create_producer_with_naming_strategy(topic, schema_str, strategy='TopicNameS
     # TopicRecordNameStrategy: {topic}-{namespace}.{name}
 
     if strategy == 'TopicNameStrategy':
-        subject_name_strategy = lambda ctx: f"{ctx.topic}-{ctx.field}"
+        subject_name_strategy = None  # Default: {topic}-key or {topic}-value
     elif strategy == 'RecordNameStrategy':
-        # Uses record name from schema
-        subject_name_strategy = None  # Let serializer use schema name
+        subject_name_strategy = record_subject_name_strategy
     elif strategy == 'TopicRecordNameStrategy':
-        subject_name_strategy = lambda ctx: f"{ctx.topic}-{get_record_name(schema_str)}"
+        subject_name_strategy = topic_record_subject_name_strategy
+    else:
+        raise ValueError(f"Unknown subject naming strategy: {strategy}")
 
     avro_serializer = AvroSerializer(
         schema_registry,
@@ -632,6 +646,7 @@ verify_subject_exists("com.example.Order") # RecordNameStrategy
 # Monitor Schema Registry health
 from prometheus_client import Counter, Gauge, Histogram
 import requests
+import time
 
 # Metrics
 schema_registry_requests = Counter(
