@@ -66,8 +66,8 @@ function hashPasswordStillInsecure(password) {
 // SECURE: Using bcrypt with appropriate cost factor
 const bcrypt = require('bcrypt');
 
-// Cost factor of 12 takes about 250ms per hash
-// This makes brute force attacks impractical
+// Benchmark the cost factor on your hardware and tune it for your latency budget.
+// OWASP recommends a bcrypt work factor of at least 10 when bcrypt is used.
 const BCRYPT_COST = 12;
 
 async function hashPassword(password) {
@@ -78,7 +78,7 @@ async function hashPassword(password) {
 }
 
 async function verifyPassword(password, storedHash) {
-    // bcrypt.compare is timing-safe, preventing timing attacks
+    // bcrypt.compare verifies the password against the stored salt and cost
     const isValid = await bcrypt.compare(password, storedHash);
     return isValid;
 }
@@ -336,9 +336,9 @@ function processPayment(cardNumber, cvv, amount) {
 ```javascript
 // SECURE: Mask sensitive data before logging
 const sensitivePatterns = {
-    creditCard: /\b\d{13,19}\b/g,
+    creditCard: /\b(?:\d[ -]*?){13,19}\b/g,
     ssn: /\b\d{3}-?\d{2}-?\d{4}\b/g,
-    email: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g,
+    email: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g,
     phone: /\b\d{3}[-.]?\d{3}[-.]?\d{4}\b/g
 };
 
@@ -351,8 +351,9 @@ function maskSensitiveData(data) {
 
     // Mask credit card numbers, keeping last 4 digits
     masked = masked.replace(sensitivePatterns.creditCard, (match) => {
-        const lastFour = match.slice(-4);
-        return '*'.repeat(match.length - 4) + lastFour;
+        const digits = match.replace(/\D/g, '');
+        const lastFour = digits.slice(-4);
+        return '*'.repeat(digits.length - 4) + lastFour;
     });
 
     // Mask SSNs completely
@@ -363,6 +364,9 @@ function maskSensitiveData(data) {
         const [local, domain] = match.split('@');
         return local[0] + '*'.repeat(local.length - 1) + '@' + domain;
     });
+
+    // Mask phone numbers
+    masked = masked.replace(sensitivePatterns.phone, '***-***-****');
 
     return masked;
 }
@@ -432,44 +436,47 @@ class KeyRotationManager:
         self.rotation_days = rotation_days
 
     def should_rotate(self) -> bool:
-        """Check if the current key needs rotation."""
-        key_metadata = self.kms.describe_key(KeyId=self.key_alias)
-        creation_date = key_metadata['KeyMetadata']['CreationDate']
-
-        age_days = (datetime.now(creation_date.tzinfo) - creation_date).days
-        return age_days >= self.rotation_days
+        """Check if automatic key rotation needs to be enabled or updated."""
+        rotation_status = self.kms.get_key_rotation_status(KeyId=self.key_alias)
+        return (
+            not rotation_status['KeyRotationEnabled'] or
+            rotation_status.get('RotationPeriodInDays') != self.rotation_days
+        )
 
     def rotate_key(self) -> dict:
         """
-        Perform key rotation.
-        KMS handles this automatically, but we track it for auditing.
+        Configure automatic key rotation.
+        KMS rotates key material on the configured schedule.
         """
         # Enable automatic rotation if not already enabled
-        self.kms.enable_key_rotation(KeyId=self.key_alias)
+        self.kms.enable_key_rotation(
+            KeyId=self.key_alias,
+            RotationPeriodInDays=self.rotation_days
+        )
 
         # Get current key info for logging
         key_info = self.kms.describe_key(KeyId=self.key_alias)
 
         rotation_record = {
             'key_id': key_info['KeyMetadata']['KeyId'],
-            'rotated_at': datetime.now().isoformat(),
+            'rotation_configured_at': datetime.now().isoformat(),
             'rotation_triggered_by': 'scheduled',
             'next_rotation': (datetime.now() + timedelta(days=self.rotation_days)).isoformat()
         }
 
         # Log rotation event for audit
-        print(f"Key rotation completed: {json.dumps(rotation_record)}")
+        print(f"Key rotation configured: {json.dumps(rotation_record)}")
 
         return rotation_record
 
-    def re_encrypt_data(self, encrypted_data: bytes) -> bytes:
+    def re_encrypt_data_key(self, encrypted_data_key: bytes) -> bytes:
         """
-        Re-encrypt data with the current key version.
-        Use during key rotation to update old ciphertexts.
+        Re-encrypt a KMS-encrypted data key under the current KMS key.
+        AWS KMS ReEncrypt only accepts ciphertext produced by KMS operations.
         """
-        # KMS can re-encrypt without exposing plaintext
+        # KMS can re-encrypt the encrypted data key without exposing plaintext
         response = self.kms.re_encrypt(
-            CiphertextBlob=encrypted_data,
+            CiphertextBlob=encrypted_data_key,
             DestinationKeyId=self.key_alias
         )
 
