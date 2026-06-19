@@ -89,8 +89,7 @@ kubectl describe pod web-api-abc123 -n production
 
 Configure your container registry to retain images:
 
-```yaml
-# AWS ECR lifecycle policy - keep last 30 images
+```json
 {
   "rules": [
     {
@@ -98,7 +97,7 @@ Configure your container registry to retain images:
       "description": "Keep last 30 production images",
       "selection": {
         "tagStatus": "tagged",
-        "tagPrefixList": ["v", "release"],
+        "tagPrefixList": ["v"],
         "countType": "imageCountMoreThan",
         "countNumber": 30
       },
@@ -115,8 +114,11 @@ Configure your container registry to retain images:
 Always use specific version tags, never `latest`:
 
 ```yaml
-# Good - immutable tag that won't be overwritten
+# Good - specific release tag; enable registry tag immutability so it cannot be overwritten
 image: myapp:v1.2.3-abc1234
+
+# Better - digest pinning always points to the exact image manifest
+image: myapp@sha256:3b1f2e4d5c6a7980b9c0d1e2f30415263748596a7b8c9d0e1f20314253647586
 
 # Bad - tag can point to different images over time
 image: myapp:latest
@@ -163,7 +165,13 @@ kind: Deployment
 metadata:
   name: web-api
 spec:
+  selector:
+    matchLabels:
+      app: web-api
   template:
+    metadata:
+      labels:
+        app: web-api
     spec:
       containers:
         - name: api
@@ -187,13 +195,13 @@ NAMESPACE="production"
 RETENTION_DAYS=7
 CUTOFF_DATE=$(date -d "-${RETENTION_DAYS} days" +%s)
 
-for cm in $(kubectl get configmap -n $NAMESPACE -l app=web-api -o name); do
-  CREATION_DATE=$(kubectl get $cm -n $NAMESPACE -o jsonpath='{.metadata.creationTimestamp}')
+for cm in $(kubectl get configmap -n "$NAMESPACE" -l app=web-api -o name); do
+  CREATION_DATE=$(kubectl get "$cm" -n "$NAMESPACE" -o jsonpath='{.metadata.creationTimestamp}')
   CREATION_EPOCH=$(date -d "$CREATION_DATE" +%s)
 
-  if [ $CREATION_EPOCH -lt $CUTOFF_DATE ]; then
+  if [ "$CREATION_EPOCH" -lt "$CUTOFF_DATE" ]; then
     echo "Deleting old ConfigMap: $cm"
-    kubectl delete $cm -n $NAMESPACE
+    kubectl delete "$cm" -n "$NAMESPACE"
   fi
 done
 ```
@@ -259,8 +267,8 @@ For emergencies, maintain a database rollback procedure:
 
 set -euo pipefail
 
-BACKUP_FILE=$1
-DATABASE_URL=$2
+BACKUP_FILE=${1:-}
+DATABASE_URL=${2:-}
 
 if [ -z "$BACKUP_FILE" ] || [ -z "$DATABASE_URL" ]; then
   echo "Usage: ./db-rollback.sh <backup-file> <database-url>"
@@ -301,20 +309,21 @@ kubectl get pods -n production -l app=web-api
 kubectl describe pod <stuck-pod-name> -n production
 ```
 
-### Solution: Check Pod Disruption Budgets
+### Solution: Check Rolling Update Settings
 
-PDBs can prevent rollbacks from completing:
+Deployment rolling update settings control how many pods Kubernetes can add or remove during a rollback:
 
 ```bash
-# List PDBs that might be blocking
-kubectl get pdb -n production
+# Check the deployment strategy
+kubectl get deployment web-api -n production \
+  -o jsonpath='{.spec.strategy.rollingUpdate}'
 
-# Check if PDB is preventing pod termination
-kubectl describe pdb web-api-pdb -n production
+# Check deployment progress conditions
+kubectl describe deployment web-api -n production
 
-# Temporarily adjust PDB if necessary (be careful in production!)
-kubectl patch pdb web-api-pdb -n production \
-  -p '{"spec":{"minAvailable":1}}'
+# Temporarily allow one unavailable pod if maxUnavailable is blocking progress
+kubectl patch deployment web-api -n production \
+  -p '{"spec":{"strategy":{"rollingUpdate":{"maxUnavailable":1}}}}'
 ```
 
 ### Solution: Force Delete Stuck Pods
@@ -357,6 +366,10 @@ from flask import Flask, jsonify
 
 app = Flask(__name__)
 
+def check_dependencies():
+    """Placeholder for database, cache, or other dependency checks"""
+    return True
+
 @app.route('/health')
 def health():
     """Basic health check - exists in all versions"""
@@ -370,8 +383,8 @@ def ready():
         return jsonify({"status": "ready"}), 200
     return jsonify({"status": "not ready"}), 503
 
-# For backward compatibility, /ready falls back to /health behavior
-# if advanced checks aren't implemented
+# Keep /health stable across versions, and only point probes at endpoints
+# implemented by every version you may roll back to.
 ```
 
 ## Automated Rollback with Argo Rollouts
@@ -384,6 +397,17 @@ kind: Rollout
 metadata:
   name: web-api
 spec:
+  selector:
+    matchLabels:
+      app: web-api
+  template:
+    metadata:
+      labels:
+        app: web-api
+    spec:
+      containers:
+        - name: api
+          image: myapp:v1.2.0
   strategy:
     canary:
       steps:
@@ -444,7 +468,9 @@ jobs:
       - name: Record current revision
         id: current
         run: |
-          echo "revision=$(kubectl rollout history deployment/web-api -n staging | tail -2 | head -1 | awk '{print $1}')" >> $GITHUB_OUTPUT
+          kubectl rollout history deployment/web-api -n staging \
+            | awk 'NF && $1 ~ /^[0-9]+$/ {rev=$1} END {print "revision=" rev}' \
+            >> "$GITHUB_OUTPUT"
 
       - name: Deploy test version
         run: |
@@ -473,7 +499,7 @@ Rollback failures are often more stressful than the original deployment failure 
 2. Version your ConfigMaps and Secrets alongside deployments
 3. Use the expand-contract pattern for database migrations
 4. Design backward-compatible health check endpoints
-5. Monitor PodDisruptionBudgets that might block rollbacks
+5. Monitor rolling update settings that might block rollbacks
 6. Test your rollback procedures regularly in staging
 
 The best time to discover your rollback doesn't work is during a scheduled test, not during a production incident at 3 AM.
