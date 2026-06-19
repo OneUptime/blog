@@ -8,7 +8,7 @@ Description: Use Kafka log compaction to maintain the latest state per key, redu
 
 ---
 
-Kafka topics grow forever by default. Log compaction offers an alternative: keep only the most recent value for each key. This pattern is perfect for changelog topics, state stores, and any scenario where you care about current state rather than complete history.
+Kafka topics use time- or size-based delete retention by default. Log compaction offers an alternative: keep at least the most recent value for each key. This pattern is perfect for changelog topics, state stores, and any scenario where you care about current state rather than complete history.
 
 ## How Log Compaction Works
 
@@ -16,7 +16,7 @@ The log cleaner periodically scans topic segments and removes older records with
 
 ```mermaid
 flowchart TB
-    subgraph Before Compaction
+    subgraph before["Before Compaction"]
         A1[key=A, value=1, offset=0]
         A2[key=B, value=2, offset=1]
         A3[key=A, value=3, offset=2]
@@ -25,18 +25,18 @@ flowchart TB
         A6[key=A, value=6, offset=5]
     end
 
-    subgraph After Compaction
+    subgraph after["After Compaction"]
         B1[key=C, value=4, offset=3]
         B2[key=B, value=5, offset=4]
         B3[key=A, value=6, offset=5]
     end
 
-    Before Compaction --> |Log Cleaner| After Compaction
+    before --> |Log Cleaner| after
 ```
 
 Key points:
 - Offsets are preserved (no reordering)
-- Only duplicate keys are removed
+- Older records for duplicate keys are removed within each partition
 - Recent segments are untouched (active segment never compacted)
 
 ## Creating a Compacted Topic
@@ -59,7 +59,7 @@ kafka-topics.sh --create \
 
 Configuration explained:
 - `cleanup.policy=compact`: Enable compaction (vs `delete` or `compact,delete`)
-- `min.cleanable.dirty.ratio=0.5`: Compact when 50% of log is dirty (duplicate keys)
+- `min.cleanable.dirty.ratio=0.5`: Compact when the dirty ratio threshold is met
 - `segment.ms`: Roll segments daily
 - `delete.retention.ms`: Keep tombstones for 24 hours before removal
 
@@ -121,22 +121,30 @@ public class UserProfileReader {
         props.put("group.id", "profile-loader-" + UUID.randomUUID());
         props.put("auto.offset.reset", "earliest");
         props.put("enable.auto.commit", "false");
+        props.put("key.deserializer", StringDeserializer.class.getName());
+        props.put("value.deserializer", UserProfileDeserializer.class.getName());
 
         try (KafkaConsumer<String, UserProfile> consumer =
                  new KafkaConsumer<>(props)) {
 
-            consumer.subscribe(List.of("user-profiles"));
+            List<TopicPartition> partitions = consumer.partitionsFor("user-profiles")
+                .stream()
+                .map(info -> new TopicPartition(info.topic(), info.partition()))
+                .toList();
+
+            consumer.assign(partitions);
+            consumer.seekToBeginning(partitions);
+            Map<TopicPartition, Long> endOffsets = consumer.endOffsets(partitions);
+            for (TopicPartition partition : partitions) {
+                if (consumer.position(partition) >= endOffsets.get(partition)) {
+                    endOffsets.remove(partition);
+                }
+            }
 
             // Read from beginning to end
-            boolean done = false;
-            while (!done) {
+            while (!endOffsets.isEmpty()) {
                 ConsumerRecords<String, UserProfile> records =
                     consumer.poll(Duration.ofSeconds(1));
-
-                if (records.isEmpty()) {
-                    done = true;
-                    continue;
-                }
 
                 for (ConsumerRecord<String, UserProfile> record : records) {
                     if (record.value() == null) {
@@ -144,6 +152,12 @@ public class UserProfileReader {
                         profiles.remove(record.key());
                     } else {
                         profiles.put(record.key(), record.value());
+                    }
+
+                    TopicPartition partition =
+                        new TopicPartition(record.topic(), record.partition());
+                    if (record.offset() + 1 >= endOffsets.get(partition)) {
+                        endOffsets.remove(partition);
                     }
                 }
             }
@@ -178,20 +192,22 @@ builder.addStateStore(storeBuilder);
 
 // Use the store in processing
 builder.stream("words", Consumed.with(Serdes.String(), Serdes.String()))
-    .transformValues(() -> new ValueTransformerWithKey<String, String, Long>() {
+    .processValues(() -> new FixedKeyProcessor<String, String, Long>() {
         private KeyValueStore<String, Long> store;
+        private FixedKeyProcessorContext<String, Long> context;
 
         @Override
-        public void init(ProcessorContext context) {
+        public void init(FixedKeyProcessorContext<String, Long> context) {
+            this.context = context;
             store = context.getStateStore("word-counts");
         }
 
         @Override
-        public Long transform(String key, String value) {
-            Long count = store.get(key);
+        public void process(FixedKeyRecord<String, String> record) {
+            Long count = store.get(record.key());
             count = (count == null) ? 1L : count + 1;
-            store.put(key, count);
-            return count;
+            store.put(record.key(), count);
+            context.forward(record.withValue(count));
         }
 
         @Override
@@ -239,8 +255,11 @@ log.cleaner.threads=2
 # Memory for deduplication map (per cleaner thread)
 log.cleaner.dedupe.buffer.size=134217728
 
-# IO budget for cleaner (0.5 = 50% of disk IO)
+# Dedupe buffer load factor
 log.cleaner.io.buffer.load.factor=0.9
+
+# IO budget for cleaner in bytes per second
+log.cleaner.io.max.bytes.per.second=104857600
 
 # Minimum time before compacting
 log.cleaner.min.compaction.lag.ms=0
@@ -262,14 +281,14 @@ kafka-configs.sh --alter \
 
 This ensures:
 - Records less than 1 hour old are never compacted (consumers can see recent updates)
-- Records older than 24 hours are compacted even if ratio threshold not met
+- Records older than 24 hours become eligible for compaction even if the ratio threshold is not met
 
 ## Monitoring Compaction
 
 Track cleaner progress and identify issues.
 
 ```bash
-# Check cleaner lag
+# Inspect partition log directory state
 kafka-log-dirs.sh --describe \
   --bootstrap-server localhost:9092 \
   --topic-list user-profiles
@@ -277,20 +296,21 @@ kafka-log-dirs.sh --describe \
 
 Key JMX metrics:
 
-```yaml
-# Prometheus scrape targets
-metrics:
-  # Cleaner is making progress
-  - kafka_log_logcleaner_cleaner_recopy_percent
+```text
+# Cleaner is making progress
+kafka.log:type=LogCleaner,name=cleaner-recopy-percent
 
-  # Bytes cleaned
-  - kafka_log_logcleaner_total_cleaned_bytes
+# Maximum cleaning time
+kafka.log:type=LogCleaner,name=max-clean-time-secs
 
-  # Uncleanable partitions (compaction failing)
-  - kafka_log_logcleaner_uncleanable_partitions_count
+# Maximum delay before compaction eligibility
+kafka.log:type=LogCleaner,name=max-compaction-delay-secs
 
-  # Max dirty ratio (should stay below configured threshold)
-  - kafka_log_logcleaner_max_dirty_ratio
+# Uncleanable partitions
+kafka.log:logDirectory="{/log-directory}":type=LogCleanerManager,name=uncleanable-partitions-count
+
+# Max dirty percentage
+kafka.log:type=LogCleanerManager,name=max-dirty-percent
 ```
 
 ## Compact + Delete Policy
@@ -315,11 +335,11 @@ This is useful when you need:
 
 ## Gotchas and Best Practices
 
-**Keys are required**: Compaction only works with keyed messages. Null keys are never compacted.
+**Keys are required**: Compaction only works with keyed messages. Null keys are invalid for compacted topics.
 
 ```java
-// This message will never be compacted
-producer.send(new ProducerRecord<>("compacted-topic", null, "orphan value"));
+// This message will be rejected by a compacted topic
+producer.send(new ProducerRecord<>("compacted-topic", null, null, null, "orphan value"));
 ```
 
 **Segment must be closed**: Active segments are never compacted. Consider smaller segment sizes for faster compaction.
