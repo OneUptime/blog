@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RabbitMQ, Publisher Confirms, Message Queue, Reliability, Node.js, Python, Java, Messaging
 
-Description: Learn how to implement RabbitMQ publisher confirms to guarantee message delivery and build reliable messaging systems.
+Description: Learn how to implement RabbitMQ publisher confirms to verify broker acceptance and build reliable messaging systems.
 
 ---
 
-> Publisher confirms are RabbitMQ's mechanism for ensuring messages are safely persisted. Without them, you have no guarantee that your messages were ever received by the broker.
+> Publisher confirms are RabbitMQ's mechanism for ensuring messages have been accepted by the broker. For persistent messages routed to durable queues, that includes persistence to disk.
 
 Messages can be lost between your application and RabbitMQ. Publisher confirms solve this problem by providing acknowledgments from the broker.
 
@@ -27,14 +27,16 @@ sequenceDiagram
     Q-->>R: Message Persisted
     R-->>P: Confirm (ACK)
 
-    Note over P: Message delivery guaranteed
+    Note over P: Broker acceptance confirmed
 ```
 
-Publisher confirms work by having RabbitMQ send an acknowledgment back to the publisher once a message has been:
+Publisher confirms work by having RabbitMQ send an acknowledgment back to the publisher once a message has been handled by the broker:
 
-1. Routed to at least one queue
-2. Persisted to disk (for durable queues)
-3. Replicated to mirrors (for HA queues)
+1. Accepted by all queues it was routed to
+2. Persisted to disk (for persistent messages routed to durable queues)
+3. Replicated to a quorum (for quorum queues)
+
+For unroutable messages, the broker still sends a confirm after the exchange determines that the message cannot be routed. If the message is published with the `mandatory` flag, RabbitMQ sends `basic.return` before the confirm.
 
 ---
 
@@ -69,8 +71,8 @@ async function publishWithConfirms() {
     };
 
     try {
-        // Publish with confirmation - returns a promise that resolves on ACK
-        await channel.publish(
+        // Publish on the confirm channel
+        channel.publish(
             exchange,
             routingKey,
             Buffer.from(JSON.stringify(message)),
@@ -109,7 +111,7 @@ import json
 from typing import Optional
 
 class ReliablePublisher:
-    """Publisher with confirmation support for guaranteed delivery"""
+    """Publisher with confirmation support for reliable broker delivery"""
 
     def __init__(self, host: str = 'localhost'):
         self.host = host
@@ -339,14 +341,15 @@ class BatchPublisher {
         this.batchSize = batchSize;
         this.flushIntervalMs = flushIntervalMs;
         this.pendingMessages = [];
+        this.connection = null;
         this.channel = null;
         this.flushTimer = null;
     }
 
     async connect() {
-        const connection = await amqp.connect('amqp://localhost');
+        this.connection = await amqp.connect('amqp://localhost');
         // Use confirm channel for publisher confirms
-        this.channel = await connection.createConfirmChannel();
+        this.channel = await this.connection.createConfirmChannel();
 
         await this.channel.assertExchange('events', 'topic', { durable: true });
 
@@ -410,6 +413,7 @@ class BatchPublisher {
         await this.flush();
 
         await this.channel.close();
+        await this.connection.close();
     }
 }
 
@@ -630,9 +634,9 @@ class AsyncConfirmPublisher {
     constructor() {
         this.channel = null;
         this.connection = null;
-        // Track pending messages by delivery tag
+        // Track pending messages by publish callback
         this.pendingConfirms = new Map();
-        this.nextSeqNo = 1;
+        this.nextPublishId = 1;
     }
 
     async connect() {
@@ -642,66 +646,31 @@ class AsyncConfirmPublisher {
         await this.channel.assertExchange('async-events', 'topic', {
             durable: true
         });
-
-        // Set up confirm event handlers
-        this.channel.on('ack', (seqNo, multiple) => {
-            this._handleAck(seqNo, multiple);
-        });
-
-        this.channel.on('nack', (seqNo, multiple) => {
-            this._handleNack(seqNo, multiple);
-        });
-    }
-
-    _handleAck(seqNo, multiple) {
-        if (multiple) {
-            // All messages up to seqNo are confirmed
-            for (const [key, pending] of this.pendingConfirms) {
-                if (key <= seqNo) {
-                    pending.resolve(true);
-                    this.pendingConfirms.delete(key);
-                }
-            }
-        } else {
-            const pending = this.pendingConfirms.get(seqNo);
-            if (pending) {
-                pending.resolve(true);
-                this.pendingConfirms.delete(seqNo);
-            }
-        }
-    }
-
-    _handleNack(seqNo, multiple) {
-        if (multiple) {
-            for (const [key, pending] of this.pendingConfirms) {
-                if (key <= seqNo) {
-                    pending.reject(new Error('Message NACKed'));
-                    this.pendingConfirms.delete(key);
-                }
-            }
-        } else {
-            const pending = this.pendingConfirms.get(seqNo);
-            if (pending) {
-                pending.reject(new Error('Message NACKed'));
-                this.pendingConfirms.delete(seqNo);
-            }
-        }
     }
 
     publish(routingKey, message) {
         // Return a promise that resolves when confirmed
         return new Promise((resolve, reject) => {
-            const seqNo = this.nextSeqNo++;
+            const publishId = this.nextPublishId++;
 
-            // Store promise handlers for this sequence number
-            this.pendingConfirms.set(seqNo, { resolve, reject, message });
+            // Store promise handlers until the confirm callback fires
+            this.pendingConfirms.set(publishId, { resolve, reject, message });
 
             // Publish without waiting
             this.channel.publish(
                 'async-events',
                 routingKey,
                 Buffer.from(JSON.stringify(message)),
-                { persistent: true }
+                { persistent: true },
+                (error) => {
+                    this.pendingConfirms.delete(publishId);
+
+                    if (error) {
+                        reject(error);
+                    } else {
+                        resolve(true);
+                    }
+                }
             );
         });
     }
