@@ -44,8 +44,8 @@ flowchart TD
 | Token | Purpose | Storage | Lifetime |
 |-------|---------|---------|----------|
 | Access Token | API authorization | Memory/secure storage | 15-60 minutes |
-| Refresh Token | Obtain new access tokens | Server-side only | Days to weeks |
-| ID Token | User identity (OIDC) | Client storage | Until logout |
+| Refresh Token | Obtain new access tokens | Server-side for this pattern | Days to weeks |
+| ID Token | User identity assertions (OIDC) | Validate on receipt; avoid using as a session token | Token expiration |
 
 ---
 
@@ -90,7 +90,7 @@ import redis
 import json
 import secrets
 import hashlib
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any
 
 class OAuth2SessionStore:
@@ -124,7 +124,7 @@ class OAuth2SessionStore:
         # Generate secure session ID
         session_id = secrets.token_urlsafe(32)
 
-        # Hash session ID for storage (prevents session fixation)
+        # Hash session ID before storage so leaked Redis keys are not bearer credentials
         session_hash = self._hash_session_id(session_id)
 
         session_data = {
@@ -134,17 +134,17 @@ class OAuth2SessionStore:
             'id_token': id_token,
             'access_token_expires': access_token_expires.isoformat()
                 if access_token_expires else None,
-            'created_at': datetime.utcnow().isoformat(),
-            'last_activity': datetime.utcnow().isoformat(),
+            'created_at': datetime.now(timezone.utc).isoformat(),
+            'last_activity': datetime.now(timezone.utc).isoformat(),
             'metadata': metadata or {},
         }
 
         # Store session
         session_key = f"{self.session_prefix}{session_hash}"
-        self.redis.setex(
+        self.redis.set(
             session_key,
-            self.session_ttl,
-            json.dumps(session_data)
+            json.dumps(session_data),
+            ex=self.session_ttl
         )
 
         # Track user's sessions (for logout all devices)
@@ -169,8 +169,8 @@ class OAuth2SessionStore:
         session = json.loads(data)
 
         # Update last activity
-        session['last_activity'] = datetime.utcnow().isoformat()
-        self.redis.setex(session_key, self.session_ttl, json.dumps(session))
+        session['last_activity'] = datetime.now(timezone.utc).isoformat()
+        self.redis.set(session_key, json.dumps(session), ex=self.session_ttl)
 
         return session
 
@@ -200,9 +200,9 @@ class OAuth2SessionStore:
         if access_token_expires:
             session['access_token_expires'] = access_token_expires.isoformat()
 
-        session['last_activity'] = datetime.utcnow().isoformat()
+        session['last_activity'] = datetime.now(timezone.utc).isoformat()
 
-        self.redis.setex(session_key, self.session_ttl, json.dumps(session))
+        self.redis.set(session_key, json.dumps(session), ex=self.session_ttl)
         return True
 
     def delete_session(self, session_id: str) -> bool:
@@ -233,7 +233,7 @@ class OAuth2SessionStore:
 
         count = 0
         for session_hash in session_hashes:
-            session_key = f"{self.session_prefix}{session_hash.decode()}"
+            session_key = f"{self.session_prefix}{self._to_str(session_hash)}"
             if self.redis.delete(session_key):
                 count += 1
 
@@ -251,13 +251,19 @@ class OAuth2SessionStore:
         expires = datetime.fromisoformat(expires_str)
         # Add buffer time (refresh 5 minutes before expiry)
         buffer = timedelta(minutes=5)
-        return datetime.utcnow() >= (expires - buffer)
+        return datetime.now(timezone.utc) >= (expires - buffer)
 
     def _hash_session_id(self, session_id: str) -> str:
         """
         Hash session ID for secure storage.
         """
         return hashlib.sha256(session_id.encode()).hexdigest()
+
+    def _to_str(self, value) -> str:
+        """
+        Normalize Redis values when decode_responses is enabled or disabled.
+        """
+        return value.decode() if isinstance(value, bytes) else value
 ```
 
 ---
@@ -294,6 +300,7 @@ sequenceDiagram
 ```python
 import httpx
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Tuple
 
 @dataclass
@@ -346,9 +353,8 @@ class OAuth2TokenManager:
                     data={
                         'grant_type': 'refresh_token',
                         'refresh_token': refresh_token,
-                        'client_id': self.client_id,
-                        'client_secret': self.client_secret,
                     },
+                    auth=(self.client_id, self.client_secret),
                     headers={
                         'Content-Type': 'application/x-www-form-urlencoded'
                     }
@@ -369,7 +375,7 @@ class OAuth2TokenManager:
 
                 # Calculate expiration time
                 expires_in = token_data.get('expires_in', 3600)
-                expires_at = datetime.utcnow() + timedelta(seconds=expires_in)
+                expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
 
                 # Update session with new tokens
                 self.session_store.update_tokens(
@@ -521,7 +527,7 @@ class OAuth2SessionMiddleware(BaseHTTPMiddleware):
 
 ```python
 from fastapi import FastAPI, Response
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 def set_session_cookie(
     response: Response,
@@ -537,7 +543,7 @@ def set_session_cookie(
         key="session_id",
         value=session_id,
         max_age=max_age,
-        expires=datetime.utcnow() + timedelta(seconds=max_age),
+        expires=datetime.now(timezone.utc) + timedelta(seconds=max_age),
         path="/",
         domain=domain,
         secure=secure,         # Only send over HTTPS
@@ -561,7 +567,7 @@ def clear_session_cookie(response: Response, domain: str = None):
 
 ### Session Binding
 
-Bind sessions to client characteristics to prevent session hijacking:
+Bind sessions to client characteristics to help detect some session hijacking attempts:
 
 ```python
 import hashlib
@@ -743,16 +749,15 @@ class LogoutHandler:
                 data={
                     'token': token,
                     'token_type_hint': 'refresh_token',
-                    'client_id': self.client_id,
-                    'client_secret': self.client_secret,
                 },
+                auth=(self.client_id, self.client_secret),
                 headers={
                     'Content-Type': 'application/x-www-form-urlencoded'
                 }
             )
 
             # RFC 7009: Server should return 200 even if token was invalid
-            if response.status_code not in [200, 400]:
+            if response.status_code != 200:
                 raise Exception(f"Revocation failed: {response.status_code}")
 
 
@@ -795,7 +800,8 @@ async def logout_all_devices(request: Request, response: Response):
 
 ```python
 import asyncio
-from datetime import datetime, timedelta
+import json
+from datetime import datetime, timedelta, timezone
 import logging
 
 logger = logging.getLogger(__name__)
@@ -836,7 +842,7 @@ class SessionMonitor:
         pattern = f"{self.session_store.session_prefix}*"
         cursor = 0
         cleaned = 0
-        threshold = datetime.utcnow() - timedelta(seconds=self.inactive_threshold)
+        threshold = datetime.now(timezone.utc) - timedelta(seconds=self.inactive_threshold)
 
         while True:
             cursor, keys = self.redis.scan(cursor, match=pattern, count=100)
@@ -852,6 +858,16 @@ class SessionMonitor:
                 )
 
                 if last_activity < threshold:
+                    user_sessions_key = (
+                        f"{self.session_store.user_sessions_prefix}"
+                        f"{session['user_id']}"
+                    )
+                    session_hash = self.session_store._to_str(key).replace(
+                        self.session_store.session_prefix,
+                        "",
+                        1
+                    )
+                    self.redis.srem(user_sessions_key, session_hash)
                     self.redis.delete(key)
                     cleaned += 1
 
@@ -897,7 +913,10 @@ class SessionMonitor:
 
         sessions = []
         for session_hash in session_hashes:
-            key = f"{self.session_store.session_prefix}{session_hash.decode()}"
+            key = (
+                f"{self.session_store.session_prefix}"
+                f"{self.session_store._to_str(session_hash)}"
+            )
             data = self.redis.get(key)
             if data:
                 session = json.loads(data)
@@ -918,7 +937,8 @@ class SessionMonitor:
 ## Complete Flow Example
 
 ```python
-from fastapi import FastAPI, Request, Response, Depends
+from datetime import datetime, timedelta, timezone
+from fastapi import FastAPI, Request, Response
 from fastapi.responses import RedirectResponse
 import redis
 
@@ -963,7 +983,7 @@ async def oauth_callback(request: Request, response: Response):
         access_token=tokens['access_token'],
         refresh_token=tokens['refresh_token'],
         id_token=tokens['id_token'],
-        access_token_expires=datetime.utcnow() + timedelta(
+        access_token_expires=datetime.now(timezone.utc) + timedelta(
             seconds=tokens['expires_in']
         ),
         metadata={
@@ -1008,12 +1028,12 @@ async def list_sessions(request: Request):
 
 Effective OAuth2 session management requires:
 
-1. **Store refresh tokens server-side** - Never expose them to the client
+1. **Store refresh tokens server-side when using server-managed sessions** - Public clients that receive refresh tokens should use sender-constrained tokens or refresh token rotation
 2. **Implement automatic token refresh** - Users should not notice token expiration
 3. **Use secure cookie settings** - HttpOnly, Secure, SameSite
 4. **Handle logout properly** - Revoke tokens and clear sessions
 5. **Monitor sessions** - Track active sessions and clean up inactive ones
-6. **Consider session binding** - Prevent session hijacking with fingerprinting
+6. **Consider session binding** - Detect suspicious session changes with fingerprinting
 
 Key patterns:
 - Proactive token refresh before expiration (with buffer time)
