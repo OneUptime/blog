@@ -19,8 +19,8 @@ flowchart TB
     subgraph Problem: Without Adapter
         C1[Client A] --> S1[Server 1]
         C2[Client B] --> S2[Server 2]
-        S1 -.-x|Cannot reach| C2
-        S2 -.-x|Cannot reach| C1
+        S1 --x|Cannot reach| C2
+        S2 --x|Cannot reach| C1
     end
 ```
 
@@ -41,7 +41,7 @@ flowchart TB
 ### Install Dependencies
 
 ```bash
-npm install socket.io @socket.io/redis-adapter redis
+npm install socket.io socket.io-client @socket.io/redis-adapter @socket.io/redis-streams-adapter @socket.io/sticky redis express
 ```
 
 ### Basic Redis Adapter Configuration
@@ -215,7 +215,7 @@ upstream socketio_nodes {
     server 192.168.1.11:3000;
     server 192.168.1.12:3000;
 
-    # Health checks
+    # Upstream keepalive connections
     keepalive 64;
 }
 
@@ -529,10 +529,10 @@ class SocketIOCluster {
 
         // Server info
         this.app.get('/info', async (req, res) => {
-            const sockets = await this.io.fetchSockets();
+            const sockets = await this.io.local.fetchSockets();
             res.json({
                 serverId: this.config.serverId,
-                totalConnections: sockets.length,
+                localConnections: sockets.length,
                 rooms: Array.from(this.io.sockets.adapter.rooms.keys())
             });
         });
@@ -550,13 +550,13 @@ class SocketIOCluster {
         console.log('Shutting down server...');
 
         // Notify clients
-        this.io.emit('server-shutdown', {
+        this.io.local.emit('server-shutdown', {
             serverId: this.config.serverId,
             reconnectIn: 5000
         });
 
-        // Close connections gracefully
-        const sockets = await this.io.fetchSockets();
+        // Close local connections gracefully
+        const sockets = await this.io.local.fetchSockets();
         for (const socket of sockets) {
             socket.disconnect(true);
         }
@@ -732,7 +732,7 @@ main().catch(console.error);
 
 ## Solution 4: Redis Streams Adapter (Alternative)
 
-For applications requiring message persistence and replay:
+For applications that need the adapter to recover from temporary Redis disconnections:
 
 ```javascript
 // server-streams.js - Socket.io with Redis Streams
@@ -754,7 +754,7 @@ async function createServerWithStreams() {
     });
 
     io.on('connection', (socket) => {
-        // Messages are persisted in Redis Streams
+        // Broadcasts are forwarded through Redis Streams
         socket.on('message', (data) => {
             io.emit('message', data);
         });
