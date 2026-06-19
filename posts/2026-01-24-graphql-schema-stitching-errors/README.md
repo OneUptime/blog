@@ -133,6 +133,7 @@ const gatewaySchema = stitchSchemas({
       merge: {
         User: {
           // This schema provides the base User type
+          canonical: true,
           selectionSet: "{ id }",
           fieldName: "user",
           args: (originalObject) => ({ id: originalObject.id })
@@ -152,14 +153,7 @@ const gatewaySchema = stitchSchemas({
     }
   ],
 
-  // Type merge configuration
-  typeMergingOptions: {
-    // Automatically merge types with the same name
-    typeCandidateMerger: (candidates) => {
-      // Combine fields from all candidates
-      return candidates[0];
-    }
-  }
+  mergeTypes: true
 });
 ```
 
@@ -208,10 +202,9 @@ Error: Unknown type "Review" referenced in type "Product"
 type Product {
   id: ID!
   name: String!
-  reviews: [Review!]!  # Review type not defined in this service
 }
 
-# Reviews service is not connected
+# Gateway tries to add Product.reviews without including the Reviews service
 ```
 
 **Solution: Add All Required Subschemas**
@@ -274,7 +267,8 @@ graph LR
 
 ```javascript
 // gateway.js
-const { stitchSchemas, delegateToSchema } = require("@graphql-tools/stitch");
+const { stitchSchemas } = require("@graphql-tools/stitch");
+const { delegateToSchema } = require("@graphql-tools/delegate");
 
 // Define extension types in gateway
 const gatewayTypeDefs = `
@@ -418,6 +412,8 @@ const gatewaySchema = stitchSchemas({
 
 ```javascript
 // gateway.js
+const { RenameRootFields } = require("@graphql-tools/wrap");
+
 const gatewayTypeDefs = `
   # Union type for search results
   union SearchResult = User | Product | Order
@@ -428,21 +424,34 @@ const gatewayTypeDefs = `
   }
 `;
 
+const productsSubschema = {
+  schema: productsSchema,
+  transforms: [
+    new RenameRootFields((operationType, fieldName) => {
+      if (fieldName === "search") {
+        return "searchProducts";
+      }
+      return fieldName;
+    })
+  ]
+};
+
+const usersSubschema = {
+  schema: usersSchema,
+  transforms: [
+    new RenameRootFields((operationType, fieldName) => {
+      if (fieldName === "search") {
+        return "searchUsers";
+      }
+      return fieldName;
+    })
+  ]
+};
+
 const gatewaySchema = stitchSchemas({
   subschemas: [
-    {
-      schema: productsSchema,
-      transforms: [
-        // Remove the original search field
-        new FilterRootFields((operation, fieldName) => fieldName !== "search")
-      ]
-    },
-    {
-      schema: usersSchema,
-      transforms: [
-        new FilterRootFields((operation, fieldName) => fieldName !== "search")
-      ]
-    }
+    productsSubschema,
+    usersSubschema
   ],
 
   typeDefs: gatewayTypeDefs,
@@ -455,7 +464,7 @@ const gatewaySchema = stitchSchemas({
         // Search across all services
         if (!types || types.includes("User")) {
           const users = await delegateToSchema({
-            schema: usersSchema,
+            schema: usersSubschema,
             operation: "query",
             fieldName: "searchUsers",
             args: { query },
@@ -467,7 +476,7 @@ const gatewaySchema = stitchSchemas({
 
         if (!types || types.includes("Product")) {
           const products = await delegateToSchema({
-            schema: productsSchema,
+            schema: productsSubschema,
             operation: "query",
             fieldName: "searchProducts",
             args: { query },
@@ -524,8 +533,7 @@ enum Status {
 ```javascript
 // gateway.js
 const {
-  RenameTypes,
-  TransformEnumValues
+  RenameTypes
 } = require("@graphql-tools/wrap");
 
 const gatewaySchema = stitchSchemas({
@@ -569,7 +577,9 @@ Error: Directive "@auth" is defined differently across schemas
 
 ```javascript
 // gateway.js
-const { FilterTypes, MapFields } = require("@graphql-tools/wrap");
+const { defaultFieldResolver } = require("graphql");
+const { FilterObjectFieldDirectives } = require("@graphql-tools/wrap");
+const { getDirective, MapperKind, mapSchema } = require("@graphql-tools/utils");
 
 // Define a unified auth directive in the gateway
 const gatewayTypeDefs = `
@@ -584,50 +594,57 @@ const gatewayTypeDefs = `
   }
 `;
 
-const gatewaySchema = stitchSchemas({
+function authDirective(directiveName) {
+  return (schema) =>
+    mapSchema(schema, {
+      [MapperKind.OBJECT_FIELD](fieldConfig) {
+        const authDirectiveConfig = getDirective(schema, fieldConfig, directiveName)?.[0];
+
+        if (authDirectiveConfig) {
+          const { requires } = authDirectiveConfig;
+          const { resolve = defaultFieldResolver } = fieldConfig;
+
+          return {
+            ...fieldConfig,
+            resolve(source, args, context, info) {
+              if (!context.user) {
+                throw new Error("Authentication required");
+              }
+
+              if (!requires.includes(context.user.role)) {
+                throw new Error("Insufficient permissions");
+              }
+
+              return resolve(source, args, context, info);
+            }
+          };
+        }
+      }
+    });
+}
+
+let gatewaySchema = stitchSchemas({
   subschemas: [
     {
       schema: usersSchema,
       transforms: [
         // Remove schema-specific directives
-        new RemoveSchemaDirectives(["auth"])
+        new FilterObjectFieldDirectives((directiveName) => directiveName !== "auth")
       ]
     },
     {
       schema: ordersSchema,
       transforms: [
-        new RemoveSchemaDirectives(["auth"])
+        new FilterObjectFieldDirectives((directiveName) => directiveName !== "auth")
       ]
     }
   ],
 
-  typeDefs: gatewayTypeDefs,
-
-  // Implement auth directive at gateway level
-  schemaDirectives: {
-    auth: AuthDirective
-  }
+  typeDefs: gatewayTypeDefs
 });
 
-// Custom directive implementation
-class AuthDirective extends SchemaDirectiveVisitor {
-  visitFieldDefinition(field) {
-    const { requires } = this.args;
-    const originalResolve = field.resolve;
-
-    field.resolve = async function (parent, args, context, info) {
-      if (!context.user) {
-        throw new Error("Authentication required");
-      }
-
-      if (!requires.includes(context.user.role)) {
-        throw new Error("Insufficient permissions");
-      }
-
-      return originalResolve.call(this, parent, args, context, info);
-    };
-  }
-}
+// Implement auth directive at gateway level
+gatewaySchema = authDirective("auth")(gatewaySchema);
 ```
 
 ### Error 7: Network and Timeout Errors
@@ -643,6 +660,7 @@ Error: Failed to load schema from http://users-service:4001/graphql - ECONNREFUS
 
 ```javascript
 // schema-loader.js
+const { makeExecutableSchema } = require("@graphql-tools/schema");
 const { loadSchema } = require("@graphql-tools/load");
 const { UrlLoader } = require("@graphql-tools/url-loader");
 
@@ -698,7 +716,53 @@ async function loadSchemaWithRetry(url, options = {}) {
 
 // Fallback schema for unavailable services
 function createFallbackSchema(serviceName) {
-  return makeExecutableSchema({
+  const fallbackSchemas = {
+    orders: {
+      typeDefs: `
+        type Order {
+          id: ID!
+          userId: ID!
+        }
+
+        type Query {
+          _ordersServiceStatus: String!
+          order(id: ID!): Order
+          ordersByUserId(userId: ID!): [Order!]!
+        }
+      `,
+      resolvers: {
+        Query: {
+          _ordersServiceStatus: () => "Service temporarily unavailable",
+          order: () => null,
+          ordersByUserId: () => []
+        }
+      }
+    },
+    reviews: {
+      typeDefs: `
+        type Review {
+          id: ID!
+          userId: ID!
+          productId: ID!
+        }
+
+        type Query {
+          _reviewsServiceStatus: String!
+          reviewsByUserId(userId: ID!): [Review!]!
+          reviewsByProductId(productId: ID!): [Review!]!
+        }
+      `,
+      resolvers: {
+        Query: {
+          _reviewsServiceStatus: () => "Service temporarily unavailable",
+          reviewsByUserId: () => [],
+          reviewsByProductId: () => []
+        }
+      }
+    }
+  };
+
+  const fallback = fallbackSchemas[serviceName] || {
     typeDefs: `
       type Query {
         _${serviceName}ServiceStatus: String!
@@ -709,7 +773,9 @@ function createFallbackSchema(serviceName) {
         [`_${serviceName}ServiceStatus`]: () => "Service temporarily unavailable"
       }
     }
-  });
+  };
+
+  return makeExecutableSchema(fallback);
 }
 
 async function loadSchemaWithFallback(url, serviceName, options = {}) {
@@ -731,67 +797,59 @@ module.exports = { loadSchemaWithRetry, loadSchemaWithFallback };
 
 ### Error 8: Subscription Stitching Errors
 
-Subscriptions require special handling in schema stitching.
+Subscriptions require a subschema executor that can return an async iterable.
 
 **Error Message:**
 ```text
-Error: Subscriptions are not supported in stitched schemas
+Error: Subscription field "orderUpdated" is missing an executor
 ```
 
-**Solution: Use WebSocket Delegation**
+**Solution: Use a WebSocket Executor**
 
 ```javascript
 // gateway-subscriptions.js
 const { stitchSchemas } = require("@graphql-tools/stitch");
-const { SubscriptionClient } = require("subscriptions-transport-ws");
-const WebSocket = require("ws");
-const { getMainDefinition } = require("@apollo/client/utilities");
+const { buildHTTPExecutor } = require("@graphql-tools/executor-http");
+const { buildGraphQLWSExecutor } = require("@graphql-tools/executor-graphql-ws");
 
-// Create subscription client for each service
-function createSubscriptionClient(wsUrl) {
-  return new SubscriptionClient(
-    wsUrl,
-    {
-      reconnect: true,
-      connectionParams: () => ({
-        // Add authentication headers
-        authToken: process.env.SERVICE_AUTH_TOKEN
-      })
-    },
-    WebSocket
-  );
-}
+function createCombinedExecutor(httpUrl, wsUrl) {
+  const httpExecutor = buildHTTPExecutor({
+    endpoint: httpUrl,
+    headers: (executorRequest) => ({
+      authorization: executorRequest.context?.authToken || ""
+    })
+  });
 
-// Create executor for subscriptions
-function createSubscriptionExecutor(wsUrl) {
-  const client = createSubscriptionClient(wsUrl);
+  const wsExecutor = buildGraphQLWSExecutor({
+    url: wsUrl,
+    connectionParams: {}
+  });
 
-  return async ({ document, variables, context }) => {
-    return new Observable((observer) => {
-      const subscription = client.request({
-        query: document,
-        variables
-      }).subscribe({
-        next: (data) => observer.next(data),
-        error: (error) => observer.error(error),
-        complete: () => observer.complete()
-      });
+  return (executorRequest) => {
+    if (executorRequest.operationType === "subscription") {
+      return wsExecutor(executorRequest);
+    }
 
-      return () => subscription.unsubscribe();
-    });
+    return httpExecutor(executorRequest);
   };
 }
 
-// Configure stitched schema with subscriptions
+// Configure stitched schema with subscription-capable executors
 const gatewaySchema = stitchSchemas({
   subschemas: [
     {
       schema: ordersSchema,
-      subscriber: createSubscriptionExecutor("ws://orders-service:4003/graphql")
+      executor: createCombinedExecutor(
+        "http://orders-service:4003/graphql",
+        "ws://orders-service:4003/graphql"
+      )
     },
     {
       schema: notificationsSchema,
-      subscriber: createSubscriptionExecutor("ws://notifications-service:4004/graphql")
+      executor: createCombinedExecutor(
+        "http://notifications-service:4004/graphql",
+        "ws://notifications-service:4004/graphql"
+      )
     }
   ]
 });
@@ -831,8 +889,9 @@ flowchart TD
 ```javascript
 // complete-gateway.js
 const { ApolloServer } = require("@apollo/server");
-const { expressMiddleware } = require("@apollo/server/express4");
-const { stitchSchemas, delegateToSchema } = require("@graphql-tools/stitch");
+const { expressMiddleware } = require("@as-integrations/express4");
+const { stitchSchemas } = require("@graphql-tools/stitch");
+const { delegateToSchema } = require("@graphql-tools/delegate");
 const { loadSchemaWithFallback } = require("./schema-loader");
 const express = require("express");
 const cors = require("cors");
@@ -858,6 +917,7 @@ const SERVICES = {
 
 async function createGateway() {
   const subschemas = [];
+  const subschemasByName = {};
   const loadErrors = [];
 
   // Load all service schemas
@@ -872,11 +932,14 @@ async function createGateway() {
         }
       );
 
-      subschemas.push({
+      const subschema = {
         schema,
         batch: true, // Enable batching for performance
         merge: getTypeMergeConfig(name)
-      });
+      };
+
+      subschemas.push(subschema);
+      subschemasByName[name] = subschema;
 
       console.log(`Loaded ${name} service schema`);
 
@@ -901,7 +964,7 @@ async function createGateway() {
     resolvers: getGatewayResolvers()
   });
 
-  return gatewaySchema;
+  return { gatewaySchema, subschemasByName };
 }
 
 function getTypeMergeConfig(serviceName) {
@@ -945,7 +1008,6 @@ function getGatewayExtensions() {
 
     extend type Order {
       user: User!
-      products: [Product!]!
     }
   `;
 }
@@ -1015,10 +1077,10 @@ function getGatewayResolvers() {
 
 async function startGateway() {
   const app = express();
-  const schema = await createGateway();
+  const { gatewaySchema, subschemasByName } = await createGateway();
 
   const server = new ApolloServer({
-    schema,
+    schema: gatewaySchema,
     plugins: [
       {
         async serverWillStart() {
@@ -1046,7 +1108,7 @@ async function startGateway() {
     expressMiddleware(server, {
       context: async ({ req }) => ({
         user: req.user,
-        subschemas: server.schema // Make subschemas available in context
+        subschemas: subschemasByName
       })
     })
   );
