@@ -110,7 +110,7 @@ def process_order(order_id, items):
 ### Node.js Implementation
 
 ```javascript
-const { trace } = require('@opentelemetry/api');
+const { trace, SpanStatusCode } = require('@opentelemetry/api');
 
 const tracer = trace.getTracer('event-example');
 
@@ -164,7 +164,7 @@ async function processOrder(orderId, items) {
         } catch (error) {
             // Record exception as an event with stack trace
             span.recordException(error);
-            span.setStatus({ code: 2, message: error.message });
+            span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
             throw error;
 
         } finally {
@@ -208,7 +208,7 @@ func ProcessOrder(ctx context.Context, orderID string, items []Item) (*PaymentRe
     ))
 
     validationStart := time.Now()
-    validationResult, err := ValidateInventory(ctx, items)
+    _, err := ValidateInventory(ctx, items)
     validationDuration := time.Since(validationStart)
 
     // Event: Validation completed with timing
@@ -254,6 +254,7 @@ OpenTelemetry provides a special method for recording exceptions that automatica
 
 ```python
 from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
 
 tracer = trace.get_tracer("exception-example")
 
@@ -271,10 +272,9 @@ def risky_operation():
             # - exception.message
             # - exception.stacktrace
             span.record_exception(e, attributes={
-                "exception.escaped": False,  # Exception was handled
                 "db.connection.pool_size": 10,
                 "db.connection.active": 8,
-            })
+            }, escaped=False)  # Exception was handled
 
             # You can still continue after recording
             span.add_event("fallback_initiated", {
@@ -285,9 +285,7 @@ def risky_operation():
 
         except Exception as e:
             # Unhandled exception - mark as escaped
-            span.record_exception(e, attributes={
-                "exception.escaped": True,  # Will propagate up
-            })
+            span.record_exception(e, escaped=True)  # Will propagate up
             span.set_status(Status(StatusCode.ERROR, str(e)))
             raise
 ```
@@ -307,10 +305,10 @@ async function riskyOperation() {
 
         } catch (error) {
             // Record the exception with context
-            span.recordException(error, {
-                'exception.escaped': false,
+            span.setAttributes({
                 'error.category': categorizeError(error),
             });
+            span.recordException(error);
 
             // Add event for fallback
             span.addEvent('fallback_initiated', {
@@ -322,10 +320,10 @@ async function riskyOperation() {
                 return await readFromCache();
             } catch (fallbackError) {
                 // Both primary and fallback failed
-                span.recordException(fallbackError, {
-                    'exception.escaped': true,
+                span.setAttributes({
                     'fallback.failed': true,
                 });
+                span.recordException(fallbackError);
                 span.setStatus({
                     code: SpanStatusCode.ERROR,
                     message: 'All fallbacks exhausted',
@@ -426,16 +424,16 @@ Follow OpenTelemetry semantic conventions:
 
 # Good: Follows conventions
 span.add_event("http.request.started", {
-    "http.method": "POST",
-    "http.url": "/api/orders",
+    "http.request.method": "POST",
+    "url.path": "/api/orders",
     "http.request.body.size": 1024,
 })
 
 span.add_event("db.query.executed", {
-    "db.system": "postgresql",
-    "db.operation": "SELECT",
-    "db.statement": "SELECT * FROM users WHERE id = ?",
-    "db.rows_affected": 1,
+    "db.system.name": "postgresql",
+    "db.operation.name": "SELECT",
+    "db.query.text": "SELECT * FROM users WHERE id = ?",
+    "db.response.returned_rows": 1,
 })
 
 # Bad: Inconsistent naming
@@ -532,47 +530,19 @@ def create_order_timeline(order):
 When you have high-volume events, implement filtering:
 
 ```python
-from opentelemetry import trace
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
 import random
 
-class EventFilteringExporter(SpanExporter):
-    """Exporter that filters high-volume events."""
+IMPORTANT_EVENTS = {"error", "exception", "failure", "timeout"}
+EVENT_SAMPLE_RATE = 0.1
 
-    def __init__(self, wrapped_exporter, event_sample_rate=0.1):
-        self.wrapped_exporter = wrapped_exporter
-        self.event_sample_rate = event_sample_rate
-        # Events to always include
-        self.important_events = {
-            "error", "exception", "failure", "timeout"
-        }
+def add_sampled_event(span, name, attributes=None):
+    """Add important events, and sample lower-value high-volume events."""
+    if any(keyword in name.lower() for keyword in IMPORTANT_EVENTS):
+        span.add_event(name, attributes or {})
+        return
 
-    def export(self, spans):
-        filtered_spans = []
-
-        for span in spans:
-            # Check if span has events to filter
-            if hasattr(span, 'events') and span.events:
-                filtered_events = []
-
-                for event in span.events:
-                    # Always keep important events
-                    if any(imp in event.name.lower() for imp in self.important_events):
-                        filtered_events.append(event)
-                    # Sample other events
-                    elif random.random() < self.event_sample_rate:
-                        filtered_events.append(event)
-
-                # Replace events with filtered list
-                span._events = filtered_events
-
-            filtered_spans.append(span)
-
-        return self.wrapped_exporter.export(filtered_spans)
-
-    def shutdown(self):
-        return self.wrapped_exporter.shutdown()
+    if random.random() < EVENT_SAMPLE_RATE:
+        span.add_event(name, attributes or {})
 ```
 
 ## Annotations for Debugging
