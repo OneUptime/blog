@@ -8,7 +8,7 @@ Description: A practical guide to understanding, handling, and preventing OUT_OF
 
 ---
 
-The OUT_OF_RANGE status code (code 11) in gRPC indicates that an operation was attempted past a valid range. Unlike INVALID_ARGUMENT which indicates malformed input, OUT_OF_RANGE specifically deals with values that are well-formed but fall outside acceptable boundaries. This guide covers how to properly use, handle, and prevent OUT_OF_RANGE errors in your gRPC applications.
+The OUT_OF_RANGE status code (code 11) in gRPC indicates that an operation was attempted past a valid range. Unlike INVALID_ARGUMENT, which indicates arguments that are problematic regardless of system state, OUT_OF_RANGE applies to range failures that may be fixed if the system state changes, such as reading past the current end of a file or requesting a page past the current result set. This guide covers how to properly use, handle, and prevent OUT_OF_RANGE errors in your gRPC applications.
 
 ## Understanding OUT_OF_RANGE vs INVALID_ARGUMENT
 
@@ -16,14 +16,14 @@ Many developers confuse these two error codes. Here is the key distinction:
 
 ```mermaid
 flowchart TD
-    A[Value Received] --> B{Is value well-formed?}
+    A[Value Received] --> B{Is argument valid regardless of system state?}
     B -->|No| C[INVALID_ARGUMENT]
-    B -->|Yes| D{Is value within range?}
+    B -->|Yes| D{Is operation within current range?}
     D -->|No| E[OUT_OF_RANGE]
     D -->|Yes| F[Process Request]
 
-    C --> G["Example: 'abc' for integer field"]
-    E --> H["Example: page_number = -1"]
+    C --> G["Example: page_number = 0 for a 1-indexed request"]
+    E --> H["Example: page_number = 999 when only 10 pages exist"]
     F --> I["Example: page_number = 5 of 10 total"]
 ```
 
@@ -31,11 +31,11 @@ flowchart TD
 
 | Scenario | Status Code | Reason |
 |----------|-------------|--------|
-| Age = -5 | OUT_OF_RANGE | Valid integer, invalid range |
+| Age = -5 | INVALID_ARGUMENT | Problematic regardless of system state |
 | Age = "twenty" | INVALID_ARGUMENT | Wrong type entirely |
 | Page = 999 (only 10 pages exist) | OUT_OF_RANGE | Beyond available data |
-| Page = 0 (1-indexed) | OUT_OF_RANGE | Below minimum |
-| Offset = -100 in a list | OUT_OF_RANGE | Negative offset |
+| Page = 0 (1-indexed) | INVALID_ARGUMENT | Invalid regardless of current result set |
+| Offset = -100 in a list | INVALID_ARGUMENT | Negative offset |
 | Date format wrong | INVALID_ARGUMENT | Malformed input |
 | Date in year 3000 | OUT_OF_RANGE | Beyond valid range |
 | Seek past end of file | OUT_OF_RANGE | Beyond file bounds |
@@ -50,6 +50,7 @@ package server
 
 import (
     "context"
+    "fmt"
 
     "google.golang.org/genproto/googleapis/rpc/errdetails"
     "google.golang.org/grpc/codes"
@@ -69,6 +70,9 @@ func (s *ItemService) ListItems(ctx context.Context, req *pb.ListItemsRequest) (
     pageSize := req.PageSize
     if pageSize <= 0 {
         pageSize = s.pageSize // Default page size
+        if pageSize <= 0 {
+            pageSize = 20
+        }
     }
 
     // Calculate total pages
@@ -79,13 +83,8 @@ func (s *ItemService) ListItems(ctx context.Context, req *pb.ListItemsRequest) (
 
     // Validate page number
     if req.PageNumber < 1 {
-        return nil, s.createOutOfRangeError(
-            "page_number",
-            req.PageNumber,
-            1,
-            totalPages,
-            "Page number must be at least 1",
-        )
+        return nil, status.Errorf(codes.InvalidArgument,
+            "page_number must be at least 1, got %d", req.PageNumber)
     }
 
     if req.PageNumber > totalPages {
@@ -182,7 +181,7 @@ func (s *CollectionService) GetItemAtIndex(ctx context.Context, req *pb.GetItemA
 
     // Check for negative index
     if req.Index < 0 {
-        return nil, status.Errorf(codes.OutOfRange,
+        return nil, status.Errorf(codes.InvalidArgument,
             "index %d is negative, valid range is 0 to %d",
             req.Index, length-1)
     }
@@ -211,7 +210,7 @@ func (s *CollectionService) GetItemsInRange(ctx context.Context, req *pb.GetItem
 
     // Validate start index
     if req.StartIndex < 0 {
-        return nil, status.Errorf(codes.OutOfRange,
+        return nil, status.Errorf(codes.InvalidArgument,
             "start_index %d is negative", req.StartIndex)
     }
 
@@ -258,7 +257,6 @@ package server
 
 import (
     "context"
-    "time"
 
     "google.golang.org/grpc/codes"
     "google.golang.org/grpc/status"
@@ -275,7 +273,7 @@ type OrderService struct {
 func (s *OrderService) CreateOrder(ctx context.Context, req *pb.CreateOrderRequest) (*pb.Order, error) {
     // Validate quantity
     if req.Quantity < 1 {
-        return nil, status.Errorf(codes.OutOfRange,
+        return nil, status.Errorf(codes.InvalidArgument,
             "quantity must be at least 1, got %d", req.Quantity)
     }
 
@@ -287,7 +285,7 @@ func (s *OrderService) CreateOrder(ctx context.Context, req *pb.CreateOrderReque
 
     // Validate price (assuming positive pricing)
     if req.UnitPrice <= 0 {
-        return nil, status.Errorf(codes.OutOfRange,
+        return nil, status.Errorf(codes.InvalidArgument,
             "unit_price must be positive, got %.2f", req.UnitPrice)
     }
 
@@ -301,7 +299,7 @@ func (s *OrderService) CreateOrder(ctx context.Context, req *pb.CreateOrderReque
 
     // Validate discount percentage
     if req.DiscountPercent < 0 || req.DiscountPercent > 100 {
-        return nil, status.Errorf(codes.OutOfRange,
+        return nil, status.Errorf(codes.InvalidArgument,
             "discount_percent must be between 0 and 100, got %.2f",
             req.DiscountPercent)
     }
@@ -397,7 +395,6 @@ package server
 
 import (
     "context"
-    "io"
     "sync"
 
     "google.golang.org/grpc/codes"
@@ -448,7 +445,7 @@ func (s *FileService) Seek(ctx context.Context, req *pb.SeekRequest) (*pb.SeekRe
 
     // Validate new position
     if newPosition < 0 {
-        return nil, status.Errorf(codes.OutOfRange,
+        return nil, status.Errorf(codes.InvalidArgument,
             "cannot seek to negative position: calculated position %d from offset %d",
             newPosition, req.Offset)
     }
@@ -488,7 +485,7 @@ func (s *FileService) Read(ctx context.Context, req *pb.ReadRequest) (*pb.ReadRe
 
     // Validate start position
     if startPos < 0 {
-        return nil, status.Errorf(codes.OutOfRange,
+        return nil, status.Errorf(codes.InvalidArgument,
             "read offset %d is negative", startPos)
     }
 
@@ -530,12 +527,14 @@ func (s *FileService) Read(ctx context.Context, req *pb.ReadRequest) (*pb.ReadRe
 package client
 
 import (
+    "context"
     "log"
-    "strings"
+    "strconv"
 
     "google.golang.org/genproto/googleapis/rpc/errdetails"
     "google.golang.org/grpc/codes"
     "google.golang.org/grpc/status"
+    pb "myapp/proto"
 )
 
 type OutOfRangeInfo struct {
@@ -715,7 +714,6 @@ package middleware
 
 import (
     "context"
-    "reflect"
 
     "google.golang.org/grpc"
     "google.golang.org/grpc/codes"
@@ -755,7 +753,7 @@ type ListItemsRequestWithValidation struct {
 
 func (r *ListItemsRequestWithValidation) ValidateRanges() error {
     if r.PageNumber < 1 {
-        return status.Errorf(codes.OutOfRange,
+        return status.Errorf(codes.InvalidArgument,
             "page_number must be at least 1, got %d", r.PageNumber)
     }
 
@@ -765,7 +763,7 @@ func (r *ListItemsRequestWithValidation) ValidateRanges() error {
     }
 
     if r.PageSize < 1 {
-        return status.Errorf(codes.OutOfRange,
+        return status.Errorf(codes.InvalidArgument,
             "page_size must be at least 1, got %d", r.PageSize)
     }
 
@@ -786,11 +784,11 @@ flowchart TD
     B --> C{Range Validation}
 
     C --> D{Page Number}
-    D -->|< 1| E[OUT_OF_RANGE: Too Low]
+    D -->|< 1| E[INVALID_ARGUMENT: Too Low]
     D -->|> Max Pages| F[OUT_OF_RANGE: Too High]
     D -->|Valid| G{Index Validation}
 
-    G -->|< 0| H[OUT_OF_RANGE: Negative]
+    G -->|< 0| H[INVALID_ARGUMENT: Negative]
     G -->|>= Length| I[OUT_OF_RANGE: Beyond Bounds]
     G -->|Valid| J{Date Validation}
 
@@ -818,7 +816,7 @@ flowchart TD
 
 1. **Be specific in error messages**: Include the actual value, minimum, and maximum in the message
 2. **Use error details**: Include ErrorInfo with metadata for programmatic handling
-3. **Distinguish from INVALID_ARGUMENT**: OUT_OF_RANGE is for well-formed values outside bounds
+3. **Distinguish from INVALID_ARGUMENT**: OUT_OF_RANGE is for operations past a valid range, especially when a system state change could make the same value valid later
 4. **Provide suggestions**: When possible, suggest the nearest valid value
 5. **Validate early**: Check ranges before expensive operations
 6. **Client-side validation**: Pre-validate when possible to reduce round trips
@@ -829,4 +827,4 @@ flowchart TD
 
 ## Conclusion
 
-OUT_OF_RANGE errors in gRPC provide a clear signal that input values, while technically valid, fall outside acceptable boundaries. By implementing proper validation, providing detailed error information, and handling these errors gracefully on the client side, you can create robust APIs that guide users toward valid inputs. Remember to distinguish between malformed input (INVALID_ARGUMENT) and out-of-bounds values (OUT_OF_RANGE) to provide the most helpful feedback to API consumers.
+OUT_OF_RANGE errors in gRPC provide a clear signal that an operation is past a valid range. By implementing proper validation, providing detailed error information, and handling these errors gracefully on the client side, you can create robust APIs that guide users toward valid inputs. Remember to distinguish between arguments that are invalid regardless of system state (INVALID_ARGUMENT) and operations past the current valid range (OUT_OF_RANGE) to provide the most helpful feedback to API consumers.
