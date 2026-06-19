@@ -61,12 +61,14 @@ Topic: my-topic	PartitionCount: 6	ReplicationFactor: 3	Configs: retention.ms=604
 
 ```bash
 # Get detailed topic configuration
-kafka-configs.sh --describe --topic my-topic \
-  --bootstrap-server localhost:9092 --all
+kafka-configs.sh --describe \
+  --bootstrap-server localhost:9092 \
+  --entity-type topics --entity-name my-topic --all
 
 # Check for configuration differences between intended and actual
-kafka-configs.sh --describe --topic my-topic \
-  --bootstrap-server localhost:9092 | grep -v "Default"
+kafka-configs.sh --describe \
+  --bootstrap-server localhost:9092 \
+  --entity-type topics --entity-name my-topic | grep -v "Default"
 ```
 
 ## Java Solutions
@@ -76,6 +78,7 @@ kafka-configs.sh --describe --topic my-topic \
 ```java
 import org.apache.kafka.clients.admin.*;
 import org.apache.kafka.common.errors.TopicExistsException;
+import org.apache.kafka.common.config.ConfigResource;
 import org.apache.kafka.common.config.TopicConfig;
 
 import java.util.*;
@@ -306,8 +309,7 @@ public class BatchTopicCreator {
 
 ```python
 from confluent_kafka.admin import AdminClient, NewTopic
-from confluent_kafka import KafkaException
-import time
+from confluent_kafka import KafkaError, KafkaException
 from typing import Dict, List, Optional
 from dataclasses import dataclass
 from enum import Enum
@@ -385,7 +387,7 @@ class IdempotentTopicCreator:
                 except KafkaException as e:
                     error_code = e.args[0].code()
                     # Check for TOPIC_ALREADY_EXISTS error code
-                    if error_code == 36:  # TOPIC_ALREADY_EXISTS
+                    if error_code == KafkaError.TOPIC_ALREADY_EXISTS:
                         print(f"Topic created by another process: {topic_name}")
                         return TopicCreationStatus.ALREADY_EXISTS
                     raise
@@ -445,7 +447,7 @@ class IdempotentTopicCreator:
                 print(f"Created: {topic_name}")
             except KafkaException as e:
                 error_code = e.args[0].code()
-                if error_code == 36:  # TOPIC_ALREADY_EXISTS
+                if error_code == KafkaError.TOPIC_ALREADY_EXISTS:
                     results[topic_name] = TopicCreationStatus.ALREADY_EXISTS
                     print(f"Already exists (race condition): {topic_name}")
                 else:
@@ -655,18 +657,18 @@ min.insync.replicas=2
 # Allow topic creation only through admin operations
 auto.create.topics.enable=false
 
-# Controller settings for faster topic creation
+# Controller-to-broker socket timeout
 controller.socket.timeout.ms=30000
 ```
 
 ### Handling Auto-Created Topics
 
-```java
-// Disable auto-creation on producer side
-props.put(ProducerConfig.ALLOW_AUTO_CREATE_TOPICS_CONFIG, "false");
+```properties
+# Disable auto-creation on the broker side
+auto.create.topics.enable=false
 
-// This ensures TopicExistsException is predictable
-// Topics must be explicitly created before use
+# This ensures topic creation is predictable
+# Topics must be explicitly created before use
 ```
 
 ## Prevention Strategies
