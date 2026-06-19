@@ -71,10 +71,11 @@ Preload resources needed for the current page that the browser might discover la
 
 ```html
 <head>
-  <!-- Preload critical CSS -->
+  <!-- Preload critical CSS, then apply it as a stylesheet -->
   <link rel="preload" href="/styles/critical.css" as="style">
+  <link rel="stylesheet" href="/styles/critical.css">
 
-  <!-- Preload fonts (prevents FOUT - Flash of Unstyled Text) -->
+  <!-- Preload fonts to reduce font loading delay -->
   <link rel="preload" href="/fonts/main.woff2" as="font" type="font/woff2" crossorigin>
 
   <!-- Preload hero image -->
@@ -249,7 +250,8 @@ class ViewportPrefetcher {
 
   shouldObserve(link) {
     const url = link.href;
-    return !this.prefetchedUrls.has(url) &&
+    return link.origin === window.location.origin &&
+           !this.prefetchedUrls.has(url) &&
            url !== window.location.href;
   }
 
@@ -288,7 +290,7 @@ new ViewportPrefetcher();
 
 ```javascript
 import { useQueryClient, useQuery } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 // Prefetch data on mount
 function Dashboard() {
@@ -439,7 +441,7 @@ setInterval(prefetchPopularData, 4 * 60 * 1000); // Every 4 minutes
 function serveCached(cacheKey) {
   return (req, res, next) => {
     const cached = cache.get(cacheKey);
-    if (cached) {
+    if (cached !== undefined) {
       return res.json(cached);
     }
     next();
