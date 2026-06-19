@@ -54,6 +54,7 @@ graph TB
 
 import tensorflow as tf
 import numpy as np
+import os
 
 def convert_to_tflite(
     saved_model_path: str,
@@ -71,13 +72,13 @@ def convert_to_tflite(
         converter.optimizations = [tf.lite.Optimize.DEFAULT]
 
         if representative_dataset:
-            # Full integer quantization (smallest size, fastest inference)
+            # Full integer quantization (smallest size, often faster inference)
             converter.representative_dataset = representative_dataset
             converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS_INT8]
             converter.inference_input_type = tf.int8
             converter.inference_output_type = tf.int8
         else:
-            # Dynamic range quantization
+            # Float16 weight quantization
             converter.target_spec.supported_types = [tf.float16]
 
     # Convert
@@ -88,7 +89,6 @@ def convert_to_tflite(
         f.write(tflite_model)
 
     # Print size comparison
-    import os
     original_size = get_dir_size(saved_model_path)
     tflite_size = os.path.getsize(output_path)
     print(f"Original model: {original_size / 1024 / 1024:.2f} MB")
@@ -169,7 +169,8 @@ class TFLiteModel:
 
         # Quantize input if needed
         if self.input_details[0]['dtype'] == np.int8:
-            input_data = (input_data / self.input_scale + self.input_zero_point).astype(np.int8)
+            input_data = np.round(input_data / self.input_scale + self.input_zero_point)
+            input_data = np.clip(input_data, -128, 127).astype(np.int8)
         else:
             input_data = input_data.astype(self.input_details[0]['dtype'])
 
@@ -240,7 +241,8 @@ class ImageClassifier:
 
         # Resize
         img = Image.fromarray(image)
-        img = img.resize(self.input_shape)
+        height, width = self.input_shape
+        img = img.resize((width, height))
 
         # Convert to numpy and normalize
         img_array = np.array(img, dtype=np.float32)
@@ -389,7 +391,7 @@ class TimeSeriesPredictor:
 # Techniques for optimizing ML models for edge
 
 import numpy as np
-from typing import Tuple
+from typing import Tuple, Dict
 
 def prune_model(model, target_sparsity: float = 0.5):
     """Prune model weights to reduce size"""
@@ -416,16 +418,19 @@ def prune_model(model, target_sparsity: float = 0.5):
 
 def quantize_weights(weights: np.ndarray, bits: int = 8) -> Tuple[np.ndarray, float, float]:
     """Quantize weights to lower precision"""
-    # Find min/max
-    w_min = weights.min()
-    w_max = weights.max()
+    if bits not in (8, 16):
+        raise ValueError("bits must be 8 or 16")
 
-    # Calculate scale and zero point
-    scale = (w_max - w_min) / (2**bits - 1)
-    zero_point = -w_min / scale
+    # Use signed symmetric quantization for int8/int16 weights
+    qmin = -(2 ** (bits - 1))
+    qmax = 2 ** (bits - 1) - 1
+    max_abs = max(abs(float(weights.min())), abs(float(weights.max())))
+    scale = max_abs / qmax if max_abs > 0 else 1.0
+    zero_point = 0.0
 
     # Quantize
-    quantized = np.round(weights / scale + zero_point).astype(np.int8 if bits == 8 else np.int16)
+    dtype = np.int8 if bits == 8 else np.int16
+    quantized = np.clip(np.round(weights / scale), qmin, qmax).astype(dtype)
 
     return quantized, scale, zero_point
 
@@ -513,10 +518,12 @@ class ModelBenchmark:
 
 import asyncio
 import numpy as np
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Callable, Any
 from dataclasses import dataclass
 import logging
+from tflite_inference import TFLiteModel
+from onnx_inference import ONNXModel
 
 logger = logging.getLogger(__name__)
 
@@ -588,7 +595,7 @@ class EdgeMLPipeline:
         input_hash = hashlib.md5(input_data.tobytes()).hexdigest()[:8]
 
         return InferenceResult(
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             model_name=self.model_name,
             input_hash=input_hash,
             output=output,
