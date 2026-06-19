@@ -88,7 +88,7 @@ rules:
   # Allow reading configmaps for configuration
   - apiGroups: [""]
     resources: ["configmaps"]
-    verbs: ["get", "list"]
+    verbs: ["get"]
     resourceNames: ["monitoring-config"]  # Restrict to specific configmap
 ```
 
@@ -377,7 +377,7 @@ kubectl describe rolebinding monitoring-pod-reader -n monitoring
 kubectl exec -it monitoring-agent-xyz -n monitoring -- \
   cat /var/run/secrets/kubernetes.io/serviceaccount/token
 
-# View audit logs for RBAC denials (if audit logging is enabled)
+# View API server logs for RBAC denials (if verbose RBAC logging is enabled)
 kubectl logs -n kube-system -l component=kube-apiserver | grep RBAC
 ```
 
