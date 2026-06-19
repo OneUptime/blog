@@ -110,14 +110,6 @@ export default function ModalDefault() {
 }
 ```
 
-```typescript
-// app/@modal/photo/default.tsx
-// Also needed for nested routes
-export default function PhotoModalDefault() {
-  return null;
-}
-```
-
 ```mermaid
 flowchart TD
     subgraph "URL: /"
@@ -145,7 +137,7 @@ Soft navigation (client-side) preserves the current slot state, which can cause 
 // the modal might still show because of soft navigation
 ```
 
-### Solution: Use router.refresh() or hard navigation
+### Solution: Match the slot to a null route or go back
 
 ```typescript
 // components/CloseModal.tsx
@@ -160,9 +152,8 @@ export function CloseModal() {
     // Option 1: Go back in history
     router.back();
 
-    // Option 2: Navigate and refresh
-    // router.push('/');
-    // router.refresh();
+    // Option 2: Use a Link to "/" and add app/@modal/page.tsx
+    // or app/@modal/[...catchAll]/page.tsx that returns null.
   };
 
   return (
@@ -222,11 +213,13 @@ flowchart TD
 import { PhotoModal } from '@/components/PhotoModal';
 
 interface ModalPageProps {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
-export default function PhotoModalPage({ params }: ModalPageProps) {
-  return <PhotoModal photoId={params.id} />;
+export default async function PhotoModalPage({ params }: ModalPageProps) {
+  const { id } = await params;
+
+  return <PhotoModal photoId={id} />;
 }
 ```
 
@@ -236,11 +229,13 @@ export default function PhotoModalPage({ params }: ModalPageProps) {
 import { PhotoFullPage } from '@/components/PhotoFullPage';
 
 interface PhotoPageProps {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
-export default function PhotoPage({ params }: PhotoPageProps) {
-  return <PhotoFullPage photoId={params.id} />;
+export default async function PhotoPage({ params }: PhotoPageProps) {
+  const { id } = await params;
+
+  return <PhotoFullPage photoId={id} />;
 }
 ```
 
@@ -399,7 +394,7 @@ export default async function Layout({ children, sidebar, modal }: LayoutProps) 
 
 ## Issue 7: URL Mismatch Between Slots
 
-Parallel routes must have matching URL structures across slots for proper navigation.
+Parallel routes do not add URL segments, so the folders inside each slot should correspond to the URLs where you expect those slots to render together.
 
 ### Incorrect Structure
 
@@ -408,9 +403,8 @@ app/
   @sidebar/
     users/
       page.tsx        # /users
-  @main/
-    dashboard/
-      page.tsx        # /dashboard (different URL!)
+  dashboard/
+    page.tsx          # /dashboard
 ```
 
 ### Correct Structure
@@ -419,11 +413,10 @@ app/
 app/
   @sidebar/
     dashboard/
-      page.tsx
+      page.tsx        # Sidebar for /dashboard
     default.tsx
-  page.tsx              # Main content at /dashboard
   dashboard/
-    page.tsx
+    page.tsx          # Main content for /dashboard
 ```
 
 ## Issue 8: Navigating Between Parallel Route States
@@ -433,18 +426,15 @@ app/
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
 
 export function Navigation() {
-  const pathname = usePathname();
-
   return (
     <nav>
       {/* Regular navigation updates all slots */}
       <Link href="/dashboard">Dashboard</Link>
       <Link href="/settings">Settings</Link>
 
-      {/* To update only one slot, use scroll={false} */}
+      {/* scroll={false} keeps the browser from scrolling to the top */}
       <Link href="/dashboard/stats" scroll={false}>
         View Stats
       </Link>
@@ -532,11 +522,12 @@ import { Modal } from '@/components/Modal';
 import { getItem } from '@/lib/items';
 
 interface ModalPageProps {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
 export default async function ItemModal({ params }: ModalPageProps) {
-  const item = await getItem(params.id);
+  const { id } = await params;
+  const item = await getItem(id);
 
   return (
     <Modal>
@@ -552,11 +543,12 @@ export default async function ItemModal({ params }: ModalPageProps) {
 import { getItem } from '@/lib/items';
 
 interface ItemPageProps {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
 export default async function ItemPage({ params }: ItemPageProps) {
-  const item = await getItem(params.id);
+  const { id } = await params;
+  const item = await getItem(id);
 
   return (
     <div className="item-full-page">
@@ -622,6 +614,6 @@ To fix parallel routes issues in Next.js:
 4. Combine with intercepting routes `(.)` for modal patterns
 5. Keep URL structures consistent across parallel slots
 6. Add loading and error states per slot for better UX
-7. Use `router.refresh()` when soft navigation causes stale states
+7. Add null-returning slot pages or catch-all routes when a Link should close a modal
 
 Understanding how parallel routes match URLs and how soft navigation preserves slot state will help you build complex layouts with modals, sidebars, and other simultaneous views.
