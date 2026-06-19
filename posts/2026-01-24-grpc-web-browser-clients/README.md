@@ -203,6 +203,39 @@ func (s *TaskServer) ListTasks(ctx context.Context, req *pb.ListTasksRequest) (*
     return &pb.ListTasksResponse{Tasks: tasks}, nil
 }
 
+func (s *TaskServer) UpdateTask(ctx context.Context, req *pb.UpdateTaskRequest) (*pb.Task, error) {
+    s.mu.Lock()
+    defer s.mu.Unlock()
+
+    task, exists := s.tasks[req.GetId()]
+    if !exists {
+        return nil, status.Errorf(codes.NotFound, "task %s not found", req.GetId())
+    }
+
+    task.Title = req.GetTitle()
+    task.Description = req.GetDescription()
+    task.Completed = req.GetCompleted()
+    task.UpdatedAt = time.Now().Unix()
+
+    s.notifyWatchers(task)
+
+    return task, nil
+}
+
+func (s *TaskServer) DeleteTask(ctx context.Context, req *pb.DeleteTaskRequest) (*pb.DeleteTaskResponse, error) {
+    s.mu.Lock()
+    defer s.mu.Unlock()
+
+    _, exists := s.tasks[req.GetId()]
+    if !exists {
+        return nil, status.Errorf(codes.NotFound, "task %s not found", req.GetId())
+    }
+
+    delete(s.tasks, req.GetId())
+
+    return &pb.DeleteTaskResponse{Success: true}, nil
+}
+
 func (s *TaskServer) WatchTasks(req *pb.WatchTasksRequest, stream pb.TaskService_WatchTasksServer) error {
     ch := make(chan *pb.Task, 100)
 
@@ -310,7 +343,8 @@ static_resources:
                               grpc_timeout_header_max: 0s
                       cors:
                         allow_origin_string_match:
-                          - prefix: "*"
+                          - safe_regex:
+                              regex: ".*"
                         allow_methods: GET, PUT, DELETE, POST, OPTIONS
                         allow_headers: keep-alive,user-agent,cache-control,content-type,content-transfer-encoding,custom-header-1,x-accept-content-transfer-encoding,x-accept-response-streaming,x-user-agent,x-grpc-web,grpc-timeout,authorization
                         max_age: "1728000"
@@ -339,7 +373,7 @@ static_resources:
               - endpoint:
                   address:
                     socket_address:
-                      address: localhost
+                      address: grpc-server
                       port_value: 50051
 ```
 
@@ -386,11 +420,11 @@ flowchart TD
 Install the required tools and generate the client code:
 
 ```bash
-# Install protoc plugins
-npm install -g grpc-tools grpc_tools_node_protoc_ts
-
-# For gRPC-Web specifically
-# Download from https://github.com/grpc/grpc-web/releases
+# Install protoc and protoc-gen-js from the Protocol Buffers releases:
+# https://github.com/protocolbuffers/protobuf/releases
+#
+# Install protoc-gen-grpc-web from the gRPC-Web releases:
+# https://github.com/grpc/grpc-web/releases
 
 # Generate JavaScript client code
 protoc -I=./proto \
@@ -442,7 +476,7 @@ Create a client wrapper with proper error handling:
 
 ```typescript
 // src/client/TaskClient.ts
-import { TaskServiceClient } from '../generated/TasksServiceClientPb';
+import { TaskServiceClient } from '../generated/TaskServiceClientPb';
 import {
     CreateTaskRequest,
     GetTaskRequest,
@@ -454,7 +488,7 @@ import {
     ListTasksResponse,
     DeleteTaskResponse
 } from '../generated/tasks_pb';
-import { ClientReadableStream, RpcError, Status } from 'grpc-web';
+import { RpcError } from 'grpc-web';
 
 // Configuration for the client
 interface ClientConfig {
@@ -736,6 +770,7 @@ export function useTasks(includeCompleted: boolean = false): UseTasksResult {
 // src/components/TaskList.tsx
 import React, { useState } from 'react';
 import { useTasks } from '../hooks/useTasks';
+import { Task } from '../generated/tasks_pb';
 
 export function TaskList(): React.ReactElement {
     const { tasks, loading, error, createTask, updateTask, deleteTask } = useTasks();
@@ -833,6 +868,7 @@ http_filters:
           issuer: "https://your-domain.auth0.com/"
           audiences:
             - "your-api-identifier"
+          forward: true
           remote_jwks:
             http_uri:
               uri: "https://your-domain.auth0.com/.well-known/jwks.json"
@@ -888,14 +924,14 @@ server {
     ssl_certificate_key /etc/ssl/private/server.key;
 
     location / {
-        grpc_pass grpc://envoy;
+        proxy_pass http://envoy;
 
         # Important headers for gRPC-Web
         proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
     }
 }
 ```
@@ -909,7 +945,8 @@ If you see CORS errors in the browser console, verify the Envoy CORS configurati
 ```yaml
 cors:
   allow_origin_string_match:
-    - prefix: "*"  # Or specific origins for production
+    - safe_regex:
+        regex: ".*"  # Or specific origins for production
   allow_methods: GET, PUT, DELETE, POST, OPTIONS
   allow_headers: keep-alive,user-agent,cache-control,content-type,content-transfer-encoding,x-accept-content-transfer-encoding,x-accept-response-streaming,x-user-agent,x-grpc-web,grpc-timeout,authorization
   expose_headers: grpc-status,grpc-message
