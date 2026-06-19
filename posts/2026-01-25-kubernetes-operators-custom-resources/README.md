@@ -37,7 +37,7 @@ OLM manages operator installation and updates.
 ```bash
 # Install OLM
 
-curl -sL https://github.com/operator-framework/operator-lifecycle-manager/releases/download/v0.27.0/install.sh | bash -s v0.27.0
+curl -sL https://github.com/operator-framework/operator-lifecycle-manager/releases/download/v0.45.0/install.sh | bash -s v0.45.0
 
 # Verify installation
 kubectl get pods -n olm
@@ -82,7 +82,7 @@ helm install redis-operator ot-helm/redis-operator -n redis-operator --create-na
 
 ```bash
 # Install cert-manager operator
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.0/cert-manager.yaml
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
 
 # Verify
 kubectl get pods -n cert-manager
@@ -177,7 +177,7 @@ spec:
     solvers:
       - http01:
           ingress:
-            class: nginx
+            ingressClassName: nginx
 ---
 # Request a Certificate
 apiVersion: cert-manager.io/v1
@@ -314,7 +314,7 @@ kubectl get ma -n production  # Using short name
 ```bash
 # Install kubebuilder
 curl -L -o kubebuilder "https://go.kubebuilder.io/dl/latest/$(go env GOOS)/$(go env GOARCH)"
-chmod +x kubebuilder && mv kubebuilder /usr/local/bin/
+chmod +x kubebuilder && sudo mv kubebuilder /usr/local/bin/
 
 # Initialize project
 mkdir myapp-operator && cd myapp-operator
@@ -329,21 +329,26 @@ kubebuilder create api --group apps --version v1 --kind MyApp
 ```go
 // controllers/myapp_controller.go
 func (r *MyAppReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-    log := log.FromContext(ctx)
-
     // Fetch the MyApp instance
-    myapp := &appsv1.MyApp{}
+    myapp := &myappv1.MyApp{}
     if err := r.Get(ctx, req.NamespacedName, myapp); err != nil {
         return ctrl.Result{}, client.IgnoreNotFound(err)
     }
 
-    // Define the desired Deployment
     deployment := &appsv1.Deployment{
         ObjectMeta: metav1.ObjectMeta{
             Name:      myapp.Name,
             Namespace: myapp.Namespace,
         },
-        Spec: appsv1.DeploymentSpec{
+    }
+
+    // Create or update the Deployment
+    if _, err := controllerutil.CreateOrUpdate(ctx, r.Client, deployment, func() error {
+        if err := controllerutil.SetControllerReference(myapp, deployment, r.Scheme); err != nil {
+            return err
+        }
+
+        deployment.Spec = appsv1.DeploymentSpec{
             Replicas: &myapp.Spec.Replicas,
             Selector: &metav1.LabelSelector{
                 MatchLabels: map[string]string{"app": myapp.Name},
@@ -359,21 +364,10 @@ func (r *MyAppReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
                     }},
                 },
             },
-        },
-    }
-
-    // Set owner reference
-    ctrl.SetControllerReference(myapp, deployment, r.Scheme)
-
-    // Create or update the Deployment
-    if err := r.Create(ctx, deployment); err != nil {
-        if errors.IsAlreadyExists(err) {
-            if err := r.Update(ctx, deployment); err != nil {
-                return ctrl.Result{}, err
-            }
-        } else {
-            return ctrl.Result{}, err
         }
+        return nil
+    }); err != nil {
+        return ctrl.Result{}, err
     }
 
     // Update status
