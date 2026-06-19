@@ -8,7 +8,7 @@ Description: Learn how to safely migrate from MySQL 5.7 to MySQL 8 with step-by-
 
 ---
 
-MySQL 5.7 reached end of life in October 2023. Upgrading to MySQL 8 brings better performance, new features like window functions and CTEs, and continued security updates. But the migration requires careful planning since MySQL 8 introduces breaking changes.
+MySQL 5.7 reached end of life in October 2023. Upgrading to MySQL 8 brings better performance and new features like window functions and CTEs. Because MySQL 8.0 reached end of life in April 2026, plan to use MySQL 8.0 as the required first hop from 5.7 and then upgrade to MySQL 8.4 LTS for continued security updates. The migration requires careful planning since MySQL 8 introduces breaking changes.
 
 This guide walks through the complete migration process from pre-upgrade checks to post-migration validation.
 
@@ -45,7 +45,7 @@ Run the MySQL Shell upgrade checker to identify issues:
 sudo apt-get install mysql-shell
 
 # Run the upgrade checker
-mysqlsh -- util checkForServerUpgrade root@localhost:3306 --target-version=8.0.35 --output-format=JSON > upgrade_report.json
+mysqlsh -- util check-for-server-upgrade root@localhost:3306 --target-version=8.0.35 --output-format=JSON > upgrade_report.json
 
 # Or run interactively
 mysqlsh
@@ -115,20 +115,20 @@ SET sql_mode = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_D
 
 ### GROUP BY Changes
 
-MySQL 8 enforces ONLY_FULL_GROUP_BY strictly:
+MySQL 5.7 enables ONLY_FULL_GROUP_BY by default, but many older deployments disabled it. MySQL 8 also enforces ONLY_FULL_GROUP_BY when it is enabled:
 
 ```sql
--- This worked in 5.7 but fails in 8.0
+-- This worked only if ONLY_FULL_GROUP_BY was disabled
 SELECT name, department, MAX(salary)
 FROM employees
 GROUP BY department;  -- Error: name not in GROUP BY
 
--- Fix: Include all non-aggregated columns
+-- Fix: Include all non-aggregated columns if you want that grouping
 SELECT name, department, MAX(salary)
 FROM employees
 GROUP BY name, department;
 
--- Or use ANY_VALUE for columns you do not care about
+-- Or use ANY_VALUE for non-aggregated columns you do not care about
 SELECT ANY_VALUE(name), department, MAX(salary)
 FROM employees
 GROUP BY department;
@@ -151,12 +151,12 @@ mysqldump \
     --all-databases \
     -u root -p > full_backup_5.7.sql
 
-# Verify backup integrity
-mysql -u root -p -e "SELECT 'Backup verification'" < full_backup_5.7.sql > /dev/null && echo "Backup OK"
+# Verify the backup by restoring it to a test server
+mysql -h staging-mysql -u root -p < full_backup_5.7.sql && echo "Backup OK"
 
 # Also backup data directory for faster recovery
 sudo systemctl stop mysql
-sudo cp -r /var/lib/mysql /var/lib/mysql_5.7_backup
+sudo cp -a /var/lib/mysql /var/lib/mysql_5.7_backup
 sudo systemctl start mysql
 ```
 
@@ -193,7 +193,8 @@ flowchart TD
 ### Option A: In-Place Upgrade (Shorter Downtime)
 
 ```bash
-# 1. Stop MySQL 5.7
+# 1. Perform a slow shutdown of MySQL 5.7
+mysql -u root -p -e "SET GLOBAL innodb_fast_shutdown=0;"
 sudo systemctl stop mysql
 
 # 2. Remove MySQL 5.7 packages (keep data)
@@ -208,7 +209,7 @@ sudo apt-get update
 # 4. Install MySQL 8
 sudo apt-get install mysql-server
 
-# 5. MySQL automatically runs mysql_upgrade
+# 5. MySQL 8.0.16 and later run the upgrade process automatically at startup
 # Verify upgrade completed
 sudo tail -100 /var/log/mysql/error.log
 ```
@@ -240,13 +241,16 @@ START REPLICA;
 If your applications use older MySQL connectors, they may not support caching_sha2_password:
 
 ```sql
--- Option 1: Change user authentication to native password
+-- Option 1: Change user authentication to native password on MySQL 8.0 only
 ALTER USER 'app_user'@'%'
 IDENTIFIED WITH mysql_native_password BY 'password';
 
--- Option 2: Set default for new users (in my.cnf)
+-- Option 2: Set default for new users on MySQL 8.0 only (in my.cnf)
 -- [mysqld]
 -- default_authentication_plugin=mysql_native_password
+
+-- In MySQL 8.4, mysql_native_password is disabled by default and
+-- default_authentication_plugin has been removed. Prefer updating connectors.
 
 -- Option 3: Update your application's MySQL connector
 -- Preferred long-term solution
@@ -260,8 +264,8 @@ Run these checks after upgrading:
 -- Verify MySQL version
 SELECT VERSION();
 
--- Check for upgrade errors
-SHOW WARNINGS;
+-- Check the MySQL error log for upgrade errors
+-- sudo tail -100 /var/log/mysql/error.log
 
 -- Verify all tables are accessible
 SELECT
@@ -300,12 +304,16 @@ MySQL 8 has new configuration options and deprecates old ones:
 # query_cache_type = 1
 # query_cache_size = 128M
 
-# Updated for MySQL 8
-default_authentication_plugin = mysql_native_password  # If needed for compatibility
+# Compatibility setting for MySQL 8.0 only
+# Use only if needed for compatibility.
+default_authentication_plugin = mysql_native_password
+# In MySQL 8.4, use mysql_native_password=ON only temporarily if needed.
 
 # New MySQL 8 optimizations
-innodb_dedicated_server = ON  # Auto-tunes based on system resources
-innodb_redo_log_capacity = 1G  # Replaces innodb_log_file_size
+# Auto-tunes based on system resources
+innodb_dedicated_server = ON
+# Replaces innodb_log_file_size
+innodb_redo_log_capacity = 1G
 
 # Character set (already default, but explicit is good)
 character_set_server = utf8mb4
@@ -334,7 +342,7 @@ ALTER TABLE partitioned_table UPGRADE PARTITIONING;
 
 -- Update table collation
 ALTER TABLE old_table
-CHARACTER SET utf8mb4
+CONVERT TO CHARACTER SET utf8mb4
 COLLATE utf8mb4_general_ci;
 ```
 
@@ -358,7 +366,7 @@ sudo systemctl stop mysql
 
 # Restore data directory
 sudo rm -rf /var/lib/mysql
-sudo cp -r /var/lib/mysql_5.7_backup /var/lib/mysql
+sudo cp -a /var/lib/mysql_5.7_backup /var/lib/mysql
 sudo chown -R mysql:mysql /var/lib/mysql
 
 # Reinstall MySQL 5.7
@@ -405,4 +413,4 @@ LIMIT 20;
 
 6. **Monitor closely after migration.** Watch for slow queries, connection errors, and application errors.
 
-Migrating from MySQL 5.7 to 8 is a significant undertaking, but the new features and continued support make it worthwhile. Take your time with testing, and do not skip the pre-upgrade checks.
+Migrating from MySQL 5.7 to 8 is a significant undertaking, but the new features and supported MySQL 8.4 path make it worthwhile. Take your time with testing, and do not skip the pre-upgrade checks.
