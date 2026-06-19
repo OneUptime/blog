@@ -128,7 +128,6 @@ message LogEntry {
 package service
 
 import (
-    "context"
     "fmt"
     "sync"
     "time"
@@ -340,6 +339,7 @@ func (s *StreamService) WatchJobProgress(
                 CurrentStep: job.currentStep,
                 UpdatedAt:   timestamppb.Now(),
             }
+            jobStatus := job.status
             s.jobsMu.RUnlock()
 
             if err := stream.Send(progress); err != nil {
@@ -347,7 +347,7 @@ func (s *StreamService) WatchJobProgress(
             }
 
             // End stream when job completes
-            if job.status == "completed" || job.status == "failed" {
+            if jobStatus == "completed" || jobStatus == "failed" {
                 return nil
             }
         }
@@ -435,7 +435,7 @@ import (
 )
 
 func main() {
-    conn, err := grpc.Dial(
+    conn, err := grpc.NewClient(
         "localhost:50051",
         grpc.WithTransportCredentials(insecure.NewCredentials()),
     )
@@ -808,7 +808,9 @@ def watch_job_progress(stub, job_id):
 
     try:
         for progress in stub.WatchJobProgress(request):
-            bar = '=' * (progress.percentage // 2) + '>' + ' ' * (50 - progress.percentage // 2)
+            filled = min(progress.percentage // 2, 50)
+            marker = '>' if filled < 50 else ''
+            bar = '=' * filled + marker + ' ' * (50 - filled - len(marker))
             sys.stdout.write(f'\r[{bar}] {progress.percentage}% - '
                            f'{progress.status}: {progress.current_step}')
             sys.stdout.flush()
@@ -858,6 +860,7 @@ package main
 
 import (
     "context"
+    "fmt"
     "io"
     "log"
     "time"
