@@ -319,7 +319,7 @@ declare module "another-untyped-lib";
 
 Update tsconfig.json incrementally:
 
-```json
+```jsonc
 {
   "compilerOptions": {
     // Start enabling these one at a time
@@ -557,21 +557,21 @@ jobs:
 
 Document the migration in your README:
 
-```markdown
+````markdown
 ## Development
 
 This project uses TypeScript. To build:
 
 ```bash
 npm run build
-```bash
+```
 
 To run type checking without building:
 
 ```bash
 npx tsc --noEmit
-```bash
-```text
+```
+````
 
 ## Common Pitfalls and Solutions
 
