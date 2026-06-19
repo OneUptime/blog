@@ -78,15 +78,16 @@ public class LowLatencyProducerConfig {
         // Reduce request timeout
         props.put(ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG, 10000);
 
-        // Use acks=1 for lowest latency (leader only)
-        // Use acks=all if durability is more important than latency
+        // Use acks=1 for low latency (leader only)
+        // Use acks=all if durability and idempotence are more important than latency
         props.put(ProducerConfig.ACKS_CONFIG, "1");
 
-        // Enable idempotence for exactly-once without much latency cost
-        props.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, true);
+        // Disable idempotence for this acks=1 low-latency profile
+        // Idempotence requires acks=all, retries > 0, and max.in.flight <= 5
+        props.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, false);
 
-        // Max in-flight requests - 1 ensures ordering but may impact latency
-        // Higher values can improve latency at cost of ordering
+        // Max in-flight requests - higher values can improve throughput
+        // With idempotence disabled and retries enabled, values > 1 can reorder retried batches
         props.put(ProducerConfig.MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION, 5);
 
         return new KafkaProducer<>(props);
@@ -94,7 +95,7 @@ public class LowLatencyProducerConfig {
 }
 ```
 
-### Synchronous Send for Guaranteed Low Latency
+### Synchronous Send with Latency Tracking
 
 ```java
 import org.apache.kafka.clients.producer.*;
@@ -219,7 +220,7 @@ public class LowLatencyConsumerConfig {
 
 ```java
 import org.apache.kafka.clients.consumer.*;
-import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.errors.WakeupException;
 import java.util.*;
 import java.time.Duration;
 
@@ -239,29 +240,37 @@ public class LowLatencyConsumer {
      * Poll loop optimized for low latency.
      */
     public void pollLoop(MessageHandler handler) {
-        while (running) {
-            // Short poll timeout for responsiveness
-            ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(10));
+        try {
+            while (running) {
+                // Short poll timeout for responsiveness
+                ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(10));
 
-            long pollTime = System.currentTimeMillis();
+                long pollTime = System.currentTimeMillis();
 
-            for (ConsumerRecord<String, String> record : records) {
-                long processStart = System.nanoTime();
+                for (ConsumerRecord<String, String> record : records) {
+                    long processStart = System.nanoTime();
 
-                // Process message
-                handler.handle(record);
+                    // Process message
+                    handler.handle(record);
 
-                // Track latency
-                long endToEndLatency = pollTime - record.timestamp();
-                long processingLatency = (System.nanoTime() - processStart) / 1_000_000;
+                    // Track latency
+                    long endToEndLatency = pollTime - record.timestamp();
+                    long processingLatency = (System.nanoTime() - processStart) / 1_000_000;
 
-                latencyTracker.record(endToEndLatency, processingLatency);
+                    latencyTracker.record(endToEndLatency, processingLatency);
+                }
+
+                // Commit after each batch for consistency
+                if (!records.isEmpty()) {
+                    consumer.commitAsync();
+                }
             }
-
-            // Commit after each batch for consistency
-            if (!records.isEmpty()) {
-                consumer.commitAsync();
+        } catch (WakeupException e) {
+            if (running) {
+                throw e;
             }
+        } finally {
+            consumer.close();
         }
     }
 
@@ -363,17 +372,16 @@ public class LowLatencyConsumer {
 ### Server Properties
 
 ```properties
-# Minimal replica acknowledgment for lower latency
-
-# Set to 1 for lowest latency (risk of data loss if leader fails)
+# Minimal in-sync replica requirement for producers using acks=all
+# Set to 1 for lower latency/availability tradeoffs (risk of data loss if leader fails)
 min.insync.replicas=1
 
-# Faster log flush (trades durability for latency)
-# Default is Long.MAX_VALUE - OS handles flushing
-log.flush.interval.messages=1000
-log.flush.interval.ms=1000
+# Avoid forced fsync for lower write latency
+# Defaults let the OS handle flushing; use replication for durability
+# log.flush.interval.messages=9223372036854775807
+# log.flush.interval.ms=9223372036854775807
 
-# Reduce network thread count if not CPU-bound
+# Keep enough network and I/O threads for expected concurrency
 num.network.threads=3
 num.io.threads=8
 
@@ -384,7 +392,7 @@ socket.receive.buffer.bytes=102400
 # Request processing
 queued.max.requests=500
 
-# Faster leader elections
+# Detect lagging replicas sooner
 replica.lag.time.max.ms=10000
 
 # Log segment settings
@@ -438,8 +446,9 @@ def create_low_latency_producer(bootstrap_servers: str) -> Producer:
         'request.timeout.ms': 10000,
         'delivery.timeout.ms': 30000,
 
-        # Enable idempotence
-        'enable.idempotence': True
+        # Disable idempotence for this acks=1 low-latency profile.
+        # Idempotence requires acks=all and max.in.flight.requests.per.connection <= 5.
+        'enable.idempotence': False
     }
 
     return Producer(config)
@@ -460,10 +469,7 @@ def create_low_latency_consumer(bootstrap_servers: str, group_id: str) -> Consum
         'fetch.wait.max.ms': 10,
 
         # Smaller fetch sizes
-        'max.partition.fetch.bytes': 262144,
-
-        # Fewer records per poll
-        'max.poll.records': 100
+        'max.partition.fetch.bytes': 262144
     }
 
     return Consumer(config)
@@ -486,11 +492,12 @@ class LatencyMeasuringProducer:
 
         # Use delivery callback to measure actual delivery time
         delivery_time = [None]
+        delivery_error = [None]
 
         def delivery_callback(err, msg):
             delivery_time[0] = time.time()
             if err:
-                print(f"Delivery failed: {err}")
+                delivery_error[0] = err
 
         self.producer.produce(
             topic,
@@ -500,7 +507,11 @@ class LatencyMeasuringProducer:
         )
 
         # Flush to ensure delivery
-        self.producer.flush(timeout=10)
+        remaining = self.producer.flush(timeout=10)
+        if remaining > 0 or delivery_time[0] is None:
+            raise TimeoutError("Message delivery timed out")
+        if delivery_error[0] is not None:
+            raise RuntimeError(f"Delivery failed: {delivery_error[0]}")
 
         latency_ms = (delivery_time[0] - start_time) * 1000
         self.latencies.append(latency_ms)
@@ -633,7 +644,7 @@ props.put(ProducerConfig.ACKS_CONFIG, "1");
 props.put(ProducerConfig.COMPRESSION_TYPE_CONFIG, "none");
 
 // 4. Tune max.in.flight.requests
-// Higher values can improve latency but may affect ordering
+// With idempotence disabled and retries enabled, values > 1 can reorder retried batches
 props.put(ProducerConfig.MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION, 5);
 
 // 5. Use appropriate buffer sizes
@@ -671,7 +682,7 @@ props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
 | Configuration | Lower Latency | Higher Latency | Tradeoff |
 |--------------|---------------|----------------|----------|
 | `acks=0` | Yes | | No durability |
-| `acks=1` | | Yes | Leader durability |
+| `acks=1` | Yes (vs `acks=all`) | Yes (vs `acks=0`) | Leader durability |
 | `acks=all` | | Yes | Full durability |
 | `linger.ms=0` | Yes | | Lower throughput |
 | `compression=none` | Yes | | Larger messages |
