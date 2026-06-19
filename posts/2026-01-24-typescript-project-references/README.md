@@ -217,7 +217,7 @@ tsc --build --verbose
 
 Avoid duplicating compiler options by using a base configuration:
 
-```json
+```jsonc
 // tsconfig.base.json
 {
   "compilerOptions": {
@@ -237,7 +237,7 @@ Avoid duplicating compiler options by using a base configuration:
 
 Sub-projects extend the base config:
 
-```json
+```jsonc
 // packages/common/tsconfig.json
 {
   "extends": "../../tsconfig.base.json",
@@ -253,7 +253,7 @@ Sub-projects extend the base config:
 
 Configure path aliases to use clean import paths:
 
-```json
+```jsonc
 // tsconfig.base.json
 {
   "compilerOptions": {
@@ -273,7 +273,7 @@ Note that path aliases require a module bundler or path resolution tool at runti
 
 Sometimes you need different configurations for building versus editor support. Create a solution-level config for the editor:
 
-```json
+```jsonc
 // tsconfig.json (for editor)
 {
   "compilerOptions": {
@@ -296,7 +296,7 @@ Sometimes you need different configurations for building versus editor support. 
 }
 ```
 
-```json
+```jsonc
 // tsconfig.build.json (for building)
 {
   "files": [],
@@ -320,7 +320,7 @@ tsc --build tsconfig.build.json
 
 Project references work well with package manager workspaces. Here is a typical setup:
 
-```json
+```jsonc
 // package.json
 {
   "name": "my-monorepo",
@@ -336,18 +336,18 @@ Project references work well with package manager workspaces. Here is a typical 
 }
 ```
 
-```json
+```jsonc
 // packages/common/package.json
 {
   "name": "@myproject/common",
   "version": "1.0.0",
+  "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "require": "./dist/index.cjs"
+      "import": "./dist/index.js"
     }
   }
 }
@@ -357,10 +357,10 @@ Project references work well with package manager workspaces. Here is a typical 
 
 Build tools like Nx and Turborepo can leverage TypeScript project references for even faster builds:
 
-```json
+```jsonc
 // turbo.json
 {
-  "pipeline": {
+  "tasks": {
     "build": {
       "dependsOn": ["^build"],
       "outputs": ["dist/**"]
