@@ -37,7 +37,7 @@ graph TD
 
 ### 1. Scalar Type Mismatches
 
-The most basic type mismatch occurs when a resolver returns a value of the wrong scalar type.
+The most basic type mismatch occurs when a resolver returns a value that cannot be serialized according to the field's scalar type. GraphQL result coercion is implementation-specific, so some servers can coerce values such as numeric strings, but resolvers should still return the canonical application type instead of relying on that behavior.
 
 **Problematic Schema and Resolver:**
 
@@ -58,16 +58,16 @@ type Query {
 
 ```javascript
 // resolvers.js - INCORRECT
-// This resolver returns age as a string instead of an integer
+// This resolver returns values that are not safe for the declared scalar types
 const resolvers = {
   Query: {
     user: async (_, { id }) => {
       const userData = await database.findUser(id);
       return {
         id: userData.id,
-        age: userData.age.toString(), // ERROR: Returns string instead of Int
+        age: `${userData.age} years`, // ERROR: Cannot be serialized as Int
         email: userData.email,
-        isActive: "true" // ERROR: Returns string instead of Boolean
+        isActive: "true" // ERROR: Cannot be serialized as Boolean
       };
     }
   }
@@ -692,10 +692,10 @@ module.exports = { withTypeValidation };
 const typeDebugPlugin = {
   requestDidStart() {
     return {
-      willSendResponse({ response }) {
+      didEncounterErrors(requestContext) {
         // Log type-related errors
-        if (response.errors) {
-          response.errors.forEach(error => {
+        if (requestContext.errors) {
+          requestContext.errors.forEach(error => {
             if (error.message.includes("type")) {
               console.error("Type Error Details:", {
                 message: error.message,
@@ -761,7 +761,7 @@ graph TD
 
 ### Key Takeaways
 
-1. **Match scalar types exactly**: Ensure integers are integers, strings are strings, and booleans are booleans.
+1. **Return canonical scalar values**: Do not rely on implementation-specific result coercion. Return numbers for numeric fields, strings for string fields, and booleans for boolean fields.
 
 2. **Handle nullability carefully**: Use the `!` modifier only when you can guarantee non-null values.
 
