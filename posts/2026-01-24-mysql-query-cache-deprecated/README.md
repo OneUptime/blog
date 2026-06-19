@@ -110,19 +110,12 @@ Calculate the hit ratio:
 ```sql
 -- Calculate query cache hit ratio
 SELECT
-    (Qcache_hits / (Qcache_hits + Com_select)) * 100 AS hit_ratio
-FROM (
-    SELECT
-        VARIABLE_VALUE AS Qcache_hits
-    FROM information_schema.GLOBAL_STATUS
-    WHERE VARIABLE_NAME = 'Qcache_hits'
-) hits,
-(
-    SELECT
-        VARIABLE_VALUE AS Com_select
-    FROM information_schema.GLOBAL_STATUS
-    WHERE VARIABLE_NAME = 'Com_select'
-) selects;
+    (hits.VARIABLE_VALUE / (hits.VARIABLE_VALUE + selects.COUNT_STAR)) * 100
+    AS hit_ratio
+FROM performance_schema.global_status hits
+JOIN performance_schema.events_statements_summary_global_by_event_name selects
+WHERE hits.VARIABLE_NAME = 'Qcache_hits'
+  AND selects.EVENT_NAME = 'statement/sql/select';
 ```
 
 ## Migration Path to MySQL 8.0
@@ -191,12 +184,12 @@ SELECT
     AS buffer_pool_hit_ratio
 FROM (
     SELECT VARIABLE_VALUE AS Innodb_buffer_pool_reads
-    FROM information_schema.GLOBAL_STATUS
+    FROM performance_schema.global_status
     WHERE VARIABLE_NAME = 'Innodb_buffer_pool_reads'
 ) reads,
 (
     SELECT VARIABLE_VALUE AS Innodb_buffer_pool_read_requests
-    FROM information_schema.GLOBAL_STATUS
+    FROM performance_schema.global_status
     WHERE VARIABLE_NAME = 'Innodb_buffer_pool_read_requests'
 ) requests;
 ```
@@ -281,8 +274,8 @@ SELECT * FROM stats_mysql_query_cache;
 MySQL 8.0 includes many optimizations that reduce the need for query caching:
 
 ```sql
--- Enable hash joins for better performance
-SET optimizer_switch = 'hash_join=on';
+-- Ensure hash joins are enabled (default in MySQL 8.0.18+)
+SET optimizer_switch = 'block_nested_loop=on';
 
 -- Use invisible indexes for testing
 ALTER TABLE users ADD INDEX idx_status (status) INVISIBLE;
