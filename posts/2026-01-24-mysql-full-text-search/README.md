@@ -278,10 +278,10 @@ SHOW VARIABLES LIKE 'innodb_ft_%';
 
 -- Key settings for InnoDB
 -- Minimum word length (default is 3)
-SET GLOBAL innodb_ft_min_token_size = 2;
+-- Configure innodb_ft_min_token_size in my.cnf and restart MySQL
 
 -- Maximum word length (default is 84)
-SET GLOBAL innodb_ft_max_token_size = 84;
+-- Configure innodb_ft_max_token_size in my.cnf and restart MySQL
 ```
 
 Update my.cnf for persistent configuration:
@@ -426,7 +426,8 @@ FROM articles
 WHERE MATCH(content) AGAINST('term');
 
 -- Rebuild index after config change
-OPTIMIZE TABLE articles;
+ALTER TABLE articles DROP INDEX ft_idx;
+ALTER TABLE articles ADD FULLTEXT INDEX ft_idx (title, content);
 ```
 
 Full-text search in MySQL is a powerful feature that is often overlooked. For many applications, it provides sufficient search functionality without the complexity of managing a separate search infrastructure. Start simple with natural language mode, and explore boolean mode when you need more control over search behavior.
