@@ -49,6 +49,8 @@ class TokenData:
     access_token: str
     refresh_token: str
     expires_at: float
+    expires_in: int
+    issued_at: float
     token_type: str = "Bearer"
     scope: Optional[str] = None
 
@@ -77,11 +79,14 @@ class OAuth2TokenManager:
         Store tokens from an OAuth2 token response.
         """
         expires_in = token_response.get("expires_in", 3600)
+        issued_at = time.time()
 
         self._token_data = TokenData(
             access_token=token_response["access_token"],
             refresh_token=token_response["refresh_token"],
-            expires_at=time.time() + expires_in,
+            expires_at=issued_at + expires_in,
+            expires_in=expires_in,
+            issued_at=issued_at,
             token_type=token_response.get("token_type", "Bearer"),
             scope=token_response.get("scope")
         )
@@ -101,6 +106,14 @@ class OAuth2TokenManager:
 
             return self._token_data.access_token
 
+    def force_refresh(self) -> str:
+        """
+        Force a token refresh and return the new access token.
+        """
+        with self._lock:
+            self._refresh_token()
+            return self._token_data.access_token
+
     def _is_token_expiring(self) -> bool:
         """Check if token is expired or will expire soon."""
         if self._token_data is None:
@@ -118,10 +131,9 @@ class OAuth2TokenManager:
             self.token_url,
             data={
                 "grant_type": "refresh_token",
-                "refresh_token": self._token_data.refresh_token,
-                "client_id": self.client_id,
-                "client_secret": self.client_secret
+                "refresh_token": self._token_data.refresh_token
             },
+            auth=(self.client_id, self.client_secret),
             timeout=30
         )
 
@@ -231,10 +243,10 @@ class OAuth2Session:
         """
         try:
             # Force refresh
-            self.token_manager._refresh_token()
+            access_token = self.token_manager.force_refresh()
 
             # Update header with new token
-            headers["Authorization"] = f"Bearer {self.token_manager._token_data.access_token}"
+            headers["Authorization"] = f"Bearer {access_token}"
 
             # Retry the request
             return self.session.request(method, url, headers=headers, **kwargs)
@@ -306,8 +318,8 @@ flowchart TD
 ```python
 import time
 import random
+import requests
 from enum import Enum
-from typing import Callable
 
 class RefreshErrorType(Enum):
     RETRYABLE = "retryable"      # Network errors, timeouts
@@ -344,8 +356,7 @@ class TokenRefreshWithRetry:
 
         for attempt in range(self.max_retries + 1):
             try:
-                self.token_manager._refresh_token()
-                return self.token_manager._token_data.access_token
+                return self.token_manager.force_refresh()
 
             except requests.exceptions.RequestException as e:
                 # Network error - retryable
@@ -480,9 +491,8 @@ class ProactiveTokenRefresher:
         # Calculate token lifetime progress
         current_time = time.time()
 
-        # Estimate original expiry time (assuming 1 hour default)
-        token_lifetime = 3600  # Could be stored from original response
-        issued_at = token_data.expires_at - token_lifetime
+        token_lifetime = token_data.expires_in
+        issued_at = token_data.issued_at
         elapsed = current_time - issued_at
         progress = elapsed / token_lifetime
 
@@ -490,7 +500,7 @@ class ProactiveTokenRefresher:
             logger.info(f"Token is {progress*100:.1f}% through lifetime, refreshing proactively")
 
             try:
-                self.token_manager._refresh_token()
+                self.token_manager.force_refresh()
                 logger.info("Proactive token refresh successful")
 
             except RefreshTokenExpiredError as e:
@@ -560,6 +570,7 @@ sequenceDiagram
 ```python
 import json
 import os
+import tempfile
 from pathlib import Path
 from typing import Optional
 import fcntl
@@ -572,6 +583,7 @@ class PersistentTokenStore:
 
     def __init__(self, storage_path: str):
         self.storage_path = Path(storage_path)
+        self.lock_path = self.storage_path.with_suffix(".lock")
         self.storage_path.parent.mkdir(parents=True, exist_ok=True)
 
     def save_tokens(self, token_data: TokenData) -> None:
@@ -583,25 +595,30 @@ class PersistentTokenStore:
             "access_token": token_data.access_token,
             "refresh_token": token_data.refresh_token,
             "expires_at": token_data.expires_at,
+            "expires_in": token_data.expires_in,
+            "issued_at": token_data.issued_at,
             "token_type": token_data.token_type,
             "scope": token_data.scope
         }
 
-        # Write to temp file first
-        temp_path = self.storage_path.with_suffix(".tmp")
-
-        with open(temp_path, "w") as f:
-            # Acquire exclusive lock
-            fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+        with open(self.lock_path, "w") as lock_file:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
             try:
-                json.dump(data, f)
-                f.flush()
-                os.fsync(f.fileno())
-            finally:
-                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+                # Write to a unique temp file first
+                with tempfile.NamedTemporaryFile(
+                    "w",
+                    dir=self.storage_path.parent,
+                    delete=False
+                ) as f:
+                    temp_path = Path(f.name)
+                    json.dump(data, f)
+                    f.flush()
+                    os.fsync(f.fileno())
 
-        # Atomic rename
-        temp_path.rename(self.storage_path)
+                # Atomic replace
+                os.replace(temp_path, self.storage_path)
+            finally:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
     def load_tokens(self) -> Optional[TokenData]:
         """Load tokens from storage."""
@@ -619,6 +636,8 @@ class PersistentTokenStore:
             access_token=data["access_token"],
             refresh_token=data["refresh_token"],
             expires_at=data["expires_at"],
+            expires_in=data.get("expires_in", 3600),
+            issued_at=data.get("issued_at", data["expires_at"] - data.get("expires_in", 3600)),
             token_type=data.get("token_type", "Bearer"),
             scope=data.get("scope")
         )
@@ -671,10 +690,9 @@ class TokenManagerWithRotation(OAuth2TokenManager):
             self.token_url,
             data={
                 "grant_type": "refresh_token",
-                "refresh_token": old_refresh_token,
-                "client_id": self.client_id,
-                "client_secret": self.client_secret
+                "refresh_token": old_refresh_token
             },
+            auth=(self.client_id, self.client_secret),
             timeout=30
         )
 
@@ -708,6 +726,7 @@ Handle token refresh across multiple application instances:
 import redis
 import time
 import json
+import uuid
 from typing import Optional
 
 class DistributedTokenManager:
@@ -758,10 +777,10 @@ class DistributedTokenManager:
         """Save tokens to Redis with expiry."""
         # Set expiry slightly longer than token lifetime
         ttl = int(token_data.get("expires_in", 3600) * 1.5)
-        self.redis.setex(
+        self.redis.set(
             self.token_key,
-            ttl,
-            json.dumps(token_data)
+            json.dumps(token_data),
+            ex=ttl
         )
 
     def _is_token_expiring(self, token_data: dict) -> bool:
@@ -774,10 +793,12 @@ class DistributedTokenManager:
         Refresh token with distributed lock.
         Only one instance can refresh at a time.
         """
+        lock_token = str(uuid.uuid4())
+
         # Try to acquire lock (30 second timeout)
         lock_acquired = self.redis.set(
             self.lock_key,
-            "locked",
+            lock_token,
             nx=True,  # Only set if not exists
             ex=30     # 30 second expiry
         )
@@ -793,8 +814,19 @@ class DistributedTokenManager:
                 new_tokens = self._do_refresh(token_data)
                 return new_tokens["access_token"]
             finally:
-                # Release lock
-                self.redis.delete(self.lock_key)
+                # Release the lock only if this instance still owns it
+                self.redis.eval(
+                    """
+                    if redis.call("get", KEYS[1]) == ARGV[1] then
+                        return redis.call("del", KEYS[1])
+                    else
+                        return 0
+                    end
+                    """,
+                    1,
+                    self.lock_key,
+                    lock_token
+                )
         else:
             # Another instance is refreshing - wait and retry
             return self._wait_for_refresh()
@@ -828,10 +860,9 @@ class DistributedTokenManager:
             self.token_url,
             data={
                 "grant_type": "refresh_token",
-                "refresh_token": current_tokens["refresh_token"],
-                "client_id": self.client_id,
-                "client_secret": self.client_secret
+                "refresh_token": current_tokens["refresh_token"]
             },
+            auth=(self.client_id, self.client_secret),
             timeout=30
         )
 
@@ -935,10 +966,9 @@ class AsyncTokenManager:
             self.token_url,
             data={
                 "grant_type": "refresh_token",
-                "refresh_token": self._token_data.refresh_token,
-                "client_id": self.client_id,
-                "client_secret": self.client_secret
-            }
+                "refresh_token": self._token_data.refresh_token
+            },
+            auth=(self.client_id, self.client_secret)
         ) as response:
             if response.status == 200:
                 token_response = await response.json()
@@ -955,12 +985,27 @@ class AsyncTokenManager:
                     raise RefreshTokenExpiredError("Refresh token expired")
                 raise TokenRefreshError(f"Refresh failed: {error_data}")
 
+    async def force_refresh(self) -> str:
+        """Force a token refresh and return the new access token."""
+        async with self._refresh_lock:
+            await self._refresh_token()
+            return self._token_data.access_token
+
+    def set_tokens(self, token_response: dict) -> None:
+        """Store tokens from response."""
+        self._set_tokens(token_response)
+
     def _set_tokens(self, token_response: dict) -> None:
         """Store tokens from response."""
+        expires_in = token_response.get("expires_in", 3600)
+        issued_at = time.time()
+
         self._token_data = TokenData(
             access_token=token_response["access_token"],
             refresh_token=token_response["refresh_token"],
-            expires_at=time.time() + token_response.get("expires_in", 3600),
+            expires_at=issued_at + expires_in,
+            expires_in=expires_in,
+            issued_at=issued_at,
             token_type=token_response.get("token_type", "Bearer")
         )
 
@@ -999,8 +1044,8 @@ class AsyncOAuth2Client:
 
         # Handle 401 with retry
         if response.status == 401:
-            await self.token_manager._refresh_token()
-            access_token = await self.token_manager.get_access_token()
+            response.release()
+            access_token = await self.token_manager.force_refresh()
             headers["Authorization"] = f"Bearer {access_token}"
             response = await session.request(method, full_url, headers=headers, **kwargs)
 
@@ -1020,6 +1065,13 @@ async def main():
         client_secret="your_client_secret",
         token_url="https://auth.example.com/oauth/token"
     )
+
+    # After initial authentication
+    token_manager.set_tokens({
+        "access_token": "initial_access_token",
+        "refresh_token": "initial_refresh_token",
+        "expires_in": 3600
+    })
 
     client = AsyncOAuth2Client(token_manager, base_url="https://api.example.com")
 
