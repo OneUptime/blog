@@ -52,6 +52,9 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: write
+
 jobs:
   bump-version:
     runs-on: ubuntu-latest
@@ -97,7 +100,7 @@ flowchart LR
 
 ## Setting Up the Release Pipeline
 
-Here is a complete GitHub Actions workflow for a release pipeline.
+Here is an example GitHub Actions workflow for a release pipeline.
 
 ```yaml
 # .github/workflows/release.yml
@@ -111,6 +114,10 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
+
+permissions:
+  contents: read
+  packages: write
 
 jobs:
   build:
@@ -333,7 +340,6 @@ For database-involved rollbacks, you need to handle migrations carefully.
 # rollback_manager.py
 import subprocess
 import logging
-from datetime import datetime
 
 class RollbackManager:
     def __init__(self, deployment_name, namespace="production"):
@@ -341,23 +347,23 @@ class RollbackManager:
         self.namespace = namespace
         self.logger = logging.getLogger(__name__)
 
-    def execute_rollback(self, target_version=None):
+    def execute_rollback(self, target_revision=None):
         """
-        Execute a complete rollback including application and database.
+        Execute a rollback, including database hooks when needed.
         """
         self.logger.info(f"Starting rollback for {self.deployment}")
 
         # Step 1: Get current state for audit
-        current_version = self._get_current_version()
-        self.logger.info(f"Current version: {current_version}")
+        current_image = self._get_current_image()
+        self.logger.info(f"Current image: {current_image}")
 
         # Step 2: Check if database rollback is needed
-        if self._needs_db_rollback(current_version, target_version):
+        if self._needs_db_rollback(current_image, target_revision):
             self.logger.info("Database rollback required")
-            self._rollback_database(target_version)
+            self._rollback_database(target_revision)
 
         # Step 3: Rollback the application
-        self._rollback_application(target_version)
+        self._rollback_application(target_revision)
 
         # Step 4: Verify health
         if not self._verify_health():
@@ -366,20 +372,41 @@ class RollbackManager:
         self.logger.info("Rollback completed successfully")
         return True
 
-    def _rollback_application(self, target_version):
-        """Roll back Kubernetes deployment."""
-        if target_version:
-            cmd = f"kubectl rollout undo deployment/{self.deployment} " \
-                  f"--to-revision={target_version} -n {self.namespace}"
-        else:
-            cmd = f"kubectl rollout undo deployment/{self.deployment} -n {self.namespace}"
+    def _get_current_image(self):
+        """Get the currently deployed image for audit logging."""
+        cmd = [
+            "kubectl", "get", "deployment", self.deployment,
+            "-n", self.namespace,
+            "-o", "jsonpath={.spec.template.spec.containers[0].image}",
+        ]
+        result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+        return result.stdout
 
-        subprocess.run(cmd, shell=True, check=True)
+    def _needs_db_rollback(self, current_image, target_revision):
+        """Return True when your migration metadata says a DB rollback is required."""
+        return False
+
+    def _rollback_database(self, target_revision):
+        """Run your migration tool's rollback command here."""
+        raise NotImplementedError("Configure database rollback for your migration tool")
+
+    def _rollback_application(self, target_revision):
+        """Roll back Kubernetes deployment."""
+        cmd = [
+            "kubectl", "rollout", "undo", f"deployment/{self.deployment}",
+            "-n", self.namespace,
+        ]
+        if target_revision:
+            cmd.append(f"--to-revision={target_revision}")
+
+        subprocess.run(cmd, check=True)
 
         # Wait for rollout
-        wait_cmd = f"kubectl rollout status deployment/{self.deployment} " \
-                   f"-n {self.namespace} --timeout=300s"
-        subprocess.run(wait_cmd, shell=True, check=True)
+        wait_cmd = [
+            "kubectl", "rollout", "status", f"deployment/{self.deployment}",
+            "-n", self.namespace, "--timeout=300s",
+        ]
+        subprocess.run(wait_cmd, check=True)
 
     def _verify_health(self):
         """Verify the rolled back deployment is healthy."""
@@ -416,6 +443,8 @@ on:
 jobs:
   release-notes:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -430,7 +459,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Update release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v3
         with:
           body: ${{ steps.changelog.outputs.changelog }}
 ```
@@ -552,8 +581,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Send Slack notification
-        uses: slackapi/slack-github-action@v1
+        uses: slackapi/slack-github-action@v3.0.3
         with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
           payload: |
             {
               "text": "New Release: ${{ github.event.release.tag_name }}",
@@ -569,7 +600,7 @@ jobs:
                   "type": "section",
                   "text": {
                     "type": "mrkdwn",
-                    "text": "${{ github.event.release.body }}"
+                    "text": ${{ toJSON(github.event.release.body) }}
                   }
                 },
                 {
@@ -587,8 +618,6 @@ jobs:
                 }
               ]
             }
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 ```
 
 ## Best Practices
