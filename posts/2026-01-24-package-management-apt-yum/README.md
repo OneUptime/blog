@@ -44,7 +44,7 @@ APT is the package management system used by Debian, Ubuntu, Linux Mint, and oth
 sudo apt update
 
 # Upgrade all installed packages to their latest versions
-# This will not remove packages or install new dependencies
+# This may install new dependencies, but it will not remove packages
 sudo apt upgrade
 
 # Full upgrade that can remove packages if needed for dependency resolution
@@ -105,7 +105,7 @@ cat /etc/apt/sources.list
 ls /etc/apt/sources.list.d/
 
 # Add a new repository using add-apt-repository
-# This example adds the official Nginx repository
+# This example adds the Nginx stable PPA on Ubuntu
 sudo add-apt-repository ppa:nginx/stable
 
 # Add a repository manually by creating a sources file
@@ -237,7 +237,7 @@ yum provides /usr/sbin/nginx   # or: dnf provides /usr/sbin/nginx
 yum provides '*/nginx'
 
 # Show package dependencies
-yum deplist nginx        # or: dnf repoquery --requires nginx
+yum deplist nginx        # or: dnf repoquery --deplist nginx
 ```
 
 ### Managing Repositories
@@ -440,10 +440,14 @@ echo "0 3 * * * root /usr/local/bin/system-update.sh" >> /etc/crontab
 sudo apt install unattended-upgrades
 sudo dpkg-reconfigure unattended-upgrades
 
-# RHEL/CentOS - configure automatic updates
+# RHEL/CentOS 7 - configure automatic updates
 sudo yum install yum-cron
 sudo systemctl enable yum-cron
 sudo systemctl start yum-cron
+
+# RHEL 8+/Fedora - configure automatic updates
+sudo dnf install dnf-automatic
+sudo systemctl enable --now dnf-automatic.timer
 ```
 
 ## Conclusion
