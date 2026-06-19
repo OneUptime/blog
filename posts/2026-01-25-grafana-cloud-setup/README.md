@@ -38,7 +38,7 @@ After signing up, navigate to your Cloud Portal. You will see your "stack" which
 - A unique URL (e.g., `yourorg.grafana.net`)
 - Dedicated endpoints for metrics, logs, and traces
 - Isolated data storage
-- Its own set of users and API keys
+- Its own set of users, service accounts, and access policies
 
 ## Sending Metrics to Grafana Cloud
 
@@ -75,7 +75,7 @@ Replace the URL and credentials with your actual stack values from the Cloud Por
 
 ### Using Grafana Agent
 
-Grafana Agent is a lightweight alternative to Prometheus for sending metrics:
+Grafana Agent was a lightweight alternative to Prometheus for sending metrics, but it reached end-of-life on November 1, 2025. Use Alloy for new installations; existing Agent configurations looked like this:
 
 ```yaml
 # agent.yaml
@@ -117,7 +117,7 @@ prometheus.remote_write "grafana_cloud" {
     url = "https://prometheus-prod-01-prod-us-east-0.grafana.net/api/prom/push"
     basic_auth {
       username = "123456"
-      password = env("GRAFANA_CLOUD_API_KEY")
+      password = sys.env("GRAFANA_CLOUD_API_KEY")
     }
   }
 }
@@ -129,7 +129,7 @@ Grafana Cloud uses Loki for log aggregation.
 
 ### Using Promtail
 
-Promtail is the standard log shipper for Loki:
+Promtail was the standard log shipper for Loki, but it reached end-of-life on March 2, 2026. Use Alloy for new installations; existing Promtail configurations looked like this:
 
 ```yaml
 # promtail.yaml
@@ -182,7 +182,7 @@ loki.write "grafana_cloud" {
     url = "https://logs-prod-us-central1.grafana.net/loki/api/v1/push"
     basic_auth {
       username = "123456"
-      password = env("GRAFANA_CLOUD_API_KEY")
+      password = sys.env("GRAFANA_CLOUD_API_KEY")
     }
   }
 }
@@ -246,17 +246,19 @@ receivers:
         endpoint: 0.0.0.0:4318
 
 exporters:
-  otlp:
-    endpoint: tempo-prod-us-central1.grafana.net:443
+  otlp_http:
+    endpoint: https://otlp-gateway-prod-us-central-0.grafana.net/otlp
     headers:
-      authorization: Basic <base64-encoded-credentials>
+      Authorization: Basic <base64-encoded-credentials>
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
-      exporters: [otlp]
+      exporters: [otlp_http]
 ```
+
+Replace the endpoint and credentials with the OTLP connection details from your Grafana Cloud stack.
 
 ### Application Instrumentation
 
@@ -266,7 +268,7 @@ Using Python with OpenTelemetry:
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import Resource
 
 # Configure the tracer
@@ -275,9 +277,9 @@ provider = TracerProvider(resource=resource)
 
 # Configure export to Grafana Cloud
 exporter = OTLPSpanExporter(
-    endpoint="tempo-prod-us-central1.grafana.net:443",
+    endpoint="https://otlp-gateway-prod-us-central-0.grafana.net/otlp/v1/traces",
     headers={
-        "authorization": "Basic <base64-encoded-credentials>"
+        "Authorization": "Basic <base64-encoded-credentials>"
     }
 )
 
@@ -349,7 +351,7 @@ groups:
           description: "Error rate is {{ $value | humanizePercentage }}"
 ```
 
-### Configuring Notification Channels
+### Configuring Contact Points
 
 1. Go to Alerting > Contact points
 2. Add a new contact point (Slack, PagerDuty, email, etc.)
@@ -400,8 +402,8 @@ labels:
 
 Grafana Cloud retains data based on your plan:
 
-- Free tier: 14 days for metrics, 14 days for logs
-- Pro tier: 13 months for metrics, 30 days for logs
+- Free tier: 14 days for metrics, logs, and traces
+- Pro tier: 13 months for metrics, 30 days for logs and traces
 - Custom retention available on enterprise plans
 
 Plan your queries and dashboards accordingly.
@@ -425,7 +427,8 @@ Moving from self-hosted Grafana to Grafana Cloud involves:
 ```bash
 # Export dashboards from self-hosted
 curl -H "Authorization: Bearer $SELF_HOSTED_TOKEN" \
-     https://grafana.internal/api/dashboards/uid/abc123 \
+     https://grafana.internal/api/dashboards/uid/abc123 | \
+     jq '{"dashboard": (.dashboard + {id: null}), "overwrite": true}' \
      > dashboard.json
 
 # Import to Grafana Cloud
