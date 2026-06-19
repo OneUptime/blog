@@ -122,7 +122,7 @@ Image pull is often the biggest contributor to slow startup:
 # Multi-stage build for minimal image size
 
 # Build stage
-FROM golang:1.22 AS builder
+FROM golang:1.26 AS builder
 
 WORKDIR /app
 COPY go.mod go.sum ./
@@ -206,11 +206,12 @@ spec:
       - operator: Exists
 
       initContainers:
-      # Pull images during init, then exit
+      # Pull images during init, then exit. Use a command that exists
+      # in the target image and exits successfully.
       - name: prepull-api
         image: your-registry.region.cloud/api-server:v1.2.3
         imagePullPolicy: Always
-        command: ["echo", "Image pulled"]
+        command: ["/server", "--prepull-check"]
         resources:
           requests:
             memory: "10Mi"
@@ -218,7 +219,7 @@ spec:
 
       containers:
       - name: pause
-        image: gcr.io/google_containers/pause:3.9
+        image: registry.k8s.io/pause:3.10
         resources:
           requests:
             memory: "10Mi"
@@ -256,7 +257,24 @@ type Server struct {
     readyMu    sync.RWMutex
 }
 
+type Database struct{}
+type Cache struct{}
+
+type DatabaseConfig struct {
+    MaxOpenConns    int
+    MaxIdleConns    int
+    ConnMaxLifetime time.Duration
+}
+
+type CacheConfig struct {
+    PoolSize int
+}
+
 func main() {
+    if len(os.Args) > 1 && os.Args[1] == "--prepull-check" {
+        return
+    }
+
     // Start accepting requests immediately
     // Initialize dependencies in background
     server := &Server{}
@@ -375,11 +393,19 @@ func initDatabase() (*Database, error) {
     })
 }
 
+func NewDatabase(config DatabaseConfig) (*Database, error) {
+    return &Database{}, nil
+}
+
 func initCache() (*Cache, error) {
     // Similar pattern for cache
     return NewCache(CacheConfig{
         PoolSize: 10,
     })
+}
+
+func NewCache(config CacheConfig) (*Cache, error) {
+    return &Cache{}, nil
 }
 
 func waitForShutdown(server *Server) {
@@ -412,7 +438,14 @@ kind: Deployment
 metadata:
   name: api-server
 spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: api-server
   template:
+    metadata:
+      labels:
+        app: api-server
     spec:
       containers:
       - name: api
@@ -485,7 +518,14 @@ kind: Deployment
 metadata:
   name: api-server
 spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: api-server
   template:
+    metadata:
+      labels:
+        app: api-server
     spec:
       # Prioritize scheduling
       priorityClassName: high-priority
@@ -502,6 +542,7 @@ spec:
       # Resource requests help scheduler make fast decisions
       containers:
       - name: api
+        image: your-registry/api-server:v1.2.3
         resources:
           # Accurate requests = faster scheduling
           requests:
@@ -610,7 +651,7 @@ spec:
       labels:
         severity: info
       annotations:
-        summary: "High image pull frequency on {{ $labels.node }}"
+        summary: "High image pull frequency detected"
 ```
 
 ---
