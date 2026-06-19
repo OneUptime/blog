@@ -229,7 +229,6 @@ import (
     "math/rand"
     "time"
 
-    "google.golang.org/grpc"
     "google.golang.org/grpc/codes"
     "google.golang.org/grpc/status"
     pb "myservice/proto"
@@ -292,7 +291,7 @@ func (c *RetryableClient) UpdateWithRetry(ctx context.Context, resourceID string
         }
 
         lastErr = err
-        log.Printf("Attempt %d failed with ABORTED, retrying in %v", attempt, backoff)
+        log.Printf("Attempt %d failed with retryable error, retrying in %v", attempt, backoff)
 
         // Wait with jitter before retry
         jitter := time.Duration(rand.Int63n(int64(backoff) / 4))
@@ -416,6 +415,7 @@ package main
 
 import (
     "google.golang.org/grpc"
+    "google.golang.org/grpc/credentials/insecure"
 )
 
 // Configure automatic retries using service config
@@ -436,10 +436,10 @@ func createChannelWithRetries(target string) (*grpc.ClientConn, error) {
         }]
     }`
 
-    return grpc.Dial(
+    return grpc.NewClient(
         target,
         grpc.WithDefaultServiceConfig(serviceConfig),
-        grpc.WithInsecure(),
+        grpc.WithTransportCredentials(insecure.NewCredentials()),
     )
 }
 ```
@@ -586,23 +586,35 @@ class MonitoringInterceptor(grpc.ServerInterceptor):
 
     def intercept_service(self, continuation, handler_call_details):
         method = handler_call_details.method
+        handler = continuation(handler_call_details)
+
+        if handler is None or handler.unary_unary is None:
+            return handler
 
         def wrapper(request_or_iterator, context):
             try:
-                return continuation(handler_call_details).unary_unary(
-                    request_or_iterator, context
-                )
-            except grpc.RpcError as e:
-                if e.code() == grpc.StatusCode.ABORTED:
+                return handler.unary_unary(request_or_iterator, context)
+            except Exception as e:
+                code = context.code()
+                details = context.details() or ""
+
+                if isinstance(e, grpc.RpcError):
+                    code = e.code()
+                    details = e.details() or details
+
+                if code == grpc.StatusCode.ABORTED:
                     # Parse reason from error details
-                    reason = self._extract_reason(e)
+                    reason = self._extract_reason(details)
                     aborted_errors.labels(method=method, reason=reason).inc()
                 raise
 
-        return grpc.unary_unary_rpc_method_handler(wrapper)
+        return grpc.unary_unary_rpc_method_handler(
+            wrapper,
+            request_deserializer=handler.request_deserializer,
+            response_serializer=handler.response_serializer,
+        )
 
-    def _extract_reason(self, error):
-        details = error.details() or ""
+    def _extract_reason(self, details):
         if "version conflict" in details.lower():
             return "version_conflict"
         elif "deadlock" in details.lower():
