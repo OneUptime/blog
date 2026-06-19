@@ -12,7 +12,7 @@ While auto-instrumentation provides great baseline metrics, custom metrics allow
 
 ## Understanding OpenTelemetry Metrics
 
-OpenTelemetry provides three main types of metrics instruments:
+OpenTelemetry provides several common types of metrics instruments:
 
 ```mermaid
 graph TD
@@ -32,15 +32,20 @@ Before creating custom metrics, you need to configure the metrics SDK.
 // JavaScript/Node.js - Metrics SDK Setup
 const { MeterProvider, PeriodicExportingMetricReader } = require('@opentelemetry/sdk-metrics');
 const { OTLPMetricExporter } = require('@opentelemetry/exporter-metrics-otlp-http');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { defaultResource, resourceFromAttributes } = require('@opentelemetry/resources');
+const {
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+} = require('@opentelemetry/semantic-conventions');
 
 // Create a resource that identifies your service
-const resource = new Resource({
-  [SemanticResourceAttributes.SERVICE_NAME]: 'my-service',
-  [SemanticResourceAttributes.SERVICE_VERSION]: '1.0.0',
-  [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: 'production',
-});
+const resource = defaultResource().merge(
+  resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: 'my-service',
+    [ATTR_SERVICE_VERSION]: '1.0.0',
+    'deployment.environment.name': 'production',
+  }),
+);
 
 // Configure the OTLP exporter
 const metricExporter = new OTLPMetricExporter({
@@ -56,9 +61,8 @@ const metricReader = new PeriodicExportingMetricReader({
 // Create and configure the meter provider
 const meterProvider = new MeterProvider({
   resource: resource,
+  readers: [metricReader],
 });
-
-meterProvider.addMetricReader(metricReader);
 
 // Get a meter for creating instruments
 const meter = meterProvider.getMeter('my-service-metrics', '1.0.0');
@@ -577,10 +581,12 @@ const os = require('os');
 const v8 = require('v8');
 
 // Observable gauge for memory usage
-meter.createObservableGauge('process_memory_bytes', {
+const memoryGauge = meter.createObservableGauge('process_memory_bytes', {
   description: 'Process memory usage in bytes',
   unit: 'By',
-}, (observableResult) => {
+});
+
+memoryGauge.addCallback((observableResult) => {
   const memUsage = process.memoryUsage();
 
   // Record different memory metrics
@@ -602,10 +608,12 @@ meter.createObservableGauge('process_memory_bytes', {
 let lastCpuUsage = process.cpuUsage();
 let lastCpuTime = Date.now();
 
-meter.createObservableGauge('process_cpu_usage_percent', {
+const cpuUsageGauge = meter.createObservableGauge('process_cpu_usage_percent', {
   description: 'Process CPU usage percentage',
   unit: '%',
-}, (observableResult) => {
+});
+
+cpuUsageGauge.addCallback((observableResult) => {
   const currentCpuUsage = process.cpuUsage(lastCpuUsage);
   const currentTime = Date.now();
   const timeDiff = (currentTime - lastCpuTime) * 1000; // Convert to microseconds
@@ -624,10 +632,12 @@ meter.createObservableGauge('process_cpu_usage_percent', {
 
 // Observable gauge for event loop lag
 let lastLoopTime = Date.now();
-meter.createObservableGauge('nodejs_eventloop_lag_seconds', {
+const eventLoopLagGauge = meter.createObservableGauge('nodejs_eventloop_lag_seconds', {
   description: 'Node.js event loop lag in seconds',
   unit: 's',
-}, (observableResult) => {
+});
+
+eventLoopLagGauge.addCallback((observableResult) => {
   const now = Date.now();
   const expectedInterval = 1000; // 1 second
   const actualInterval = now - lastLoopTime;
@@ -638,10 +648,12 @@ meter.createObservableGauge('nodejs_eventloop_lag_seconds', {
 });
 
 // Observable gauge for active handles/requests
-meter.createObservableGauge('nodejs_active_resources', {
+const activeResourcesGauge = meter.createObservableGauge('nodejs_active_resources', {
   description: 'Number of active resources in Node.js',
   unit: '1',
-}, (observableResult) => {
+});
+
+activeResourcesGauge.addCallback((observableResult) => {
   // Note: _getActiveHandles and _getActiveRequests are internal APIs
   const handles = process._getActiveHandles?.()?.length || 0;
   const requests = process._getActiveRequests?.()?.length || 0;
@@ -654,46 +666,51 @@ meter.createObservableGauge('nodejs_active_resources', {
 ```python
 # Python - Observable Gauge Examples
 from opentelemetry import metrics
+from opentelemetry.metrics import Observation
 import psutil
 import gc
 
 meter = metrics.get_meter("system-metrics", "1.0.0")
 
-def get_memory_callback(observer):
+def get_memory_callback(options):
     """Callback to observe memory metrics."""
     process = psutil.Process()
     memory_info = process.memory_info()
+    observations = [
+        Observation(memory_info.rss, {"memory.type": "rss"}),
+        Observation(memory_info.vms, {"memory.type": "vms"}),
+    ]
 
     # Record various memory metrics
-    observer.observe(memory_info.rss, {"memory.type": "rss"})
-    observer.observe(memory_info.vms, {"memory.type": "vms"})
-
-    # Python-specific memory
     gc_stats = gc.get_stats()
     for i, stat in enumerate(gc_stats):
-        observer.observe(
-            stat['collected'],
-            {"memory.type": f"gc_gen{i}_collected"}
+        observations.append(
+            Observation(stat['collected'], {"memory.type": f"gc_gen{i}_collected"})
         )
+    return observations
 
-def get_cpu_callback(observer):
+def get_cpu_callback(options):
     """Callback to observe CPU metrics."""
     process = psutil.Process()
     cpu_percent = process.cpu_percent(interval=None)
     cpu_times = process.cpu_times()
 
-    observer.observe(cpu_percent, {"cpu.metric": "percent"})
-    observer.observe(cpu_times.user, {"cpu.metric": "user_time"})
-    observer.observe(cpu_times.system, {"cpu.metric": "system_time"})
+    return [
+        Observation(cpu_percent, {"cpu.metric": "percent"}),
+        Observation(cpu_times.user, {"cpu.metric": "user_time"}),
+        Observation(cpu_times.system, {"cpu.metric": "system_time"}),
+    ]
 
-def get_disk_callback(observer):
+def get_disk_callback(options):
     """Callback to observe disk metrics."""
     disk = psutil.disk_usage('/')
 
-    observer.observe(disk.total, {"disk.metric": "total"})
-    observer.observe(disk.used, {"disk.metric": "used"})
-    observer.observe(disk.free, {"disk.metric": "free"})
-    observer.observe(disk.percent, {"disk.metric": "percent"})
+    return [
+        Observation(disk.total, {"disk.metric": "total"}),
+        Observation(disk.used, {"disk.metric": "used"}),
+        Observation(disk.free, {"disk.metric": "free"}),
+        Observation(disk.percent, {"disk.metric": "percent"}),
+    ]
 
 # Register observable gauges
 meter.create_observable_gauge(
@@ -725,11 +742,11 @@ meter.create_observable_gauge(
 ```mermaid
 flowchart TD
     A[Metric Name] --> B[Use snake_case]
-    A --> C[Include unit in name]
+    A --> C[Include the unit in the instrument unit field]
     A --> D[Use standard prefixes]
 
     B --> B1["http_request_duration_seconds"]
-    C --> C1["response_size_bytes"]
+    C --> C1["unit: By"]
     D --> D1["process_, system_, app_"]
 
     E[Attributes] --> F[Use semantic conventions]
@@ -816,7 +833,7 @@ const consoleReader = new PeriodicExportingMetricReader({
 // Production: OTLP exporter to collector
 const otlpReader = new PeriodicExportingMetricReader({
   exporter: new OTLPMetricExporter({
-    url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT,
+    url: process.env.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT,
   }),
   exportIntervalMillis: 60000,
 });
@@ -828,19 +845,23 @@ const prometheusExporter = new PrometheusExporter({
 });
 
 // Configure based on environment
-const meterProvider = new MeterProvider();
+const readers = [];
 
 if (process.env.NODE_ENV === 'development') {
-  meterProvider.addMetricReader(consoleReader);
+  readers.push(consoleReader);
 }
 
-if (process.env.OTEL_EXPORTER_OTLP_ENDPOINT) {
-  meterProvider.addMetricReader(otlpReader);
+if (process.env.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT) {
+  readers.push(otlpReader);
 }
 
 if (process.env.PROMETHEUS_ENABLED === 'true') {
-  meterProvider.addMetricReader(prometheusExporter);
+  readers.push(prometheusExporter);
 }
+
+const meterProvider = new MeterProvider({
+  readers,
+});
 ```
 
 ## Summary
