@@ -12,19 +12,24 @@ Type mismatch errors are among the most common issues developers encounter when 
 
 ## Understanding GraphQL Type System
 
-Before diving into error fixes, let us understand how GraphQL's type system works. GraphQL is strongly typed, meaning every field has a specific type, and the server validates that returned data matches these types.
+Before diving into error fixes, let us understand how GraphQL's type system works. GraphQL is strongly typed, meaning every field has a specific type. The server validates incoming operations against the schema, then completes and coerces resolver results according to the field types during execution.
 
 ```mermaid
 graph TD
-    A[GraphQL Query] --> B[Schema Validation]
-    B --> C{Types Match?}
+    A[GraphQL Query] --> B[Validate Query Against Schema]
+    B --> C{Query Type-Valid?}
     C -->|Yes| D[Execute Resolvers]
-    C -->|No| E[Type Mismatch Error]
-    D --> F[Return Data]
-    E --> G[Error Response]
+    C -->|No| E[Validation Error]
+    D --> H[Complete and Coerce Field Results]
+    H --> I{Results Match Field Types?}
+    I -->|Yes| F[Return Data]
+    I -->|No| G[Execution Error]
+    E --> J[Error Response]
+    G --> J
 
     style C fill:#f9f,stroke:#333,stroke-width:2px
-    style E fill:#f66,stroke:#333,stroke-width:2px
+    style I fill:#f9f,stroke:#333,stroke-width:2px
+    style G fill:#f66,stroke:#333,stroke-width:2px
     style F fill:#6f6,stroke:#333,stroke-width:2px
 ```
 
@@ -83,8 +88,8 @@ const resolvers = {
         // Parse to integer to ensure correct type
         age: parseInt(userData.age, 10),
         email: userData.email,
-        // Convert to actual boolean value
-        isActive: Boolean(userData.isActive)
+        // Convert common database values to an actual boolean value
+        isActive: userData.isActive === true || userData.isActive === "true"
       };
     }
   }
@@ -103,7 +108,7 @@ graph LR
     C --> E{Resolver returns null?}
     E -->|Yes| F[Type Mismatch Error]
     E -->|No| G[Success]
-    D --> H[Always Valid]
+    D --> H[Null Accepted]
 
     style F fill:#f66,stroke:#333,stroke-width:2px
     style G fill:#6f6,stroke:#333,stroke-width:2px
@@ -240,17 +245,17 @@ const resolvers = {
     users: async () => {
       const result = await database.query("SELECT * FROM users");
       // Ensure we always return an array
-      return Array.isArray(result) ? result : [result];
+      return Array.isArray(result) ? result : result ? [result] : [];
     },
 
     userTags: async (_, { userId }) => {
       const user = await database.findUser(userId);
       // Convert comma-separated string to array
-      if (typeof user.tags === "string") {
+      if (typeof user?.tags === "string") {
         return user.tags.split(",").map(tag => tag.trim()).filter(Boolean);
       }
       // Already an array
-      return user.tags || [];
+      return Array.isArray(user?.tags) ? user.tags : [];
     }
   }
 };
@@ -317,7 +322,7 @@ const resolvers = {
       return {
         id: order.id,
         // Map database value to valid enum value
-        status: statusMapping[order.status.toLowerCase()] || "PENDING"
+        status: statusMapping[String(order.status).toLowerCase()] || "PENDING"
       };
     }
   }
@@ -348,6 +353,13 @@ type Event {
 ```javascript
 // scalars.js
 const { GraphQLScalarType, Kind } = require("graphql");
+
+function parseObjectValue(ast) {
+  return ast.fields.reduce((value, field) => {
+    value[field.name.value] = JSONScalar.parseLiteral(field.value);
+    return value;
+  }, {});
+}
 
 // DateTime scalar implementation
 const DateTimeScalar = new GraphQLScalarType({
@@ -419,9 +431,9 @@ const JSONScalar = new GraphQLScalarType({
       case Kind.FLOAT:
         return parseFloat(ast.value);
       case Kind.OBJECT:
-        return parseObject(ast);
+        return parseObjectValue(ast);
       case Kind.LIST:
-        return ast.values.map(parseLiteral);
+        return ast.values.map(valueNode => JSONScalar.parseLiteral(valueNode));
       case Kind.NULL:
         return null;
       default:
@@ -435,7 +447,7 @@ module.exports = { DateTimeScalar, JSONScalar };
 
 ### 6. Interface and Union Type Mismatches
 
-When using interfaces or unions, you must include a type resolver.
+When using interfaces or unions, you must provide a way for GraphQL to resolve the concrete object type, such as a `__resolveType` resolver or object-level `isTypeOf` functions.
 
 **Schema with Interface:**
 
@@ -486,7 +498,6 @@ const resolvers = {
   Query: {
     node: async (_, { id }) => {
       const item = await database.findById(id);
-      // Add __typename so GraphQL knows the concrete type
       return item;
     }
   },
@@ -565,35 +576,69 @@ Add validation middleware to catch type issues before they reach clients.
 
 ```javascript
 // validation-middleware.js
-const { SchemaDirectiveVisitor } = require("@graphql-tools/utils");
+const {
+  getNamedType,
+  isAbstractType,
+  isListType,
+  isNonNullType,
+  isObjectType,
+  isScalarType
+} = require("graphql");
 
 // Validation function to check types at runtime
-function validateResolverOutput(typeName, value, schema) {
-  const type = schema.getType(typeName);
-
-  if (!type) {
-    console.warn(`Unknown type: ${typeName}`);
+function validateValueAgainstType(fieldType, value, path) {
+  if (isNonNullType(fieldType)) {
+    if (value === null || value === undefined) {
+      throw new Error(`${path} is non-nullable but got null`);
+    }
+    validateValueAgainstType(fieldType.ofType, value, path);
     return;
   }
 
-  // Check for null on non-nullable
   if (value === null || value === undefined) {
-    throw new Error(`Non-nullable field returned null for type ${typeName}`);
+    return;
   }
 
-  // Validate object fields
-  if (type.getFields) {
-    const fields = type.getFields();
-    for (const [fieldName, field] of Object.entries(fields)) {
-      const fieldValue = value[fieldName];
-      const isNonNull = field.type.toString().endsWith("!");
-
-      if (isNonNull && (fieldValue === null || fieldValue === undefined)) {
-        throw new Error(
-          `Field ${typeName}.${fieldName} is non-nullable but got null`
-        );
-      }
+  if (isListType(fieldType)) {
+    if (!Array.isArray(value)) {
+      throw new Error(`${path} expected a list but got ${typeof value}`);
     }
+    value.forEach((item, index) => {
+      validateValueAgainstType(fieldType.ofType, item, `${path}[${index}]`);
+    });
+    return;
+  }
+
+  const namedType = getNamedType(fieldType);
+  if (isScalarType(namedType)) {
+    switch (namedType.name) {
+      case "Int":
+        if (!Number.isInteger(value)) {
+          throw new Error(`${path} expected an integer but got ${typeof value}`);
+        }
+        break;
+      case "Float":
+        if (typeof value !== "number" || !Number.isFinite(value)) {
+          throw new Error(`${path} expected a number but got ${typeof value}`);
+        }
+        break;
+      case "Boolean":
+        if (typeof value !== "boolean") {
+          throw new Error(`${path} expected a boolean but got ${typeof value}`);
+        }
+        break;
+      case "String":
+      case "ID":
+        if (typeof value !== "string" && typeof value !== "number") {
+          throw new Error(`${path} expected a string-like value but got ${typeof value}`);
+        }
+        break;
+    }
+    return;
+  }
+
+  if ((isObjectType(namedType) || isAbstractType(namedType)) && typeof value !== "object") {
+    throw new Error(`${path} expected an object but got ${typeof value}`);
   }
 }
 
@@ -602,6 +647,8 @@ function withTypeValidation(resolvers, schema) {
   const wrappedResolvers = {};
 
   for (const [typeName, typeResolvers] of Object.entries(resolvers)) {
+    const parentType = schema.getType(typeName);
+    const fields = parentType?.getFields?.() || {};
     wrappedResolvers[typeName] = {};
 
     for (const [fieldName, resolver] of Object.entries(typeResolvers)) {
@@ -612,7 +659,10 @@ function withTypeValidation(resolvers, schema) {
           // Validate in development mode
           if (process.env.NODE_ENV === "development") {
             try {
-              validateResolverOutput(typeName, result, schema);
+              const fieldType = fields[fieldName]?.type;
+              if (fieldType) {
+                validateValueAgainstType(fieldType, result, `${typeName}.${fieldName}`);
+              }
             } catch (error) {
               console.error(`Type validation failed: ${error.message}`);
               throw error;
@@ -719,7 +769,7 @@ graph TD
 
 4. **Implement custom scalars properly**: Include serialize, parseValue, and parseLiteral methods.
 
-5. **Add type resolvers for interfaces and unions**: Always include `__resolveType` to help GraphQL determine concrete types.
+5. **Resolve interfaces and unions explicitly**: Include `__resolveType` or `isTypeOf` logic to help GraphQL determine concrete types.
 
 6. **Use TypeScript**: Let the compiler catch type mismatches before runtime.
 
