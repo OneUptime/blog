@@ -56,9 +56,10 @@ Apollo Server v4 requires explicit WebSocket setup:
 // server.ts
 import { ApolloServer } from '@apollo/server';
 import { expressMiddleware } from '@apollo/server/express4';
+import { ApolloServerPluginDrainHttpServer } from '@apollo/server/plugin/drainHttpServer';
 import { createServer } from 'http';
 import { WebSocketServer } from 'ws';
-import { useServer } from 'graphql-ws/lib/use/ws';
+import { useServer } from 'graphql-ws/use/ws';
 import { makeExecutableSchema } from '@graphql-tools/schema';
 import express from 'express';
 
@@ -102,6 +103,8 @@ const server = new ApolloServer({
   schema,
   plugins: [
     // Proper shutdown for the HTTP server
+    ApolloServerPluginDrainHttpServer({ httpServer }),
+    // Proper shutdown for the WebSocket server
     {
       async serverWillStart() {
         return {
@@ -248,7 +251,7 @@ const serverCleanup = useServer(
         // Returning true or undefined acknowledges the connection
         return true;
       } catch (error) {
-        // Throwing rejects with close code 4400
+        // Throwing rejects the connection with the error message
         throw new Error('Invalid token');
       }
     },
@@ -257,9 +260,9 @@ const serverCleanup = useServer(
 );
 ```
 
-**2. Client Timeout Too Short**
+**2. Client Acknowledgment Timeout Too Short**
 
-Increase client connection timeout:
+Increase the time the client waits for a connection acknowledgment:
 
 ```typescript
 const wsClient = createClient({
@@ -267,8 +270,8 @@ const wsClient = createClient({
   connectionParams: {
     authorization: `Bearer ${token}`,
   },
-  // Increase timeout (default is 3000ms)
-  connectionTimeout: 10000,
+  // Increase acknowledgment timeout (default is 0, which disables waiting)
+  connectionAckWaitTimeout: 10000,
 });
 ```
 
@@ -419,8 +422,8 @@ export const resolvers = {
 
   Subscription: {
     messageCreated: {
-      // Must return an AsyncIterator
-      subscribe: () => pubsub.asyncIterator([EVENTS.MESSAGE_CREATED]),
+      // Must return an AsyncIterable
+      subscribe: () => pubsub.asyncIterableIterator([EVENTS.MESSAGE_CREATED]),
     },
   },
 };
@@ -435,7 +438,7 @@ export const resolvers = {
   Subscription: {
     messageCreated: {
       subscribe: withFilter(
-        () => pubsub.asyncIterator([EVENTS.MESSAGE_CREATED]),
+        () => pubsub.asyncIterableIterator([EVENTS.MESSAGE_CREATED]),
         // Filter function - return true to send update
         (payload, variables, context) => {
           // Only send to users in the same channel
@@ -507,7 +510,11 @@ const wsClient = createClient({
 
 ```typescript
 // Server with ping/pong
-import { WebSocketServer } from 'ws';
+import { WebSocket, WebSocketServer } from 'ws';
+
+interface HeartbeatWebSocket extends WebSocket {
+  isAlive: boolean;
+}
 
 const wsServer = new WebSocketServer({
   server: httpServer,
@@ -517,18 +524,22 @@ const wsServer = new WebSocketServer({
 // Heartbeat to detect dead connections
 const interval = setInterval(() => {
   wsServer.clients.forEach((ws) => {
-    if (ws.isAlive === false) {
-      return ws.terminate();
+    const client = ws as HeartbeatWebSocket;
+
+    if (client.isAlive === false) {
+      return client.terminate();
     }
-    ws.isAlive = false;
-    ws.ping();
+    client.isAlive = false;
+    client.ping();
   });
 }, 30000);
 
 wsServer.on('connection', (ws) => {
-  ws.isAlive = true;
-  ws.on('pong', () => {
-    ws.isAlive = true;
+  const client = ws as HeartbeatWebSocket;
+
+  client.isAlive = true;
+  client.on('pong', () => {
+    client.isAlive = true;
   });
 });
 
@@ -606,9 +617,10 @@ scalar DateTime
 // server.ts
 import { ApolloServer } from '@apollo/server';
 import { expressMiddleware } from '@apollo/server/express4';
+import { ApolloServerPluginDrainHttpServer } from '@apollo/server/plugin/drainHttpServer';
 import { createServer } from 'http';
 import { WebSocketServer } from 'ws';
-import { useServer } from 'graphql-ws/lib/use/ws';
+import { useServer } from 'graphql-ws/use/ws';
 import { makeExecutableSchema } from '@graphql-tools/schema';
 import { PubSub, withFilter } from 'graphql-subscriptions';
 import express from 'express';
@@ -653,7 +665,7 @@ const resolvers = {
   Subscription: {
     messageCreated: {
       subscribe: withFilter(
-        () => pubsub.asyncIterator([EVENTS.MESSAGE_CREATED]),
+        () => pubsub.asyncIterableIterator([EVENTS.MESSAGE_CREATED]),
         (payload, variables) => {
           // Only send to subscribers of this channel
           return payload.messageCreated.channelId === variables.channelId;
@@ -663,7 +675,7 @@ const resolvers = {
 
     userTyping: {
       subscribe: withFilter(
-        () => pubsub.asyncIterator([EVENTS.USER_TYPING]),
+        () => pubsub.asyncIterableIterator([EVENTS.USER_TYPING]),
         (payload, variables) => {
           return payload.userTyping.channelId === variables.channelId;
         }
@@ -701,10 +713,10 @@ const serverCleanup = useServer(
     onDisconnect: (ctx) => {
       console.log('Client disconnected');
     },
-    onSubscribe: (ctx, msg) => {
-      console.log(`Subscription started: ${msg.payload.operationName}`);
+    onSubscribe: (ctx, id, payload) => {
+      console.log(`Subscription started: ${payload.operationName}`);
     },
-    onComplete: (ctx, msg) => {
+    onComplete: (ctx, id, payload) => {
       console.log('Subscription completed');
     },
   },
@@ -714,6 +726,7 @@ const serverCleanup = useServer(
 const server = new ApolloServer({
   schema,
   plugins: [
+    ApolloServerPluginDrainHttpServer({ httpServer }),
     {
       async serverWillStart() {
         return {
