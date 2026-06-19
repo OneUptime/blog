@@ -18,7 +18,7 @@ The error message usually looks something like this:
 ERROR 1366 (HY000): Incorrect string value: '\xF0\x9F\x98\x80...' for column 'content' at row 1
 ```
 
-The hex values `\xF0\x9F\x98\x80` represent a 4-byte UTF-8 character (in this case, an emoji). MySQL's `utf8` character set only supports up to 3 bytes per character, which excludes many Unicode characters including emoji, some Asian scripts, and mathematical symbols.
+The hex values `\xF0\x9F\x98\x80` represent a 4-byte UTF-8 character (in this case, an emoji). MySQL's `utf8` character set only supports up to 3 bytes per character, which excludes many Unicode characters including emoji, supplementary CJK characters, historic scripts, and mathematical symbols.
 
 ```mermaid
 graph TD
@@ -84,10 +84,10 @@ AND TABLE_NAME = 'your_table';
 When debugging, you can identify which characters are causing issues:
 
 ```sql
--- Find rows with non-BMP characters (characters that need 4 bytes)
+-- Find rows with non-BMP characters in MySQL 8.0+ (characters that need 4 bytes)
 SELECT id, content
 FROM posts
-WHERE content REGEXP '[^\x00-\xFFFF]';
+WHERE content REGEXP '[\\x{10000}-\\x{10FFFF}]';
 
 -- Or use this to find the hex values of problematic data
 SELECT id, HEX(content) as hex_content
@@ -296,7 +296,7 @@ COLLATE utf8mb4_unicode_ci;
 -- Option 2: Use prefix indexes
 CREATE INDEX idx_email ON users(email(191));
 
--- Option 3: Use DYNAMIC or COMPRESSED row format (recommended)
+-- Option 3: Use DYNAMIC or COMPRESSED row format (for MySQL 5.7.7+ or with large prefix support)
 ALTER TABLE users ROW_FORMAT = DYNAMIC;
 
 -- Option 4: Enable innodb_large_prefix (MySQL 5.6)
@@ -317,7 +317,7 @@ SELECT
     @@collation_database as db_collation;
 
 -- Test inserting emoji
-INSERT INTO test_table (content) VALUES ('Hello ');
+INSERT INTO test_table (content) VALUES ('Hello 😀');
 
 -- Verify the data stored correctly
 SELECT content, HEX(content) FROM test_table WHERE id = LAST_INSERT_ID();
@@ -361,12 +361,14 @@ To avoid "Incorrect string value" errors in new projects:
 ```sql
 -- Emergency fix for a single insert
 SET NAMES utf8mb4;
-INSERT INTO posts (content) VALUES ('Post with emoji ');
+INSERT INTO posts (content) VALUES ('Post with emoji 😀');
 
 -- Check if a column supports 4-byte characters
 SELECT CHARACTER_SET_NAME
 FROM information_schema.COLUMNS
-WHERE TABLE_NAME = 'posts' AND COLUMN_NAME = 'content';
+WHERE TABLE_SCHEMA = 'your_database'
+AND TABLE_NAME = 'posts'
+AND COLUMN_NAME = 'content';
 -- Should return 'utf8mb4'
 
 -- Convert a single column
@@ -376,4 +378,4 @@ CHARACTER SET utf8mb4
 COLLATE utf8mb4_unicode_ci;
 ```
 
-The "Incorrect string value" error is frustrating but completely fixable. The key is understanding that MySQL's `utf8` is not true UTF-8 - you need `utf8mb4` for full Unicode support. By updating your database, tables, columns, and connection settings to use utf8mb4, you can store any Unicode character including emoji, mathematical symbols, and characters from all world languages.
+The "Incorrect string value" error is frustrating but completely fixable. The key is understanding that MySQL's `utf8` is not full UTF-8 - you need `utf8mb4` for full Unicode support. By updating your database, tables, columns, and connection settings to use utf8mb4, you can store Unicode supplementary characters including emoji, mathematical symbols, and historic scripts.
