@@ -21,7 +21,7 @@ flowchart TB
 
     subgraph "Pages Router"
         D["useRouter from next/router"] --> E["router.push()"]
-        E --> F["Works in any component"]
+        E --> F["Works in function components"]
     end
 
     C --> G["Navigation Executes"]
@@ -133,7 +133,7 @@ export default function Page() {
 ## Issue 3: Router.push in useEffect Without Dependencies
 
 ```typescript
-// WRONG - May cause issues or not trigger
+// WRONG - Runs after every render and may repeat redirects
 'use client';
 
 import { useRouter } from 'next/navigation';
@@ -217,16 +217,16 @@ export function GoodRedirect({ isLoggedIn }: { isLoggedIn: boolean }) {
 }
 ```
 
-## Issue 5: Middleware Blocking Navigation
+## Issue 5: Proxy or Middleware Blocking Navigation
 
-Check if middleware is intercepting your routes:
+Check if Proxy (called Middleware in Next.js 15 and earlier) is intercepting your routes:
 
 ```typescript
-// middleware.ts
+// proxy.ts
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const isAuthenticated = request.cookies.get('auth-token');
 
   // This might block navigation unintentionally
@@ -242,16 +242,16 @@ export const config = {
 };
 ```
 
-Debug middleware issues:
+Debug Proxy or Middleware issues:
 
 ```typescript
-// middleware.ts
+// proxy.ts
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   // Add logging to debug
-  console.log('Middleware triggered for:', request.nextUrl.pathname);
+  console.log('Proxy triggered for:', request.nextUrl.pathname);
 
   const isAuthenticated = request.cookies.get('auth-token');
   console.log('Auth token present:', !!isAuthenticated);
@@ -297,7 +297,7 @@ export function UserLink({ userId }: { userId: string }) {
 
   const handleClick = () => {
     // Use the actual value in the path
-    router.push(`/users/${userId}`);
+    router.push(`/users/${encodeURIComponent(userId)}`);
   };
 
   return <button onClick={handleClick}>View User</button>;
@@ -382,24 +382,23 @@ export function SearchForm() {
 
 ## Issue 9: Navigation Not Updating UI
 
-Sometimes navigation happens but the UI does not update:
+Sometimes server-rendered data on the current route is stale after a mutation:
 
 ```typescript
-// Force a refresh after navigation
+// Refresh the current route after a mutation
 'use client';
 
 import { useRouter } from 'next/navigation';
 
-export function RefreshAfterNav() {
+export function RefreshCurrentRoute() {
   const router = useRouter();
 
   const handleAction = async () => {
     // Perform some action
     await saveData();
 
-    // Navigate and refresh
-    router.push('/dashboard');
-    router.refresh(); // Force refresh of server components
+    // Refresh server components on the current route
+    router.refresh();
   };
 
   return <button onClick={handleAction}>Save and Continue</button>;
@@ -413,7 +412,7 @@ async function saveData() {
 ## Issue 10: Async Event Handlers
 
 ```typescript
-// WRONG - Lost context in async handler
+// WRONG - Component may unmount before async work finishes
 'use client';
 
 import { useRouter } from 'next/navigation';
@@ -423,7 +422,7 @@ export function AsyncNavigation() {
 
   const handleClick = async () => {
     await someAsyncOperation();
-    router.push('/success'); // May not work if component unmounted
+    router.push('/success'); // May be stale if component unmounted
   };
 
   return <button onClick={handleClick}>Submit</button>;
@@ -486,7 +485,7 @@ flowchart TB
     F -->|"Yes"| J{"Called during render?"}
 
     H -->|"No"| K["Move to component"]
-    H -->|"Yes"| L{"Check middleware"}
+    H -->|"Yes"| L{"Check Proxy or Middleware"}
 
     J -->|"Yes"| M["Move to useEffect"]
     J -->|"No"| N{"Check browser console"}
@@ -558,8 +557,8 @@ export function FallbackNavigation() {
 | Server Component | Add `'use client'` directive |
 | Called during render | Move to `useEffect` |
 | Missing dependencies | Add router to useEffect dependency array |
-| Middleware blocking | Check middleware matcher and conditions |
+| Proxy or Middleware blocking | Check matcher and conditions |
 | Dynamic routes | Use actual values, not bracket syntax |
-| UI not updating | Use `router.refresh()` after navigation |
+| Stale server-rendered UI | Use `router.refresh()` on the current route |
 
 Most `Router.push` issues stem from incorrect imports or using hooks outside Client Components. Always verify your import source matches your router type, and ensure navigation calls happen in event handlers or useEffect, not during render.
