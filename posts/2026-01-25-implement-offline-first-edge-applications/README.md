@@ -60,9 +60,10 @@ graph TB
 
 import sqlite3
 import json
-from datetime import datetime
+import os
+from datetime import datetime, timezone
 from typing import List, Dict, Optional, Any
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from contextlib import contextmanager
 import threading
 
@@ -83,6 +84,9 @@ class LocalStorage:
 
     def __init__(self, db_path: str = "/data/edge_local.db"):
         self.db_path = db_path
+        db_dir = os.path.dirname(db_path)
+        if db_dir:
+            os.makedirs(db_dir, exist_ok=True)
         self.lock = threading.Lock()
         self._init_database()
 
@@ -201,6 +205,9 @@ class LocalStorage:
 
     def mark_synced(self, record_ids: List[str]) -> int:
         """Mark records as successfully synced"""
+        if not record_ids:
+            return 0
+
         with self.lock:
             with self._get_connection() as conn:
                 placeholders = ','.join(['?' for _ in record_ids])
@@ -208,11 +215,14 @@ class LocalStorage:
                     UPDATE data_records
                     SET synced = 1, last_sync_attempt = ?
                     WHERE id IN ({placeholders})
-                """, [datetime.utcnow().isoformat()] + record_ids)
+                """, [datetime.now(timezone.utc).isoformat()] + record_ids)
                 return cursor.rowcount
 
     def increment_sync_attempts(self, record_ids: List[str]) -> int:
         """Increment sync attempt counter for failed syncs"""
+        if not record_ids:
+            return 0
+
         with self.lock:
             with self._get_connection() as conn:
                 placeholders = ','.join(['?' for _ in record_ids])
@@ -221,7 +231,7 @@ class LocalStorage:
                     SET sync_attempts = sync_attempts + 1,
                         last_sync_attempt = ?
                     WHERE id IN ({placeholders})
-                """, [datetime.utcnow().isoformat()] + record_ids)
+                """, [datetime.now(timezone.utc).isoformat()] + record_ids)
                 return cursor.rowcount
 
     def get_config(self, key: str, default: Any = None) -> Any:
@@ -242,7 +252,7 @@ class LocalStorage:
                 conn.execute("""
                     INSERT OR REPLACE INTO config (key, value, updated_at)
                     VALUES (?, ?, ?)
-                """, (key, json.dumps(value), datetime.utcnow().isoformat()))
+                """, (key, json.dumps(value), datetime.now(timezone.utc).isoformat()))
 
     def cleanup_old_synced(self, days: int = 7) -> int:
         """Remove old synced records to free space"""
@@ -282,7 +292,8 @@ class LocalStorage:
 import sqlite3
 import json
 import uuid
-from datetime import datetime, timedelta
+import os
+from datetime import datetime, timedelta, timezone
 from typing import Optional, List, Dict, Any
 from dataclasses import dataclass
 from enum import Enum
@@ -320,6 +331,9 @@ class PersistentQueue:
 
     def __init__(self, db_path: str = "/data/message_queue.db"):
         self.db_path = db_path
+        db_dir = os.path.dirname(db_path)
+        if db_dir:
+            os.makedirs(db_dir, exist_ok=True)
         self.lock = threading.Lock()
         self._init_database()
 
@@ -368,7 +382,7 @@ class PersistentQueue:
     ) -> str:
         """Add message to queue"""
         message_id = str(uuid.uuid4())
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         with self.lock:
             conn = sqlite3.connect(self.db_path)
@@ -390,7 +404,7 @@ class PersistentQueue:
 
         return message_id
 
-    def dequeue(self, topics: List[str] = None) -> Optional[QueueMessage]:
+    def dequeue(self, topics: Optional[List[str]] = None) -> Optional[QueueMessage]:
         """Get next message to process"""
         with self.lock:
             conn = sqlite3.connect(self.db_path)
@@ -445,7 +459,7 @@ class PersistentQueue:
                 UPDATE messages
                 SET status = ?, processed_at = ?
                 WHERE id = ?
-            """, (MessageStatus.SENT.value, datetime.utcnow().isoformat(), message_id))
+            """, (MessageStatus.SENT.value, datetime.now(timezone.utc).isoformat(), message_id))
             conn.commit()
             conn.close()
 
@@ -474,7 +488,7 @@ class PersistentQueue:
                         row['topic'],
                         row['payload'],
                         error,
-                        datetime.utcnow().isoformat()
+                        datetime.now(timezone.utc).isoformat()
                     ))
 
                     conn.execute("""
@@ -485,7 +499,7 @@ class PersistentQueue:
                 else:
                     # Schedule retry with exponential backoff
                     retry_delay = min(300, 2 ** new_attempts)  # Max 5 minutes
-                    next_retry = datetime.utcnow() + timedelta(seconds=retry_delay)
+                    next_retry = datetime.now(timezone.utc) + timedelta(seconds=retry_delay)
 
                     conn.execute("""
                         UPDATE messages
@@ -535,7 +549,7 @@ class PersistentQueue:
 
 import asyncio
 import aiohttp
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 from typing import List, Callable, Optional
 import logging
 from enum import Enum
@@ -621,7 +635,7 @@ class SyncManager:
             "status": "completed",
             "synced": 0,
             "failed": 0,
-            "start_time": datetime.utcnow().isoformat()
+            "start_time": datetime.now(timezone.utc).isoformat()
         }
 
         try:
@@ -662,7 +676,7 @@ class SyncManager:
                     result["failed"] += len(records)
                     break  # Stop on batch failure
 
-            self.last_sync = datetime.utcnow()
+            self.last_sync = datetime.now(timezone.utc)
             result["end_time"] = self.last_sync.isoformat()
 
         except Exception as e:
@@ -781,7 +795,7 @@ class SyncManager:
 
 from enum import Enum
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 import hashlib
 import json
@@ -834,13 +848,13 @@ class ConflictResolver:
         self,
         local_data: Dict[str, Any],
         server_data: Dict[str, Any],
-        strategy: ConflictStrategy = None
+        strategy: Optional[ConflictStrategy] = None
     ) -> Dict[str, Any]:
         """Resolve conflict between local and server data"""
         strategy = strategy or self.default_strategy
 
-        local_ts = datetime.fromisoformat(local_data.get("timestamp", "1970-01-01"))
-        server_ts = datetime.fromisoformat(server_data.get("timestamp", "1970-01-01"))
+        local_ts = datetime.fromisoformat(local_data.get("timestamp", "1970-01-01T00:00:00+00:00"))
+        server_ts = datetime.fromisoformat(server_data.get("timestamp", "1970-01-01T00:00:00+00:00"))
 
         if strategy == ConflictStrategy.CLIENT_WINS:
             return local_data
@@ -884,7 +898,7 @@ class ConflictResolver:
         # Merge payloads - local values override server for same keys
         merged_payload = {**server_payload, **local_payload}
         merged["payload"] = merged_payload
-        merged["timestamp"] = datetime.utcnow().isoformat()
+        merged["timestamp"] = datetime.now(timezone.utc).isoformat()
         merged["merged"] = True
 
         return merged
@@ -904,7 +918,7 @@ class ConflictResolver:
 
 import asyncio
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 import random
 import logging
 
@@ -957,7 +971,7 @@ async def collect_sensor_data():
                 "unit_temp": "celsius",
                 "unit_humidity": "percent"
             },
-            timestamp=datetime.utcnow()
+            timestamp=datetime.now(timezone.utc)
         )
 
         # Store locally (works offline)
@@ -972,7 +986,7 @@ async def collect_sensor_data():
                     "type": "high_temperature",
                     "value": temperature,
                     "device_id": DEVICE_ID,
-                    "timestamp": datetime.utcnow().isoformat()
+                    "timestamp": datetime.now(timezone.utc).isoformat()
                 },
                 priority=MessagePriority.HIGH
             )
