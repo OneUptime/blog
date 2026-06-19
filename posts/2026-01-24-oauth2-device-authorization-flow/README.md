@@ -386,6 +386,8 @@ const express = require('express');
 const crypto = require('crypto');
 const router = express.Router();
 
+router.use(express.urlencoded({ extended: false }));
+
 // In-memory storage (use database in production)
 const deviceCodes = new Map();
 const authorizedCodes = new Map();
@@ -450,9 +452,15 @@ router.post('/token', (req, res) => {
         return res.status(400).json({ error: 'invalid_grant' });
     }
 
+    // Ensure the polling client matches the client that requested the code
+    if (codeData.clientId !== client_id) {
+        return res.status(400).json({ error: 'invalid_grant' });
+    }
+
     // Check expiry
     if (Date.now() > codeData.expiresAt) {
         deviceCodes.delete(device_code);
+        authorizedCodes.delete(codeData.userCode);
         return res.status(400).json({ error: 'expired_token' });
     }
 
@@ -492,6 +500,10 @@ router.get('/device', (req, res) => {
 router.post('/device/verify', authenticateUser, (req, res) => {
     const { user_code } = req.body;
     const userId = req.user.id;
+
+    if (!user_code) {
+        return res.status(400).json({ error: 'Invalid code' });
+    }
 
     const authData = authorizedCodes.get(user_code.toUpperCase());
 
@@ -728,6 +740,10 @@ function isNetworkError(error) {
     return error.code === 'ECONNREFUSED' ||
            error.code === 'ETIMEDOUT' ||
            error.code === 'ENOTFOUND';
+}
+
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
 }
 ```
 
