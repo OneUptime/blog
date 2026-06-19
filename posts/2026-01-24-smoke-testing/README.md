@@ -126,6 +126,7 @@ class SmokeTestRunner:
         self.base_url = base_url.rstrip('/')
         self.timeout = aiohttp.ClientTimeout(total=timeout)
         self.results: list[SmokeTestResult] = []
+        self.total_duration_ms = 0.0
 
     async def run_single_test(
         self,
@@ -195,6 +196,7 @@ class SmokeTestRunner:
 
     async def run_all(self, test_configs: Dict[str, Dict]) -> list[SmokeTestResult]:
         """Run all smoke tests in parallel."""
+        start_time = time.time()
         async with aiohttp.ClientSession(timeout=self.timeout) as session:
             tasks = [
                 self.run_single_test(session, name, config)
@@ -202,20 +204,20 @@ class SmokeTestRunner:
             ]
             self.results = await asyncio.gather(*tasks)
 
+        self.total_duration_ms = (time.time() - start_time) * 1000
         return self.results
 
     def get_summary(self) -> Dict[str, Any]:
         """Get a summary of test results."""
         passed = sum(1 for r in self.results if r.status == TestStatus.PASSED)
-        failed = sum(1 for r in self.results if r.status == TestStatus.FAILED)
-        total_duration = sum(r.duration_ms for r in self.results)
+        failed = sum(1 for r in self.results if r.status != TestStatus.PASSED)
 
         return {
             'total': len(self.results),
             'passed': passed,
             'failed': failed,
             'success_rate': (passed / len(self.results) * 100) if self.results else 0,
-            'total_duration_ms': total_duration,
+            'total_duration_ms': self.total_duration_ms,
             'all_passed': failed == 0
         }
 
@@ -270,24 +272,27 @@ const { test, expect } = require('@playwright/test');
 
 // Configure for speed over coverage
 test.describe.configure({ mode: 'parallel' });
+test.use({ baseURL: process.env.BASE_URL || 'http://localhost:3000' });
 
 test.describe('Smoke Tests', () => {
   // Set short timeouts for smoke tests
   test.setTimeout(30000);
 
   test('homepage loads successfully', async ({ page }) => {
+    // Check no JavaScript errors
+    const errors = [];
+    page.on('pageerror', error => errors.push(error));
+
     const response = await page.goto('/');
 
     // Check response status
+    expect(response).not.toBeNull();
     expect(response.status()).toBe(200);
 
     // Check critical elements are present
     await expect(page.locator('header')).toBeVisible();
     await expect(page.locator('main')).toBeVisible();
 
-    // Check no JavaScript errors
-    const errors = [];
-    page.on('pageerror', error => errors.push(error));
     await page.waitForLoadState('networkidle');
     expect(errors).toHaveLength(0);
   });
@@ -380,8 +385,18 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
       - name: Install dependencies
         run: pip install aiohttp
+
+      - name: Install browser test dependencies
+        run: |
+          npm install --save-dev @playwright/test
+          npx playwright install --with-deps chromium
 
       - name: Determine target URL
         id: url
@@ -395,27 +410,20 @@ jobs:
       - name: Run API smoke tests
         run: python smoke_runner.py ${{ steps.url.outputs.target }}
 
-      - name: Install Playwright
-        run: |
-          pip install playwright
-          playwright install chromium
-
       - name: Run browser smoke tests
         run: |
-          playwright test smoke.spec.js --project=chromium
+          npx playwright test smoke.spec.js
         env:
           BASE_URL: ${{ steps.url.outputs.target }}
 
       - name: Notify on failure
         if: failure()
-        uses: slackapi/slack-github-action@v1
+        uses: slackapi/slack-github-action@v3.0.3
         with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
           payload: |
-            {
-              "text": "Smoke tests failed for deployment to ${{ steps.url.outputs.target }}"
-            }
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
+            text: "Smoke tests failed for deployment to ${{ steps.url.outputs.target }}"
 ```
 
 ### Post-Deployment Hook
@@ -536,23 +544,28 @@ Run smoke tests periodically and report to monitoring.
 """
 import asyncio
 import time
-from prometheus_client import Gauge, Counter, push_to_gateway
+from prometheus_client import CollectorRegistry, Gauge, Counter, push_to_gateway
+
+registry = CollectorRegistry()
 
 # Prometheus metrics
 smoke_test_success = Gauge(
     'smoke_test_success',
     'Whether smoke tests are passing',
-    ['environment']
+    ['environment'],
+    registry=registry
 )
 smoke_test_duration = Gauge(
     'smoke_test_duration_seconds',
     'Duration of smoke test run',
-    ['environment']
+    ['environment'],
+    registry=registry
 )
 smoke_test_failures = Counter(
     'smoke_test_failures_total',
     'Total smoke test failures',
-    ['environment', 'test_name']
+    ['environment', 'test_name'],
+    registry=registry
 )
 
 async def run_continuous_smoke_tests(
@@ -592,7 +605,7 @@ async def run_continuous_smoke_tests(
             push_to_gateway(
                 'prometheus-pushgateway:9091',
                 job='smoke_tests',
-                registry=None
+                registry=registry
             )
 
         except Exception as e:
