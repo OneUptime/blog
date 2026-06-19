@@ -177,13 +177,13 @@ flowchart TB
         Q1[queue1]
     end
 
-    subgraph VHost2["Virtual Host: /production"]
+    subgraph VHost2["Virtual Host: production"]
         E2[orders exchange]
         Q2[queue2]
     end
 
     App1[App connecting to /] --> VHost1
-    App2[App connecting to /production] --> VHost2
+    App2[App connecting to production] --> VHost2
 
     Note1[These are separate exchanges<br/>with the same name]
 ```
@@ -270,7 +270,7 @@ curl -u guest:guest http://localhost:15672/api/exchanges/%2F
 
 ```bash
 # Using rabbitmqadmin CLI tool
-rabbitmqadmin declare exchange name=orders type=topic durable=true
+rabbitmqadmin exchanges declare --name "orders" --type "topic" --durable true
 ```
 
 ### 6. Passive Declaration Failure
