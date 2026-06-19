@@ -46,7 +46,7 @@ First, install the required dependencies for subscriptions.
 # Install Apollo Server, Express, and subscription dependencies
 
 # graphql-ws is the modern WebSocket implementation for GraphQL
-npm install @apollo/server express graphql graphql-ws ws
+npm install @apollo/server @as-integrations/express5 express graphql graphql-ws ws graphql-subscriptions cors
 npm install @graphql-tools/schema
 ```
 
@@ -57,13 +57,14 @@ Here is a complete server setup with subscription support.
 ```javascript
 // server.js - Apollo Server with WebSocket subscriptions
 import { ApolloServer } from '@apollo/server';
-import { expressMiddleware } from '@apollo/server/express4';
+import { expressMiddleware } from '@as-integrations/express5';
 import { ApolloServerPluginDrainHttpServer } from '@apollo/server/plugin/drainHttpServer';
 import { createServer } from 'http';
 import express from 'express';
+import cors from 'cors';
 import { makeExecutableSchema } from '@graphql-tools/schema';
 import { WebSocketServer } from 'ws';
-import { useServer } from 'graphql-ws/lib/use/ws';
+import { useServer } from 'graphql-ws/use/ws';
 import { PubSub } from 'graphql-subscriptions';
 
 // Create a PubSub instance for publishing events
@@ -126,9 +127,9 @@ const resolvers = {
 
   Subscription: {
     messageCreated: {
-      // The subscribe function returns an AsyncIterator
+      // The subscribe function returns an AsyncIterableIterator
       // This iterator yields values whenever the event is published
-      subscribe: () => pubsub.asyncIterator(['MESSAGE_CREATED']),
+      subscribe: () => pubsub.asyncIterableIterator(['MESSAGE_CREATED']),
     },
   },
 };
@@ -176,7 +177,7 @@ const server = new ApolloServer({
 await server.start();
 
 // Apply middleware
-app.use('/graphql', express.json(), expressMiddleware(server));
+app.use('/graphql', cors(), express.json(), expressMiddleware(server));
 
 // Start listening
 const PORT = 4000;
@@ -258,7 +259,7 @@ const resolvers = {
       // Only matching events are sent to the subscriber
       subscribe: withFilter(
         // First argument: the base subscription
-        () => pubsub.asyncIterator(['MESSAGE_CREATED']),
+        () => pubsub.asyncIterableIterator(['MESSAGE_CREATED']),
         // Second argument: filter function
         // Returns true if the event should be sent to this subscriber
         (payload, variables) => {
@@ -271,7 +272,7 @@ const resolvers = {
 
     userStatusChanged: {
       subscribe: withFilter(
-        () => pubsub.asyncIterator(['USER_STATUS_CHANGED']),
+        () => pubsub.asyncIterableIterator(['USER_STATUS_CHANGED']),
         (payload, variables) => {
           // Only send updates for the requested user
           return payload.userStatusChanged.userId === variables.userId;
@@ -288,7 +289,7 @@ Implement authentication for WebSocket connections.
 
 ```javascript
 // auth-subscriptions.js - Authentication for subscriptions
-import { useServer } from 'graphql-ws/lib/use/ws';
+import { useServer } from 'graphql-ws/use/ws';
 import jwt from 'jsonwebtoken';
 
 // Configure graphql-ws with authentication
@@ -313,19 +314,25 @@ const serverCleanup = useServer(
         // Verify the JWT token
         const user = jwt.verify(token, process.env.JWT_SECRET);
 
-        // Return context that will be available in resolvers
-        // This is similar to context in HTTP requests
-        return { user };
+        // Store the authenticated user on the WebSocket connection
+        ctx.extra.user = user;
+        return true;
       } catch (error) {
         console.error('Invalid token:', error.message);
         return false;
       }
     },
 
+    // Add context that will be available in subscription resolvers
+    // This is similar to context in HTTP requests
+    context: (ctx) => {
+      return { user: ctx.extra.user };
+    },
+
     // Called for each subscription operation
     // Use this for authorization
-    onSubscribe: async (ctx, msg) => {
-      // ctx.extra contains the data returned from onConnect
+    onSubscribe: async (ctx, id, payload) => {
+      // ctx.extra contains the data stored during onConnect
       const user = ctx.extra?.user;
 
       if (!user) {
@@ -334,7 +341,7 @@ const serverCleanup = useServer(
       }
 
       // Log subscription for monitoring
-      console.log(`User ${user.id} subscribed to: ${msg.payload.operationName}`);
+      console.log(`User ${user.id} subscribed to: ${payload.operationName}`);
     },
 
     // Called when a client disconnects
@@ -419,7 +426,7 @@ Here is how to use subscriptions in a React component.
 ```jsx
 // ChatRoom.jsx - React component using subscriptions
 import { useQuery, useMutation, useSubscription, gql } from '@apollo/client';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 
 // Query to get existing messages
 const GET_MESSAGES = gql`
@@ -468,15 +475,17 @@ function ChatRoom({ currentUser }) {
 
   // Subscribe to new messages
   // The subscription automatically updates when new messages arrive
-  const { data: subscriptionData } = useSubscription(MESSAGE_SUBSCRIPTION, {
+  useSubscription(MESSAGE_SUBSCRIPTION, {
     // Called whenever a new message is received
     onData: ({ client, data }) => {
       // Update the cache with the new message
       // This triggers a re-render with the updated message list
-      const newMessage = data.data.messageCreated;
+      const newMessage = data.data?.messageCreated;
+      if (!newMessage) return;
 
       // Read current messages from cache
       const existingMessages = client.readQuery({ query: GET_MESSAGES });
+      if (!existingMessages) return;
 
       // Write updated messages to cache
       client.writeQuery({
@@ -613,7 +622,7 @@ const serverCleanup = useServer(
     onConnect: async (ctx) => {
       // Generate a unique connection ID
       const connectionId = crypto.randomUUID();
-      ctx.extra = { connectionId };
+      ctx.extra.connectionId = connectionId;
 
       // Track the connection
       activeConnections.set(connectionId, {
@@ -627,13 +636,13 @@ const serverCleanup = useServer(
       return true;
     },
 
-    onSubscribe: (ctx, msg) => {
+    onSubscribe: (ctx, id, payload) => {
       const connectionId = ctx.extra.connectionId;
       const connection = activeConnections.get(connectionId);
 
       if (connection) {
         connection.subscriptions.push({
-          operationName: msg.payload.operationName,
+          operationName: payload.operationName,
           subscribedAt: new Date(),
         });
       }
