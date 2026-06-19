@@ -10,7 +10,7 @@ Description: Learn how to implement real-time updates in GraphQL using subscript
 
 > Real-time functionality is essential for modern applications. GraphQL subscriptions provide a standardized way to push updates from server to client. This guide covers implementation patterns from basic setup to production-ready systems.
 
-Subscriptions enable bidirectional communication between client and server, perfect for chat applications, live notifications, and collaborative features.
+Subscriptions enable persistent communication between client and server, perfect for chat applications, live notifications, and collaborative features.
 
 ---
 
@@ -40,6 +40,9 @@ sequenceDiagram
 
 ```graphql
 # schema.graphql
+
+scalar DateTime
+scalar JSON
 
 type Subscription {
   # Subscribe to new messages in a chat room
@@ -72,6 +75,12 @@ enum PresenceStatus {
   OFFLINE
 }
 
+enum NotificationType {
+  INFO
+  WARNING
+  ERROR
+}
+
 type Notification {
   id: ID!
   type: NotificationType!
@@ -85,13 +94,15 @@ type Notification {
 
 ```javascript
 // server.js
-const { ApolloServer } = require('apollo-server-express');
-const { createServer } = require('http');
-const { execute, subscribe } = require('graphql');
-const { SubscriptionServer } = require('subscriptions-transport-ws');
-const { makeExecutableSchema } = require('@graphql-tools/schema');
-const express = require('express');
-const { PubSub } = require('graphql-subscriptions');
+import { ApolloServer } from '@apollo/server';
+import { expressMiddleware } from '@as-integrations/express5';
+import { ApolloServerPluginDrainHttpServer } from '@apollo/server/plugin/drainHttpServer';
+import { createServer } from 'http';
+import { WebSocketServer } from 'ws';
+import { useServer } from 'graphql-ws/use/ws';
+import { makeExecutableSchema } from '@graphql-tools/schema';
+import express from 'express';
+import { PubSub } from 'graphql-subscriptions';
 
 // Create PubSub instance for event handling
 const pubsub = new PubSub();
@@ -103,20 +114,53 @@ const schema = makeExecutableSchema({ typeDefs, resolvers });
 const app = express();
 const httpServer = createServer(app);
 
+// Create WebSocket subscription server
+const wsServer = new WebSocketServer({
+  server: httpServer,
+  path: '/graphql'
+});
+
+const serverCleanup = useServer(
+  {
+    schema,
+    // Handle connection authentication
+    onConnect: async (ctx) => {
+      console.log('Client connected');
+
+      const token = ctx.connectionParams?.authToken;
+      if (!token) {
+        throw new Error('Missing auth token');
+      }
+
+      try {
+        await verifyToken(token);
+      } catch (err) {
+        throw new Error('Invalid auth token');
+      }
+    },
+    context: async (ctx) => {
+      const token = ctx.connectionParams?.authToken;
+      const user = await verifyToken(token);
+      return { user, pubsub };
+    },
+    onDisconnect: () => {
+      console.log('Client disconnected');
+    }
+  },
+  wsServer
+);
+
 // Create Apollo Server
 const server = new ApolloServer({
   schema,
-  context: ({ req }) => ({
-    user: req.user,
-    pubsub
-  }),
   plugins: [
+    ApolloServerPluginDrainHttpServer({ httpServer }),
     {
       // Proper shutdown of subscription server
       async serverWillStart() {
         return {
           async drainServer() {
-            subscriptionServer.close();
+            await serverCleanup.dispose();
           }
         };
       }
@@ -124,47 +168,24 @@ const server = new ApolloServer({
   ]
 });
 
-// Create WebSocket subscription server
-const subscriptionServer = SubscriptionServer.create(
-  {
-    schema,
-    execute,
-    subscribe,
-    // Handle connection authentication
-    onConnect: async (connectionParams, webSocket) => {
-      console.log('Client connected');
-
-      // Authenticate WebSocket connection
-      const token = connectionParams.authToken;
-      if (token) {
-        try {
-          const user = await verifyToken(token);
-          return { user, pubsub };
-        } catch (err) {
-          throw new Error('Invalid auth token');
-        }
-      }
-
-      throw new Error('Missing auth token');
-    },
-    onDisconnect: (webSocket, context) => {
-      console.log('Client disconnected');
-    }
-  },
-  {
-    server: httpServer,
-    path: '/graphql'
-  }
-);
-
 // Start server
 async function startServer() {
   await server.start();
-  server.applyMiddleware({ app });
+
+  app.use(
+    '/graphql',
+    express.json(),
+    expressMiddleware(server, {
+      context: async ({ req }) => ({
+        user: req.user,
+        pubsub
+      })
+    })
+  );
 
   httpServer.listen(4000, () => {
-    console.log(`Server ready at http://localhost:4000${server.graphqlPath}`);
-    console.log(`Subscriptions ready at ws://localhost:4000${server.graphqlPath}`);
+    console.log('Server ready at http://localhost:4000/graphql');
+    console.log('Subscriptions ready at ws://localhost:4000/graphql');
   });
 }
 
@@ -193,7 +214,7 @@ const resolvers = {
     // Simple subscription - receives all events
     userPresenceChanged: {
       subscribe: (_, __, { pubsub }) => {
-        return pubsub.asyncIterator([EVENTS.USER_PRESENCE_CHANGED]);
+        return pubsub.asyncIterableIterator([EVENTS.USER_PRESENCE_CHANGED]);
       }
     },
 
@@ -201,7 +222,7 @@ const resolvers = {
     messageAdded: {
       subscribe: withFilter(
         // Iterator function - creates the subscription
-        (_, __, { pubsub }) => pubsub.asyncIterator([EVENTS.MESSAGE_ADDED]),
+        (_, __, { pubsub }) => pubsub.asyncIterableIterator([EVENTS.MESSAGE_ADDED]),
 
         // Filter function - determines if event should be sent to subscriber
         (payload, variables) => {
@@ -214,7 +235,7 @@ const resolvers = {
     // User-specific subscription
     notificationReceived: {
       subscribe: withFilter(
-        (_, __, { pubsub }) => pubsub.asyncIterator([EVENTS.NOTIFICATION_RECEIVED]),
+        (_, __, { pubsub }) => pubsub.asyncIterableIterator([EVENTS.NOTIFICATION_RECEIVED]),
 
         // Only send notifications to the intended user
         (payload, variables, context) => {
@@ -287,6 +308,12 @@ flowchart TD
 const { RedisPubSub } = require('graphql-redis-subscriptions');
 const Redis = require('ioredis');
 
+const EVENTS = {
+  MESSAGE_ADDED: 'MESSAGE_ADDED',
+  USER_PRESENCE_CHANGED: 'USER_PRESENCE_CHANGED',
+  NOTIFICATION_RECEIVED: 'NOTIFICATION_RECEIVED'
+};
+
 // Create Redis clients for pub/sub
 // Redis requires separate connections for publishing and subscribing
 const options = {
@@ -315,12 +342,13 @@ module.exports = { pubsub, EVENTS };
 ```javascript
 // resolvers.js
 const { pubsub, EVENTS } = require('./pubsub');
+const { withFilter } = require('graphql-subscriptions');
 
 const resolvers = {
   Subscription: {
     messageAdded: {
       subscribe: withFilter(
-        () => pubsub.asyncIterator([EVENTS.MESSAGE_ADDED]),
+        () => pubsub.asyncIterator(EVENTS.MESSAGE_ADDED),
         (payload, variables) => payload.messageAdded.roomId === variables.roomId
       )
     }
@@ -409,7 +437,8 @@ export default client;
 
 ```javascript
 // ChatRoom.jsx
-import { useSubscription, useMutation, useQuery, gql } from '@apollo/client';
+import { gql } from '@apollo/client';
+import { useSubscription, useMutation, useQuery } from '@apollo/client/react';
 import { useState, useEffect } from 'react';
 
 const MESSAGES_QUERY = gql`
@@ -456,17 +485,21 @@ function ChatRoom({ roomId }) {
 
   // Fetch initial messages
   const { data, loading } = useQuery(MESSAGES_QUERY, {
-    variables: { roomId },
-    onCompleted: (data) => {
-      setMessages(data.messages);
-    }
+    variables: { roomId }
   });
 
+  useEffect(() => {
+    if (data?.messages) {
+      setMessages(data.messages);
+    }
+  }, [data]);
+
   // Subscribe to new messages
-  const { data: subscriptionData } = useSubscription(MESSAGE_SUBSCRIPTION, {
+  useSubscription(MESSAGE_SUBSCRIPTION, {
     variables: { roomId },
-    onSubscriptionData: ({ subscriptionData }) => {
-      const newMsg = subscriptionData.data.messageAdded;
+    onData: ({ data }) => {
+      const newMsg = data.data?.messageAdded;
+      if (!newMsg) return;
 
       // Add new message to the list
       setMessages((prev) => {
@@ -513,7 +546,7 @@ function ChatRoom({ roomId }) {
         <input
           value={newMessage}
           onChange={(e) => setNewMessage(e.target.value)}
-          onKeyPress={(e) => e.key === 'Enter' && handleSend()}
+          onKeyDown={(e) => e.key === 'Enter' && handleSend()}
           placeholder="Type a message..."
         />
         <button onClick={handleSend}>Send</button>
@@ -531,7 +564,9 @@ function ChatRoom({ roomId }) {
 
 ```javascript
 // Using subscribeToMore for automatic cache updates
-import { useQuery, gql } from '@apollo/client';
+import { gql } from '@apollo/client';
+import { useQuery } from '@apollo/client/react';
+import { useEffect } from 'react';
 
 const NOTIFICATIONS_QUERY = gql`
   query GetNotifications {
@@ -716,17 +751,15 @@ async function trackActivity(activity) {
 
 ```javascript
 // subscriptionServer.js
-const { SubscriptionServer } = require('subscriptions-transport-ws');
-const jwt = require('jsonwebtoken');
+import { useServer } from 'graphql-ws/use/ws';
+import jwt from 'jsonwebtoken';
 
-const subscriptionServer = SubscriptionServer.create({
+const serverCleanup = useServer({
   schema,
-  execute,
-  subscribe,
 
-  onConnect: async (connectionParams, webSocket, context) => {
+  onConnect: async (ctx) => {
     // Extract token from connection params
-    const token = connectionParams.authToken || connectionParams.Authorization;
+    const token = ctx.connectionParams?.authToken || ctx.connectionParams?.Authorization;
 
     if (!token) {
       throw new Error('Authentication required');
@@ -750,14 +783,8 @@ const subscriptionServer = SubscriptionServer.create({
         throw new Error('User is banned');
       }
 
+      ctx.extra.user = user;
       console.log(`User ${user.id} connected via WebSocket`);
-
-      // Return context that will be available in subscription resolvers
-      return {
-        user,
-        pubsub,
-        db
-      };
 
     } catch (error) {
       console.error('WebSocket auth failed:', error.message);
@@ -765,24 +792,30 @@ const subscriptionServer = SubscriptionServer.create({
     }
   },
 
-  onDisconnect: async (webSocket, context) => {
-    // Get context from connection
-    const ctx = await context.initPromise;
+  context: async (ctx) => {
+    return {
+      user: ctx.extra.user,
+      pubsub,
+      db
+    };
+  },
 
-    if (ctx?.user) {
-      console.log(`User ${ctx.user.id} disconnected`);
-
+  onDisconnect: async (ctx) => {
+    if (ctx.extra.user) {
+      console.log(`User ${ctx.extra.user.id} disconnected`);
       // Update presence
-      await handleUserDisconnect(ctx.user.id);
+      await handleUserDisconnect(ctx.extra.user.id);
     }
   }
-});
+}, wsServer);
 ```
 
 ### Permission-Based Subscriptions
 
 ```javascript
 // resolvers.js
+const { GraphQLError } = require('graphql');
+
 const resolvers = {
   Subscription: {
     // Check permissions before subscribing
@@ -797,11 +830,13 @@ const resolvers = {
         });
 
         if (!membership) {
-          throw new ForbiddenError('You do not have access to this channel');
+          throw new GraphQLError('You do not have access to this channel', {
+            extensions: { code: 'FORBIDDEN' }
+          });
         }
 
         // Create filtered subscription
-        const iterator = pubsub.asyncIterator([EVENTS.CHANNEL_MESSAGE]);
+        const iterator = pubsub.asyncIterableIterator([EVENTS.CHANNEL_MESSAGE]);
 
         // Filter and yield only relevant messages
         for await (const event of iterator) {
@@ -816,10 +851,12 @@ const resolvers = {
     systemMetrics: {
       subscribe: (_, __, { user, pubsub }) => {
         if (user.role !== 'ADMIN') {
-          throw new ForbiddenError('Admin access required');
+          throw new GraphQLError('Admin access required', {
+            extensions: { code: 'FORBIDDEN' }
+          });
         }
 
-        return pubsub.asyncIterator([EVENTS.SYSTEM_METRICS]);
+        return pubsub.asyncIterableIterator([EVENTS.SYSTEM_METRICS]);
       }
     }
   }
@@ -834,14 +871,12 @@ const resolvers = {
 
 ```javascript
 // Error handling in subscription server
-const subscriptionServer = SubscriptionServer.create({
+const serverCleanup = useServer({
   schema,
-  execute,
-  subscribe,
 
-  onConnect: async (connectionParams) => {
+  onConnect: async (ctx) => {
     try {
-      return await authenticate(connectionParams);
+      ctx.extra.user = await authenticate(ctx.connectionParams);
     } catch (error) {
       // Log and rethrow with user-friendly message
       console.error('Connection error:', error);
@@ -849,23 +884,13 @@ const subscriptionServer = SubscriptionServer.create({
     }
   },
 
-  // Format errors before sending to client
-  onOperation: (message, params, webSocket) => {
+  context: async (ctx) => {
     return {
-      ...params,
-      formatError: (error) => {
-        console.error('Subscription error:', error);
-
-        // Hide internal errors in production
-        if (process.env.NODE_ENV === 'production') {
-          return new Error('An error occurred');
-        }
-
-        return error;
-      }
+      user: ctx.extra.user,
+      pubsub
     };
   }
-});
+}, wsServer);
 ```
 
 ### Client-Side Error Handling
@@ -873,26 +898,28 @@ const subscriptionServer = SubscriptionServer.create({
 ```javascript
 // React component with error handling
 function ChatSubscription({ roomId }) {
-  const { data, loading, error } = useSubscription(MESSAGE_SUBSCRIPTION, {
-    variables: { roomId },
-    onError: (error) => {
-      console.error('Subscription error:', error);
+  const { data, loading, error, restart } = useSubscription(
+    MESSAGE_SUBSCRIPTION,
+    { variables: { roomId } }
+  );
 
-      // Handle specific errors
-      if (error.message.includes('not authorized')) {
-        // Redirect to login
-        window.location.href = '/login';
-      }
-    },
-    // Reconnect on error
-    shouldResubscribe: true
-  });
+  useEffect(() => {
+    if (!error) return;
+
+    console.error('Subscription error:', error);
+
+    // Handle specific errors
+    if (error.message.includes('not authorized')) {
+      // Redirect to login
+      window.location.href = '/login';
+    }
+  }, [error]);
 
   if (error) {
     return (
       <div className="error">
         <p>Connection lost. Reconnecting...</p>
-        <button onClick={() => window.location.reload()}>
+        <button onClick={restart}>
           Retry
         </button>
       </div>
