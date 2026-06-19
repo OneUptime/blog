@@ -10,7 +10,7 @@ Description: Learn how to implement idempotency keys in Go APIs to prevent dupli
 
 Network failures happen. Clients retry requests. Without proper safeguards, your API might process the same payment twice, create duplicate orders, or send multiple emails for a single action. Idempotency keys solve this problem by ensuring that repeated requests with the same key produce the same result without executing the operation multiple times.
 
-This pattern is essential for any API that handles money, creates resources, or triggers side effects. Stripe, PayPal, and most payment processors require idempotency keys for exactly this reason.
+This pattern is essential for any API that handles money, creates resources, or triggers side effects. Stripe, PayPal, and many payment processors support idempotency keys for exactly this reason.
 
 ---
 
@@ -106,9 +106,12 @@ func (s *MemoryStore) SetProcessing(key string) (bool, error) {
     s.mu.Lock()
     defer s.mu.Unlock()
 
-    // Check if key already exists
-    if _, exists := s.responses[key]; exists {
-        return false, nil // Key already being processed or completed
+    // Check if key already exists and is still valid
+    if resp, exists := s.responses[key]; exists {
+        if time.Since(resp.CreatedAt) <= s.ttl {
+            return false, nil // Key already being processed or completed
+        }
+        delete(s.responses, key)
     }
 
     // Mark as processing with empty response
@@ -159,7 +162,7 @@ import (
 )
 
 const (
-    // HeaderIdempotencyKey is the standard header name
+    // HeaderIdempotencyKey is the commonly used header name
     HeaderIdempotencyKey = "Idempotency-Key"
     // HeaderIdempotencyReplayed indicates a cached response
     HeaderIdempotencyReplayed = "Idempotency-Replayed"
@@ -180,14 +183,22 @@ type responseWriter struct {
     http.ResponseWriter
     statusCode int
     body       bytes.Buffer
+    wroteHeader bool
 }
 
 func (rw *responseWriter) WriteHeader(code int) {
+    if rw.wroteHeader {
+        return
+    }
+    rw.wroteHeader = true
     rw.statusCode = code
     rw.ResponseWriter.WriteHeader(code)
 }
 
 func (rw *responseWriter) Write(b []byte) (int, error) {
+    if !rw.wroteHeader {
+        rw.WriteHeader(http.StatusOK)
+    }
     rw.body.Write(b) // Capture the response body
     return rw.ResponseWriter.Write(b)
 }
@@ -283,9 +294,9 @@ func (m *Middleware) replayResponse(w http.ResponseWriter, resp *Response) {
 
 ---
 
-## Production-Ready Redis Store
+## Redis Store for Distributed Deployments
 
-For production systems, you need distributed storage. Redis is the natural choice for this - it provides atomic operations, automatic expiration, and scales horizontally.
+For multi-instance systems, you need distributed storage. Redis is a common choice for this - it provides atomic operations, automatic expiration, and scales horizontally.
 
 ```go
 // idempotency/redis_store.go
@@ -386,6 +397,7 @@ import (
     "net/http"
     "time"
 
+    "github.com/google/uuid"
     "github.com/redis/go-redis/v9"
     "yourapp/idempotency"
 )
@@ -441,6 +453,10 @@ func main() {
 func processPayment(amount int64, currency string) string {
     // Your actual payment processing logic
     return "pay_" + generateID()
+}
+
+func generateID() string {
+    return uuid.New().String()
 }
 ```
 
@@ -507,8 +523,6 @@ func (c *APIClient) CreatePayment(amount int64, currency string) (*PaymentRespon
             lastErr = err
             continue // Network error - retry
         }
-        defer resp.Body.Close()
-
         // Check if response was replayed from cache
         if resp.Header.Get("Idempotency-Replayed") == "true" {
             fmt.Println("Response was replayed from idempotency cache")
@@ -519,24 +533,29 @@ func (c *APIClient) CreatePayment(amount int64, currency string) (*PaymentRespon
         case http.StatusCreated, http.StatusOK:
             var result PaymentResponse
             if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+                resp.Body.Close()
                 return nil, err
             }
+            resp.Body.Close()
             return &result, nil
 
         case http.StatusConflict:
             // Another request is processing - wait and retry
+            resp.Body.Close()
             lastErr = fmt.Errorf("request in progress")
             continue
 
         case http.StatusInternalServerError, http.StatusServiceUnavailable:
             // Server error - retry with same idempotency key
             body, _ := io.ReadAll(resp.Body)
+            resp.Body.Close()
             lastErr = fmt.Errorf("server error: %s", body)
             continue
 
         default:
             // Client error - don't retry
             body, _ := io.ReadAll(resp.Body)
+            resp.Body.Close()
             return nil, fmt.Errorf("request failed: %d - %s", resp.StatusCode, body)
         }
     }
@@ -573,13 +592,13 @@ type PaymentResponse struct {
 
 **TTL Selection**: Choose a TTL that balances storage costs with retry windows. 24 hours works well for most APIs. Payment systems might use 48-72 hours to handle weekend edge cases.
 
-**Key Generation**: Clients should generate UUIDs for idempotency keys. Alternatively, use a hash of the request parameters, but this requires careful consideration of which fields to include.
+**Key Generation**: Clients should generate UUIDs for idempotency keys. Servers should also reject reuse of the same key with a different request payload, often by storing a request fingerprint alongside the response.
 
 **Error Handling**: Store error responses too. If a request fails validation, retries should get the same validation error rather than potentially succeeding if data changed.
 
 **Concurrent Requests**: The SetProcessing lock prevents duplicate work when two retries arrive simultaneously. Return 409 Conflict so clients know to wait.
 
-**Scope**: Apply idempotency to all mutating operations (POST, PUT, DELETE). GET requests are naturally idempotent and don't need this protection.
+**Scope**: Apply idempotency to non-idempotent mutating operations such as POST and PATCH. PUT and DELETE are idempotent by HTTP semantics, but an application may still choose to accept keys for duplicate-response replay or extra safety around side effects.
 
 ---
 
@@ -634,9 +653,9 @@ func TestIdempotencyMiddleware(t *testing.T) {
 
 Idempotency keys are essential for building reliable APIs. They protect against duplicate operations during network failures, client retries, and distributed system edge cases. The implementation is straightforward - store request results keyed by a client-provided identifier and return cached results for duplicate keys.
 
-Start with the in-memory store for development, then move to Redis for production. The middleware approach keeps your handlers clean while providing automatic idempotency for all mutating endpoints.
+Start with the in-memory store for development, then move to a distributed store such as Redis for multi-instance deployments. The middleware approach keeps your handlers clean while providing automatic idempotency for endpoints that need it.
 
-The patterns shown here mirror what Stripe, PayPal, and other financial APIs use in production. Your clients will thank you when their retry logic just works without creating duplicate charges.
+The patterns shown here follow the same broad approach used by Stripe, PayPal, and other financial APIs. Your clients will thank you when their retry logic just works without creating duplicate charges.
 
 ---
 
