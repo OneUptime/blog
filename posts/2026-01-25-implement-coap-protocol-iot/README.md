@@ -114,6 +114,11 @@ class TemperatureResource(resource.Resource):
                 logger.info(f"Temperature set to {self.temperature}")
                 return aiocoap.Message(code=aiocoap.CHANGED)
 
+            return aiocoap.Message(
+                code=aiocoap.BAD_REQUEST,
+                payload=b"Missing 'value'"
+            )
+
         except (json.JSONDecodeError, ValueError) as e:
             return aiocoap.Message(
                 code=aiocoap.BAD_REQUEST,
@@ -374,6 +379,7 @@ class CoAPClient:
                     path = link.split(";")[0].strip("<>")
                     resources.append(path)
                 return resources
+            return []
 
         except Exception as e:
             logger.error(f"Discovery error: {e}")
@@ -504,13 +510,14 @@ class ObserveClient:
         request = aiocoap.Message(code=aiocoap.GET, uri=uri, observe=0)
 
         observation_request = self.protocol.request(request)
+        self.observation = observation_request.observation
 
         # Handle the initial response
         response = await observation_request.response
         callback(response)
 
         # Handle subsequent notifications
-        async for notification in observation_request.observation:
+        async for notification in self.observation:
             callback(notification)
 
     async def stop_observation(self):
@@ -588,10 +595,8 @@ async def secure_client():
     client_credentials.load_from_dict({
         "coaps://192.168.1.100/*": {
             "dtls": {
-                "psk": {
-                    "identity": DEVICE_IDENTITY.decode(),
-                    "key": PRE_SHARED_KEY.hex()
-                }
+                "psk": PRE_SHARED_KEY,
+                "client-identity": DEVICE_IDENTITY
             }
         }
     })
@@ -607,7 +612,7 @@ async def secure_client():
     print(f"Secure response: {response.payload.decode()}")
 
 
-def setup_secure_server():
+async def setup_secure_server(root):
     """Configure CoAP server with DTLS"""
     # Server credentials
     server_credentials = credentials.CredentialsMap()
@@ -615,14 +620,18 @@ def setup_secure_server():
     server_credentials.load_from_dict({
         ":client": {
             "dtls": {
-                "psk": {
-                    DEVICE_IDENTITY.decode(): PRE_SHARED_KEY.hex()
-                }
+                "psk": PRE_SHARED_KEY,
+                "client-identity": DEVICE_IDENTITY
             }
         }
     })
 
-    return server_credentials
+    return await aiocoap.Context.create_server_context(
+        root,
+        bind=("::", 5684),
+        server_credentials=server_credentials,
+        transports=["tinydtls_server"]
+    )
 ```
 
 ---
@@ -689,25 +698,33 @@ Bridge CoAP devices to HTTP/REST APIs:
 # coap_gateway.py
 # HTTP to CoAP gateway
 
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
+from typing import Optional
 import asyncio
 import aiocoap
 import json
 
-app = FastAPI(title="CoAP Gateway")
-
 # CoAP client context
 coap_context = None
 
-class DeviceRequest(BaseModel):
-    value: float = None
-    state: str = None
 
-@app.on_event("startup")
-async def startup():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     global coap_context
     coap_context = await aiocoap.Context.create_client_context()
+    try:
+        yield
+    finally:
+        await coap_context.shutdown()
+
+
+app = FastAPI(title="CoAP Gateway", lifespan=lifespan)
+
+class DeviceRequest(BaseModel):
+    value: Optional[float] = None
+    state: Optional[str] = None
 
 @app.get("/devices/{device_ip}/temperature")
 async def get_temperature(device_ip: str):
