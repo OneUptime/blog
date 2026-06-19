@@ -30,7 +30,7 @@ flowchart LR
 
 **Option 1: Allow All (Default)** - Sidecars pass through traffic to unknown destinations. Simple but you lose visibility.
 
-**Option 2: Registry Only** - Sidecars only allow traffic to services explicitly defined in the mesh registry. This requires ServiceEntry resources for external services.
+**Option 2: Registry Only** - Sidecars drop traffic to unknown destinations unless those destinations are explicitly defined in the mesh registry. This requires ServiceEntry resources for external services, but it is not a replacement for a firewall or Kubernetes NetworkPolicy.
 
 **Option 3: Egress Gateway** - Route all external traffic through a dedicated gateway for centralized control, monitoring, and policy enforcement.
 
@@ -77,7 +77,7 @@ Here is a ServiceEntry for accessing an external API:
 
 ```yaml
 # external-api-service-entry.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-api
@@ -101,7 +101,7 @@ For services that need HTTP and HTTPS access:
 
 ```yaml
 # multi-port-service-entry.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: github-api
@@ -190,7 +190,7 @@ Here is the complete configuration for routing external API traffic through the 
 
 ```yaml
 # egress-gateway-config.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-api
@@ -201,12 +201,12 @@ spec:
   location: MESH_EXTERNAL
   ports:
     - number: 443
-      name: https
-      protocol: HTTPS
+      name: tls
+      protocol: TLS
   resolution: DNS
 ---
 # Gateway configuration for the egress gateway to handle external traffic
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: external-api-gateway
@@ -218,32 +218,27 @@ spec:
   servers:
     - port:
         number: 443
-        name: https
-        protocol: HTTPS
+        name: tls
+        protocol: TLS
       hosts:
         - api.external-service.com
       tls:
         # Passthrough mode - the gateway does not terminate TLS
         mode: PASSTHROUGH
 ---
-# DestinationRule for TLS origination at the egress gateway
-apiVersion: networking.istio.io/v1beta1
+# DestinationRule for routing sidecar traffic to the egress gateway
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
-  name: external-api-dr
+  name: external-api-egressgateway
   namespace: production
 spec:
-  host: api.external-service.com
-  trafficPolicy:
-    portLevelSettings:
-      - port:
-          number: 443
-        tls:
-          mode: SIMPLE
-          sni: api.external-service.com
+  host: istio-egressgateway.istio-system.svc.cluster.local
+  subsets:
+    - name: external-api
 ---
 # VirtualService to route traffic through the egress gateway
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: external-api-vs
@@ -266,6 +261,7 @@ spec:
       route:
         - destination:
             host: istio-egressgateway.istio-system.svc.cluster.local
+            subset: external-api
             port:
               number: 443
     # Route from egress gateway to external service
@@ -298,32 +294,30 @@ Sometimes you need to allow access to IP ranges rather than hostnames. This is c
 
 ```yaml
 # ip-range-service-entry.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: corporate-network
   namespace: production
 spec:
   hosts:
-    # Use a wildcard for IP-based services
-    - "*.corp.internal"
-  # Specify the IP addresses or CIDR ranges
+    # The host is used by VirtualServices and DestinationRules. For raw TCP
+    # access, traffic is matched by the CIDR ranges below.
+    - corporate-network.local
+  # Specify the virtual IP addresses or CIDR ranges that identify this service
   addresses:
     - 10.0.0.0/8
     - 172.16.0.0/12
   location: MESH_EXTERNAL
   ports:
     - number: 443
-      name: https
-      protocol: HTTPS
+      name: tcp-443
+      protocol: TCP
     - number: 80
-      name: http
-      protocol: HTTP
-  # Use STATIC resolution when providing explicit addresses
-  resolution: STATIC
-  endpoints:
-    - address: 10.0.1.100
-    - address: 10.0.1.101
+      name: tcp-80
+      protocol: TCP
+  # Use NONE when you want the application to connect to the original IP
+  resolution: NONE
 ```
 
 ## Monitoring Egress Traffic
@@ -354,11 +348,11 @@ Query Prometheus for egress metrics:
 kubectl port-forward -n istio-system svc/prometheus 9090:9090
 ```
 
-Then query for outbound request metrics:
+Then query for outbound TCP metrics when using TLS passthrough:
 
 ```promql
-# Total outbound requests through egress gateway
-istio_requests_total{destination_service="api.external-service.com", reporter="source"}
+# Total outbound TCP connections opened through the egress gateway
+istio_tcp_connections_opened_total{destination_service="api.external-service.com", reporter="source"}
 ```
 
 ## Troubleshooting Egress Issues
@@ -382,7 +376,7 @@ Common issues and fixes:
 
 **Connection refused through egress gateway**: Check Gateway and VirtualService configurations match the destination host and port.
 
-**TLS handshake failures**: Verify the SNI in DestinationRule matches the external service hostname.
+**TLS handshake failures**: Verify the SNI host in the VirtualService matches the external service hostname.
 
 **DNS resolution failures**: Ensure `resolution: DNS` is set and your cluster can resolve external hostnames.
 
