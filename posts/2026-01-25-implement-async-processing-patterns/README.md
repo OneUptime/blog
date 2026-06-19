@@ -70,7 +70,7 @@ async function sendEmailAsync(to, subject, body, options = {}) {
       timestamp: Date.now()
     },
     {
-      priority: options.priority || 0,    // Lower = higher priority
+      priority: options.priority,         // 1 is highest; larger numbers are lower priority
       delay: options.delay || 0,          // Delay before processing
       jobId: options.idempotencyKey       // Prevent duplicate jobs
     }
@@ -302,9 +302,6 @@ class OrderProcessor extends EventEmitter {
     this.on('order:created', this.updateInventory.bind(this));
     this.on('order:created', this.notifyWarehouse.bind(this));
     this.on('order:created', this.trackAnalytics.bind(this));
-
-    this.on('order:shipped', this.sendShippingNotification.bind(this));
-    this.on('order:shipped', this.updateOrderStatus.bind(this));
   }
 
   async createOrder(orderData) {
@@ -379,6 +376,8 @@ app.post('/api/orders', async (req, res) => {
 
 ### Pub/Sub with Redis
 
+Redis Pub/Sub provides at-most-once delivery and does not persist messages. Use Redis Streams or a message queue if events must survive subscriber disconnects or be retried reliably.
+
 ```javascript
 const Redis = require('ioredis');
 
@@ -414,6 +413,11 @@ app.post('/api/users', async (req, res) => {
 const subscriber = new Redis();
 
 subscriber.subscribe('user-events', 'order-events', (err, count) => {
+  if (err) {
+    console.error('Failed to subscribe:', err.message);
+    return;
+  }
+
   console.log(`Subscribed to ${count} channels`);
 });
 
@@ -545,6 +549,6 @@ Async processing improves user experience and system scalability by moving slow 
 | Simple queue | Low | Single-server applications |
 | Message queue (Bull/Celery) | Medium | Distributed systems, retries |
 | Event-driven | Medium | Multiple handlers per event |
-| Pub/Sub | High | Microservices, real-time updates |
+| Pub/Sub | High | Microservices, real-time updates where best-effort delivery is acceptable |
 
 Choose the simplest pattern that meets your needs. Start with a basic queue and evolve to more complex patterns as your requirements grow. Always implement proper error handling, retries, and monitoring for background tasks since failures are harder to detect than synchronous errors.
