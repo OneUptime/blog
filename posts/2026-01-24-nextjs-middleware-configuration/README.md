@@ -8,7 +8,7 @@ Description: Learn how to configure and use middleware in Next.js 13+ for authen
 
 ---
 
-Next.js Middleware runs before a request is completed, allowing you to modify the response by rewriting, redirecting, modifying headers, or responding directly. Middleware runs at the edge, making it fast and efficient for tasks like authentication, A/B testing, and internationalization.
+Next.js Middleware runs before a request is completed, allowing you to modify the response by rewriting, redirecting, modifying headers, or responding directly. In Next.js 13-15, Middleware defaults to the Edge Runtime, making it fast and efficient for tasks like authentication, A/B testing, and internationalization. In Next.js 16, Middleware was renamed to Proxy with the same core functionality.
 
 ## Understanding Middleware Flow
 
@@ -47,7 +47,7 @@ export function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     // Match all paths except static files and api routes
-    '/((?!_next/static|_next/image|favicon.ico).*)',
+    '/((?!api|_next/static|_next/image|favicon.ico).*)',
   ],
 };
 ```
@@ -297,7 +297,7 @@ export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Rewrite API versioning (URL stays /api/users, serves /api/v2/users)
-  if (pathname.startsWith('/api/') && !pathname.includes('/v')) {
+  if (pathname.startsWith('/api/') && !/^\/api\/v\d+(\/|$)/.test(pathname)) {
     const newPath = pathname.replace('/api/', '/api/v2/');
     return NextResponse.rewrite(new URL(newPath, request.url));
   }
@@ -538,6 +538,7 @@ export const config = {
 // middleware.ts
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { geolocation } from '@vercel/functions';
 
 // Country code to region mapping
 const regionMapping: Record<string, string> = {
@@ -553,9 +554,8 @@ const regionMapping: Record<string, string> = {
 };
 
 export function middleware(request: NextRequest) {
-  // Get geo information (available on Vercel Edge)
-  const country = request.geo?.country || 'US';
-  const city = request.geo?.city || 'Unknown';
+  // Get geo information (available on Vercel)
+  const { country = 'US' } = geolocation(request);
   const region = regionMapping[country] || 'na';
 
   // Clone URL for modifications
@@ -671,7 +671,7 @@ export const config = {
 1. **Keep middleware lightweight** since it runs on every matched request
 2. **Use proper matchers** to avoid running middleware unnecessarily
 3. **Handle errors gracefully** to prevent breaking the user experience
-4. **Use Edge-compatible libraries** since middleware runs on the Edge Runtime
+4. **Use Edge-compatible libraries** when running middleware on the Edge Runtime
 5. **Cache expensive operations** like token verification when possible
 6. **Test thoroughly** with different scenarios and edge cases
 
