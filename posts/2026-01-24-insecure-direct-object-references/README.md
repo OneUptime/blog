@@ -65,7 +65,7 @@ app.get('/api/invoices/:id', async (req, res) => {
 @app.route('/api/documents/<int:doc_id>')
 def get_document(doc_id):
     # Directly fetches document without checking ownership
-    document = Document.query.get(doc_id)
+    document = db.session.get(Document, doc_id)
 
     if not document:
         return jsonify({'error': 'Document not found'}), 404
@@ -91,7 +91,7 @@ app.get('/api/invoices/:id', authenticate, async (req, res) => {
   }
 
   // Verify the invoice belongs to the requesting user
-  if (invoice.userId !== userId) {
+  if (String(invoice.userId) !== String(userId)) {
     // Return 404 to avoid revealing that the resource exists
     return res.status(404).json({ error: 'Invoice not found' });
   }
@@ -125,11 +125,11 @@ app.get('/api/invoices/:id', authenticate, async (req, res) => {
 ### Solution 3: Use UUIDs Instead of Sequential IDs
 
 ```javascript
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID } = require('node:crypto');
 
 // Generate UUID when creating resources
 const invoice = new Invoice({
-  id: uuidv4(),  // e.g., '550e8400-e29b-41d4-a716-446655440000'
+  id: randomUUID(),  // e.g., '550e8400-e29b-41d4-a716-446655440000'
   userId: req.user.id,
   amount: req.body.amount
 });
@@ -168,16 +168,19 @@ async function checkAccess(resourceType, resourceId, userId, userRole) {
   switch (resourceType) {
     case 'invoice':
       const invoice = await Invoice.findById(resourceId);
-      return invoice && invoice.userId === userId;
+      return invoice && String(invoice.userId) === String(userId);
 
     case 'document':
       const doc = await Document.findById(resourceId);
       // Check ownership or shared access
-      return doc && (doc.ownerId === userId || doc.sharedWith.includes(userId));
+      return doc && (
+        String(doc.ownerId) === String(userId) ||
+        doc.sharedWith.some(sharedUserId => String(sharedUserId) === String(userId))
+      );
 
     case 'order':
       const order = await Order.findById(resourceId);
-      return order && order.customerId === userId;
+      return order && String(order.customerId) === String(userId);
 
     default:
       return false;
@@ -194,7 +197,8 @@ app.get('/api/orders/:id', authenticate, authorize('order'), getOrder);
 
 ```python
 from functools import wraps
-from flask import g, jsonify
+from flask import g, jsonify, request
+from sqlalchemy import select
 
 def authorize_resource(resource_model, owner_field='user_id'):
     """Decorator to verify resource ownership."""
@@ -204,10 +208,12 @@ def authorize_resource(resource_model, owner_field='user_id'):
             resource_id = kwargs.get('id') or kwargs.get('resource_id')
 
             # Query with ownership constraint
-            resource = resource_model.query.filter_by(
-                id=resource_id,
-                **{owner_field: g.current_user.id}
-            ).first()
+            resource = db.session.execute(
+                select(resource_model).filter(
+                    resource_model.id == resource_id,
+                    getattr(resource_model, owner_field) == g.current_user.id
+                )
+            ).scalar_one_or_none()
 
             if not resource:
                 return jsonify({'error': 'Resource not found'}), 404
