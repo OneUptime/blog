@@ -41,10 +41,10 @@ Not every test belongs in your regression suite. Focus on tests that cover:
 4. **Integration points** - Where systems connect and data flows between services
 
 ```javascript
-// Example: Tagging tests for regression suite inclusion
+// payment.regression.test.js
 describe('Payment Processing', () => {
   // Critical path - always include in regression
-  it('should process credit card payment successfully', { tags: ['regression', 'critical'] }, async () => {
+  it('should process credit card payment successfully', async () => {
     const payment = await processPayment({
       amount: 100,
       currency: 'USD',
@@ -56,7 +56,7 @@ describe('Payment Processing', () => {
   });
 
   // Edge case - include in full regression, exclude from smoke tests
-  it('should handle expired card gracefully', { tags: ['regression'] }, async () => {
+  it('should handle expired card gracefully', async () => {
     const payment = await processPayment({
       amount: 100,
       card: { expired: true }
@@ -123,8 +123,6 @@ Identify which tests are affected by code changes:
 ```python
 # select_tests.py - select tests based on changed files
 import subprocess
-import json
-from pathlib import Path
 
 def get_changed_files():
     """Get list of files changed in current branch"""
@@ -133,7 +131,7 @@ def get_changed_files():
         capture_output=True,
         text=True
     )
-    return result.stdout.strip().split('\n')
+    return [line for line in result.stdout.splitlines() if line]
 
 def load_test_mapping():
     """Load mapping of source files to test files"""
@@ -340,11 +338,9 @@ jobs:
 Flaky tests erode confidence in your regression suite. Identify and fix them:
 
 ```javascript
-// jest.config.js - retry flaky tests
+// jest.config.js - retry flaky tests and log retries
 module.exports = {
-  // Retry failed tests up to 2 times
-  // Only use this temporarily while fixing flakiness
-  // retryTimes: 2,
+  setupFilesAfterEnv: ['./jest.setup.js'],
 
   // Log flaky tests for investigation
   reporters: [
@@ -352,6 +348,13 @@ module.exports = {
     ['./flaky-reporter.js', { outputFile: 'flaky-tests.json' }]
   ]
 };
+```
+
+```javascript
+// jest.setup.js
+// Retry failed tests up to 2 times
+// Only use this temporarily while fixing flakiness
+jest.retryTimes(2);
 ```
 
 ```javascript
@@ -363,13 +366,13 @@ class FlakyReporter {
   }
 
   onTestCaseResult(test, testCaseResult) {
-    // Track tests that passed after retry
-    if (testCaseResult.numPassingAsserts > 0 &&
-        testCaseResult.failureMessages.length > 0) {
+    // Track tests that needed at least one retry
+    if (testCaseResult.invocations > 1) {
       this.results.push({
         name: testCaseResult.fullName,
         file: test.path,
-        retries: testCaseResult.failureMessages.length,
+        retries: testCaseResult.invocations - 1,
+        retryReasons: testCaseResult.retryReasons || [],
         timestamp: new Date().toISOString()
       });
     }
@@ -404,9 +407,11 @@ describe.skip('Quarantined Tests', () => {
     // Flaky due to timing issues
   });
 });
+```
 
-// Create a quarantine manifest
-// quarantine.json
+Create a quarantine manifest:
+
+```json
 {
   "quarantined": [
     {
@@ -436,15 +441,15 @@ echo "Total tests: $(npm test -- --listTests 2>/dev/null | wc -l)"
 
 # Find slow tests (over 5 seconds)
 echo "Slow tests (>5s):"
-npm test -- --verbose 2>&1 | grep -E "^\s+\S.*\([0-9]{4,} ms\)"
+npm test -- --verbose 2>&1 | grep -E "^[[:space:]]+[^[:space:]].*\(([5-9][0-9]{3}|[1-9][0-9]{4,}) ms\)"
 
 # Find tests without assertions
 echo "Tests without assertions:"
-grep -r "it\|test" tests/ | grep -v "expect\|assert" | head -20
+grep -rE "it|test" tests/ | grep -vE "expect|assert" | head -20
 
 # Find disabled tests
 echo "Disabled tests:"
-grep -r "\.skip\|xit\|xdescribe" tests/ | wc -l
+grep -rE "\.skip|xit|xdescribe" tests/ | wc -l
 
 # Check test coverage
 npm test -- --coverage --coverageReporters=text-summary
