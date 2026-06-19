@@ -342,17 +342,17 @@ export const getStaticProps: GetStaticProps = async ({ params }) => {
 };
 ```
 
-## Error 7: Empty Paths Array with fallback: false
+## Issue 7: Empty Paths Array with fallback: false
 
-### The Error
+### The Issue
 
 ```text
-Error: getStaticPaths for /posts/[slug] returned an empty paths array.
+No post pages are generated, and every /posts/[slug] request returns 404.
 ```
 
 ### The Cause
 
-When `fallback: false`, you need at least one path or handle the empty case.
+An empty `paths` array is valid. When `fallback: false`, it means no paths are pre-rendered and every dynamic path not returned from `getStaticPaths` will return 404.
 
 ### The Solution
 
@@ -363,7 +363,7 @@ export const getStaticPaths: GetStaticPaths = async () => {
   try {
     const posts = await getAllPosts();
 
-    // If no posts exist yet
+    // If no posts exist yet and you want on-demand generation
     if (!posts || posts.length === 0) {
       return {
         paths: [],
@@ -392,7 +392,9 @@ export const getStaticPaths: GetStaticPaths = async () => {
 
 ### The Error
 
-When using `fallback: true`, pages crash during client-side navigation.
+When using `fallback: true`, pages can crash during the initial fallback render.
+
+Client-side navigation through `next/link` or `next/router` behaves like `fallback: 'blocking'`, but direct requests to a path that has not been generated yet can render the fallback version with empty props.
 
 ### The Solution
 
@@ -524,11 +526,11 @@ Error: getStaticPaths locales mismatch
 
 ### The Cause
 
-When using internationalization, paths must include locale information.
+When using internationalization, all locale variants you want to pre-render must be returned from `getStaticPaths`. If no `locale` is provided for a path, only the default locale is generated.
 
 ### The Solution
 
-Handle locales in getStaticPaths:
+Handle non-default locales in getStaticPaths:
 
 ```typescript
 // next.config.js
