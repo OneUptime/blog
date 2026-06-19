@@ -25,9 +25,9 @@ flowchart LR
     end
 
     subgraph "Processors"
-        P1[Batch Processor]
-        P2[Memory Limiter]
-        P3[Filter Processor]
+        P1[Memory Limiter]
+        P2[Filter Processor]
+        P3[Batch Processor]
     end
 
     subgraph "Exporters"
@@ -54,7 +54,7 @@ flowchart LR
 | Component | Queue Type | Purpose |
 |-----------|-----------|---------|
 | Receiver | Internal buffer | Accept incoming data |
-| Batch Processor | Batching queue | Accumulate data for efficient processing |
+| Batch Processor | Batch buffer | Accumulate data for efficient export |
 | Exporter | Sending queue | Buffer data for backend delivery |
 | Memory Limiter | Backpressure | Prevent OOM conditions |
 
@@ -69,9 +69,9 @@ flowchart LR
     Dropping data because sending_queue is full.
     {"kind": "exporter", "data_type": "traces", "name": "otlp", "dropped_items": 1024}
 
-2024-01-15T10:30:45.456Z    warn    batchprocessor/batch_processor.go:89
-    Batch queue is full. Dropping data.
-    {"kind": "processor", "name": "batch", "dropped_items": 512}
+2024-01-15T10:30:45.456Z    warn    exporterhelper/queue_sender.go:92
+    Exporting failed. Dropping data.
+    {"kind": "exporter", "data_type": "traces", "name": "otlp", "error": "sending queue is full"}
 ```
 
 ### Step 1: Check Collector Metrics
@@ -86,8 +86,9 @@ curl http://localhost:8888/metrics | grep -E "(queue|dropped|refused)"
 # Key metrics to look for:
 # otelcol_exporter_queue_size - Current queue size
 # otelcol_exporter_queue_capacity - Maximum queue capacity
+# otelcol_exporter_enqueue_failed_spans - Spans that failed to enter the sending queue
 # otelcol_exporter_send_failed_spans - Failed export attempts
-# otelcol_processor_dropped_spans - Spans dropped by processors
+# otelcol_receiver_refused_spans - Spans refused by receivers or upstream backpressure
 ```
 
 ### Step 2: Enable Debug Logging
@@ -100,7 +101,14 @@ service:
       level: debug
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+                without_type_suffix: true
+                without_units: true
 ```
 
 ### Step 3: Monitor Resource Usage
@@ -312,26 +320,16 @@ spec:
 processors:
   # Filter out unnecessary data
   filter:
-    spans:
-      exclude:
-        match_type: regexp
-        span_names:
-          # Exclude health checks and other noisy spans
-          - "health.*"
-          - "metrics.*"
-          - "readiness.*"
-          - "liveness.*"
-        attributes:
-          # Exclude specific services or endpoints
-          - key: http.route
-            value: "/health"
-          - key: http.route
-            value: "/metrics"
-
-  # Probabilistic sampling for high-volume traces
-  probabilistic_sampler:
-    # Sample 10% of traces
-    sampling_percentage: 10
+    error_mode: ignore
+    trace_conditions:
+      # Exclude health checks and other noisy spans
+      - IsMatch(span.name, "health.*")
+      - IsMatch(span.name, "metrics.*")
+      - IsMatch(span.name, "readiness.*")
+      - IsMatch(span.name, "liveness.*")
+      # Exclude specific endpoints
+      - span.attributes["http.route"] == "/health"
+      - span.attributes["http.route"] == "/metrics"
 
   # Tail-based sampling (keep errors and slow requests)
   tail_sampling:
@@ -432,7 +430,7 @@ exporters:
 extensions:
   file_storage:
     directory: /var/lib/otel-collector/queue
-    # Maximum storage size
+    # Maximum time to wait for the file lock
     timeout: 10s
     compaction:
       # Compact storage files periodically
@@ -464,43 +462,12 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-class BackpressureAwareProcessor(BatchSpanProcessor):
-    """Custom processor that handles backpressure gracefully."""
-
-    def __init__(self, exporter, **kwargs):
-        super().__init__(exporter, **kwargs)
-        self.dropped_count = 0
-        self.total_count = 0
-
-    def on_end(self, span):
-        self.total_count += 1
-
-        # Check if queue is nearly full
-        if self._queue_size() > self._max_queue_size * 0.9:
-            logger.warning(
-                f"Queue nearly full ({self._queue_size()}/{self._max_queue_size}). "
-                f"Consider reducing telemetry volume."
-            )
-
-            # Optional: Apply local sampling when under pressure
-            if self.total_count % 10 != 0:  # Keep 10% when under pressure
-                self.dropped_count += 1
-                return
-
-        super().on_end(span)
-
-    def _queue_size(self):
-        # Access internal queue size (implementation detail)
-        return len(self.queue) if hasattr(self, 'queue') else 0
-
-    def _max_queue_size(self):
-        return self.max_queue_size
-
-# Usage
 exporter = OTLPSpanExporter(endpoint="http://collector:4317", insecure=True)
 
-processor = BackpressureAwareProcessor(
+processor = BatchSpanProcessor(
     exporter,
+    # Increase the local SDK queue to absorb short collector slowdowns.
+    # If this queue fills, the SDK drops spans instead of blocking requests.
     max_queue_size=4096,
     schedule_delay_millis=5000,
     max_export_batch_size=512,
@@ -509,6 +476,10 @@ processor = BackpressureAwareProcessor(
 provider = TracerProvider()
 provider.add_span_processor(processor)
 trace.set_tracer_provider(provider)
+
+# For sustained pressure, reduce volume at the source with the SDK sampler
+# or fix collector/backend throughput. Do not rely on private SDK queue fields.
+logger.info("OpenTelemetry tracing configured with BatchSpanProcessor")
 ```
 
 ### Collector-Side Backpressure
@@ -522,8 +493,8 @@ receivers:
         endpoint: 0.0.0.0:4317
         # Limit concurrent connections
         max_concurrent_streams: 100
-        # Read buffer size
-        read_buffer_size: 512KB
+        # Read buffer size in bytes
+        read_buffer_size: 524288
       http:
         endpoint: 0.0.0.0:4318
 
@@ -532,20 +503,21 @@ processors:
     check_interval: 1s
     limit_mib: 1500
     spike_limit_mib: 500
-    # Garbage collection settings
-    ballast_size_mib: 200
+  batch:
+    timeout: 10s
+    send_batch_size: 5000
+
+exporters:
+  otlp:
+    endpoint: backend:4317
+    tls:
+      insecure: true
 
 extensions:
   # Health check extension for load balancer
   health_check:
     endpoint: 0.0.0.0:13133
     path: /health
-    # Report unhealthy when memory is under pressure
-    # This signals load balancer to reduce traffic
-    check_collector_pipeline:
-      enabled: true
-      interval: 5s
-      exporter_failure_threshold: 5
 
 service:
   extensions: [health_check]
@@ -581,7 +553,7 @@ groups:
       # Alert when data is being dropped
       - alert: CollectorDroppingData
         expr: |
-          rate(otelcol_processor_dropped_spans_total[5m]) > 0
+          rate(otelcol_exporter_enqueue_failed_spans[5m]) > 0
         for: 1m
         labels:
           severity: critical
@@ -592,7 +564,7 @@ groups:
       # Alert when export is failing
       - alert: CollectorExportFailing
         expr: |
-          rate(otelcol_exporter_send_failed_spans_total[5m]) > 0
+          rate(otelcol_exporter_send_failed_spans[5m]) > 0
         for: 5m
         labels:
           severity: warning
@@ -618,9 +590,6 @@ groups:
 package main
 
 import (
-    "context"
-    "time"
-
     "go.opentelemetry.io/otel/metric"
 )
 
@@ -720,11 +689,9 @@ processors:
 
   # Second: Filter unnecessary data
   filter:
-    spans:
-      exclude:
-        match_type: regexp
-        span_names:
-          - "health.*"
+    error_mode: ignore
+    trace_conditions:
+      - IsMatch(span.name, "health.*")
 
   # Third: Sample high-volume data
   probabilistic_sampler:
@@ -766,7 +733,14 @@ service:
       level: info
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+                without_type_suffix: true
+                without_units: true
   pipelines:
     traces:
       receivers: [otlp]
