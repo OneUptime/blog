@@ -73,7 +73,7 @@ malicious_data = base64.b64encode(pickle.dumps(MaliciousPayload()))
 # When the server unpickles this, it executes the command
 ```
 
-### JavaScript - Prototype Pollution via JSON
+### JavaScript - Unsafe eval-based Parsing
 
 While JSON.parse is generally safe, libraries that extend JSON handling can be vulnerable.
 
@@ -89,13 +89,13 @@ function vulnerableDeserialize(data) {
 // Attacker sends:
 const maliciousInput = `{
   "name": "test",
-  "toString": function() {
+  "pwned": (function() {
     require('child_process').exec('cat /etc/passwd');
     return "hacked";
-  }
+  })()
 }`;
 
-// The eval() will execute the malicious function
+// The eval() will execute the attacker's expression while parsing
 ```
 
 ### Java - ObjectInputStream Vulnerability
@@ -139,7 +139,7 @@ class User {
 }
 
 // Attacker crafts serialized data with isAdmin = true
-$malicious = 'O:4:"User":2:{s:4:"name";s:7:"attacker";s:7:"isAdmin";b:1;}';
+$malicious = 'O:4:"User":2:{s:4:"name";s:8:"attacker";s:7:"isAdmin";b:1;}';
 
 // DANGER: Deserializes with admin privileges
 $user = unserialize($_COOKIE['user']);  // VULNERABLE!
@@ -199,12 +199,16 @@ def secure_deserialize(signed_data: str) -> UserSession:
 
         # Parse JSON (safe - no code execution)
         parsed = json.loads(data)
+        roles = parsed['roles']
+
+        if not isinstance(roles, list) or not all(isinstance(role, str) for role in roles):
+            raise ValueError("Invalid roles")
 
         # Validate structure and types explicitly
         return UserSession(
             user_id=int(parsed['user_id']),
             username=str(parsed['username']),
-            roles=list(parsed['roles']),
+            roles=roles,
             created_at=str(parsed['created_at'])
         )
     except (KeyError, ValueError, TypeError) as e:
@@ -265,7 +269,15 @@ function signData(data, secret) {
 }
 
 function verifyAndParse(signedData, secret) {
-  const [encodedData, signature] = signedData.split('.');
+  const parts = signedData.split('.');
+  if (parts.length !== 2) {
+    throw new Error('Invalid signed data format');
+  }
+
+  const [encodedData, signature] = parts;
+  if (!/^[0-9a-f]{64}$/i.test(signature)) {
+    throw new Error('Invalid signature format');
+  }
 
   const json = Buffer.from(encodedData, 'base64').toString();
 
@@ -275,9 +287,16 @@ function verifyAndParse(signedData, secret) {
     .update(json)
     .digest('hex');
 
+  const provided = Buffer.from(signature, 'hex');
+  const expected = Buffer.from(expectedSignature, 'hex');
+
+  if (provided.length !== expected.length) {
+    throw new Error('Invalid signature');
+  }
+
   if (!crypto.timingSafeEqual(
-    Buffer.from(signature),
-    Buffer.from(expectedSignature)
+    provided,
+    expected
   )) {
     throw new Error('Invalid signature');
   }
@@ -289,10 +308,10 @@ function verifyAndParse(signedData, secret) {
 ### Java - Use Safe Serialization Libraries
 
 ```java
-// SECURE: Use Jackson with type validation
+// SECURE: Use Jackson with explicit target types
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.jsontype.BasicPolymorphicTypeValidator;
+import java.util.List;
 
 public class SecureDeserializer {
     private final ObjectMapper mapper;
@@ -300,15 +319,7 @@ public class SecureDeserializer {
     public SecureDeserializer() {
         this.mapper = new ObjectMapper();
 
-        // Configure allowed types for polymorphic deserialization
-        BasicPolymorphicTypeValidator validator = BasicPolymorphicTypeValidator.builder()
-            .allowIfBaseType(UserData.class)  // Only allow specific base types
-            .allowIfSubType("com.myapp.models")  // Only from trusted packages
-            .build();
-
-        mapper.activateDefaultTyping(validator);
-
-        // Disable dangerous features
+        // Reject unexpected fields instead of silently accepting them
         mapper.configure(
             com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES,
             true
@@ -323,7 +334,7 @@ public class SecureDeserializer {
 }
 
 // Define your data classes explicitly
-public class UserData {
+class UserData {
     private Long id;
     private String username;
     private List<String> roles;
@@ -389,7 +400,7 @@ class SecureSessionHandler {
         // Verify signature (timing-safe comparison)
         $expectedSignature = hash_hmac('sha256', $json, $this->secretKey);
         if (!hash_equals($expectedSignature, $providedSignature)) {
-            throw new SecurityException('Invalid signature - data may be tampered');
+            throw new RuntimeException('Invalid signature - data may be tampered');
         }
 
         // Parse JSON
@@ -408,7 +419,7 @@ class SecureSessionHandler {
         }
         $validated['user_id'] = $data['user_id'];
 
-        if (!isset($data['username']) || !preg_match('/^[a-zA-Z0-9_]{3,30}$/', $data['username'])) {
+        if (!isset($data['username']) || !is_string($data['username']) || !preg_match('/^[a-zA-Z0-9_]{3,30}$/', $data['username'])) {
             throw new InvalidArgumentException('Invalid username');
         }
         $validated['username'] = $data['username'];
