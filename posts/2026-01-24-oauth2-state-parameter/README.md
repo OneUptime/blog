@@ -8,7 +8,7 @@ Description: Learn how to properly implement the OAuth2 state parameter for CSRF
 
 ---
 
-The OAuth2 state parameter is a critical security mechanism that prevents Cross-Site Request Forgery (CSRF) attacks during the authorization flow. This guide covers comprehensive strategies for implementing state parameter handling correctly.
+The OAuth2 state parameter is a critical security mechanism that helps prevent Cross-Site Request Forgery (CSRF) attacks during the authorization flow when it is bound to the user's session. This guide covers comprehensive strategies for implementing state parameter handling correctly.
 
 ## Understanding the State Parameter
 
@@ -69,7 +69,7 @@ const crypto = require('crypto');
 
 class StateManager {
     constructor(options = {}) {
-        // State storage (in production, use Redis or database)
+        // State storage (in production, use Redis or database and bind each state to a session)
         this.states = new Map();
 
         // Configuration
@@ -101,6 +101,7 @@ class StateManager {
     }
 
     // Generate state with HMAC signature for stateless validation
+    // Note: stateless validation needs a replay cache if single-use state is required.
     generateSigned(payload, secret) {
         const timestamp = Date.now();
         const nonce = crypto.randomBytes(16).toString('base64url');
@@ -246,6 +247,7 @@ module.exports = { StateManager };
 ```javascript
 // oauth2-routes.js
 // Express routes for OAuth2 flow with state parameter handling
+// Requires session middleware such as express-session.
 
 const express = require('express');
 const { StateManager } = require('./state-generator');
@@ -271,6 +273,8 @@ router.get('/login', (req, res) => {
         returnTo: req.query.returnTo || '/',
         // Store any other context needed after authentication
         action: req.query.action,
+        // Bind state to this user's session for CSRF protection
+        sessionId: req.sessionID,
         // Fingerprint for additional validation
         userAgent: req.headers['user-agent'],
         ip: req.ip
@@ -327,6 +331,14 @@ router.get('/callback', async (req, res) => {
 
     // Optional: Additional validation using metadata
     const metadata = stateValidation.metadata;
+    if (metadata.sessionId !== req.sessionID) {
+        console.error('State session binding mismatch');
+        return res.status(400).render('error', {
+            title: 'Security Error',
+            message: 'Invalid state parameter. Please try logging in again.'
+        });
+    }
+
     if (metadata.userAgent !== req.headers['user-agent']) {
         console.warn('User agent mismatch in OAuth callback');
         // Could be suspicious, but might also be legitimate
@@ -437,9 +449,9 @@ import hashlib
 import json
 import time
 import base64
-from typing import Dict, Any, Optional
-from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from urllib.parse import urlencode
+from typing import Dict, Any
+from dataclasses import dataclass
 from threading import Lock
 
 
@@ -660,9 +672,11 @@ class SignedStateManager:
 # FastAPI OAuth2 implementation
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import RedirectResponse
+from starlette.middleware.sessions import SessionMiddleware
 import httpx
 
 app = FastAPI()
+app.add_middleware(SessionMiddleware, secret_key="replace-with-a-random-secret")
 state_manager = StateManager()
 
 OAUTH_CONFIG = {
@@ -678,9 +692,12 @@ OAUTH_CONFIG = {
 @app.get("/login")
 async def login(request: Request, return_to: str = "/"):
     """Initiate OAuth2 authorization flow."""
+    session_id = request.session.setdefault("oauth_session_id", secrets.token_urlsafe(32))
+
     # Generate state with metadata
     state = state_manager.generate({
         "return_to": return_to,
+        "session_id": session_id,
         "ip": request.client.host,
         "user_agent": request.headers.get("user-agent", "")
     })
@@ -695,7 +712,7 @@ async def login(request: Request, return_to: str = "/"):
     }
 
     auth_url = f"{OAUTH_CONFIG['authorization_endpoint']}?"
-    auth_url += "&".join(f"{k}={v}" for k, v in params.items())
+    auth_url += urlencode(params)
 
     return RedirectResponse(url=auth_url)
 
@@ -734,6 +751,12 @@ async def callback(
             detail=f"Invalid state: {validation['message']}"
         )
 
+    if validation["metadata"].get("session_id") != request.session.get("oauth_session_id"):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid state session binding"
+        )
+
     # Validate code
     if not code:
         raise HTTPException(
@@ -762,9 +785,8 @@ async def callback(
 
         tokens = response.json()
 
-    # Store tokens in session (simplified)
-    # In production, use proper session management
-    request.session["access_token"] = tokens["access_token"]
+    # Store tokens in a server-side session or encrypted credential store.
+    # Starlette's default SessionMiddleware signs but does not encrypt cookie data.
 
     # Redirect to original destination
     return_to = validation["metadata"].get("return_to", "/")
