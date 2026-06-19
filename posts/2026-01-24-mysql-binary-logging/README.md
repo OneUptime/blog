@@ -78,7 +78,7 @@ SHOW VARIABLES LIKE 'binlog%';
 SHOW BINARY LOGS;
 
 -- Show current binary log file and position
-SHOW MASTER STATUS;
+SHOW BINARY LOG STATUS;
 ```
 
 ## Binary Log Formats
@@ -167,7 +167,7 @@ mysqlbinlog -v --base64-output=DECODE-ROWS /var/lib/mysql/mysql-bin.000001
 FLUSH BINARY LOGS;
 
 -- Check the new file
-SHOW MASTER STATUS;
+SHOW BINARY LOG STATUS;
 ```
 
 ### Purging Old Binary Logs
@@ -236,12 +236,13 @@ mysqlbinlog --start-datetime="2026-01-24 00:00:00" \
 # Point-in-time recovery script
 
 BACKUP_FILE="$1"
-STOP_TIME="$2"
+START_TIME="$2"
+STOP_TIME="$3"
 BINLOG_DIR="/var/lib/mysql"
 
-if [ -z "$BACKUP_FILE" ] || [ -z "$STOP_TIME" ]; then
-    echo "Usage: $0 <backup_file> <stop_datetime>"
-    echo "Example: $0 backup.sql '2026-01-24 11:59:59'"
+if [ -z "$BACKUP_FILE" ] || [ -z "$START_TIME" ] || [ -z "$STOP_TIME" ]; then
+    echo "Usage: $0 <backup_file> <start_datetime> <stop_datetime>"
+    echo "Example: $0 backup.sql '2026-01-24 00:00:00' '2026-01-24 11:59:59'"
     exit 1
 fi
 
@@ -249,7 +250,8 @@ echo "Restoring backup..."
 mysql -u root -p < "$BACKUP_FILE"
 
 echo "Applying binary logs up to $STOP_TIME..."
-mysqlbinlog --stop-datetime="$STOP_TIME" \
+mysqlbinlog --start-datetime="$START_TIME" \
+    --stop-datetime="$STOP_TIME" \
     "$BINLOG_DIR"/mysql-bin.* | mysql -u root -p
 
 echo "Recovery complete."
@@ -281,7 +283,7 @@ GRANT REPLICATION SLAVE ON *.* TO 'repl_user'@'%';
 FLUSH PRIVILEGES;
 
 -- Note the binary log position
-SHOW MASTER STATUS;
+SHOW BINARY LOG STATUS;
 ```
 
 ### Replica (Slave) Configuration
@@ -362,15 +364,10 @@ binlog_ignore_db = temp_db
 
 ```sql
 -- Current binary log file and position
-SHOW MASTER STATUS;
+SHOW BINARY LOG STATUS;
 
--- List all binary log files with sizes
+-- List all binary log files with sizes; sum File_size values for total size
 SHOW BINARY LOGS;
-
--- Total size of binary logs
-SELECT
-    ROUND(SUM(FILE_SIZE)/1024/1024, 2) AS 'Total Size (MB)'
-FROM performance_schema.binary_log_status;
 ```
 
 ### Monitor Binary Log Events
@@ -414,7 +411,7 @@ fi
 
 ```ini
 [mysqld]
-# Enable binary log encryption
+# Enable binary log encryption (requires a configured keyring component or plugin)
 binlog_encryption = ON
 ```
 
