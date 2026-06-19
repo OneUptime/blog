@@ -104,7 +104,7 @@ app.prepare().then(() => {
 });
 
 function generateClientId(): string {
-  return `client_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  return `client_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
 }
 
 function handleMessage(
@@ -119,7 +119,7 @@ function handleMessage(
         if (client.readyState === WebSocket.OPEN) {
           client.send(JSON.stringify({
             type: 'broadcast',
-            from: clientId,
+            from: message.data?.username || clientId,
             data: message.data,
             timestamp: Date.now(),
           }));
@@ -133,7 +133,7 @@ function handleMessage(
       if (targetClient && targetClient.readyState === WebSocket.OPEN) {
         targetClient.send(JSON.stringify({
           type: 'private',
-          from: clientId,
+          from: message.data?.username || clientId,
           data: message.data,
           timestamp: Date.now(),
         }));
@@ -194,16 +194,38 @@ export function useWebSocket({
 }: UseWebSocketOptions): UseWebSocketReturn {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectAttemptsRef = useRef(0);
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout>();
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const shouldReconnectRef = useRef(true);
+  const callbacksRef = useRef({
+    onMessage,
+    onConnect,
+    onDisconnect,
+    onError,
+  });
 
   const [isConnected, setIsConnected] = useState(false);
   const [lastMessage, setLastMessage] = useState<WebSocketMessage | null>(null);
 
+  useEffect(() => {
+    callbacksRef.current = {
+      onMessage,
+      onConnect,
+      onDisconnect,
+      onError,
+    };
+  }, [onMessage, onConnect, onDisconnect, onError]);
+
   const connect = useCallback(() => {
     // Cleanup existing connection
     if (wsRef.current) {
+      wsRef.current.onclose = null;
       wsRef.current.close();
     }
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
+    shouldReconnectRef.current = true;
 
     try {
       wsRef.current = new WebSocket(url);
@@ -211,14 +233,14 @@ export function useWebSocket({
       wsRef.current.onopen = () => {
         setIsConnected(true);
         reconnectAttemptsRef.current = 0;
-        onConnect?.();
+        callbacksRef.current.onConnect?.();
       };
 
       wsRef.current.onmessage = (event) => {
         try {
           const message = JSON.parse(event.data);
           setLastMessage(message);
-          onMessage?.(message);
+          callbacksRef.current.onMessage?.(message);
         } catch (error) {
           console.error('Failed to parse WebSocket message:', error);
         }
@@ -226,10 +248,14 @@ export function useWebSocket({
 
       wsRef.current.onclose = () => {
         setIsConnected(false);
-        onDisconnect?.();
+        callbacksRef.current.onDisconnect?.();
 
         // Attempt reconnection
-        if (reconnect && reconnectAttemptsRef.current < maxReconnectAttempts) {
+        if (
+          shouldReconnectRef.current &&
+          reconnect &&
+          reconnectAttemptsRef.current < maxReconnectAttempts
+        ) {
           reconnectTimeoutRef.current = setTimeout(() => {
             reconnectAttemptsRef.current++;
             connect();
@@ -238,20 +264,21 @@ export function useWebSocket({
       };
 
       wsRef.current.onerror = (error) => {
-        onError?.(error);
+        callbacksRef.current.onError?.(error);
       };
     } catch (error) {
       console.error('WebSocket connection error:', error);
     }
-  }, [url, onMessage, onConnect, onDisconnect, onError, reconnect, reconnectInterval, maxReconnectAttempts]);
+  }, [url, reconnect, reconnectInterval, maxReconnectAttempts]);
 
   const disconnect = useCallback(() => {
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
     }
-    reconnectAttemptsRef.current = maxReconnectAttempts; // Prevent reconnection
+    shouldReconnectRef.current = false;
     wsRef.current?.close();
-  }, [maxReconnectAttempts]);
+  }, []);
 
   const sendMessage = useCallback((message: WebSocketMessage) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -264,13 +291,8 @@ export function useWebSocket({
   useEffect(() => {
     connect();
 
-    return () => {
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-      }
-      wsRef.current?.close();
-    };
-  }, [connect]);
+    return () => disconnect();
+  }, [connect, disconnect]);
 
   return {
     isConnected,
@@ -350,7 +372,7 @@ export default function Chat() {
     setInputText('');
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -378,7 +400,7 @@ export default function Chat() {
             type="text"
             placeholder="Enter your username"
             className="w-full p-2 border rounded"
-            onKeyPress={(e) => {
+            onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 setUsername((e.target as HTMLInputElement).value);
               }
@@ -411,7 +433,7 @@ export default function Chat() {
           type="text"
           value={inputText}
           onChange={(e) => setInputText(e.target.value)}
-          onKeyPress={handleKeyPress}
+          onKeyDown={handleKeyDown}
           placeholder="Type a message..."
           className="flex-1 p-2 border rounded"
           disabled={!isConnected || !username}
@@ -527,12 +549,12 @@ export function initializeSocketIO(httpServer: HTTPServer) {
         username: socket.data.username,
       });
 
-      // Send current users in room
+      // Send current socket IDs in room
       const roomSockets = io.sockets.adapter.rooms.get(room);
-      const users = roomSockets
+      const socketIds = roomSockets
         ? Array.from(roomSockets)
         : [];
-      socket.emit('roomUsers', users);
+      socket.emit('roomUsers', socketIds);
     });
 
     // Leave room
@@ -663,7 +685,18 @@ export async function GET(request: NextRequest) {
 
       // Set up event sending
       let counter = 0;
-      const interval = setInterval(() => {
+      let isClosed = false;
+      let interval: ReturnType<typeof setInterval>;
+
+      const closeStream = () => {
+        if (isClosed) return;
+        isClosed = true;
+        clearInterval(interval);
+        controller.close();
+      };
+
+      interval = setInterval(() => {
+        if (isClosed) return;
         counter++;
         const data = {
           type: 'update',
@@ -677,16 +710,12 @@ export async function GET(request: NextRequest) {
 
         // Close after 100 messages (example limit)
         if (counter >= 100) {
-          clearInterval(interval);
-          controller.close();
+          closeStream();
         }
       }, 1000);
 
       // Handle client disconnect
-      request.signal.addEventListener('abort', () => {
-        clearInterval(interval);
-        controller.close();
-      });
+      request.signal.addEventListener('abort', closeStream);
     },
   });
 
@@ -718,8 +747,14 @@ export function useSSE({ url, onMessage, onError }: UseSSEOptions) {
   const [isConnected, setIsConnected] = useState(false);
   const [lastEvent, setLastEvent] = useState<any>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
+  const callbacksRef = useRef({ onMessage, onError });
+
+  useEffect(() => {
+    callbacksRef.current = { onMessage, onError };
+  }, [onMessage, onError]);
 
   const connect = useCallback(() => {
+    eventSourceRef.current?.close();
     eventSourceRef.current = new EventSource(url);
 
     eventSourceRef.current.onopen = () => {
@@ -730,7 +765,7 @@ export function useSSE({ url, onMessage, onError }: UseSSEOptions) {
       try {
         const data = JSON.parse(event.data);
         setLastEvent(data);
-        onMessage?.(data);
+        callbacksRef.current.onMessage?.(data);
       } catch (error) {
         console.error('Failed to parse SSE data:', error);
       }
@@ -738,9 +773,9 @@ export function useSSE({ url, onMessage, onError }: UseSSEOptions) {
 
     eventSourceRef.current.onerror = (error) => {
       setIsConnected(false);
-      onError?.(error);
+      callbacksRef.current.onError?.(error);
     };
-  }, [url, onMessage, onError]);
+  }, [url]);
 
   const disconnect = useCallback(() => {
     eventSourceRef.current?.close();
@@ -785,7 +820,7 @@ export default function NotificationCenter() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isOpen, setIsOpen] = useState(false);
 
-  const wsUrl = `${process.env.NEXT_PUBLIC_WS_URL}/notifications`;
+  const wsUrl = `${process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:3000'}/notifications`;
 
   const { isConnected, lastMessage } = useWebSocket({
     url: wsUrl,
