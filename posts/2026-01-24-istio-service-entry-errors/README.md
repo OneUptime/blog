@@ -26,16 +26,16 @@ flowchart LR
 
 ServiceEntry adds external services to Istio's internal service registry. Without it, the sidecar proxy does not know how to handle traffic to external destinations (especially in REGISTRY_ONLY mode).
 
-## Error 1: DNS Resolution Failures
+## Error 1: Service Resolution Failures
 
-The most common ServiceEntry error is DNS resolution not working. You will see errors like "no healthy upstream" or connection timeouts.
+The most common ServiceEntry error is Istio not resolving an upstream correctly. You will see errors like "no healthy upstream" or connection timeouts.
 
 **Symptom:**
 ```bash
 # Testing from inside a pod
 
 $ curl https://api.example.com/v1/data
-curl: (6) Could not resolve host: api.example.com
+curl: (56) CONNECT tunnel failed, response 503
 ```
 
 **Root Cause:** The `resolution` field is set incorrectly for your use case.
@@ -43,8 +43,8 @@ curl: (6) Could not resolve host: api.example.com
 Here is a broken ServiceEntry:
 
 ```yaml
-# broken-resolution.yaml - This will cause DNS failures
-apiVersion: networking.istio.io/v1beta1
+# broken-resolution.yaml - This will cause upstream failures
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-api
@@ -64,7 +64,7 @@ spec:
 
 ```yaml
 # fixed-dns-resolution.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-api
@@ -77,7 +77,7 @@ spec:
       name: https
       protocol: HTTPS
   # Use DNS resolution for external hostnames
-  # This tells Istio to perform DNS lookup at connection time
+  # This tells Istio to resolve the hostname through DNS
   resolution: DNS
 ```
 
@@ -85,7 +85,7 @@ If you need STATIC resolution, provide the endpoints:
 
 ```yaml
 # static-with-endpoints.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-api-static
@@ -111,6 +111,8 @@ Resolution options:
 | `DNS` | External hostnames that resolve via DNS |
 | `STATIC` | Known IP addresses, must provide endpoints |
 | `NONE` | Passthrough, no load balancing |
+| `DNS_ROUND_ROBIN` | Large DNS-backed services where connection pool churn should be minimized |
+| `DYNAMIC_DNS` | Wildcard hosts where the destination host comes from HTTP Host or TLS SNI |
 
 ## Error 2: Protocol Mismatch
 
@@ -127,7 +129,7 @@ curl: (35) error:1408F10B:SSL routines:ssl3_get_record:wrong version number
 
 ```yaml
 # broken-protocol.yaml - Protocol mismatch
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-api
@@ -146,7 +148,7 @@ spec:
 
 ```yaml
 # fixed-protocol.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-api
@@ -172,20 +174,20 @@ Protocol options for external services:
 
 ## Error 3: Missing TLS Configuration
 
-When accessing HTTPS services, you need proper TLS settings or connections fail silently.
+When you want Istio to originate TLS for an external service, you need proper TLS settings. This is different from ordinary HTTPS, where the application opens the TLS connection itself and a ServiceEntry for port 443 is enough.
 
 **Symptom:**
 ```bash
-# Connection hangs or times out
-$ curl --connect-timeout 5 https://secure-api.example.com/data
-curl: (28) Connection timed out
+# Plain HTTP request fails because the upstream expects TLS
+$ curl --connect-timeout 5 http://secure-api.example.com/data
+upstream connect error or disconnect/reset before headers
 ```
 
 **Root Cause:** Missing DestinationRule for TLS origination:
 
 ```yaml
-# incomplete-tls-setup.yaml - Missing TLS configuration
-apiVersion: networking.istio.io/v1beta1
+# incomplete-tls-setup.yaml - Missing TLS origination configuration
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: secure-api
@@ -193,18 +195,19 @@ spec:
   hosts:
     - secure-api.example.com
   ports:
-    - number: 443
-      name: https
-      protocol: HTTPS
+    - number: 80
+      name: http
+      protocol: HTTP
+      targetPort: 443
   resolution: DNS
-  # No DestinationRule = no TLS settings
+  # No DestinationRule = traffic is forwarded as plaintext HTTP to port 443
 ```
 
 **Fix:** Add a DestinationRule for TLS:
 
 ```yaml
 # complete-tls-setup.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: secure-api
@@ -213,49 +216,56 @@ spec:
     - secure-api.example.com
   location: MESH_EXTERNAL
   ports:
-    - number: 443
-      name: https
-      protocol: HTTPS
+    - number: 80
+      name: http
+      protocol: HTTP
+      targetPort: 443
   resolution: DNS
 ---
 # DestinationRule defines TLS settings for the external service
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: secure-api-tls
 spec:
   host: secure-api.example.com
   trafficPolicy:
-    tls:
-      # SIMPLE mode - one-way TLS, validates server certificate
-      mode: SIMPLE
-      # SNI must match the hostname
-      sni: secure-api.example.com
+    portLevelSettings:
+      - port:
+          number: 80
+        tls:
+          # SIMPLE mode - originate one-way TLS to the upstream
+          mode: SIMPLE
+          # SNI must match the hostname
+          sni: secure-api.example.com
 ```
 
 For mutual TLS (client certificates):
 
 ```yaml
 # mtls-destination-rule.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: secure-api-mtls
 spec:
   host: secure-api.example.com
   trafficPolicy:
-    tls:
-      # MUTUAL mode - two-way TLS with client certificates
-      mode: MUTUAL
-      clientCertificate: /etc/certs/client.pem
-      privateKey: /etc/certs/client-key.pem
-      caCertificates: /etc/certs/ca.pem
-      sni: secure-api.example.com
+    portLevelSettings:
+      - port:
+          number: 80
+        tls:
+          # MUTUAL mode - two-way TLS with client certificates
+          mode: MUTUAL
+          clientCertificate: /etc/certs/client.pem
+          privateKey: /etc/certs/client-key.pem
+          caCertificates: /etc/certs/ca.pem
+          sni: secure-api.example.com
 ```
 
 ## Error 4: Namespace Scope Issues
 
-ServiceEntry resources are namespace-scoped by default. A ServiceEntry in one namespace is not visible to workloads in other namespaces.
+ServiceEntry resources are Kubernetes namespace-scoped objects, but Istio exports them to all namespaces by default. Scope issues usually happen when `exportTo` restricts visibility, or when a Sidecar resource limits which hosts a workload imports.
 
 **Symptom:**
 ```bash
@@ -267,33 +277,27 @@ $ kubectl exec -n namespace-b deploy/app -- curl https://api.example.com
 # Failed: no healthy upstream
 ```
 
-**Root Cause:** ServiceEntry only exists in one namespace:
+**Root Cause:** ServiceEntry visibility is restricted to one namespace:
 
 ```bash
 # Check where ServiceEntry exists
-kubectl get serviceentry --all-namespaces | grep api.example.com
+kubectl get serviceentry --all-namespaces
 # NAMESPACE     NAME           HOSTS                  AGE
 # namespace-a   external-api   ["api.example.com"]    1d
+
+# Check whether exportTo restricts visibility
+kubectl get serviceentry external-api -n namespace-a -o yaml | grep -A3 exportTo
 ```
 
-**Fix Option 1:** Create ServiceEntry in each namespace that needs it:
-
-```bash
-# Copy ServiceEntry to other namespaces
-kubectl get serviceentry external-api -n namespace-a -o yaml | \
-  sed 's/namespace: namespace-a/namespace: namespace-b/' | \
-  kubectl apply -f -
-```
-
-**Fix Option 2:** Export the ServiceEntry to all namespaces:
+**Fix Option 1:** Remove the restrictive `exportTo` setting or export the ServiceEntry to all namespaces:
 
 ```yaml
 # exported-service-entry.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-api
-  namespace: istio-system
+  namespace: namespace-a
 spec:
   hosts:
     - api.example.com
@@ -310,9 +314,11 @@ spec:
 
 Export options:
 
-- `"*"` - Export to all namespaces
-- `"."` - Export only to the current namespace (default)
+- `"*"` - Export to all namespaces (default)
+- `"."` - Export only to the current namespace
 - `"namespace-name"` - Export to specific namespace
+
+**Fix Option 2:** Create a namespace-local ServiceEntry in each namespace that needs isolated ownership.
 
 ## Error 5: Wildcard Host Conflicts
 
@@ -324,7 +330,7 @@ Wildcard ServiceEntry can conflict with more specific entries or catch unintende
 
 ```yaml
 # conflicting-entries.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: wildcard-example
@@ -336,9 +342,9 @@ spec:
     - number: 443
       name: https
       protocol: HTTPS
-  resolution: DNS
+  resolution: NONE
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: specific-api
@@ -359,7 +365,7 @@ spec:
 
 ```yaml
 # non-conflicting-entries.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: example-services
@@ -417,7 +423,7 @@ Here is a complete template covering common options:
 
 ```yaml
 # complete-service-entry-template.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-service
