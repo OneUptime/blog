@@ -33,17 +33,17 @@ sequenceDiagram
 
 ## Issue 1: Using revalidatePath in Client Components
 
-`revalidatePath` only works in Server Components, Server Actions, or Route Handlers.
+`revalidatePath` only works in Server Functions, including Server Actions, or Route Handlers.
 
 ```tsx
-// WRONG: revalidatePath in client component does nothing
+// WRONG: revalidatePath cannot be imported into a client component
 'use client';
 
 import { revalidatePath } from 'next/cache';
 
 export function UpdateButton() {
   const handleClick = () => {
-    // This will throw an error or silently fail
+    // This will fail because revalidatePath only works on the server
     revalidatePath('/posts');
   };
 
@@ -89,7 +89,7 @@ The path must match exactly how Next.js defines routes.
 ```tsx
 // WRONG: Various incorrect path formats
 revalidatePath('posts');           // Missing leading slash
-revalidatePath('/posts/');         // Trailing slash (usually wrong)
+revalidatePath('/posts/');         // Trailing slash is unnecessary
 revalidatePath('/posts?page=1');   // Query params not supported
 revalidatePath('/posts#section');  // Hash fragments not supported
 ```
@@ -133,7 +133,7 @@ revalidatePath('/posts', 'layout');
 revalidatePath('/posts/[id]', 'page');
 
 // Revalidate a specific page
-revalidatePath('/posts/123', 'page');
+revalidatePath('/posts/123');
 ```
 
 ## Issue 4: Data Fetching Not Opted Into Caching
@@ -158,11 +158,10 @@ export async function updatePost() {
 ```
 
 ```tsx
-// CORRECT: Use default caching or force-cache
+// CORRECT: Explicitly opt into caching
 async function getData() {
   const res = await fetch('https://api.example.com/posts', {
-    // Default behavior caches the response
-    // Or explicitly: cache: 'force-cache'
+    cache: 'force-cache',
     next: { tags: ['posts'] }, // Optional: add tags for revalidateTag
   });
   return res.json();
@@ -176,16 +175,16 @@ export async function updatePost() {
 }
 ```
 
-## Issue 5: Using unstable_noStore or dynamic
+## Issue 5: Using connection, unstable_noStore, or dynamic
 
 Components marked as dynamic bypass the cache entirely.
 
 ```tsx
 // WRONG: Dynamic rendering bypasses cache
-import { unstable_noStore as noStore } from 'next/cache';
+import { connection } from 'next/server';
 
 async function PostList() {
-  noStore(); // Forces dynamic rendering
+  await connection(); // Excludes everything below from prerendering
   const posts = await getPosts();
   return <ul>{posts.map(p => <li key={p.id}>{p.title}</li>)}</ul>;
 }
@@ -194,9 +193,9 @@ async function PostList() {
 ```
 
 ```tsx
-// CORRECT: Remove noStore to enable caching
+// CORRECT: Remove connection/noStore to enable caching
 async function PostList() {
-  // No noStore() call - component can be cached
+  // No connection() or noStore() call - component can be cached
   const posts = await getPosts();
   return <ul>{posts.map(p => <li key={p.id}>{p.title}</li>)}</ul>;
 }
@@ -300,26 +299,26 @@ export function EditForm({ post }) {
 
 ## Issue 8: Edge Runtime Limitations
 
-Some caching features behave differently on Edge Runtime.
+Some route segment caching options behave differently on Edge Runtime. For example, the route segment `revalidate` option is not available with `runtime = 'edge'`, and Cache Components do not support the Edge runtime.
 
 ```tsx
 // app/api/revalidate/route.ts
-// This might not work as expected on Edge Runtime
+// This route cannot use the route segment revalidate option on Edge Runtime
 
 export const runtime = 'edge'; // Potential issue
+export const revalidate = 60;  // Not available on Edge Runtime
 
-import { revalidatePath } from 'next/cache';
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 
-export async function POST(request: NextRequest) {
-  revalidatePath('/posts');
+export async function POST() {
   return NextResponse.json({ revalidated: true });
 }
 ```
 
 ```tsx
-// CORRECT: Use Node.js runtime for revalidation
+// CORRECT: Use Node.js runtime when you need route segment revalidate
 export const runtime = 'nodejs';
+export const revalidate = 60;
 
 import { revalidatePath } from 'next/cache';
 import { NextRequest, NextResponse } from 'next/server';
@@ -370,8 +369,8 @@ export async function fullRevalidate() {
   revalidatePath('/posts');
 
   // Revalidate by tag (for fetch requests)
-  revalidateTag('posts');
-  revalidateTag('featured');
+  revalidateTag('posts', 'max');
+  revalidateTag('featured', 'max');
 }
 ```
 
@@ -545,11 +544,11 @@ export function CreatePostForm() {
 |-------|----------|
 | Client component usage | Move to Server Action |
 | Wrong path format | Use exact route path, no query strings |
-| fetch with no-store | Remove no-store or use tags |
-| dynamic/noStore | Remove dynamic rendering |
+| fetch with no-store | Remove no-store and opt into caching |
+| dynamic/connection/noStore | Remove dynamic rendering |
 | Route config conflicts | Remove force-dynamic |
 | Server Action not running | Add logging, check errors |
-| Edge Runtime | Use Node.js runtime |
+| Edge Runtime | Use Node.js runtime for unsupported route segment caching options |
 | Multiple data sources | Combine revalidatePath and revalidateTag |
 | Dev mode differences | Test in production build |
 
