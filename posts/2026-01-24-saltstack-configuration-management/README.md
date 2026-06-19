@@ -42,8 +42,9 @@ Set up the Salt Master on your control server.
 ```bash
 # Ubuntu/Debian - Add Salt repository
 
-curl -fsSL https://packages.broadcom.com/artifactory/api/security/keypair/SaltProjectKey/public | sudo tee /etc/apt/keyrings/salt-archive-keyring.pgp
-echo "deb [signed-by=/etc/apt/keyrings/salt-archive-keyring.pgp] https://packages.broadcom.com/artifactory/saltproject-deb stable main" | sudo tee /etc/apt/sources.list.d/salt.list
+sudo mkdir -m 755 -p /etc/apt/keyrings
+curl -fsSL https://packages.broadcom.com/artifactory/api/security/keypair/SaltProjectKey/public | gpg --dearmor | sudo tee /etc/apt/keyrings/salt-archive-keyring.pgp > /dev/null
+curl -fsSL https://github.com/saltstack/salt-install-guide/releases/latest/download/salt.sources | sudo tee /etc/apt/sources.list.d/salt.sources
 
 # Install Salt Master
 sudo apt update
@@ -314,15 +315,17 @@ postgresql_installed:
   pkg.installed:
     - name: postgresql
 
-create_database:
-  postgres_database.present:
-    - name: {{ pillar['postgres']['databases'][0]['name'] }}
-    - owner: {{ pillar['postgres']['databases'][0]['owner'] }}
-
 create_user:
   postgres_user.present:
     - name: {{ pillar['postgres']['databases'][0]['owner'] }}
     - password: {{ pillar['postgres']['databases'][0]['password'] }}
+
+create_database:
+  postgres_database.present:
+    - name: {{ pillar['postgres']['databases'][0]['name'] }}
+    - owner: {{ pillar['postgres']['databases'][0]['owner'] }}
+    - require:
+      - postgres_user: create_user
 ```
 
 ## Using Grains for Targeting
