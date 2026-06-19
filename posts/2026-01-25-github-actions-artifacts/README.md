@@ -26,9 +26,9 @@ flowchart TD
 ```
 
 Limitations:
-- 500 MB per file (10 GB with compression)
-- 10 GB total per workflow run
-- Default retention: 90 days (configurable)
+- Artifacts count against your account's artifact storage allowance, which varies by plan
+- 500 artifacts per job
+- Default retention: 90 days (configurable, with `retention-days` from 1 to 90)
 
 ## Basic Upload and Download
 
@@ -91,7 +91,7 @@ Upload complex directory structures:
       coverage/
       test-reports/
       screenshots/
-    # Exclude certain files
+    # Fail if none of the paths match files
     if-no-files-found: error
 ```
 
@@ -497,8 +497,8 @@ Choose the right tool:
 | Feature | Artifacts | Cache |
 |---------|-----------|-------|
 | Purpose | Store build outputs | Speed up builds |
-| Retention | Configurable (1-90 days) | 7 days unused |
-| Size limit | 10 GB per run | 10 GB per repo |
+| Retention | Configurable (1-90 days) | Default 7 days unused (configurable) |
+| Size limit | Varies by plan storage quota | Default 10 GB per repo (configurable) |
 | Sharing | Between jobs, downloadable | Between runs |
 | Use case | Test reports, binaries | npm modules, build cache |
 
