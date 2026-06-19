@@ -52,7 +52,7 @@ flowchart LR
 
     D --> D1[Invalid proto message]
     D --> D2[Encoding mismatch]
-    D --> D3[Missing required field]
+    D --> D3[Missing expected field]
 
     E --> E1[Invalid state]
     E --> E2[Race condition]
@@ -117,6 +117,29 @@ class LoggingInterceptor(grpc.ServerInterceptor):
                 raise
 
         return grpc.unary_unary_rpc_method_handler(
+            wrapped_handler,
+            request_deserializer=handler.request_deserializer,
+            response_serializer=handler.response_serializer
+        )
+
+    def _wrap_unary_stream(self, handler, method):
+        original_handler = handler.unary_stream
+
+        def wrapped_handler(request, context):
+            try:
+                for response in original_handler(request, context):
+                    yield response
+                logger.info(f"Request completed: {method}")
+            except Exception as e:
+                # Log the full stack trace
+                logger.error(
+                    f"Internal error in {method}: {str(e)}\n"
+                    f"Traceback:\n{traceback.format_exc()}"
+                )
+                # Re-raise to let gRPC handle it
+                raise
+
+        return grpc.unary_stream_rpc_method_handler(
             wrapped_handler,
             request_deserializer=handler.request_deserializer,
             response_serializer=handler.response_serializer
@@ -215,6 +238,7 @@ func main() {
         ),
     )
     // Register services...
+    _ = server
 }
 ```
 
@@ -310,6 +334,7 @@ package main
 import (
     "context"
     "errors"
+    "log"
 
     "google.golang.org/grpc/codes"
     "google.golang.org/grpc/status"
@@ -372,6 +397,7 @@ func (s *server) GetUser(ctx context.Context, req *pb.GetUserRequest) (*pb.UserR
 
 ```python
 import grpc
+from grpc_status import rpc_status
 from google.rpc import status_pb2, error_details_pb2
 from google.protobuf import any_pb2
 
@@ -432,7 +458,7 @@ class MyService(service_pb2_grpc.MyServiceServicer):
             )
 
             context.abort_with_status(
-                grpc.Status.from_proto(status_proto)
+                rpc_status.to_status(status_proto)
             )
 
         # Continue with creation...
@@ -455,7 +481,7 @@ class MyService(service_pb2_grpc.MyServiceServicer):
             )
 
             context.abort_with_status(
-                grpc.Status.from_proto(status_proto)
+                rpc_status.to_status(status_proto)
             )
 
         return resource
@@ -468,6 +494,8 @@ package main
 
 import (
     "context"
+    "errors"
+    "fmt"
 
     "google.golang.org/genproto/googleapis/rpc/errdetails"
     "google.golang.org/grpc/codes"
@@ -537,8 +565,8 @@ func (s *server) GetResource(ctx context.Context, req *pb.GetResourceRequest) (*
 
 ```python
 import grpc
-from google.rpc import status_pb2, error_details_pb2
-from google.protobuf import any_pb2
+from grpc_status import rpc_status
+from google.rpc import error_details_pb2
 
 def handle_grpc_error(error):
     """Extract detailed error information from gRPC error"""
@@ -546,11 +574,9 @@ def handle_grpc_error(error):
     print(f"Error Message: {error.details()}")
 
     # Try to extract rich error details
-    status_proto = status_pb2.Status()
-    for key, value in error.trailing_metadata():
-        if key == "grpc-status-details-bin":
-            status_proto.ParseFromString(value)
-            break
+    status_proto = rpc_status.from_call(error)
+    if status_proto is None:
+        return
 
     if status_proto.details:
         print("Error Details:")
@@ -721,7 +747,7 @@ class TracingInterceptor(grpc.ServerInterceptor):
             def wrapped(request, context):
                 with tracer.start_as_current_span(method) as span:
                     # Add request attributes
-                    span.set_attribute("rpc.system", "grpc")
+                    span.set_attribute("rpc.system.name", "grpc")
                     span.set_attribute("rpc.method", method)
 
                     try:
