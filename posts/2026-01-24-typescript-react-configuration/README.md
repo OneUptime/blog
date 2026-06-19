@@ -24,7 +24,7 @@ flowchart TD
 
     C --> G[npm create vite@latest my-app -- --template react-ts]
     D --> H[npx create-react-app my-app --template typescript]
-    E --> I[npx create-next-app@latest --typescript]
+    E --> I[npx create-next-app@latest my-app --typescript]
     F --> J[Configure from scratch]
 ```
 
@@ -39,10 +39,12 @@ npm install
 npm run dev
 ```
 
-### Quick Start with Create React App
+### Legacy Quick Start with Create React App
+
+Create React App is deprecated for new apps, but the TypeScript template still works for maintaining or creating legacy CRA projects.
 
 ```bash
-# Create new CRA project with TypeScript
+# Create new legacy CRA project with TypeScript
 npx create-react-app my-app --template typescript
 cd my-app
 npm start
@@ -136,7 +138,11 @@ Enable strict mode for better type safety:
 // With strict: true
 
 // noImplicitAny - must type parameters
-function greet(name: string) {  // Error without type annotation
+function greet(name) {  // Error: parameter implicitly has an 'any' type
+    return `Hello, ${name}`;
+}
+
+function greetSafely(name: string) {
     return `Hello, ${name}`;
 }
 
@@ -170,7 +176,8 @@ For projects that emit JavaScript (like libraries):
 ```json
 {
   "compilerOptions": {
-    "moduleResolution": "node",
+    "module": "Node16",
+    "moduleResolution": "node16",
     "declaration": true,
     "outDir": "./dist"
   }
@@ -197,16 +204,16 @@ import { useAuth } from '@hooks/useAuth';
 // vite.config.ts
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import path from 'path';
+import { fileURLToPath, URL } from 'node:url';
 
 export default defineConfig({
     plugins: [react()],
     resolve: {
         alias: {
-            '@': path.resolve(__dirname, './src'),
-            '@components': path.resolve(__dirname, './src/components'),
-            '@hooks': path.resolve(__dirname, './src/hooks'),
-            '@utils': path.resolve(__dirname, './src/utils'),
+            '@': fileURLToPath(new URL('./src', import.meta.url)),
+            '@components': fileURLToPath(new URL('./src/components', import.meta.url)),
+            '@hooks': fileURLToPath(new URL('./src/hooks', import.meta.url)),
+            '@utils': fileURLToPath(new URL('./src/utils', import.meta.url)),
         },
     },
 });
@@ -451,13 +458,15 @@ function Component({ show }: { show: boolean }) {
 
 ```typescript
 // src/types/assets.d.ts
-declare module '*.css' {
+declare module '*.css';
+
+declare module '*.module.css' {
     const content: { [className: string]: string };
     export default content;
 }
 
 declare module '*.svg' {
-    const content: React.FC<React.SVGProps<SVGSVGElement>>;
+    const content: string;
     export default content;
 }
 
@@ -471,34 +480,44 @@ declare module '*.png' {
 
 Pair TypeScript with ESLint for better code quality:
 
-```json
-// .eslintrc.json
-{
-  "extends": [
-    "eslint:recommended",
-    "plugin:@typescript-eslint/recommended",
-    "plugin:react/recommended",
-    "plugin:react-hooks/recommended"
-  ],
-  "parser": "@typescript-eslint/parser",
-  "parserOptions": {
-    "ecmaFeatures": {
-      "jsx": true
+```javascript
+// eslint.config.js
+import js from '@eslint/js';
+import react from 'eslint-plugin-react';
+import reactHooks from 'eslint-plugin-react-hooks';
+import tseslint from 'typescript-eslint';
+
+export default tseslint.config(
+    js.configs.recommended,
+    ...tseslint.configs.recommended,
+    {
+        files: ['**/*.{ts,tsx}'],
+        plugins: {
+            react,
+            'react-hooks': reactHooks,
+        },
+        languageOptions: {
+            parserOptions: {
+                ecmaFeatures: {
+                    jsx: true,
+                },
+                project: './tsconfig.json',
+            },
+        },
+        settings: {
+            react: {
+                version: 'detect',
+            },
+        },
+        rules: {
+            ...react.configs.recommended.rules,
+            ...reactHooks.configs.recommended.rules,
+            'react/react-in-jsx-scope': 'off',
+            '@typescript-eslint/explicit-function-return-type': 'off',
+            '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+        },
     },
-    "project": "./tsconfig.json"
-  },
-  "plugins": ["@typescript-eslint", "react"],
-  "rules": {
-    "react/react-in-jsx-scope": "off",
-    "@typescript-eslint/explicit-function-return-type": "off",
-    "@typescript-eslint/no-unused-vars": ["error", { "argsIgnorePattern": "^_" }]
-  },
-  "settings": {
-    "react": {
-      "version": "detect"
-    }
-  }
-}
+);
 ```
 
 ## Conclusion
