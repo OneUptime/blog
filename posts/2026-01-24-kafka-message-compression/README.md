@@ -40,7 +40,7 @@ flowchart LR
 
 ## Compression Algorithms Comparison
 
-Kafka supports four compression types. Each has different trade-offs between compression ratio, CPU usage, and speed.
+Kafka supports four compression codecs, plus `none` for no compression. Each has different trade-offs between compression ratio, CPU usage, and speed.
 
 | Algorithm | Compression Ratio | CPU Usage | Speed | Best For |
 |-----------|------------------|-----------|-------|----------|
@@ -214,7 +214,7 @@ public class BatchSizeOptimizer {
     // Measure compression ratio for your data
     public static double measureCompressionRatio(String compressionType,
                                                   List<byte[]> sampleMessages) {
-        // Create a temporary producer to measure compression
+        // Mirror the producer settings you plan to benchmark
         Properties props = new Properties();
         props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "kafka:9092");
         props.put(ProducerConfig.COMPRESSION_TYPE_CONFIG, compressionType);
@@ -315,25 +315,26 @@ public class CompressedConsumer {
         return props;
     }
 
-    // Monitor decompression performance
+    // Monitor poll performance and decompressed payload volume
     public void consumeWithMetrics(MeterRegistry registry) {
-        Timer decompressionTimer = registry.timer("kafka.consumer.decompression");
+        Timer pollTimer = registry.timer("kafka.consumer.poll");
         Counter bytesDecompressed = registry.counter("kafka.consumer.bytes.decompressed");
 
         KafkaConsumer<String, String> consumer = new KafkaConsumer<>(createConfig());
         consumer.subscribe(Collections.singletonList("compressed-topic"));
 
         while (true) {
+            Timer.Sample pollSample = Timer.start();
             ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(100));
+            pollSample.stop(pollTimer);
 
             for (ConsumerRecord<String, String> record : records) {
-                Timer.Sample sample = Timer.start();
-
-                // Process record (decompression happens during poll)
+                // Decompression happens during poll, before records are returned
                 processRecord(record);
 
-                sample.stop(decompressionTimer);
-                bytesDecompressed.increment(record.serializedValueSize());
+                if (record.serializedValueSize() > 0) {
+                    bytesDecompressed.increment(record.serializedValueSize());
+                }
             }
         }
     }
@@ -347,7 +348,7 @@ public class CompressedConsumer {
 
 ## End-to-End Compression with Custom Serializers
 
-For maximum compression, combine Kafka's built-in compression with pre-compression in your serializer.
+For payloads that must remain compressed outside Kafka, you can pre-compress in your serializer. Benchmark carefully before combining this with Kafka's built-in compression, because double compression often adds CPU overhead with little extra savings.
 
 ```java
 // Custom compressing serializer for additional compression
@@ -385,9 +386,14 @@ public class CompressingSerializer implements Serializer<Object> {
 
     private byte[] compressData(byte[] data) {
         switch (compressionType) {
-            case "zstd":
-                return Zstd.compress(data);
-            case "lz4":
+            case "zstd": {
+                byte[] compressed = Zstd.compress(data);
+                byte[] output = new byte[compressed.length + 4]; // 4 bytes for original length
+                ByteBuffer.wrap(output).putInt(data.length);
+                System.arraycopy(compressed, 0, output, 4, compressed.length);
+                return output;
+            }
+            case "lz4": {
                 LZ4Factory factory = LZ4Factory.fastestInstance();
                 LZ4Compressor compressor = factory.fastCompressor();
                 int maxLen = compressor.maxCompressedLength(data.length);
@@ -399,6 +405,7 @@ public class CompressingSerializer implements Serializer<Object> {
                 int compressedLen = compressor.compress(
                     data, 0, data.length, output, 4, maxLen);
                 return Arrays.copyOf(output, compressedLen + 4);
+            }
             default:
                 return data;
         }
@@ -424,7 +431,7 @@ public class DecompressingDeserializer implements Deserializer<Object> {
 
     @Override
     public void configure(Map<String, ?> configs, boolean isKey) {
-        String className = (String) configs.get("value.deserializer.class");
+        String className = (String) configs.get("target.class");
         if (className != null) {
             try {
                 this.targetClass = Class.forName(className);
@@ -454,9 +461,12 @@ public class DecompressingDeserializer implements Deserializer<Object> {
 
     private byte[] decompressData(byte[] data) {
         switch (compressionType) {
-            case "zstd":
-                return Zstd.decompress(data, (int) Zstd.decompressedSize(data));
-            case "lz4":
+            case "zstd": {
+                int originalLength = ByteBuffer.wrap(data).getInt();
+                byte[] compressed = Arrays.copyOfRange(data, 4, data.length);
+                return Zstd.decompress(compressed, originalLength);
+            }
+            case "lz4": {
                 LZ4Factory factory = LZ4Factory.fastestInstance();
                 LZ4FastDecompressor decompressor = factory.fastDecompressor();
 
@@ -466,6 +476,7 @@ public class DecompressingDeserializer implements Deserializer<Object> {
 
                 decompressor.decompress(data, 4, output, 0, originalLength);
                 return output;
+            }
             default:
                 return data;
         }
@@ -485,6 +496,10 @@ public class DecompressingDeserializer implements Deserializer<Object> {
 public class CompressionMetrics {
 
     private final MeterRegistry registry;
+    private final Map<String, AtomicReference<Double>> compressionRatios =
+        new ConcurrentHashMap<>();
+    private final Map<String, AtomicReference<Double>> compressionSavings =
+        new ConcurrentHashMap<>();
 
     public CompressionMetrics(MeterRegistry registry) {
         this.registry = registry;
@@ -494,10 +509,10 @@ public class CompressionMetrics {
     public void trackProducerMetrics(KafkaProducer<?, ?> producer) {
         // Register JMX metrics as Micrometer gauges
 
-        // Compression ratio per topic
+        // Global producer compression rate: compressed size / uncompressed size
         Gauge.builder("kafka.producer.compression.ratio",
             () -> getMetric(producer, "compression-rate-avg"))
-            .description("Average compression ratio")
+            .description("Average compression rate; lower is better")
             .register(registry);
 
         // Record batch size
@@ -533,10 +548,23 @@ public class CompressionMetrics {
         double ratio = (double) uncompressedBytes / compressedBytes;
         double savings = (1 - (double) compressedBytes / uncompressedBytes) * 100;
 
-        registry.gauge("kafka.compression.ratio",
-            Tags.of("topic", topic), ratio);
-        registry.gauge("kafka.compression.savings.percent",
-            Tags.of("topic", topic), savings);
+        AtomicReference<Double> ratioGauge = compressionRatios.computeIfAbsent(topic, t -> {
+            AtomicReference<Double> value = new AtomicReference<>(0.0);
+            Gauge.builder("kafka.compression.ratio", value, AtomicReference::get)
+                .tags(Tags.of("topic", t))
+                .register(registry);
+            return value;
+        });
+        ratioGauge.set(ratio);
+
+        AtomicReference<Double> savingsGauge = compressionSavings.computeIfAbsent(topic, t -> {
+            AtomicReference<Double> value = new AtomicReference<>(0.0);
+            Gauge.builder("kafka.compression.savings.percent", value, AtomicReference::get)
+                .tags(Tags.of("topic", t))
+                .register(registry);
+            return value;
+        });
+        savingsGauge.set(savings);
 
         System.out.printf("Topic %s: %.2fx compression (%.1f%% savings)%n",
             topic, ratio, savings);
