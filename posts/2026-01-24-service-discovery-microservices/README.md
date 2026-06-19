@@ -216,9 +216,9 @@ spec:
 nslookup database-cluster.production.svc.cluster.local
 
 # Returns:
-# database-cluster-0.database-cluster.production.svc.cluster.local -> 10.0.0.5
-# database-cluster-1.database-cluster.production.svc.cluster.local -> 10.0.0.6
-# database-cluster-2.database-cluster.production.svc.cluster.local -> 10.0.0.7
+# database-cluster.production.svc.cluster.local has address 10.0.0.5
+# database-cluster.production.svc.cluster.local has address 10.0.0.6
+# database-cluster.production.svc.cluster.local has address 10.0.0.7
 ```
 
 ## HashiCorp Consul Service Discovery
@@ -264,12 +264,14 @@ flowchart TB
       "version": "1.2.0",
       "environment": "production"
     },
-    "check": {
-      "http": "http://localhost:8080/health",
-      "interval": "10s",
-      "timeout": "5s",
-      "deregister_critical_service_after": "1m"
-    }
+    "checks": [
+      {
+        "http": "http://localhost:8080/health",
+        "interval": "10s",
+        "timeout": "5s",
+        "deregister_critical_service_after": "1m"
+      }
+    ]
   }
 }
 ```
@@ -300,8 +302,13 @@ kind: Deployment
 metadata:
   name: order-service
 spec:
+  selector:
+    matchLabels:
+      app: order-service
   template:
     metadata:
+      labels:
+        app: order-service
       annotations:
         # Enable Consul Connect sidecar injection
         'consul.hashicorp.com/connect-inject': 'true'
@@ -722,10 +729,12 @@ Always have a fallback strategy when discovery fails.
 
 ```python
 import logging
-from functools import wraps
-from typing import List, Optional
+from typing import List
 
 logger = logging.getLogger(__name__)
+
+class ServiceDiscoveryError(Exception):
+    pass
 
 class ServiceDiscoveryClient:
     def __init__(self, consul_client, fallback_hosts: dict = None):
