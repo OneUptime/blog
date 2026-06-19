@@ -71,7 +71,8 @@ spec:
       labels:
         app: benchmark
         mesh: enabled
-      # Sidecar injection enabled (default)
+        # Sidecar injection enabled for this benchmark
+        sidecar.istio.io/inject: "true"
     spec:
       containers:
       - name: app
@@ -97,7 +98,6 @@ spec:
       labels:
         app: benchmark
         mesh: disabled
-      annotations:
         # Disable sidecar injection
         sidecar.istio.io/inject: "false"
     spec:
@@ -193,8 +193,7 @@ spec:
             cpu: 200m
             memory: 128Mi
 
-        # Use native sidecars (Kubernetes 1.29+)
-        # Reduces startup overhead
+        # Keep core dumps disabled unless needed for debugging
         enableCoreDump: false
 
     pilot:
@@ -214,8 +213,13 @@ kind: Deployment
 metadata:
   name: low-traffic-service
 spec:
+  selector:
+    matchLabels:
+      app: low-traffic-service
   template:
     metadata:
+      labels:
+        app: low-traffic-service
       annotations:
         # Override sidecar resources for low-traffic services
         sidecar.istio.io/proxyCPU: "10m"
@@ -243,7 +247,7 @@ Only proxy traffic that needs mesh features:
 # sidecar-scope.yaml
 # Limit which services the sidecar communicates with
 
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: api-gateway-sidecar
@@ -267,7 +271,7 @@ spec:
 
 ---
 # Default restrictive sidecar for the namespace
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -326,9 +330,13 @@ metadata:
   name: internal-tool
   namespace: mixed-services
 spec:
+  selector:
+    matchLabels:
+      app: internal-tool
   template:
     metadata:
-      annotations:
+      labels:
+        app: internal-tool
         # Disable sidecar for this specific deployment
         sidecar.istio.io/inject: "false"
     spec:
@@ -343,9 +351,13 @@ metadata:
   name: customer-api
   namespace: mixed-services
 spec:
+  selector:
+    matchLabels:
+      app: customer-api
   template:
     metadata:
-      annotations:
+      labels:
+        app: customer-api
         # Explicitly enable (good for documentation)
         sidecar.istio.io/inject: "true"
     spec:
@@ -361,29 +373,24 @@ spec:
 Linkerd is generally lighter than Istio, but can still be optimized:
 
 ```yaml
-# linkerd-config.yaml
-# Optimized Linkerd configuration
+# linkerd-namespace-config.yaml
+# Optimized Linkerd defaults for a namespace
 
-apiVersion: linkerd.io/v1alpha2
-kind: Link
+apiVersion: v1
+kind: Namespace
 metadata:
-  name: optimized-config
-spec:
-  # Proxy configuration
-  proxy:
-    resources:
-      cpu:
-        request: 10m
-        limit: 100m
-      memory:
-        request: 20Mi
-        limit: 100Mi
+  name: optimized-services
+  annotations:
+    linkerd.io/inject: enabled
+
+    # Proxy resource defaults
+    config.linkerd.io/proxy-cpu-request: "10m"
+    config.linkerd.io/proxy-cpu-limit: "100m"
+    config.linkerd.io/proxy-memory-request: "20Mi"
+    config.linkerd.io/proxy-memory-limit: "100Mi"
 
     # Log level (reduce overhead)
-    logLevel: warn
-
-    # Disable features not needed
-    accessLog: disabled
+    config.linkerd.io/proxy-log-level: warn
 
 ---
 # Per-workload annotation overrides
@@ -391,16 +398,28 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: my-service
-  annotations:
-    # Linkerd-specific resource overrides
-    config.linkerd.io/proxy-cpu-request: "10m"
-    config.linkerd.io/proxy-memory-request: "20Mi"
+spec:
+  selector:
+    matchLabels:
+      app: my-service
+  template:
+    metadata:
+      labels:
+        app: my-service
+      annotations:
+        # Linkerd-specific resource overrides
+        config.linkerd.io/proxy-cpu-request: "10m"
+        config.linkerd.io/proxy-memory-request: "20Mi"
 
-    # Skip outbound ports (bypass proxy for certain traffic)
-    config.linkerd.io/skip-outbound-ports: "3306,6379"
+        # Skip outbound ports (bypass proxy for certain traffic)
+        config.linkerd.io/skip-outbound-ports: "3306,6379"
 
-    # Skip inbound ports
-    config.linkerd.io/skip-inbound-ports: "9090"
+        # Skip inbound ports
+        config.linkerd.io/skip-inbound-ports: "9090"
+    spec:
+      containers:
+      - name: app
+        image: my-service:latest
 ```
 
 ---
@@ -413,7 +432,7 @@ Optimize how traffic flows through the mesh:
 # protocol-config.yaml
 # Optimize protocol handling
 
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: optimize-grpc
@@ -466,8 +485,13 @@ kind: Deployment
 metadata:
   name: database-client
 spec:
+  selector:
+    matchLabels:
+      app: database-client
   template:
     metadata:
+      labels:
+        app: database-client
       annotations:
         # Bypass proxy for database traffic
         traffic.sidecar.istio.io/excludeOutboundPorts: "5432,3306,6379,9042"
@@ -477,13 +501,17 @@ spec:
 
         # Include only specific ranges
         traffic.sidecar.istio.io/includeOutboundIPRanges: "10.1.0.0/16"
+    spec:
+      containers:
+      - name: app
+        image: database-client:latest
 ```
 
 ```yaml
-# service-entry-bypass.yaml
-# Bypass for external services
+# service-entry-external.yaml
+# Register external services for controlled mesh access
 
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-database
@@ -535,7 +563,9 @@ spec:
     - alert: HighProxyLatency
       expr: |
         histogram_quantile(0.99,
-          rate(istio_request_duration_milliseconds_bucket[5m])
+          sum by (destination_service, le) (
+            rate(istio_request_duration_milliseconds_bucket[5m])
+          )
         ) > 50
       for: 5m
       labels:
@@ -567,7 +597,7 @@ echo ""
 echo "=== Mesh Latency Overhead ==="
 # Requires Prometheus
 curl -s "http://prometheus:9090/api/v1/query" \
-    --data-urlencode 'query=histogram_quantile(0.99, rate(istio_request_duration_milliseconds_bucket[5m]))' \
+    --data-urlencode 'query=histogram_quantile(0.99, sum by (destination_service, le) (rate(istio_request_duration_milliseconds_bucket[5m])))' \
     | jq '.data.result[] | {service: .metric.destination_service, p99_ms: .value[1]}'
 ```
 
