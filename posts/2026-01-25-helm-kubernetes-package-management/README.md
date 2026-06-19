@@ -36,7 +36,7 @@ Install the Helm CLI:
 brew install helm
 
 # Linux
-curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-4 | bash
 
 # Verify installation
 helm version
@@ -48,9 +48,9 @@ Add repositories to access charts:
 
 ```bash
 # Add popular repositories
-helm repo add stable https://charts.helm.sh/stable
 helm repo add bitnami https://charts.bitnami.com/bitnami
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
 
 # Update repository cache
 helm repo update
@@ -110,11 +110,13 @@ replicaCount: 3
 image:
   registry: docker.io
   repository: bitnami/nginx
-  tag: 1.24.0
+  tag: 1.29.1-debian-12-r0
 
 service:
   type: ClusterIP
-  port: 80
+  ports:
+    http: 80
+    https: 443
 
 resources:
   requests:
@@ -135,8 +137,7 @@ autoscaling:
 ingress:
   enabled: true
   hostname: nginx.example.com
-  annotations:
-    kubernetes.io/ingress.class: nginx
+  ingressClassName: nginx
   tls: true
 
 # Pod security context
@@ -372,11 +373,12 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Helm
-        uses: azure/setup-helm@v3
+        uses: azure/setup-helm@v5
 
       - name: Configure kubectl
-        uses: azure/k8s-set-context@v3
+        uses: azure/k8s-set-context@v5
         with:
+          method: kubeconfig
           kubeconfig: ${{ secrets.KUBECONFIG }}
 
       - name: Deploy with Helm
@@ -394,8 +396,7 @@ jobs:
 
 2. **Use values schema**: Define a JSON schema for values validation.
 
-```yaml
-# my-app/values.schema.json
+```json
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
