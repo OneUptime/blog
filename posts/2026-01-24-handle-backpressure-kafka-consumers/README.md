@@ -44,8 +44,8 @@ flowchart LR
 |---------|-------------|--------|
 | Increasing lag | Consumer offset falls behind log end offset | Delayed processing |
 | Memory pressure | Large poll batches consuming heap | OOM errors |
-| Rebalancing | Slow polls trigger consumer group rebalances | Message duplication |
-| Timeout errors | Processing takes longer than session timeout | Consumer eviction |
+| Rebalancing | Processing takes longer than `max.poll.interval.ms` | Message duplication |
+| Timeout errors | Missed heartbeats exceed `session.timeout.ms` | Consumer eviction |
 
 ---
 
@@ -75,10 +75,11 @@ public class BackpressureAwareConsumerConfig {
                   StringDeserializer.class.getName());
 
         // CRITICAL: Fetch size controls
-        // Limit the number of records per poll to prevent memory issues
+        // Limit the number of records returned from each poll to prevent memory issues
         props.put(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, 100);
 
-        // Maximum data per partition per fetch
+        // Maximum data per partition per fetch. This is not an absolute limit:
+        // Kafka may return a larger first batch so the consumer can make progress.
         props.put(ConsumerConfig.MAX_PARTITION_FETCH_BYTES_CONFIG, 1048576);
 
         // CRITICAL: Timing controls
@@ -88,7 +89,8 @@ public class BackpressureAwareConsumerConfig {
         // Session timeout for heartbeat-based health checking
         props.put(ConsumerConfig.SESSION_TIMEOUT_MS_CONFIG, 45000);
 
-        // Heartbeat interval (should be 1/3 of session.timeout.ms)
+        // Heartbeat interval for the classic group protocol
+        // (typically no more than 1/3 of session.timeout.ms)
         props.put(ConsumerConfig.HEARTBEAT_INTERVAL_MS_CONFIG, 15000);
 
         // Disable auto-commit for manual control during backpressure
@@ -105,10 +107,12 @@ public class BackpressureAwareConsumerConfig {
 
 ```java
 import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.TopicPartition;
 
 import java.time.Duration;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -134,7 +138,7 @@ public class PartitionPausingConsumer {
                 consumer.poll(Duration.ofMillis(1000));
 
             for (TopicPartition partition : records.partitions()) {
-                // Track backlog per partition
+                // Track records currently being processed per partition
                 int recordCount = records.records(partition).size();
                 Long currentBacklog = partitionBacklog.getOrDefault(partition, 0L);
                 partitionBacklog.put(partition, currentBacklog + recordCount);
@@ -142,6 +146,15 @@ public class PartitionPausingConsumer {
                 // Pause partition if backlog is too high
                 if (partitionBacklog.get(partition) > backlogThreshold) {
                     pausePartition(partition);
+                }
+
+                for (ConsumerRecord<String, String> record : records.records(partition)) {
+                    try {
+                        processRecord(record);
+                    } finally {
+                        partitionBacklog.compute(partition,
+                            (tp, backlog) -> Math.max(0L, (backlog == null ? 0L : backlog) - 1));
+                    }
                 }
             }
 
@@ -152,10 +165,14 @@ public class PartitionPausingConsumer {
 
     private void pausePartition(TopicPartition partition) {
         if (!pausedPartitions.contains(partition)) {
-            consumer.pause(java.util.Collections.singleton(partition));
+            consumer.pause(Collections.singleton(partition));
             pausedPartitions.add(partition);
             System.out.println("Paused partition " + partition);
         }
+    }
+
+    private void processRecord(ConsumerRecord<String, String> record) {
+        // Process the record or hand it off to a bounded worker queue.
     }
 
     private void checkAndResumePartitions() {
