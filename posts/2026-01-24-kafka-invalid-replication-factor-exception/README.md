@@ -74,11 +74,14 @@ Using the Kafka CLI tools:
 ```bash
 # List all broker IDs in the cluster
 
-# This connects to ZooKeeper to retrieve broker information
+# This connects to the Kafka cluster through the bootstrap server
 kafka-broker-api-versions.sh --bootstrap-server localhost:9092 | grep 'id'
 
-# Alternative: Use kafka-metadata.sh for KRaft mode clusters
-kafka-metadata.sh --snapshot /var/kafka-logs/__cluster_metadata-0/00000000000000000000.log --command "broker-ids"
+# Alternative: Use kafka-metadata-shell.sh for offline KRaft metadata snapshots
+kafka-metadata-shell.sh --snapshot /var/kafka-logs/__cluster_metadata-0/00000000000000007228-0000000001.checkpoint
+
+# At the metadata shell prompt, list registered brokers:
+# >> ls /brokers
 ```
 
 Using kafkacat/kcat:
@@ -102,10 +105,13 @@ kafka-topics.sh --bootstrap-server localhost:9092 \
 
 ### Step 3: Check Default Configuration
 
-Review the broker's default topic settings:
+Review the broker's configured default topic settings:
 
 ```bash
-# Retrieve the default replication factor from broker configuration
+# Check the static broker configuration file
+grep '^default.replication.factor' /etc/kafka/server.properties
+
+# Check dynamic broker overrides for settings that support dynamic updates
 kafka-configs.sh --bootstrap-server localhost:9092 \
   --entity-type brokers --entity-default --describe | grep replication
 ```
@@ -314,20 +320,17 @@ num.partitions=6
 auto.create.topics.enable=true
 ```
 
-### Dynamic Configuration Update
+### Configuration Update
 
-You can update broker configuration without restarting using the Kafka admin tools:
+The `default.replication.factor` broker setting is read-only at runtime, so update it in `server.properties` and restart the affected brokers. Broker settings with `cluster-wide` or `per-broker` update modes can be changed without restarting using the Kafka admin tools.
 
 ```bash
-# Update the default replication factor dynamically
-# This applies to all brokers in the cluster
-kafka-configs.sh --bootstrap-server localhost:9092 \
-  --entity-type brokers \
-  --entity-default \
-  --alter \
-  --add-config default.replication.factor=1
+# After editing server.properties, restart the broker so the new
+# default.replication.factor value is loaded
+kafka-server-stop.sh
+kafka-server-start.sh /etc/kafka/server.properties
 
-# Verify the configuration was applied
+# Verify any dynamic broker overrides
 kafka-configs.sh --bootstrap-server localhost:9092 \
   --entity-type brokers \
   --entity-default \
@@ -364,13 +367,15 @@ sequenceDiagram
 ```properties
 # /etc/kafka/server.properties on new broker
 
-# Each broker must have a unique ID
+# Each ZooKeeper-based broker must have a unique ID
 broker.id=2
 
 # Connect to existing ZooKeeper ensemble
 zookeeper.connect=zk1:2181,zk2:2181,zk3:2181
 
-# Or for KRaft mode, configure the controller quorum
+# Or for KRaft mode, configure a unique node ID and the controller quorum
+# node.id=2
+# process.roles=broker
 # controller.quorum.voters=1@controller1:9093,2@controller2:9093,3@controller3:9093
 
 # Listener configuration
@@ -501,7 +506,6 @@ class KafkaTopicManager {
    * @returns {Promise<number>} Number of available brokers
    */
   async getAvailableBrokers() {
-    await this.admin.connect();
     const cluster = await this.admin.describeCluster();
     return cluster.brokers.length;
   }
