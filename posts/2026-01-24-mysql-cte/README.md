@@ -281,28 +281,28 @@ MySQL 8 allows CTEs in data modification statements.
 
 ```sql
 -- Insert using CTE
+INSERT INTO vip_customers (customer_id, enrolled_at)
 WITH high_value_customers AS (
     SELECT customer_id
     FROM orders
     GROUP BY customer_id
     HAVING SUM(amount) > 10000
 )
-INSERT INTO vip_customers (customer_id, enrolled_at)
 SELECT customer_id, NOW()
 FROM high_value_customers
 ON DUPLICATE KEY UPDATE enrolled_at = NOW();
 
--- Update using CTE
+-- Update using CTE and join
 WITH inactive_accounts AS (
     SELECT id
     FROM users
     WHERE last_login < DATE_SUB(NOW(), INTERVAL 1 YEAR)
 )
-UPDATE users
-SET status = 'inactive'
-WHERE id IN (SELECT id FROM inactive_accounts);
+UPDATE /*+ NO_MERGE(inactive_accounts) */ users u
+JOIN inactive_accounts ia ON u.id = ia.id
+SET u.status = 'inactive';
 
--- Delete using CTE
+-- Delete using CTE and join
 WITH duplicate_emails AS (
     SELECT id FROM (
         SELECT id, ROW_NUMBER() OVER (
@@ -313,16 +313,17 @@ WITH duplicate_emails AS (
     ) ranked
     WHERE rn > 1
 )
-DELETE FROM users
-WHERE id IN (SELECT id FROM duplicate_emails);
+DELETE /*+ NO_MERGE(duplicate_emails) */ u
+FROM users u
+JOIN duplicate_emails de ON u.id = de.id;
 ```
 
 ## Performance Considerations
 
-CTEs in MySQL are "inlined" by default, meaning the optimizer may execute them multiple times if referenced multiple times. Understand when to use CTEs versus derived tables.
+CTEs in MySQL may be merged into the outer query block or materialized, depending on the query and optimizer choices. If a CTE is materialized, MySQL materializes it once for the query even when it is referenced multiple times.
 
 ```sql
--- CTE referenced multiple times - may execute twice
+-- CTE referenced multiple times - MySQL may merge or materialize it
 WITH order_totals AS (
     SELECT customer_id, SUM(amount) as total
     FROM orders
@@ -332,7 +333,7 @@ SELECT
     (SELECT AVG(total) FROM order_totals) as avg_total,
     (SELECT MAX(total) FROM order_totals) as max_total;
 
--- Better for multiple references: use a derived table once
+-- Better when possible: aggregate from one reference
 SELECT
     AVG(total) as avg_total,
     MAX(total) as max_total
@@ -342,7 +343,7 @@ FROM (
     GROUP BY customer_id
 ) as order_totals;
 
--- Or use variables to materialize once
+-- Or use the CTE once in the main query
 WITH order_totals AS (
     SELECT customer_id, SUM(amount) as total
     FROM orders
@@ -358,19 +359,19 @@ FROM order_totals;  -- Single reference is fine
 ### Indexing for CTE Performance
 
 ```sql
--- CTEs don't have indexes - the base tables do
+-- You cannot define indexes on CTEs - index the base tables
 -- Ensure proper indexes exist for CTE source queries
 
--- Bad: CTE scans entire table
+-- Bad: Without a supporting index, the base table scan can be expensive
 WITH recent_orders AS (
     SELECT * FROM orders
     WHERE created_at > DATE_SUB(NOW(), INTERVAL 7 DAY)
 )
 SELECT * FROM recent_orders WHERE customer_id = 100;
 
--- Good: Index supports both filter conditions
-CREATE INDEX idx_orders_created_customer
-ON orders(created_at, customer_id);
+-- Good: Equality first, then range, for this customer-specific query
+CREATE INDEX idx_orders_customer_created
+ON orders(customer_id, created_at);
 
 -- Even better: Filter in CTE if possible
 WITH recent_customer_orders AS (
