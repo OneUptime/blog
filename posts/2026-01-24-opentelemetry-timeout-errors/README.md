@@ -242,8 +242,9 @@ const batchProcessor = new BatchSpanProcessor(exporter, {
   maxQueueSize: 2048,
 });
 
-const provider = new NodeTracerProvider();
-provider.addSpanProcessor(batchProcessor);
+const provider = new NodeTracerProvider({
+  spanProcessors: [batchProcessor],
+});
 provider.register();
 ```
 
@@ -387,10 +388,10 @@ exporter = OTLPSpanExporter(
     credentials=credentials
 )
 
-# Option 3: Disable certificate verification (NOT for production)
+# Option 3: Use plaintext without TLS (NOT for production)
 exporter = OTLPSpanExporter(
-    endpoint="https://collector:4317",
-    insecure=True  # Skip TLS verification
+    endpoint="http://collector:4317",
+    insecure=True
 )
 ```
 
@@ -423,7 +424,7 @@ class RetryableExporter {
             if (result.code === 0) {
               resolve(result);
             } else {
-              reject(new Error(result.error || 'Export failed'));
+              reject(result.error || new Error('Export failed'));
             }
           });
         });
@@ -629,7 +630,7 @@ def configure_tracing():
         endpoint=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4317"),
         insecure=os.getenv("OTEL_EXPORTER_OTLP_INSECURE", "true").lower() == "true",
         # Increase timeout for high-latency environments
-        timeout=int(os.getenv("OTEL_EXPORTER_OTLP_TIMEOUT", "30")),
+        timeout=int(os.getenv("OTEL_EXPORTER_OTLP_TIMEOUT", "30000")) / 1000,
     )
 
     # Configure batch processor with tuned parameters
@@ -669,7 +670,7 @@ export ENVIRONMENT=production
 # OTLP endpoint configuration
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
 export OTEL_EXPORTER_OTLP_INSECURE=true
-export OTEL_EXPORTER_OTLP_TIMEOUT=30
+export OTEL_EXPORTER_OTLP_TIMEOUT=30000
 
 # Batch processor configuration
 export OTEL_BSP_MAX_EXPORT_BATCH_SIZE=256
