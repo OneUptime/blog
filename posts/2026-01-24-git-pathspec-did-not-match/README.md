@@ -19,7 +19,7 @@ $ git checkout feature-branch
 error: pathspec 'feature-branch' did not match any file(s) known to git
 
 $ git add src/newfile.js
-error: pathspec 'src/newfile.js' did not match any file(s) known to git
+fatal: pathspec 'src/newfile.js' did not match any files
 ```
 
 ```mermaid
@@ -232,12 +232,11 @@ git checkout -- docs/internal/secret.md
 # Check if sparse checkout is enabled
 git config core.sparseCheckout
 
-# View sparse checkout patterns
-cat .git/info/sparse-checkout
+# View sparse checkout directories or patterns
+git sparse-checkout list
 
 # Add the path to sparse checkout
-echo "docs/internal/*" >> .git/info/sparse-checkout
-git read-tree -mu HEAD
+git sparse-checkout add docs/internal
 ```
 
 ## Diagnostic Commands
