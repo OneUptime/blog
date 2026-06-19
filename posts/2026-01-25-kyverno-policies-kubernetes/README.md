@@ -29,12 +29,12 @@ flowchart LR
     A[kubectl apply] --> B[API Server]
     B --> C[Kyverno Admission Controller]
 
-    C --> D{Validate}
-    D -->|Pass| E[Mutate]
-    D -->|Fail| F[Reject Request]
+    C --> D{Mutate}
+    D --> E{Validate}
+    E -->|Pass| G[Persist Resource]
+    E -->|Fail| F[Reject Request]
 
-    E --> G{Generate}
-    G --> H[Create Additional Resources]
+    G --> H[Generate Additional Resources]
 
     I[ClusterPolicy] --> C
     J[Policy] --> C
@@ -54,8 +54,10 @@ helm repo update
 helm install kyverno kyverno/kyverno \
   --namespace kyverno \
   --create-namespace \
-  --set replicaCount=3 \
-  --set admissionController.replicas=3
+  --set admissionController.replicas=3 \
+  --set backgroundController.replicas=2 \
+  --set cleanupController.replicas=2 \
+  --set reportsController.replicas=2
 ```
 
 Verify the installation:
@@ -71,13 +73,13 @@ kubectl get pods -n kyverno
 
 ## Policy Types
 
-Kyverno supports three policy types:
+Kyverno supports several policy rule types, including:
 
 1. **Validate**: Accept or reject resources based on rules
 2. **Mutate**: Modify resources before admission
 3. **Generate**: Create additional resources automatically
 
-Policies can be cluster-wide (ClusterPolicy) or namespace-scoped (Policy).
+Policies can be cluster-wide (ClusterPolicy) or namespace-scoped (Policy). In Kyverno 1.17 and later, the CEL-based policy APIs such as ValidatingPolicy, MutatingPolicy, and GeneratingPolicy are preferred for new policies, while ClusterPolicy and Policy remain supported as legacy APIs.
 
 ## Validation Policies
 
@@ -93,9 +95,8 @@ metadata:
     policies.kyverno.io/title: Require Resource Limits
     policies.kyverno.io/description: >-
       All containers must specify CPU and memory limits to prevent
-      resource exhaustion and enable proper scheduling.
+      resource exhaustion and support predictable resource management.
 spec:
-  validationFailureAction: Enforce  # Enforce or Audit
   background: true
   rules:
     - name: validate-resource-limits
@@ -111,10 +112,16 @@ spec:
                 - kube-system
                 - kyverno
       validate:
+        failureAction: Enforce  # Enforce or Audit
         message: "CPU and memory limits are required for all containers."
         pattern:
           spec:
             containers:
+              - resources:
+                  limits:
+                    memory: "?*"
+                    cpu: "?*"
+            =(initContainers):
               - resources:
                   limits:
                     memory: "?*"
@@ -132,7 +139,7 @@ kubectl run test-no-limits --image=nginx
 
 # This pod will be admitted
 kubectl run test-with-limits --image=nginx \
-  --limits="cpu=100m,memory=128Mi"
+  --overrides='{"apiVersion":"v1","spec":{"containers":[{"name":"test-with-limits","image":"nginx","resources":{"limits":{"cpu":"100m","memory":"128Mi"}}}]}}'
 # pod/test-with-limits created
 ```
 
@@ -145,7 +152,6 @@ kind: ClusterPolicy
 metadata:
   name: disallow-privileged-containers
 spec:
-  validationFailureAction: Enforce
   background: true
   rules:
     - name: deny-privileged
@@ -155,15 +161,19 @@ spec:
               kinds:
                 - Pod
       validate:
+        failureAction: Enforce
         message: "Privileged containers are not allowed."
         pattern:
           spec:
-            containers:
-              - securityContext:
-                  privileged: "!true"
+            =(ephemeralContainers):
+              - =(securityContext):
+                  =(privileged): false
             =(initContainers):
-              - securityContext:
-                  privileged: "!true"
+              - =(securityContext):
+                  =(privileged): false
+            containers:
+              - =(securityContext):
+                  =(privileged): false
 ```
 
 ### Require Approved Image Registries
@@ -175,7 +185,6 @@ kind: ClusterPolicy
 metadata:
   name: restrict-image-registries
 spec:
-  validationFailureAction: Enforce
   background: true
   rules:
     - name: validate-registries
@@ -185,6 +194,7 @@ spec:
               kinds:
                 - Pod
       validate:
+        failureAction: Enforce
         message: "Images must be from approved registries: gcr.io/my-project, docker.io/library"
         pattern:
           spec:
@@ -203,7 +213,6 @@ kind: ClusterPolicy
 metadata:
   name: require-labels
 spec:
-  validationFailureAction: Enforce
   background: true
   rules:
     - name: check-for-labels
@@ -215,6 +224,7 @@ spec:
                 - StatefulSet
                 - DaemonSet
       validate:
+        failureAction: Enforce
         message: "The label 'team' is required."
         pattern:
           metadata:
@@ -227,6 +237,7 @@ spec:
               kinds:
                 - Deployment
       validate:
+        failureAction: Enforce
         message: "The label 'environment' must be 'dev', 'staging', or 'production'."
         pattern:
           metadata:
@@ -417,7 +428,9 @@ Start with audit mode to understand impact before enforcing:
 
 ```yaml
 spec:
-  validationFailureAction: Audit  # Log violations but don't block
+  rules:
+    - validate:
+        failureAction: Audit  # Log violations but don't block
 ```
 
 View policy violations:
@@ -435,11 +448,13 @@ Migrate to enforcement gradually:
 
 ```yaml
 spec:
-  validationFailureAction: Audit
-  validationFailureActionOverrides:
-    - action: Enforce
-      namespaces:
-        - production
+  rules:
+    - validate:
+        failureAction: Audit
+        failureActionOverrides:
+          - action: Enforce
+            namespaces:
+              - production
 ```
 
 ## Testing Policies
