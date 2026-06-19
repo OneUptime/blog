@@ -333,6 +333,10 @@ const queryCounter = {
   increment() { this.count++; }
 };
 
+knex.on('query', () => {
+  queryCounter.increment();
+});
+
 // Log query count after each GraphQL request
 const server = new ApolloServer({
   typeDefs,
@@ -379,7 +383,7 @@ graph LR
 
 ## Best Practices
 
-1. **Always use DataLoader** for resolving relationships in GraphQL
+1. **Use DataLoader** for relationship fields that are resolved independently in GraphQL
 2. **Create new DataLoader instances per request** to avoid caching issues between users
 3. **Use ORM eager loading** when you know relationships will always be needed
 4. **Monitor query counts** in development to catch N+1 issues early
@@ -388,7 +392,8 @@ graph LR
 ```javascript
 // Complete example with best practices
 const DataLoader = require('dataloader');
-const { ApolloServer } = require('apollo-server');
+const { ApolloServer } = require('@apollo/server');
+const { startStandaloneServer } = require('@apollo/server/standalone');
 
 // Factory function to create loaders - called per request
 const createLoaders = (db) => ({
@@ -415,8 +420,11 @@ const createLoaders = (db) => ({
 // Apollo Server setup with context containing loaders
 const server = new ApolloServer({
   typeDefs,
-  resolvers,
-  context: ({ req }) => ({
+  resolvers
+});
+
+startStandaloneServer(server, {
+  context: async ({ req }) => ({
     // Create fresh loaders for each request
     loaders: createLoaders(db),
     user: req.user
