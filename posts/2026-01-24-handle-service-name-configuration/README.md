@@ -41,12 +41,14 @@ flowchart TD
 
 ## Configuration Methods
 
-There are multiple ways to configure the service name, listed here in order of precedence:
+There are multiple ways to configure the service name:
 
 1. **Programmatic configuration** - Set in code
 2. **Environment variable** - `OTEL_SERVICE_NAME`
 3. **Resource attributes environment variable** - `OTEL_RESOURCE_ATTRIBUTES`
 4. **Default value** - Usually `unknown_service`
+
+When both `OTEL_SERVICE_NAME` and `OTEL_RESOURCE_ATTRIBUTES` define `service.name`, `OTEL_SERVICE_NAME` takes precedence.
 
 ---
 
@@ -69,13 +71,17 @@ export OTEL_RESOURCE_ATTRIBUTES="service.name=checkout-service,service.version=1
 
 ```javascript
 const { NodeSDK } = require('@opentelemetry/sdk-node');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const {
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+  ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
+} = require('@opentelemetry/semantic-conventions');
 
-const resource = new Resource({
-  [SemanticResourceAttributes.SERVICE_NAME]: 'checkout-service',
-  [SemanticResourceAttributes.SERVICE_VERSION]: '1.0.0',
-  [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV,
+const resource = resourceFromAttributes({
+  [ATTR_SERVICE_NAME]: 'checkout-service',
+  [ATTR_SERVICE_VERSION]: '1.0.0',
+  [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: process.env.NODE_ENV,
 });
 
 const sdk = new NodeSDK({
@@ -87,13 +93,15 @@ const sdk = new NodeSDK({
 ### Python
 
 ```python
+import os
+
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.semconv.resource import ResourceAttributes
 
 resource = Resource.create({
     ResourceAttributes.SERVICE_NAME: "checkout-service",
     ResourceAttributes.SERVICE_VERSION: "1.0.0",
-    ResourceAttributes.DEPLOYMENT_ENVIRONMENT: os.getenv("ENVIRONMENT"),
+    "deployment.environment.name": os.getenv("ENVIRONMENT"),
 })
 ```
 
@@ -104,7 +112,7 @@ resource = Resource.create({
 1. **Use lowercase with hyphens** - `checkout-service` not `CheckoutService`
 2. **Be descriptive but concise** - `payment-processor` not `p-proc`
 3. **Include the service type** - `user-api`, `order-worker`
-4. **Avoid environment in name** - Use `deployment.environment` attribute instead
+4. **Avoid environment in name** - Use `deployment.environment.name` attribute instead
 5. **Be consistent across the organization** - Document naming standards
 
 ### What NOT to Include in Service Name
@@ -115,7 +123,7 @@ OTEL_SERVICE_NAME="checkout-service-prod"
 
 # Good - use separate attribute for environment
 OTEL_SERVICE_NAME="checkout-service"
-OTEL_RESOURCE_ATTRIBUTES="deployment.environment=prod"
+OTEL_RESOURCE_ATTRIBUTES="deployment.environment.name=production"
 ```
 
 ---
