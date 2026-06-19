@@ -325,8 +325,7 @@ advertised.listeners=PLAINTEXT://kafka-1.internal:9092,SSL://kafka-1.example.com
 listener.security.protocol.map=PLAINTEXT:PLAINTEXT,SSL:SSL
 
 # Inter-broker communication protocol
-# Use SSL for encrypted inter-broker traffic
-security.inter.broker.protocol=SSL
+# Use the SSL listener for encrypted inter-broker traffic
 inter.broker.listener.name=SSL
 
 # SSL keystore configuration
@@ -770,33 +769,48 @@ graph TD
 
 BROKER_HOST="${1:-kafka-1.example.com}"
 BROKER_PORT="${2:-9093}"
+CLIENT_CERT="${CLIENT_CERT:-}"
+CLIENT_KEY="${CLIENT_KEY:-}"
+CLIENT_CA="${CLIENT_CA:-}"
+
+OPENSSL_CLIENT_ARGS=()
+if [ -n "$CLIENT_CERT" ]; then
+    OPENSSL_CLIENT_ARGS+=("-cert" "$CLIENT_CERT")
+fi
+if [ -n "$CLIENT_KEY" ]; then
+    OPENSSL_CLIENT_ARGS+=("-key" "$CLIENT_KEY")
+fi
+if [ -n "$CLIENT_CA" ]; then
+    OPENSSL_CLIENT_ARGS+=("-CAfile" "$CLIENT_CA")
+fi
 
 echo "=== SSL Connection Debug for $BROKER_HOST:$BROKER_PORT ==="
+echo "Set CLIENT_CERT, CLIENT_KEY, and CLIENT_CA when the broker requires mTLS."
 echo ""
 
 # Test basic SSL connection
 echo "1. Testing SSL handshake..."
-openssl s_client -connect $BROKER_HOST:$BROKER_PORT -servername $BROKER_HOST < /dev/null 2>&1 | \
+openssl s_client -connect $BROKER_HOST:$BROKER_PORT -servername $BROKER_HOST "${OPENSSL_CLIENT_ARGS[@]}" < /dev/null 2>&1 | \
     grep -E "Verify return code|subject|issuer|notBefore|notAfter"
 
 echo ""
 echo "2. Certificate chain..."
-openssl s_client -connect $BROKER_HOST:$BROKER_PORT -showcerts < /dev/null 2>&1 | \
+openssl s_client -connect $BROKER_HOST:$BROKER_PORT -servername $BROKER_HOST -showcerts "${OPENSSL_CLIENT_ARGS[@]}" < /dev/null 2>&1 | \
     grep -E "s:|i:" | head -10
 
 echo ""
 echo "3. Supported protocols and ciphers..."
-openssl s_client -connect $BROKER_HOST:$BROKER_PORT -tls1_2 < /dev/null 2>&1 | \
+openssl s_client -connect $BROKER_HOST:$BROKER_PORT -servername $BROKER_HOST -tls1_2 "${OPENSSL_CLIENT_ARGS[@]}" < /dev/null 2>&1 | \
     grep "Protocol\|Cipher"
 
 echo ""
 echo "4. Certificate expiry..."
-echo | openssl s_client -connect $BROKER_HOST:$BROKER_PORT 2>/dev/null | \
+echo | openssl s_client -connect $BROKER_HOST:$BROKER_PORT -servername $BROKER_HOST "${OPENSSL_CLIENT_ARGS[@]}" 2>/dev/null | \
     openssl x509 -noout -dates
 
 echo ""
 echo "5. Subject Alternative Names..."
-echo | openssl s_client -connect $BROKER_HOST:$BROKER_PORT 2>/dev/null | \
+echo | openssl s_client -connect $BROKER_HOST:$BROKER_PORT -servername $BROKER_HOST "${OPENSSL_CLIENT_ARGS[@]}" 2>/dev/null | \
     openssl x509 -noout -ext subjectAltName
 ```
 
@@ -867,15 +881,14 @@ sequenceDiagram
     Script->>CA: Request new certificate
     CA-->>Script: New signed certificate
 
-    Script->>Broker: Update keystore with new cert
-    Note over Broker: Keep old cert temporarily
+    Script->>Broker: Back up old keystore and install new keystore
 
     Script->>Broker: Rolling restart broker
     Broker-->>Client: Present new certificate
 
     Note over Client: Trusts CA, accepts new cert
 
-    Script->>Broker: Remove old certificate
+    Script->>Broker: Keep backup for rollback if needed
 ```
 
 ### Certificate Rotation Script
@@ -883,7 +896,7 @@ sequenceDiagram
 ```bash
 #!/bin/bash
 # rotate-broker-cert.sh
-# Rotates SSL certificates for Kafka broker without downtime
+# Rotates SSL certificates for Kafka broker with a rolling restart
 
 BROKER_HOST=$1
 SSL_DIR="/etc/kafka/ssl"
@@ -904,12 +917,12 @@ BACKUP_DIR="$SSL_DIR/backup/$(date +%Y%m%d)"
 mkdir -p $BACKUP_DIR
 cp $SSL_DIR/$BROKER_HOST.keystore.jks $BACKUP_DIR/
 
-# Generate new key pair with unique alias (timestamp-based)
-NEW_ALIAS="${BROKER_HOST}-$(date +%s)"
+NEW_KEYSTORE="/tmp/$BROKER_HOST.keystore.new.jks"
+rm -f $NEW_KEYSTORE
 
 echo "Generating new key pair..."
-keytool -keystore $SSL_DIR/$BROKER_HOST.keystore.jks \
-    -alias $NEW_ALIAS \
+keytool -keystore $NEW_KEYSTORE \
+    -alias $BROKER_HOST \
     -validity $VALIDITY_DAYS \
     -genkey \
     -keyalg RSA \
@@ -921,12 +934,13 @@ keytool -keystore $SSL_DIR/$BROKER_HOST.keystore.jks \
 
 # Create CSR
 echo "Creating CSR..."
-keytool -keystore $SSL_DIR/$BROKER_HOST.keystore.jks \
-    -alias $NEW_ALIAS \
+keytool -keystore $NEW_KEYSTORE \
+    -alias $BROKER_HOST \
     -certreq \
     -file /tmp/$BROKER_HOST.csr \
     -storepass $BROKER_PASSWORD \
-    -keypass $BROKER_PASSWORD
+    -keypass $BROKER_PASSWORD \
+    -ext "SAN=DNS:$BROKER_HOST,DNS:localhost"
 
 # Sign with CA
 echo "Signing with CA..."
@@ -940,25 +954,32 @@ openssl x509 -req \
     -passin pass:$CA_PASSWORD \
     -extfile <(printf "subjectAltName=DNS:$BROKER_HOST,DNS:localhost")
 
+# Import CA certificate
+echo "Importing CA certificate..."
+keytool -keystore $NEW_KEYSTORE \
+    -alias CARoot \
+    -import \
+    -file $CA_DIR/ca-cert \
+    -storepass $BROKER_PASSWORD \
+    -noprompt
+
 # Import signed certificate
 echo "Importing signed certificate..."
-keytool -keystore $SSL_DIR/$BROKER_HOST.keystore.jks \
-    -alias $NEW_ALIAS \
+keytool -keystore $NEW_KEYSTORE \
+    -alias $BROKER_HOST \
     -import \
     -file /tmp/$BROKER_HOST-signed.crt \
     -storepass $BROKER_PASSWORD \
     -noprompt
 
-# Update broker configuration to use new alias
-echo "Updating broker configuration..."
-# Note: You may need to update server.properties if using specific alias
-# ssl.keystore.alias=$NEW_ALIAS
+# Replace keystore after the new keystore is complete
+mv $NEW_KEYSTORE $SSL_DIR/$BROKER_HOST.keystore.jks
 
 # Cleanup
 rm -f /tmp/$BROKER_HOST.csr /tmp/$BROKER_HOST-signed.crt
 
 echo "Certificate rotation complete!"
-echo "New certificate alias: $NEW_ALIAS"
+echo "New certificate alias: $BROKER_HOST"
 echo ""
 echo "Next steps:"
 echo "1. Perform rolling restart of the broker"
