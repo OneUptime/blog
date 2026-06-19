@@ -70,13 +70,13 @@ spec:
       priorityClassName: system-node-critical
       containers:
         - name: nvidia-device-plugin-ctr
-          image: nvcr.io/nvidia/k8s-device-plugin:v0.14.3
+          image: nvcr.io/nvidia/k8s-device-plugin:v0.17.1
           env:
             - name: FAIL_ON_INIT_ERROR
-              value: "false"
-            # Enable time-slicing for GPU sharing
-            - name: NVIDIA_MIG_MONITOR_DEVICES
-              value: "all"
+              value: "true"
+            # Load time-slicing settings from the ConfigMap below
+            - name: CONFIG_FILE
+              value: /config/any
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
@@ -84,10 +84,15 @@ spec:
           volumeMounts:
             - name: device-plugin
               mountPath: /var/lib/kubelet/device-plugins
+            - name: time-slicing-config
+              mountPath: /config
       volumes:
         - name: device-plugin
           hostPath:
             path: /var/lib/kubelet/device-plugins
+        - name: time-slicing-config
+          configMap:
+            name: time-slicing-config
 ```
 
 ### GPU Time-Slicing Configuration
@@ -112,7 +117,7 @@ data:
         failRequestsGreaterThanOne: false
         resources:
           - name: nvidia.com/gpu
-            replicas: 4  # Each GPU appears as 4 virtual GPUs
+            replicas: 4  # Each GPU is advertised as 4 shared access slots
 ```
 
 ## GPU Resource Allocation
@@ -137,13 +142,6 @@ spec:
           memory: "16Gi"
           cpu: "4"
       command: ["python", "train.py"]
-      env:
-        # Control which GPU devices are visible
-        - name: NVIDIA_VISIBLE_DEVICES
-          value: "all"
-        # Memory growth allows multiple processes
-        - name: TF_FORCE_GPU_ALLOW_GROWTH
-          value: "true"
 ```
 
 ### Multi-GPU Training Job
@@ -155,8 +153,8 @@ kind: Job
 metadata:
   name: distributed-training
 spec:
-  parallelism: 2  # Number of workers
-  completions: 2
+  parallelism: 1
+  completions: 1
   template:
     spec:
       containers:
@@ -169,17 +167,18 @@ spec:
               cpu: "16"
           env:
             - name: WORLD_SIZE
-              value: "8"  # Total GPUs across all workers
+              value: "4"  # Total GPUs on this worker
             - name: MASTER_ADDR
-              value: "distributed-training-0"
+              value: "localhost"
             - name: MASTER_PORT
               value: "29500"
           command:
             - python
             - -m
-            - torch.distributed.launch
-            - --nproc_per_node=4
-            - --nnodes=2
+            - torch.distributed.run
+            - --standalone
+            - --nproc-per-node=4
+            - --nnodes=1
             - train.py
       restartPolicy: Never
   backoffLimit: 2
@@ -193,7 +192,6 @@ spec:
 # training/gpu_memory.py
 import torch
 import gc
-from typing import Optional
 from contextlib import contextmanager
 
 class GPUMemoryManager:
@@ -214,13 +212,14 @@ class GPUMemoryManager:
             return {"error": "CUDA not available"}
 
         props = torch.cuda.get_device_properties(self.device_id)
+        free_bytes, total_bytes = torch.cuda.mem_get_info(self.device_id)
 
         return {
             "device_name": props.name,
-            "total_memory_gb": props.total_memory / (1024**3),
+            "total_memory_gb": total_bytes / (1024**3),
             "allocated_gb": torch.cuda.memory_allocated(self.device_id) / (1024**3),
             "reserved_gb": torch.cuda.memory_reserved(self.device_id) / (1024**3),
-            "free_gb": (props.total_memory - torch.cuda.memory_allocated(self.device_id)) / (1024**3)
+            "free_gb": free_bytes / (1024**3)
         }
 
     def clear_memory(self):
@@ -279,22 +278,22 @@ class MixedPrecisionTrainer:
     """
     Train with automatic mixed precision (AMP).
 
-    Uses FP16 for forward/backward passes, FP32 for optimizer.
-    Reduces memory usage by ~50% for activations.
+    Uses lower precision where PyTorch autocast selects it safely.
+    Can reduce activation memory usage on supported GPUs.
     """
 
     def __init__(self, model, optimizer, device):
         self.model = model.to(device)
         self.optimizer = optimizer
         self.device = device
-        self.scaler = torch.cuda.amp.GradScaler()
+        self.scaler = torch.amp.GradScaler("cuda")
 
     def train_step(self, inputs, targets):
         """Perform a single training step with AMP."""
         self.optimizer.zero_grad()
 
         # Automatic mixed precision context
-        with torch.cuda.amp.autocast():
+        with torch.amp.autocast("cuda"):
             outputs = self.model(inputs)
             loss = torch.nn.functional.cross_entropy(outputs, targets)
 
@@ -624,10 +623,9 @@ spec:
     - type: prometheus
       metadata:
         serverAddress: http://prometheus:9090
-        metricName: gpu_utilization_percent
         threshold: "80"
         query: |
-          avg(DCGM_FI_DEV_GPU_UTIL{kubernetes_pod_name=~"inference-.*"})
+          avg(DCGM_FI_DEV_GPU_UTIL{pod=~"inference-.*"})
 ```
 
 ## Summary
