@@ -15,7 +15,7 @@ React Testing Library (RTL) encourages testing your components the way users int
 ### Installing Dependencies
 
 ```bash
-# For Create React App (already includes RTL)
+# For legacy Create React App projects (already includes RTL)
 
 npx create-react-app my-app
 
@@ -24,6 +24,9 @@ npm install --save-dev @testing-library/react @testing-library/jest-dom @testing
 
 # If using Vite
 npm install --save-dev vitest jsdom @testing-library/react @testing-library/jest-dom
+
+# If using MSW for API mocking
+npm install --save-dev msw
 ```
 
 ```mermaid
@@ -180,7 +183,7 @@ afterAll(() => {
 
 ```javascript
 // vite.config.js
-import { defineConfig } from 'vite';
+import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 
 export default defineConfig({
@@ -252,7 +255,7 @@ function render(
       defaultOptions: {
         queries: {
           retry: false,
-          cacheTime: 0,
+          gcTime: Infinity,
         },
       },
     }),
@@ -264,6 +267,10 @@ function render(
     ...renderOptions
   } = {}
 ) {
+  if (routerType === 'browser') {
+    window.history.pushState({}, 'Test page', route);
+  }
+
   // Choose router based on test needs
   const Router = routerType === 'memory' ? MemoryRouter : BrowserRouter;
   const routerProps = routerType === 'memory'
@@ -327,6 +334,7 @@ describe('UserProfile', () => {
 
     render(<UserProfile />, {
       route: '/profile',
+      routerType: 'browser',
       preloadedState: {
         user: { profile: { name: 'John Doe' } },
       },
@@ -358,13 +366,13 @@ import userEvent from '@testing-library/user-event';
 // Create a configured user event instance
 export function setupUser(options = {}) {
   return userEvent.setup({
-    // Simulate real delays between actions
-    delay: null, // Set to a number for realistic delays
+    // Keep the default async delay between some interactions
+    delay: 0, // Set to a higher number for slower, realistic typing delays
 
     // Configure pointer events
     pointerEventsCheck: 0,
 
-    // Skip auto-await for certain actions
+    // Keep type() releasing any pressed keys at the end of the call
     skipAutoClose: false,
 
     ...options,
@@ -449,44 +457,36 @@ describe('ContactForm', () => {
 
 ```javascript
 // src/mocks/handlers.js
-import { rest } from 'msw';
+import { http, HttpResponse } from 'msw';
 
 export const handlers = [
-  rest.get('/api/users/:userId', (req, res, ctx) => {
-    const { userId } = req.params;
+  http.get('/api/users/:userId', ({ params }) => {
+    const { userId } = params;
 
-    return res(
-      ctx.status(200),
-      ctx.json({
-        id: userId,
-        name: 'John Doe',
-        email: 'john@example.com',
-      })
-    );
-  }),
-
-  rest.post('/api/users', async (req, res, ctx) => {
-    const body = await req.json();
-
-    return res(
-      ctx.status(201),
-      ctx.json({
-        id: '123',
-        ...body,
-      })
-    );
-  }),
-
-  rest.get('/api/users/:userId', (req, res, ctx) => {
-    // Simulate error for specific user
-    if (req.params.userId === '404') {
-      return res(
-        ctx.status(404),
-        ctx.json({ error: 'User not found' })
+    if (userId === '404') {
+      return HttpResponse.json(
+        { error: 'User not found' },
+        { status: 404 }
       );
     }
 
-    return res(ctx.json({ id: req.params.userId, name: 'Test User' }));
+    return HttpResponse.json({
+      id: userId,
+      name: 'John Doe',
+      email: 'john@example.com',
+    });
+  }),
+
+  http.post('/api/users', async ({ request }) => {
+    const body = await request.json();
+
+    return HttpResponse.json(
+      {
+        id: '123',
+        ...body,
+      },
+      { status: 201 }
+    );
   }),
 ];
 
@@ -509,20 +509,18 @@ afterAll(() => server.close());
 ```javascript
 // src/components/UserList.test.jsx
 import { render, screen, waitFor } from '../test-utils/render';
-import { rest } from 'msw';
+import { http, HttpResponse } from 'msw';
 import { server } from '../mocks/server';
 import UserList from './UserList';
 
 describe('UserList', () => {
   it('loads and displays users', async () => {
     server.use(
-      rest.get('/api/users', (req, res, ctx) => {
-        return res(
-          ctx.json([
-            { id: 1, name: 'Alice' },
-            { id: 2, name: 'Bob' },
-          ])
-        );
+      http.get('/api/users', () => {
+        return HttpResponse.json([
+          { id: 1, name: 'Alice' },
+          { id: 2, name: 'Bob' },
+        ]);
       })
     );
 
@@ -538,8 +536,11 @@ describe('UserList', () => {
 
   it('displays error message on failure', async () => {
     server.use(
-      rest.get('/api/users', (req, res, ctx) => {
-        return res(ctx.status(500), ctx.json({ error: 'Server error' }));
+      http.get('/api/users', () => {
+        return HttpResponse.json(
+          { error: 'Server error' },
+          { status: 500 }
+        );
       })
     );
 
@@ -570,6 +571,9 @@ flowchart TD
 ```javascript
 // src/components/AsyncComponent.test.jsx
 import { render, screen, waitFor, waitForElementToBeRemoved } from '../test-utils/render';
+import { http, HttpResponse } from 'msw';
+import { server } from '../mocks/server';
+import { setupUser } from '../test-utils/user-event';
 import AsyncComponent from './AsyncComponent';
 
 describe('AsyncComponent', () => {
@@ -600,12 +604,12 @@ describe('AsyncComponent', () => {
     let attempts = 0;
 
     server.use(
-      rest.get('/api/data', (req, res, ctx) => {
+      http.get('/api/data', () => {
         attempts++;
         if (attempts === 1) {
-          return res(ctx.status(500));
+          return new HttpResponse(null, { status: 500 });
         }
-        return res(ctx.json({ data: 'success' }));
+        return HttpResponse.json({ data: 'success' });
       })
     );
 
@@ -657,7 +661,13 @@ expect.extend({
 });
 
 // Usage
+import { render, screen } from '../test-utils/render';
+import { setupUser } from '../test-utils/user-event';
+import Form from '../components/Form';
+
 test('shows validation error', async () => {
+  const user = setupUser();
+
   render(<Form />);
 
   const emailInput = screen.getByLabelText(/email/i);
