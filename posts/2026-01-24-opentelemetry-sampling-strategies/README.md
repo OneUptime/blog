@@ -94,6 +94,7 @@ Disables all tracing. Useful for temporarily disabling telemetry without removin
 
 ```javascript
 // JavaScript/Node.js - disable all tracing
+const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { AlwaysOffSampler } = require('@opentelemetry/sdk-trace-base');
 
 // AlwaysOffSampler drops all traces
@@ -109,6 +110,7 @@ The most commonly used sampler. It samples a percentage of traces based on the t
 
 ```javascript
 // JavaScript/Node.js - sample 10% of traces
+const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { TraceIdRatioBasedSampler } = require('@opentelemetry/sdk-trace-base');
 
 // Sample 10% of all traces (0.1 = 10%)
@@ -165,6 +167,7 @@ This sampler respects the sampling decision of the parent span. It is the defaul
 
 ```javascript
 // JavaScript/Node.js - parent-based sampling with ratio fallback
+const { NodeSDK } = require('@opentelemetry/sdk-node');
 const {
   ParentBasedSampler,
   TraceIdRatioBasedSampler
@@ -215,6 +218,7 @@ Sometimes the built-in samplers are not enough. You might want to sample based o
 
 ```javascript
 // JavaScript/Node.js - custom sampler implementation
+const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { SamplingDecision } = require('@opentelemetry/sdk-trace-base');
 
 // Custom sampler that makes decisions based on span attributes
@@ -278,9 +282,9 @@ const sdk = new NodeSDK({
 # Python - custom sampler implementation
 from opentelemetry.sdk.trace.sampling import Sampler, Decision, SamplingResult
 from opentelemetry.trace import SpanKind
+from opentelemetry.trace.span import TraceState
 from opentelemetry.context import Context
 from typing import Optional, Sequence
-import hashlib
 
 class PriorityBasedSampler(Sampler):
     """
@@ -299,6 +303,7 @@ class PriorityBasedSampler(Sampler):
         kind: SpanKind = None,
         attributes: dict = None,
         links: Sequence = None,
+        trace_state: Optional[TraceState] = None,
     ) -> SamplingResult:
         attributes = attributes or {}
 
@@ -306,7 +311,7 @@ class PriorityBasedSampler(Sampler):
         priority = attributes.get('request.priority', 'normal')
         if priority == 'high':
             return SamplingResult(
-                decision=Decision.RECORD_AND_SAMPLED,
+                decision=Decision.RECORD_AND_SAMPLE,
                 attributes={'sampler.reason': 'high_priority'}
             )
 
@@ -318,10 +323,11 @@ class PriorityBasedSampler(Sampler):
 
         # Deterministic sampling based on trace ID
         # This ensures the same trace ID always gets the same decision
-        threshold = int(rate * (2**64 - 1))
-        if trace_id < threshold:
+        trace_id_limit = (1 << 64) - 1
+        threshold = round(rate * (trace_id_limit + 1))
+        if trace_id & trace_id_limit < threshold:
             return SamplingResult(
-                decision=Decision.RECORD_AND_SAMPLED,
+                decision=Decision.RECORD_AND_SAMPLE,
                 attributes={'sampler.rate': str(rate)}
             )
 
@@ -339,9 +345,9 @@ provider = TracerProvider(sampler=PriorityBasedSampler(default_rate=0.1))
 trace.set_tracer_provider(provider)
 ```
 
-## Configuring Tail Sampling in OpenTelemetry Collector
+## Configuring Tail Sampling in OpenTelemetry Collector Contrib
 
-Tail sampling happens in the OpenTelemetry Collector after complete traces are received. This allows for more intelligent sampling decisions.
+Tail sampling happens in the OpenTelemetry Collector Contrib distribution after complete traces are received. This allows for more intelligent sampling decisions.
 
 ```yaml
 # otel-collector-config.yaml
@@ -437,7 +443,7 @@ processors:
               status_code:
                 status_codes: [ERROR]
 
-      # Composite policy: OR logic - sample if ANY sub-policy matches
+      # Composite policy: ordered sub-policies with rate allocation
       - name: composite-or-policy
         type: composite
         composite:
