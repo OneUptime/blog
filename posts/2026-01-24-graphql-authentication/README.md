@@ -41,8 +41,12 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 
 // Secret key for signing tokens - store in environment variables
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
+const JWT_SECRET = process.env.JWT_SECRET;
 const JWT_EXPIRATION = '24h';
+
+if (!JWT_SECRET) {
+  throw new Error('JWT_SECRET environment variable is required');
+}
 
 // Generate a JWT token for a user
 function generateToken(user) {
@@ -108,7 +112,8 @@ async function createContext({ req }) {
   // Default context with null user
   const context = {
     user: null,
-    isAuthenticated: false
+    isAuthenticated: false,
+    req
   };
 
   if (token) {
@@ -143,10 +148,15 @@ module.exports = { createContext };
 
 type User {
   id: ID!
-  email: String!
+  email: String
   name: String!
   role: Role!
   createdAt: String!
+}
+
+type Post {
+  id: ID!
+  title: String!
 }
 
 enum Role {
@@ -203,8 +213,20 @@ type Mutation {
 // resolvers/auth.js
 // Authentication resolvers for signup, login, and protected queries
 
-const { AuthenticationError, ForbiddenError } = require('apollo-server');
+const { GraphQLError } = require('graphql');
 const { generateToken, hashPassword, comparePassword } = require('../auth/jwt');
+
+function authenticationError(message) {
+  return new GraphQLError(message, {
+    extensions: { code: 'UNAUTHENTICATED' }
+  });
+}
+
+function forbiddenError(message) {
+  return new GraphQLError(message, {
+    extensions: { code: 'FORBIDDEN' }
+  });
+}
 
 const authResolvers = {
   Query: {
@@ -212,7 +234,7 @@ const authResolvers = {
     me: (parent, args, context) => {
       // Check if user is authenticated
       if (!context.isAuthenticated) {
-        throw new AuthenticationError('You must be logged in');
+        throw authenticationError('You must be logged in');
       }
 
       return context.user;
@@ -222,12 +244,12 @@ const authResolvers = {
     allUsers: async (parent, args, context) => {
       // Check authentication
       if (!context.isAuthenticated) {
-        throw new AuthenticationError('You must be logged in');
+        throw authenticationError('You must be logged in');
       }
 
       // Check authorization (admin role required)
       if (context.user.role !== 'ADMIN') {
-        throw new ForbiddenError('Admin access required');
+        throw forbiddenError('Admin access required');
       }
 
       return await context.db.users.findAll();
@@ -272,13 +294,13 @@ const authResolvers = {
       // Find user by email
       const user = await context.db.users.findByEmail(email);
       if (!user) {
-        throw new AuthenticationError('Invalid email or password');
+        throw authenticationError('Invalid email or password');
       }
 
       // Verify password
       const validPassword = await comparePassword(password, user.password);
       if (!validPassword) {
-        throw new AuthenticationError('Invalid email or password');
+        throw authenticationError('Invalid email or password');
       }
 
       // Generate JWT token
@@ -293,7 +315,7 @@ const authResolvers = {
     // Protected mutation - update user profile
     updateProfile: async (parent, { name }, context) => {
       if (!context.isAuthenticated) {
-        throw new AuthenticationError('You must be logged in');
+        throw authenticationError('You must be logged in');
       }
 
       // Update user in database
@@ -321,6 +343,11 @@ Directives provide a declarative way to add authorization to your schema:
 directive @auth on FIELD_DEFINITION
 directive @hasRole(role: Role!) on FIELD_DEFINITION
 
+type Post {
+  id: ID!
+  title: String!
+}
+
 type Query {
   # Public - no directive
   publicPosts: [Post!]!
@@ -331,7 +358,7 @@ type Query {
   # Requires specific role
   allUsers: [User!]! @auth @hasRole(role: ADMIN)
 
-  # Requires either admin or moderator role
+  # Requires moderator role
   flaggedContent: [Post!]! @auth @hasRole(role: MODERATOR)
 }
 
@@ -348,8 +375,19 @@ type Mutation {
 // Custom directive implementations for authentication
 
 const { mapSchema, getDirective, MapperKind } = require('@graphql-tools/utils');
-const { defaultFieldResolver } = require('graphql');
-const { AuthenticationError, ForbiddenError } = require('apollo-server');
+const { defaultFieldResolver, GraphQLError } = require('graphql');
+
+function authenticationError(message) {
+  return new GraphQLError(message, {
+    extensions: { code: 'UNAUTHENTICATED' }
+  });
+}
+
+function forbiddenError(message) {
+  return new GraphQLError(message, {
+    extensions: { code: 'FORBIDDEN' }
+  });
+}
 
 // Transform schema to add @auth directive logic
 function authDirectiveTransformer(schema) {
@@ -367,7 +405,7 @@ function authDirectiveTransformer(schema) {
         fieldConfig.resolve = async function (source, args, context, info) {
           // Check if user is authenticated
           if (!context.isAuthenticated) {
-            throw new AuthenticationError(
+            throw authenticationError(
               'You must be authenticated to access this resource'
             );
           }
@@ -396,7 +434,7 @@ function hasRoleDirectiveTransformer(schema) {
         fieldConfig.resolve = async function (source, args, context, info) {
           // Check if user has required role
           if (!context.user || context.user.role !== requiredRole) {
-            throw new ForbiddenError(
+            throw forbiddenError(
               `This action requires ${requiredRole} role`
             );
           }
@@ -422,7 +460,8 @@ module.exports = {
 // server.js
 // Setting up Apollo Server with auth directives
 
-const { ApolloServer } = require('apollo-server');
+const { ApolloServer } = require('@apollo/server');
+const { startStandaloneServer } = require('@apollo/server/standalone');
 const { makeExecutableSchema } = require('@graphql-tools/schema');
 const { createContext } = require('./context');
 const typeDefs = require('./schema');
@@ -439,17 +478,18 @@ let schema = makeExecutableSchema({
 });
 
 // Apply directive transformers in order
-// Order matters - auth should run before hasRole
-schema = authDirectiveTransformer(schema);
+// Order matters - auth should wrap hasRole so authentication runs first
 schema = hasRoleDirectiveTransformer(schema);
+schema = authDirectiveTransformer(schema);
 
 // Create and start server
 const server = new ApolloServer({
-  schema,
-  context: createContext
+  schema
 });
 
-server.listen().then(({ url }) => {
+startStandaloneServer(server, {
+  context: createContext
+}).then(({ url }) => {
   console.log(`Server ready at ${url}`);
 });
 ```
@@ -462,7 +502,13 @@ Sometimes you need to restrict access to specific fields based on the user:
 // resolvers/user.js
 // Field-level authorization in resolvers
 
-const { ForbiddenError } = require('apollo-server');
+const { GraphQLError } = require('graphql');
+
+function forbiddenError(message) {
+  return new GraphQLError(message, {
+    extensions: { code: 'FORBIDDEN' }
+  });
+}
 
 const userResolvers = {
   User: {
@@ -485,7 +531,7 @@ const userResolvers = {
     // Private data only visible to the user themselves
     privateNotes: (parent, args, context) => {
       if (context.user?.id !== parent.id) {
-        throw new ForbiddenError('You can only view your own private notes');
+        throw forbiddenError('You can only view your own private notes');
       }
 
       return parent.privateNotes;
@@ -543,19 +589,27 @@ For applications that prefer sessions over JWTs:
 // Session-based authentication setup
 
 const session = require('express-session');
-const RedisStore = require('connect-redis')(session);
+const { RedisStore } = require('connect-redis');
 const redis = require('redis');
+const { GraphQLError } = require('graphql');
+const { verifyCredentials } = require('./auth/credentials');
+
+const SESSION_SECRET = process.env.SESSION_SECRET;
+
+if (!SESSION_SECRET) {
+  throw new Error('SESSION_SECRET environment variable is required');
+}
 
 // Create Redis client for session storage
 const redisClient = redis.createClient({
-  host: process.env.REDIS_HOST,
-  port: process.env.REDIS_PORT
+  url: process.env.REDIS_URL || 'redis://localhost:6379'
 });
+redisClient.connect().catch(console.error);
 
 // Session middleware configuration
 const sessionMiddleware = session({
   store: new RedisStore({ client: redisClient }),
-  secret: process.env.SESSION_SECRET,
+  secret: SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
   cookie: {
@@ -570,7 +624,8 @@ function createSessionContext({ req }) {
   return {
     user: req.session.user || null,
     isAuthenticated: !!req.session.user,
-    session: req.session
+    session: req.session,
+    req
   };
 }
 
@@ -584,7 +639,9 @@ const sessionResolvers = {
       const user = await verifyCredentials(email, password);
 
       if (!user) {
-        throw new AuthenticationError('Invalid credentials');
+        throw new GraphQLError('Invalid credentials', {
+          extensions: { code: 'UNAUTHENTICATED' }
+        });
       }
 
       // Store user in session
@@ -627,6 +684,7 @@ Integrating with OAuth providers like Google or GitHub:
 // Google OAuth integration
 
 const { OAuth2Client } = require('google-auth-library');
+const { generateToken } = require('../auth/jwt');
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
@@ -639,6 +697,10 @@ async function verifyGoogleToken(idToken) {
     });
 
     const payload = ticket.getPayload();
+
+    if (!payload.email_verified) {
+      throw new Error('Google email address is not verified');
+    }
 
     return {
       googleId: payload.sub,
@@ -718,6 +780,8 @@ Implementing RBAC:
 // rbac/permissions.js
 // Role-based access control implementation
 
+const { GraphQLError } = require('graphql');
+
 // Define permissions for each role
 const rolePermissions = {
   USER: [
@@ -768,9 +832,9 @@ function requirePermission(permission) {
   return (resolver) => {
     return async (parent, args, context, info) => {
       if (!hasPermission(context.user, permission)) {
-        throw new ForbiddenError(
-          `Missing required permission: ${permission}`
-        );
+        throw new GraphQLError(`Missing required permission: ${permission}`, {
+          extensions: { code: 'FORBIDDEN' }
+        });
       }
 
       return resolver(parent, args, context, info);
@@ -806,7 +870,7 @@ module.exports = {
 1. **Always use HTTPS** in production
 2. **Store tokens securely** - use httpOnly cookies or secure storage
 3. **Implement token refresh** for long-lived sessions
-4. **Rate limit authentication endpoints** to prevent brute force attacks
+4. **Rate limit authentication operations** to prevent brute force attacks
 5. **Log authentication events** for security monitoring
 
 ```javascript
@@ -815,29 +879,34 @@ module.exports = {
 
 const rateLimit = require('express-rate-limit');
 
-// Rate limiter for login attempts
-const loginLimiter = rateLimit({
+// Coarse rate limiter for GraphQL requests
+const graphqlLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // 5 attempts per window
-  message: 'Too many login attempts, please try again later',
+  max: 100, // 100 requests per window per IP
+  message: 'Too many requests, please try again later',
   standardHeaders: true,
   legacyHeaders: false
 });
 
-// Apply to Express app before Apollo middleware
-// app.use('/graphql', loginLimiter);
+// Apply to Express app before Apollo middleware.
+// Add stricter resolver-level throttling for login and signup mutations.
+// app.use('/graphql', graphqlLimiter);
 
 // GraphQL plugin for auth logging
 const authLoggingPlugin = {
   requestDidStart() {
     return {
-      didResolveOperation({ operationName, context }) {
+      didResolveOperation(requestContext) {
         // Log authentication-related operations
+        const { operationName, contextValue } = requestContext;
+
         if (['login', 'signUp', 'logout'].includes(operationName)) {
+          const ip = contextValue.req.ip || contextValue.req.socket?.remoteAddress;
+
           console.log(`Auth operation: ${operationName}`, {
-            ip: context.req.ip,
+            ip,
             timestamp: new Date().toISOString(),
-            userId: context.user?.id
+            userId: contextValue.user?.id
           });
         }
       }
@@ -846,7 +915,7 @@ const authLoggingPlugin = {
 };
 
 module.exports = {
-  loginLimiter,
+  graphqlLimiter,
   authLoggingPlugin
 };
 ```
