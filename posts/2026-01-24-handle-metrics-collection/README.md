@@ -138,8 +138,8 @@ function metricsMiddleware(req, res, next) {
 function normalizePath(path) {
   // Replace numeric IDs with placeholder to reduce cardinality
   return path
-    .replace(/\/\d+/g, '/:id')
-    .replace(/\/[a-f0-9-]{36}/g, '/:uuid');
+    .replace(/\/[a-f0-9-]{36}(?=\/|$)/g, '/:uuid')
+    .replace(/\/\d+(?=\/|$)/g, '/:id');
 }
 
 module.exports = metricsMiddleware;
@@ -283,9 +283,12 @@ count(http_requests_total)
 Follow these rules when defining labels:
 
 ```javascript
+const client = require('prom-client');
+
 // BAD: Unbounded labels create millions of time series
-const requestDuration = new Histogram({
-  name: 'http_request_duration_seconds',
+const badRequestDuration = new client.Histogram({
+  name: 'bad_http_request_duration_seconds',
+  help: 'HTTP request duration in seconds',
   labelNames: [
     'method',
     'path',         // OK if normalized
@@ -296,8 +299,9 @@ const requestDuration = new Histogram({
 });
 
 // GOOD: Limited, known label values
-const requestDuration = new Histogram({
+const requestDuration = new client.Histogram({
   name: 'http_request_duration_seconds',
+  help: 'HTTP request duration in seconds',
   labelNames: [
     'method',       // GET, POST, PUT, DELETE, etc.
     'path',         // Normalized route patterns
@@ -306,7 +310,7 @@ const requestDuration = new Histogram({
 });
 
 // Record with normalized values
-httpRequestDuration.observe(
+requestDuration.observe(
   {
     method: req.method,
     path: '/users/:id',           // Pattern, not actual path
@@ -325,9 +329,8 @@ scrape_configs:
   - job_name: 'applications'
     metric_relabel_configs:
       # Drop the user_id label from all metrics
-      - source_labels: [user_id]
-        target_label: user_id
-        replacement: ''
+      - action: labeldrop
+        regex: user_id
 
       # Or drop entire metrics that are problematic
       - source_labels: [__name__]
