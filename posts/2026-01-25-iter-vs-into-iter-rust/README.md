@@ -240,7 +240,7 @@ Iterator adapters like `map()`, `filter()`, and `collect()` respect the ownershi
 fn main() {
     let strings = vec!["hello".to_string(), "world".to_string()];
 
-    // iter() + map returns references, need to clone for ownership
+    // iter() yields references; map can produce values from borrowed items
     let lengths: Vec<usize> = strings.iter()
         .map(|s| s.len())
         .collect();
@@ -314,7 +314,7 @@ fn main() {
         println!("Array ref: {}", n);
     }
 
-    // into_iter() on array yields T (since Rust 2021)
+    // Iterating an array by value yields T
     for n in arr {
         println!("Array owned: {}", n);
     }
