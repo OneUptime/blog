@@ -24,8 +24,9 @@ When you see this error response from an OAuth2 token endpoint, it means somethi
 ```mermaid
 flowchart TD
     A[Token Request] --> B{Check grant_type}
-    B -->|Invalid/Missing| C[unsupported_grant_type Error]
-    B -->|Not Enabled| C
+    B -->|Invalid Value| C[unsupported_grant_type Error]
+    B -->|Missing| H[invalid_request Error]
+    B -->|Client Not Authorized| I[unauthorized_client Error]
     B -->|Wrong Encoding| C
     B -->|Valid| D[Process Request]
 
@@ -107,8 +108,8 @@ async function incorrectRequest() {
         })
     });
 
-    // This will likely return unsupported_grant_type
-    // because the server cannot parse the grant_type from JSON body
+    // This will likely fail because a standards-compliant token endpoint
+    // expects form-encoded parameters, not JSON.
     return response.json();
 }
 
@@ -132,13 +133,13 @@ async function correctRequest() {
 
 ### Cause 3: Grant Type Not Enabled for Client
 
-Many OAuth2 servers require grant types to be explicitly enabled per client.
+Many OAuth2 servers require grant types to be explicitly enabled per client. Per OAuth2, a client that is not authorized to use a grant type should receive `unauthorized_client`, although some providers may surface this as `unsupported_grant_type`.
 
 ```mermaid
 flowchart LR
     A[Client Application] --> B{Grant Type Check}
     B -->|Enabled| C[Process Token Request]
-    B -->|Not Enabled| D[unsupported_grant_type]
+    B -->|Not Enabled| D[unauthorized_client]
 
     E[Client Configuration] --> B
     E --> E1[Allowed Grants:<br/>- authorization_code<br/>- refresh_token]
@@ -182,7 +183,7 @@ function validateGrantType(clientConfig, requestedGrantType) {
 
     if (!allowedGrants.includes(requestedGrantType)) {
         throw {
-            error: 'unsupported_grant_type',
+            error: 'unauthorized_client',
             error_description: `Grant type '${requestedGrantType}' is not allowed for this client`
         };
     }
@@ -425,7 +426,7 @@ router.post('/token', express.urlencoded({ extended: false }), async (req, res) 
     // Check if grant type is allowed for this client
     if (!isGrantAllowedForClient(client, grant_type)) {
         return res.status(400).json({
-            error: 'unsupported_grant_type',
+            error: 'unauthorized_client',
             error_description: `Grant type "${grant_type}" is not allowed for this client`
         });
     }
@@ -703,4 +704,4 @@ curl -X POST https://auth.example.com/oauth/token \
 
 ## Conclusion
 
-The "unsupported_grant_type" error typically stems from one of these issues: typos in the grant type value, incorrect Content-Type header, or the grant type not being enabled for your client. By following the debugging steps in this guide and ensuring your requests are properly formatted, you can quickly identify and resolve this common OAuth2 error.
+The "unsupported_grant_type" error typically stems from one of these issues: typos in the grant type value, incorrect Content-Type header, or the authorization server not supporting the requested grant type. By following the debugging steps in this guide and ensuring your requests are properly formatted, you can quickly identify and resolve this common OAuth2 error.
