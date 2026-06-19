@@ -98,7 +98,7 @@ function processValue(value: string): string {
     return value.toUpperCase();
 }
 
-let maybeString: string | null = "hello";
+let maybeString: string | null = Math.random() > 0.5 ? "hello" : null;
 
 // Error: Argument of type 'string | null' is not assignable
 // to parameter of type 'string'.
@@ -191,7 +191,7 @@ formatValue(42);       // Works
 
 // But a wider union type fails
 type ExtendedValue = string | number | boolean;
-const extended: ExtendedValue = true;
+const extended: ExtendedValue = Math.random() > 0.5 ? "hello" : true;
 
 // Error: Argument of type 'ExtendedValue' is not assignable
 // to parameter of type 'string | number'.
@@ -282,9 +282,9 @@ graph TD
     end
 
     subgraph Rules["Compatibility Rules"]
-        G[Primitives] --> H[Exact match or implicit conversion]
+        G[Primitives] --> H[Exact match, compatible type, or explicit conversion]
         I[Objects] --> J[Must have all required properties]
-        K[Functions] --> L[Parameters contravariant, return covariant]
+        K[Functions] --> L[Function parameters checked contravariantly under strictFunctionTypes, returns covariant]
     end
 ```
 
@@ -377,11 +377,11 @@ function updateStatus(status: Status): void {
 }
 
 // Regular string variable
-let status = "pending";  // Type: string (not "pending")
+let statusValue = "pending";  // Type: string (not "pending")
 
 // Error: Argument of type 'string' is not assignable
 // to parameter of type 'Status'.
-// updateStatus(status);
+// updateStatus(statusValue);
 
 // Solution 1: Use const assertion
 const statusConst = "pending" as const;  // Type: "pending"
@@ -392,15 +392,15 @@ let statusTyped: Status = "pending";
 updateStatus(statusTyped);  // Works
 
 // Solution 3: Assert at call site
-updateStatus(status as Status);  // Works but risky
+updateStatus(statusValue as Status);  // Works but risky
 
 // Solution 4: Validate at runtime
 function isStatus(value: string): value is Status {
     return ["pending", "approved", "rejected"].includes(value);
 }
 
-if (isStatus(status)) {
-    updateStatus(status);  // Works - type narrowed
+if (isStatus(statusValue)) {
+    updateStatus(statusValue);  // Works - type narrowed
 }
 ```
 
@@ -445,6 +445,18 @@ flowchart TD
 
 ```typescript
 // Good practice: Validate external data
+interface ValidData {
+    id: number;
+}
+
+function isValidData(data: unknown): data is ValidData {
+    return typeof data === "object" && data !== null && "id" in data;
+}
+
+function handleData(data: ValidData): void {
+    console.log(data.id);
+}
+
 function processApiData(data: unknown): void {
     // Validate before using
     if (isValidData(data)) {
@@ -459,6 +471,11 @@ function processItem<T>(item: T, processor: (value: T) => void): void {
 }
 
 // Good practice: Explicit return types catch errors early
+interface Config {
+    host: string;
+    port: number;
+}
+
 function createConfig(): Config {  // Return type specified
     return {
         // TypeScript will error if this doesn't match Config
