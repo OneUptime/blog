@@ -155,7 +155,7 @@ git commit -m "Update all submodules to latest versions"
 
 ### Specifying a Branch to Track
 
-By default, submodules track no branch (detached HEAD). Configure a branch to make updates easier.
+By default, `git submodule update` checks out the recorded commit in detached HEAD state. Configure a branch to make `git submodule update --remote` use that branch instead of the remote HEAD.
 
 ```bash
 # Set the branch to track for a submodule
@@ -189,7 +189,7 @@ flowchart LR
 
     subgraph Sub[Submodule Repository]
         C[Submodule Code]
-        D[.git directory]
+        D[Git metadata]
     end
 
     B -->|Points to commit| Sub
@@ -269,7 +269,7 @@ git submodule deinit -f libs/shared-lib
 # 2. Remove the submodule directory from git
 git rm -f libs/shared-lib
 
-# 3. Remove the submodule entry from .git/config (if exists)
+# 3. Remove the submodule's local Git data (if it still exists)
 rm -rf .git/modules/libs/shared-lib
 
 # 4. Commit the removal
@@ -340,10 +340,10 @@ git submodule foreach 'git checkout main'
 git submodule foreach 'git pull origin main'
 
 # Custom script in all submodules
-git submodule foreach 'echo "Submodule: $name at $path"'
+git submodule foreach 'echo "Submodule: $name at $sm_path"'
 ```
 
-The `foreach` command sets useful environment variables: `$name`, `$path`, `$sha1`, and `$toplevel`.
+The `foreach` command sets useful environment variables: `$name`, `$sm_path`, `$sha1`, and `$toplevel`.
 
 ---
 
