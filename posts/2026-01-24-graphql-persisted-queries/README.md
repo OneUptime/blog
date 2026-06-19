@@ -21,13 +21,13 @@ sequenceDiagram
     participant Q as Query Store
 
     Note over C,Q: First Request (Registration)
-    C->>S: POST /graphql<br/>hash: "abc123"<br/>query: "{ users { id name } }"
+    C->>S: POST /graphql<br/>extensions.persistedQuery.sha256Hash: "abc123"<br/>query: "{ users { id name } }"
     S->>Q: Store query with hash "abc123"
     Q-->>S: Stored
-    S-->>C: Response + extensions.persistedQuery.registered
+    S-->>C: Query result
 
     Note over C,Q: Subsequent Requests
-    C->>S: GET /graphql?hash=abc123&variables={}
+    C->>S: GET /graphql?extensions={"persistedQuery":{"version":1,"sha256Hash":"abc123"}}&variables={}
     S->>Q: Lookup hash "abc123"
     Q-->>S: Return query "{ users { id name } }"
     S-->>C: Query result
@@ -41,13 +41,13 @@ flowchart LR
         A[Reduced Bandwidth]
         B[Better Caching]
         C[Enhanced Security]
-        D[Faster Parsing]
+        D[Smaller Requests]
     end
 
     A --> E[Hash vs Full Query]
     B --> F[CDN/Edge Caching]
     C --> G[Whitelist Queries]
-    D --> H[Pre-parsed Queries]
+    D --> H[Short Operation IDs]
 ```
 
 ## Apollo Client Configuration
@@ -125,11 +125,11 @@ export default persistedQueryLink;
 const { ApolloServer } = require('@apollo/server');
 const { expressMiddleware } = require('@apollo/server/express4');
 const { KeyvAdapter } = require('@apollo/utils.keyvadapter');
-const Keyv = require('keyv');
+const { createKeyv } = require('@keyv/redis');
 
 // Create a Keyv instance for storing persisted queries
 // This can use Redis, Memcached, or any Keyv adapter
-const queryCache = new Keyv('redis://localhost:6379', {
+const queryCache = createKeyv('redis://localhost:6379', {
   namespace: 'persisted-queries',
   ttl: 86400000, // 24 hours in milliseconds
 });
@@ -182,8 +182,8 @@ const queryManifest = JSON.parse(
 
 // Create a map for fast lookups
 const queryStore = new Map(
-  Object.entries(queryManifest.operations).map(([hash, operation]) => [
-    hash,
+  queryManifest.operations.map((operation) => [
+    operation.id,
     operation.body,
   ])
 );
@@ -204,6 +204,10 @@ const strictPersistedQueries = {
     // In development, allow dynamic registration
     queryStore.set(hash, query);
   },
+
+  async delete(hash) {
+    return queryStore.delete(hash);
+  },
 };
 
 const server = new ApolloServer({
@@ -215,7 +219,7 @@ const server = new ApolloServer({
     cache: strictPersistedQueries,
   },
 
-  // Reject queries that are not persisted in production
+  // Disable HTTP batching in production
   allowBatchedHttpRequests: false,
 
   plugins: [
@@ -281,8 +285,17 @@ async function extractQueries() {
           definition.kind === 'OperationDefinition' &&
           definition.name
         ) {
-          // Normalize the query (removes whitespace variations)
-          const normalizedQuery = print(definition);
+          // Normalize the operation with any fragments from the same document
+          const operationDocument = {
+            ...document,
+            definitions: [
+              definition,
+              ...document.definitions.filter(
+                (def) => def.kind === 'FragmentDefinition'
+              ),
+            ],
+          };
+          const normalizedQuery = print(operationDocument);
 
           // Generate SHA-256 hash
           const hash = createHash('sha256')
@@ -307,9 +320,14 @@ async function extractQueries() {
 
   // Write manifest
   const manifest = {
+    format: 'apollo-persisted-query-manifest',
     version: 1,
-    generatedAt: new Date().toISOString(),
-    operations: queries,
+    operations: Object.entries(queries).map(([id, operation]) => ({
+      id,
+      name: operation.name,
+      type: operation.type,
+      body: operation.body,
+    })),
   };
 
   fs.writeFileSync(
@@ -323,16 +341,16 @@ async function extractQueries() {
 extractQueries().catch(console.error);
 ```
 
-### Using Apollo CLI for Extraction
+### Using Apollo CLI for Publishing
 
 ```bash
 # Install Apollo CLI
 
 npm install -g @apollo/rover
 
-# Extract queries from your codebase
+# Publish a generated manifest to a persisted query list
 rover persisted-queries publish \
-  --graph-ref my-graph@production \
+  my-graph@production \
   --manifest ./persisted-query-manifest.json
 ```
 
@@ -356,10 +374,11 @@ flowchart LR
 // Cloudflare Worker for GraphQL persisted query caching
 
 addEventListener('fetch', (event) => {
-  event.respondWith(handleRequest(event.request));
+  event.respondWith(handleRequest(event));
 });
 
-async function handleRequest(request) {
+async function handleRequest(event) {
+  const request = event.request;
   const url = new URL(request.url);
 
   // Only cache GET requests with persisted query hash
@@ -370,12 +389,15 @@ async function handleRequest(request) {
       const hash = extensions.persistedQuery.sha256Hash;
       const variables = url.searchParams.get('variables') || '{}';
 
-      // Create cache key from hash and variables
-      const cacheKey = `graphql:${hash}:${variables}`;
+      // Create a stable cache key from hash and variables
+      const cacheKey = new Request(
+        `${url.origin}${url.pathname}?hash=${hash}&variables=${encodeURIComponent(variables)}`,
+        request
+      );
 
       // Check cache
       const cache = caches.default;
-      let response = await cache.match(request);
+      let response = await cache.match(cacheKey);
 
       if (response) {
         // Add cache status header
@@ -393,15 +415,18 @@ async function handleRequest(request) {
 
         // Cache for 5 minutes (adjust based on your data freshness needs)
         const cacheResponse = new Response(responseClone.body, {
+          status: response.status,
+          statusText: response.statusText,
           headers: {
             ...Object.fromEntries(response.headers),
             'Cache-Control': 'public, max-age=300',
           },
         });
 
-        event.waitUntil(cache.put(request, cacheResponse));
+        event.waitUntil(cache.put(cacheKey, cacheResponse));
       }
 
+      response = new Response(response.body, response);
       response.headers.set('X-Cache-Status', 'MISS');
       return response;
     }
@@ -460,16 +485,22 @@ http {
 
 ```typescript
 // hooks/usePersistedQuery.ts
-import { useQuery, DocumentNode, QueryHookOptions } from '@apollo/client';
+import {
+  gql,
+  useQuery,
+  DocumentNode,
+  OperationVariables,
+  QueryHookOptions,
+} from '@apollo/client';
 import { useMemo } from 'react';
 
-interface PersistedQueryOptions<TData, TVariables>
+interface PersistedQueryOptions<TData, TVariables extends OperationVariables>
   extends QueryHookOptions<TData, TVariables> {
   // Force using GET for this query
   preferGetForPersistedQueries?: boolean;
 }
 
-export function usePersistedQuery<TData = any, TVariables = any>(
+export function usePersistedQuery<TData = any, TVariables extends OperationVariables = OperationVariables>(
   query: DocumentNode,
   options?: PersistedQueryOptions<TData, TVariables>
 ) {
@@ -545,7 +576,7 @@ const apqRetryLink = new ApolloLink((operation, forward) => {
           retried = true;
 
           // Remove the persistedQuery extension to send full query
-          const { persistedQuery, ...rest } = operation.extensions;
+          const { persistedQuery, ...rest } = operation.extensions ?? {};
           operation.extensions = rest;
 
           // Retry the operation with the full query
@@ -595,7 +626,7 @@ const persistedQueryMetricsPlugin = {
           isPersistedQuery,
           hash: hash ? hash.slice(0, 8) : null,
           duration,
-          cacheHit: context.metrics?.persistedQueryHit || false,
+          cacheHit: context.metrics?.persistedQueryHit || false, // Add this in a custom cache wrapper if needed.
           errors: context.errors?.length || 0,
         };
 
