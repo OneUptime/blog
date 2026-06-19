@@ -50,7 +50,6 @@ Java serialization errors are among the most common. Here is how to diagnose the
 // SerializationDiagnostics.java - Tools for diagnosing serialization issues
 import java.io.*;
 import java.lang.reflect.Field;
-import java.security.MessageDigest;
 import java.util.*;
 
 public class SerializationDiagnostics {
@@ -106,7 +105,7 @@ public class SerializationDiagnostics {
         Set<String> added = new HashSet<>(newFields);
         added.removeAll(oldFields);
         if (!added.isEmpty()) {
-            issues.add("Added fields (may cause issues if non-optional): " + added);
+            issues.add("Added fields (will use default values when reading old streams): " + added);
         }
 
         // Check for type changes
@@ -159,8 +158,18 @@ public class SerializationDiagnostics {
         try (ByteArrayInputStream bais = new ByteArrayInputStream(data);
              ObjectInputStream ois = new ObjectInputStream(bais)) {
 
-            @SuppressWarnings("unchecked")
-            T obj = (T) ois.readObject();
+            Object obj = ois.readObject();
+            if (!expectedType.isInstance(obj)) {
+                return DeserializationResult.failure(
+                    "Unexpected object type",
+                    Map.of(
+                        "expectedType", expectedType.getName(),
+                        "actualType", obj != null ? obj.getClass().getName() : "null"
+                    )
+                );
+            }
+
+            T obj = expectedType.cast(obj);
             return DeserializationResult.success(obj);
 
         } catch (InvalidClassException e) {
@@ -242,7 +251,7 @@ public class SerializationDiagnostics {
 
 ## Implementing Backward Compatible Java Serialization
 
-When you need to evolve serializable classes while maintaining compatibility.
+When you need to evolve serializable classes while maintaining compatibility, keep the stream format consistent from the first serialized version.
 
 ```java
 // VersionedSerializable.java - Backward compatible serialization pattern
@@ -257,7 +266,7 @@ public class VersionedSerializable implements Serializable {
     // Current schema version for custom handling
     private static final int CURRENT_VERSION = 3;
 
-    // Original fields (v1)
+    // Original custom-format fields (v1)
     private String name;
     private int age;
 
@@ -277,7 +286,7 @@ public class VersionedSerializable implements Serializable {
      * Custom serialization for version control.
      */
     private void writeObject(ObjectOutputStream out) throws IOException {
-        // Write version first
+        // Write version first. All persisted versions must use this custom format.
         out.writeInt(CURRENT_VERSION);
 
         // Write all fields
@@ -382,7 +391,7 @@ message User {
     string email = 3;
 
     // New fields added with new field numbers
-    string phone = 4;                    // Optional, defaults to empty
+    string phone = 4;                    // New scalar, defaults to empty when absent
     repeated string tags = 5;            // Can add repeated fields
     Address address = 6;                 // Can add nested messages
 
@@ -405,7 +414,6 @@ Handle schema evolution in your code.
 ```python
 # protobuf_evolution.py - Handling Protocol Buffers schema evolution
 
-from google.protobuf import json_format
 from google.protobuf.message import DecodeError
 import logging
 
@@ -447,7 +455,7 @@ class ProtobufVersionHandler:
                 msg = msg_type()
                 msg.ParseFromString(data)
 
-                # Validate required fields are present
+                # Validate essential fields are present
                 if self._validate_message(msg):
                     return msg, msg_type
 
@@ -484,7 +492,7 @@ class ProtobufVersionHandler:
             if msg.HasField(field_name):
                 return getattr(msg, field_name)
         except ValueError:
-            # Field is not a singular field (might be repeated or not exist)
+            # Field may not have explicit presence, may be repeated, or may not exist
             pass
 
         # For repeated fields and missing fields
@@ -540,7 +548,7 @@ def migrate_user_v1_to_v2(user_v1):
     # Set defaults for new fields
     user_v2.phone = ""
     # tags is repeated, leave empty
-    # address is optional, leave unset
+    # address is a message field with presence, leave unset
 
     return user_v2
 
@@ -852,7 +860,7 @@ class VersionedCacheSerializer:
         Initialize versioned cache serializer.
 
         Args:
-            cache_client: Redis or other cache client
+            cache_client: Redis or compatible cache client
             schema_version: Current schema version string
             fallback_enabled: Whether to fallback on mismatch
         """
@@ -893,7 +901,7 @@ class VersionedCacheSerializer:
                 serializer=json_data.get('serializer', 'json')
             )
         except (json.JSONDecodeError, UnicodeDecodeError):
-            # Try pickle
+            # Only unpickle data from trusted internal caches.
             return pickle.loads(data)
 
     def get(
@@ -966,7 +974,7 @@ class VersionedCacheSerializer:
         """
         try:
             serialized = self._serialize(value)
-            self._cache.setex(key, ttl, serialized)
+            self._cache.set(key, serialized, ex=ttl)
             return True
         except Exception as e:
             logger.error(f"Cache serialization error for {key}: {e}")
@@ -1043,13 +1051,13 @@ flowchart TD
 
 ## Best Practices
 
-1. **Always declare explicit version identifiers** - Use serialVersionUID in Java, schema versions in JSON/Protobuf.
+1. **Always declare explicit version identifiers** - Use serialVersionUID in Java, schema versions in JSON, and stable field numbers with reserved fields in Protobuf.
 
-2. **Add fields as optional** - New fields should have sensible defaults for old data.
+2. **Add fields compatibly** - New fields should have sensible defaults for old data, and proto3 scalar fields should use `optional` when you need explicit presence.
 
 3. **Never remove or rename fields directly** - Mark as deprecated first, then remove in a later version.
 
-4. **Deploy consumers before producers** - Consumers should be able to handle new fields before producers start sending them.
+4. **Deploy consumers before producers for additive changes** - Consumers should be able to handle new fields before producers start sending them.
 
 5. **Test serialization compatibility** - Include compatibility tests in your CI/CD pipeline.
 
