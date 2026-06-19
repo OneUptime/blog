@@ -59,7 +59,8 @@ Controls how many extra pods can be created during the update:
 strategy:
   rollingUpdate:
     maxSurge: 1         # Allow 1 extra pod (4 total with 3 replicas)
-    maxSurge: "25%"     # Allow 25% extra pods
+    # Or use a percentage:
+    # maxSurge: "25%"   # Allow 25% extra pods
 ```
 
 ### maxUnavailable
@@ -70,8 +71,9 @@ Controls how many pods can be unavailable during the update:
 strategy:
   rollingUpdate:
     maxUnavailable: 0       # All pods must be available (safest)
-    maxUnavailable: 1       # Allow 1 unavailable
-    maxUnavailable: "25%"   # Allow 25% unavailable
+    # Or use one of these values:
+    # maxUnavailable: 1       # Allow 1 unavailable
+    # maxUnavailable: "25%"   # Allow 25% unavailable
 ```
 
 ### Recommended Settings for Zero Downtime
@@ -84,11 +86,11 @@ strategy:
     maxUnavailable: 0    # Never reduce available pods
 ```
 
-This ensures at least the desired number of pods are always running.
+This ensures at least the desired number of pods are always available during the update.
 
 ## Critical: Readiness Probes
 
-Without readiness probes, Kubernetes considers pods ready immediately after container start. This sends traffic to pods before they can handle it.
+Without readiness probes, Kubernetes considers containers ready as soon as they are running. This sends traffic to pods before they can handle it.
 
 ```yaml
 apiVersion: apps/v1
@@ -102,7 +104,13 @@ spec:
     rollingUpdate:
       maxSurge: 1
       maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: web
   template:
+    metadata:
+      labels:
+        app: web
     spec:
       containers:
         - name: app
@@ -153,18 +161,27 @@ When Kubernetes terminates a pod, it sends SIGTERM. Your app must handle this si
 ### Pod Lifecycle During Termination
 
 1. Pod marked for termination
-2. Pod removed from Service endpoints
-3. SIGTERM sent to container
-4. Grace period countdown starts (default 30s)
-5. SIGKILL sent if still running
+2. Grace period countdown starts (default 30s)
+3. Pod removed from ready Service endpoints
+4. PreStop hook runs, if configured
+5. SIGTERM sent to container
+6. SIGKILL sent if still running
 
 ### PreStop Hook for Connection Draining
 
 ```yaml
 apiVersion: apps/v1
 kind: Deployment
+metadata:
+  name: web-app
 spec:
+  selector:
+    matchLabels:
+      app: web
   template:
+    metadata:
+      labels:
+        app: web
     spec:
       terminationGracePeriodSeconds: 60
       containers:
@@ -179,8 +196,6 @@ spec:
                   - |
                     # Wait for load balancer to update
                     sleep 10
-                    # Signal app to stop accepting new connections
-                    kill -SIGTERM 1
 ```
 
 ### Application-Level Graceful Shutdown
@@ -231,8 +246,6 @@ process.on('SIGTERM', () => {
 Ensure pods are stable before considering them available:
 
 ```yaml
-apiVersion: apps/v1
-kind: Deployment
 spec:
   minReadySeconds: 10    # Pod must be ready for 10s before being available
   template:
@@ -242,7 +255,7 @@ spec:
           image: myapp:v2
 ```
 
-This prevents fast-crashing pods from being considered ready.
+This prevents fast-crashing pods from being considered available.
 
 ## Watching Rolling Updates
 
@@ -285,17 +298,15 @@ kubectl rollout resume deployment/web-app
 Set a timeout for the rollout:
 
 ```yaml
-apiVersion: apps/v1
-kind: Deployment
 spec:
   progressDeadlineSeconds: 600    # Fail if no progress in 10 minutes
 ```
 
-If the deployment does not make progress within this time, it is marked as failed.
+If the deployment does not make progress within this time, Kubernetes reports a `ProgressDeadlineExceeded` condition.
 
 ## Pod Disruption Budgets
 
-Protect against cluster operations during deployment:
+Protect against voluntary disruptions, such as node drains, during deployment:
 
 ```yaml
 apiVersion: policy/v1
@@ -303,7 +314,7 @@ kind: PodDisruptionBudget
 metadata:
   name: web-pdb
 spec:
-  minAvailable: 2    # Keep at least 2 pods running
+  minAvailable: 2    # Keep at least 2 pods available during voluntary disruptions
   selector:
     matchLabels:
       app: web
@@ -413,8 +424,8 @@ go install github.com/rakyll/hey@latest
 hey -z 5m -c 10 http://web-app-service/
 
 # Check results for errors
-# Summary:
-#   Success ratio: 100.00%
+# Status code distribution:
+#   [200] 10000 responses
 ```
 
 ## Troubleshooting
@@ -454,10 +465,10 @@ Common causes:
 4. terminationGracePeriodSeconds too short
 
 ```bash
-# Check endpoint updates
-kubectl get endpoints web-service -w
+# Check EndpointSlice updates
+kubectl get endpointslices -l kubernetes.io/service-name=web-service -w
 
-# Verify pods are removed from endpoints before termination
+# Verify pods are removed from ready endpoints before termination
 ```
 
 ## Best Practices Checklist
