@@ -26,7 +26,7 @@ flowchart TD
     A[Query Execution] --> B{Needs Temp Table?}
     B -->|Yes| C[Create In-Memory Table]
     B -->|No| D[Execute Directly]
-    C --> E{Size > tmp_table_size?}
+    C --> E{Size > in-memory limit?}
     E -->|No| F[Execute In Memory]
     E -->|Yes| G[Convert to On-Disk Table]
     G --> H{Disk Space Available?}
@@ -89,7 +89,7 @@ SHOW GLOBAL STATUS LIKE 'Created_tmp%';
 SELECT
     Created_tmp_disk_tables,
     Created_tmp_tables,
-    ROUND((Created_tmp_disk_tables / Created_tmp_tables) * 100, 2) AS disk_ratio_pct
+    ROUND((Created_tmp_disk_tables / NULLIF(Created_tmp_tables, 0)) * 100, 2) AS disk_ratio_pct
 FROM (
     SELECT
         (SELECT VARIABLE_VALUE FROM performance_schema.global_status
@@ -120,7 +120,7 @@ LIMIT 10;
 ### 1. Increase Memory for Temporary Tables
 
 ```sql
--- Increase both settings together (they work as a pair)
+-- Increase tmp_table_size; also raise max_heap_table_size if using MEMORY for internal temp tables
 SET GLOBAL tmp_table_size = 268435456;        -- 256MB
 SET GLOBAL max_heap_table_size = 268435456;   -- 256MB
 
@@ -135,14 +135,14 @@ Add to `/etc/mysql/mysql.conf.d/mysqld.cnf`:
 tmp_table_size = 256M
 max_heap_table_size = 256M
 
-# For MySQL 8.0+, configure TempTable storage engine
+# For MySQL 8.0+, configure TempTable storage engine limits
 temptable_max_ram = 1G
 temptable_max_mmap = 1G
 ```
 
 ### 2. Change Temporary Directory
 
-Move temporary files to a larger partition:
+Move temporary files to a larger partition. In MySQL 8.0.16 and later, InnoDB on-disk internal temporary tables are created in session temporary tablespaces in the data directory by default, so also check the MySQL data directory when diagnosing disk pressure.
 
 ```ini
 [mysqld]
@@ -259,10 +259,10 @@ ORDER BY order_date DESC;
 
 ### 5. Handle BLOB and TEXT Columns
 
-Temporary tables with BLOB or TEXT columns always go to disk. Minimize their impact:
+Temporary tables with BLOB or TEXT columns may require on-disk storage in older MySQL versions or when the `MEMORY` engine is used for internal temporary tables. MySQL 8.0.13 and later supports BLOB-like types in the TempTable engine, but minimizing large columns still reduces temporary table memory and disk pressure:
 
 ```sql
--- Bad: Forces disk-based temporary table
+-- Bad: Carries a large TEXT column through the sort
 SELECT id, title, content, created_at  -- content is TEXT
 FROM articles
 ORDER BY created_at DESC
@@ -299,7 +299,6 @@ SET GLOBAL temptable_max_mmap = 1073741824; -- 1GB overflow to mmap
 internal_tmp_mem_storage_engine = TempTable
 temptable_max_ram = 1G
 temptable_max_mmap = 1G
-temptable_use_mmap = ON
 ```
 
 ## Monitoring Script
@@ -324,8 +323,8 @@ SELECT
     (SELECT ROUND(
         (SELECT VARIABLE_VALUE FROM performance_schema.global_status
          WHERE VARIABLE_NAME = 'Created_tmp_disk_tables') /
-        (SELECT VARIABLE_VALUE FROM performance_schema.global_status
-         WHERE VARIABLE_NAME = 'Created_tmp_tables') * 100, 2
+        NULLIF((SELECT VARIABLE_VALUE FROM performance_schema.global_status
+                WHERE VARIABLE_NAME = 'Created_tmp_tables'), 0) * 100, 2
     )) AS disk_ratio_pct;
 "
 
@@ -340,7 +339,7 @@ df -h $(mysql -u${MYSQL_USER} -p${MYSQL_PASS} -N -e "SELECT @@tmpdir" | cut -d: 
 flowchart LR
     subgraph Prevention
         A[Query Optimization] --> B[Proper Indexing]
-        B --> C[Avoid BLOB in sorts]
+        B --> C[Avoid large columns in sorts]
         C --> D[Use LIMIT]
     end
 
@@ -367,8 +366,8 @@ flowchart LR
 |---------|---------|-------------|---------|
 | tmp_table_size | 16MB | 256MB-1GB | Max size of in-memory temp tables |
 | max_heap_table_size | 16MB | 256MB-1GB | Max size of MEMORY tables |
-| temptable_max_ram | 1GB | 1-4GB | TempTable RAM limit (MySQL 8.0) |
-| temptable_max_mmap | 1GB | 1-4GB | TempTable overflow to mmap |
+| temptable_max_ram | 1GB in MySQL 8.0; 1-4GB autosized range in MySQL 8.4 | 1-4GB | TempTable RAM limit |
+| temptable_max_mmap | 1GB in MySQL 8.0; 0 in MySQL 8.4 | 0-4GB | TempTable overflow to memory-mapped files |
 
 ## Summary
 
