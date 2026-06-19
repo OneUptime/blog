@@ -18,7 +18,7 @@ Understanding offset management is essential for building robust event-driven ar
 
 ### What are Offsets?
 
-In Kafka, each message within a partition has a unique sequential identifier called an offset. Offsets are assigned by the broker when messages are written and never change. Consumers track their position in each partition using these offsets.
+In Kafka, each message within a partition has a unique, monotonically increasing identifier called an offset. Offsets are assigned by the broker when messages are written and never change. Consumers track their position in each partition using these offsets.
 
 ```mermaid
 graph LR
@@ -51,7 +51,7 @@ graph LR
 There are two important offset concepts:
 
 - **Current Offset**: The next message the consumer will read
-- **Committed Offset**: The last offset the consumer has confirmed processing
+- **Committed Offset**: The next offset the consumer should resume from after confirmed processing
 
 ```mermaid
 sequenceDiagram
@@ -62,9 +62,9 @@ sequenceDiagram
     Consumer->>Kafka Broker: Poll for messages
     Kafka Broker-->>Consumer: Return messages (offsets 5-10)
     Note over Consumer: Process messages
-    Consumer->>Kafka Broker: Commit offset 10
+    Consumer->>Kafka Broker: Commit offset 11
     Kafka Broker->>__consumer_offsets: Store committed offset
-    Note over __consumer_offsets: Consumer Group: my-group<br/>Topic: orders<br/>Partition: 0<br/>Offset: 10
+    Note over __consumer_offsets: Consumer Group: my-group<br/>Topic: orders<br/>Partition: 0<br/>Offset: 11
 ```
 
 ## Offset Commit Strategies
@@ -110,9 +110,11 @@ public class AutoCommitConsumer {
                     System.out.printf("Processing: key=%s, value=%s, offset=%d%n",
                         record.key(), record.value(), record.offset());
 
-                    // Warning: If processing fails after poll but before auto-commit,
-                    // messages may be lost. If processing succeeds but crash occurs
-                    // before auto-commit, messages may be reprocessed.
+                    // Warning: With auto-commit, all records returned by poll()
+                    // must be processed before the next poll or close. Otherwise,
+                    // a later auto-commit can advance past unprocessed records.
+                    // If processing succeeds but the consumer crashes before the
+                    // next auto-commit, messages may be reprocessed.
                 });
             }
         }
@@ -232,8 +234,9 @@ public class AsyncCommitConsumer {
                 if (!records.isEmpty()) {
                     consumer.commitAsync((offsets, exception) -> {
                         if (exception != null) {
-                            // Log the error but continue processing
-                            // The next commit will include these offsets
+                            // Log the error but continue processing. Async commits
+                            // are not retried by this callback; a later successful
+                            // commit may advance the committed position.
                             System.err.println("Async commit failed: " + exception.getMessage());
                         } else {
                             // Track successful commits
@@ -421,7 +424,7 @@ public class RebalanceAwareConsumer {
                         System.out.printf("Partition %s: resuming from committed offset %d%n",
                             partition, committed.offset());
                     } else {
-                        System.out.printf("Partition %s: no committed offset, starting fresh%n",
+                        System.out.printf("Partition %s: no committed offset, using auto.offset.reset%n",
                             partition);
                     }
                 }
@@ -774,7 +777,7 @@ kafka-consumer-groups.sh --bootstrap-server localhost:9092 \
 
 ## Exactly-Once Processing Pattern
 
-Achieving exactly-once semantics requires careful coordination between message processing and offset commits.
+Achieving exactly-once effects requires careful coordination between message processing and offset storage.
 
 ```mermaid
 sequenceDiagram
@@ -828,10 +831,10 @@ public class ExactlyOnceConsumer {
     }
 
     /**
-     * Initializes the offset tracking table in the database.
+     * Initializes the tables used by this PostgreSQL example.
      */
-    public void initializeOffsetTable() throws SQLException {
-        String createTable = """
+    public void initializeTables() throws SQLException {
+        String createOffsetTable = """
             CREATE TABLE IF NOT EXISTS kafka_offsets (
                 consumer_group VARCHAR(255),
                 topic VARCHAR(255),
@@ -842,8 +845,17 @@ public class ExactlyOnceConsumer {
             )
             """;
 
+        String createOrdersTable = """
+            CREATE TABLE IF NOT EXISTS processed_orders (
+                order_id VARCHAR(255) PRIMARY KEY,
+                order_data TEXT,
+                processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """;
+
         try (Statement stmt = dbConnection.createStatement()) {
-            stmt.execute(createTable);
+            stmt.execute(createOffsetTable);
+            stmt.execute(createOrdersTable);
             dbConnection.commit();
         }
     }
@@ -998,7 +1010,7 @@ graph TD
     C --> G[Simple, some loss acceptable]
     D --> H[Balance of throughput and safety]
     E --> I[Guaranteed at-least-once]
-    F --> J[No duplicates or loss]
+    F --> J[Atomic output and offset storage]
 ```
 
 ### Configuration Checklist
@@ -1018,11 +1030,11 @@ graph TD
 2. **Commit after processing**, not before, to prevent data loss
 3. **Handle rebalances** with a `ConsumerRebalanceListener`
 4. **Monitor consumer lag** to detect processing bottlenecks
-5. **Use transactions** for exactly-once semantics when required
+5. **Store offsets and outputs in the same transaction** for exactly-once effects when required
 6. **Test failure scenarios** including consumer crashes and rebalances
 
 ## Conclusion
 
 Effective consumer offset management is crucial for building reliable Kafka applications. By understanding the different commit strategies and their trade-offs, you can choose the right approach for your use case. Remember that the choice depends on your requirements for data loss tolerance, duplicate handling, and processing throughput.
 
-For critical data, always prefer manual commits with proper error handling. For highest reliability, implement exactly-once semantics by storing offsets alongside processed data in a transactional database.
+For critical data, always prefer manual commits with proper error handling. For highest reliability, implement exactly-once effects by storing offsets alongside processed data in a transactional database.
