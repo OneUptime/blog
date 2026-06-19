@@ -70,7 +70,7 @@ import subprocess
 import time
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -84,7 +84,7 @@ class RunbookExecutor:
     def log_step(self, step_name, status, details=None):
         """Record each step for incident timeline."""
         entry = {
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'step': step_name,
             'status': status,
             'details': details
@@ -113,13 +113,17 @@ class RunbookExecutor:
         for pod in pods.get('items', []):
             name = pod['metadata']['name']
             phase = pod['status']['phase']
+            container_statuses = pod['status'].get('containerStatuses', [])
 
             # Check for OOM kills
-            for container_status in pod['status'].get('containerStatuses', []):
-                if container_status.get('lastState', {}).get('terminated', {}).get('reason') == 'OOMKilled':
-                    pod_summary.append({'name': name, 'status': 'OOMKilled'})
-                else:
-                    pod_summary.append({'name': name, 'status': phase})
+            oom_killed = any(
+                container_status.get('lastState', {}).get('terminated', {}).get('reason') == 'OOMKilled'
+                for container_status in container_statuses
+            )
+            pod_summary.append({
+                'name': name,
+                'status': 'OOMKilled' if oom_killed else phase
+            })
 
         self.log_step("Check Pod Status", "completed", pod_summary)
         return pod_summary
@@ -136,10 +140,15 @@ class RunbookExecutor:
             '--all-containers=true'
         ], capture_output=True, text=True)
 
+        if result.returncode != 0:
+            self.log_step("Collect Logs", "failed", result.stderr)
+            return "", {'log_collection_failed': True}
+
         logs = result.stdout
 
         # Look for common error patterns
         error_patterns = {
+            'log_collection_failed': False,
             'oom': 'out of memory' in logs.lower(),
             'connection_refused': 'connection refused' in logs.lower(),
             'timeout': 'timeout' in logs.lower() or 'timed out' in logs.lower(),
@@ -208,6 +217,8 @@ class RunbookExecutor:
 
         # Step 2: Collect logs
         logs, error_patterns = self.collect_logs()
+        if error_patterns['log_collection_failed']:
+            return self.escalate("Failed to collect logs")
 
         # Step 3: Decide on action based on error patterns
         if error_patterns['crash']:
@@ -263,6 +274,7 @@ from flask import Flask, request, jsonify
 from automated_runbook import RunbookExecutor
 from disk_cleanup_runbook import DiskCleanupExecutor
 import threading
+from datetime import datetime, time
 
 app = Flask(__name__)
 
@@ -285,10 +297,15 @@ RUNBOOK_MAPPING = {
     }
 }
 
+def is_after_hours(now=None):
+    """Return True outside the standard 9 AM to 5 PM working window."""
+    current_time = now or datetime.now().time()
+    return current_time < time(9, 0) or current_time >= time(17, 0)
+
 @app.route('/webhook/alert', methods=['POST'])
 def handle_alert():
     """Handle incoming alert webhook."""
-    alert_data = request.json
+    alert_data = request.get_json(silent=True) or {}
     alert_name = alert_data.get('alertname')
     service = alert_data.get('labels', {}).get('service')
 
@@ -300,11 +317,23 @@ def handle_alert():
 
     config = RUNBOOK_MAPPING[alert_name]
 
+    if not service:
+        return jsonify({
+            'status': 'invalid_alert',
+            'message': 'Alert payload must include labels.service'
+        }), 400
+
     if not config['auto_execute']:
         return jsonify({
             'status': 'manual_required',
             'message': 'This runbook requires manual execution'
         }), 200
+
+    if config['require_approval_after_hours'] and is_after_hours():
+        return jsonify({
+            'status': 'approval_required',
+            'message': 'This runbook requires approval outside working hours'
+        }), 202
 
     # Execute runbook in background thread
     executor = config['executor'](service)
