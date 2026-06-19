@@ -45,10 +45,11 @@ SHOW ENGINE INNODB STATUS\G
 For MySQL 8.0+:
 
 ```sql
--- Check foreign key errors specifically
-SELECT * FROM information_schema.INNODB_FOREIGN_ERRORS;
+-- Check existing InnoDB foreign key metadata
+SELECT * FROM information_schema.INNODB_FOREIGN;
+SELECT * FROM information_schema.INNODB_FOREIGN_COLS;
 
--- Or use performance schema
+-- Or use performance schema error summaries
 SELECT * FROM performance_schema.events_errors_summary_global_by_error
 WHERE error_name LIKE '%FOREIGN%';
 ```
@@ -59,7 +60,7 @@ This is the most common cause. Foreign key constraints have strict requirements.
 
 ### 1. Data Type Mismatch
 
-The referenced and referencing columns must have identical data types.
+The referenced and referencing columns must have compatible data types. For fixed-precision types such as integers, the size and sign must match.
 
 ```sql
 -- Wrong: data type mismatch
@@ -85,7 +86,7 @@ CREATE TABLE child (
 
 ### 2. Character Set and Collation Mismatch
 
-String columns must have matching character sets and collations.
+String column lengths do not need to match, but nonbinary string columns must have matching character sets and collations.
 
 ```sql
 -- Wrong: collation mismatch
@@ -126,7 +127,7 @@ WHERE table_schema = 'your_database'
 
 ### 3. Missing Index on Referenced Column
 
-The referenced column must be indexed (primary key or unique key).
+The referenced column must be indexed as the first column in an index. A primary key or unique key is recommended; MySQL's older support for referencing nonunique keys is nonstandard and deprecated in current MySQL releases.
 
 ```sql
 -- Wrong: no index on referenced column
@@ -142,7 +143,7 @@ CREATE TABLE child (
 );
 
 -- Correct: add index first
-ALTER TABLE parent ADD UNIQUE INDEX idx_code (code);
+ALTER TABLE parent ADD INDEX idx_code (code);
 
 CREATE TABLE child (
     id INT PRIMARY KEY,
@@ -171,7 +172,7 @@ WHERE table_schema = 'your_database'
 
 ### 5. Engine Mismatch
 
-Both tables must use InnoDB for foreign keys.
+For InnoDB foreign keys, both tables must use the same storage engine. In practice, parent and child tables should both be InnoDB.
 
 ```sql
 -- Check table engines
@@ -214,7 +215,7 @@ CREATE TABLE invoices (
 
 ## Tablespace Already Exists (errno: 1813)
 
-This happens when .ibd files remain after a table was dropped.
+This can happen when a file-per-table .ibd file remains after a table was dropped or the data dictionary and tablespace files are out of sync.
 
 ```sql
 -- Check for orphaned tablespace
@@ -222,11 +223,10 @@ SELECT * FROM information_schema.INNODB_TABLESPACES
 WHERE name LIKE '%tablename%';
 ```
 
-### Solution 1: Discard the orphaned tablespace
+### Solution 1: If the table exists in the data dictionary, discard its tablespace
 
 ```sql
--- If you can recreate the table temporarily
-CREATE TABLE tablename (id INT) ENGINE=InnoDB;
+-- Only use this when the table still exists in MySQL's data dictionary
 ALTER TABLE tablename DISCARD TABLESPACE;
 DROP TABLE tablename;
 
@@ -254,7 +254,7 @@ systemctl start mysql
 mysql -e "CREATE TABLE database_name.tablename (...);"
 ```
 
-### Solution 3: Use innodb_force_recovery
+### Solution 3: Use innodb_force_recovery for emergency recovery
 
 ```ini
 # my.cnf - temporary setting
@@ -266,7 +266,7 @@ innodb_force_recovery = 1
 # Restart MySQL
 systemctl restart mysql
 
-# Drop the problematic table
+# Dump or drop the problematic table only if needed for recovery
 mysql -e "DROP TABLE IF EXISTS database_name.tablename;"
 
 # Remove the recovery setting and restart
