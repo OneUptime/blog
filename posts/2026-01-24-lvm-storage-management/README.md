@@ -99,7 +99,8 @@ lsblk
 sudo fdisk -l /dev/sdb
 
 # Create a new partition for LVM on each disk
-# We will use fdisk to create a Linux LVM partition (type 8e)
+# We will use fdisk to create a Linux LVM partition
+# For MBR partition tables, the Linux LVM type code is 8e
 sudo fdisk /dev/sdb
 # Commands in fdisk:
 # n - new partition
@@ -108,7 +109,7 @@ sudo fdisk /dev/sdb
 # Enter - accept default first sector
 # Enter - accept default last sector (use entire disk)
 # t - change partition type
-# 8e - Linux LVM type
+# 8e - Linux LVM type on MBR, or select Linux LVM on GPT
 # w - write changes and exit
 ```
 
@@ -244,7 +245,7 @@ sudo lvextend -l +100%FREE /dev/vg_data/lv_home
 # For ext4 filesystems (can be done online)
 sudo resize2fs /dev/vg_data/lv_home
 
-# For xfs filesystems (must be mounted, grows automatically)
+# For xfs filesystems (must be mounted; grow by mount point)
 sudo xfs_growfs /mnt/var
 
 # Combine lvextend and filesystem resize in one command
@@ -274,7 +275,10 @@ sudo resize2fs /dev/vg_data/lv_home 40G
 # 4. Reduce the logical volume
 sudo lvreduce -L 45G /dev/vg_data/lv_home
 
-# 5. Remount
+# 5. Grow the filesystem to fill the reduced logical volume
+sudo resize2fs /dev/vg_data/lv_home
+
+# 6. Remount
 sudo mount /dev/vg_data/lv_home /mnt/home
 
 # Note: XFS filesystems cannot be reduced!
@@ -307,7 +311,7 @@ flowchart TD
     B --> C[Snapshot: lv_home_snap]
 
     A --> D[Normal Operations Continue]
-    D --> E[Changes Stored in Snapshot]
+    D --> E[Pre-change Blocks Copied to Snapshot]
 
     C --> F{After Testing}
     F -->|Revert| G[Merge Snapshot Back]
@@ -370,14 +374,14 @@ Thin provisioning allows over-allocation of storage, creating volumes larger tha
 ```bash
 # Create a thin pool in the volume group
 # This creates a pool that thin volumes will draw from
-sudo lvcreate -L 100G --thinpool thin_pool vg_data
+sudo lvcreate --type thin-pool -L 100G -n thin_pool vg_data
 
 # Create a thin volume from the pool
 # This volume can be larger than the pool size (over-provisioned)
-sudo lvcreate -V 200G --thin -n lv_thin1 vg_data/thin_pool
+sudo lvcreate --type thin -V 200G -n lv_thin1 --thinpool thin_pool vg_data
 
 # Create another thin volume
-sudo lvcreate -V 200G --thin -n lv_thin2 vg_data/thin_pool
+sudo lvcreate --type thin -V 200G -n lv_thin2 --thinpool thin_pool vg_data
 
 # The thin volumes share the 100G pool
 # Actual space is only used as data is written
