@@ -51,7 +51,7 @@ graph TD
 ```bash
 # postgresql.conf on primary server
 
-# Enable WAL archiving for replication
+# Configure WAL for streaming replication
 
 wal_level = replica
 max_wal_senders = 10
@@ -144,8 +144,8 @@ CREATE USER 'replicator'@'%' IDENTIFIED BY 'secure_password_here';
 GRANT REPLICATION SLAVE ON *.* TO 'replicator'@'%';
 FLUSH PRIVILEGES;
 
--- Get binary log position
-SHOW MASTER STATUS;
+-- Verify binary log status
+SHOW BINARY LOG STATUS;
 ```
 
 ### Replica Server Configuration
@@ -163,7 +163,8 @@ gtid_mode = ON
 enforce_gtid_consistency = ON
 
 # Replica specific settings
-replica_skip_errors = 1062  # Skip duplicate key errors (use carefully)
+# Only enable error skipping when you fully understand the data consistency impact.
+# replica_skip_errors = 1062
 ```
 
 ### Start Replication
@@ -388,7 +389,10 @@ SELECT
     pg_last_wal_receive_lsn() AS received,
     pg_last_wal_replay_lsn() AS replayed,
     pg_last_wal_receive_lsn() - pg_last_wal_replay_lsn() AS lag_bytes,
-    EXTRACT(EPOCH FROM (now() - pg_last_xact_replay_timestamp())) AS lag_seconds;
+    CASE
+        WHEN pg_last_wal_receive_lsn() = pg_last_wal_replay_lsn() THEN 0
+        ELSE EXTRACT(EPOCH FROM (now() - pg_last_xact_replay_timestamp()))
+    END AS lag_seconds;
 ```
 
 ### MySQL Lag Monitoring
@@ -423,7 +427,10 @@ class LagAwareRouter {
     async checkReplicaLag(replica, index) {
         try {
             const result = await replica.raw(`
-                SELECT EXTRACT(EPOCH FROM (now() - pg_last_xact_replay_timestamp())) * 1000 AS lag_ms
+                SELECT CASE
+                    WHEN pg_last_wal_receive_lsn() = pg_last_wal_replay_lsn() THEN 0
+                    ELSE EXTRACT(EPOCH FROM (now() - pg_last_xact_replay_timestamp())) * 1000
+                END AS lag_ms
             `);
             const lagMs = result.rows[0]?.lag_ms || 0;
             this.replicaLags.set(index, lagMs);
