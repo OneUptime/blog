@@ -195,12 +195,15 @@ class Pipeline:
                     return None
                 current = processor.process(current)
 
+            if current is None:
+                self.stats["filtered"] += 1
+                return None
+
             self.stats["processed"] += 1
 
             # Send to output handlers
-            if current is not None:
-                for handler in self.output_handlers:
-                    handler(current)
+            for handler in self.output_handlers:
+                handler(current)
 
             return current
 
@@ -216,8 +219,8 @@ class Pipeline:
 # aggregation.py
 # Time-window aggregation for edge processing
 
-from collections import defaultdict
-from datetime import datetime, timedelta
+from collections import defaultdict, deque
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Callable
 from dataclasses import dataclass
 import statistics
@@ -322,7 +325,7 @@ class WindowAggregator:
     def flush_all(self) -> List[AggregatedData]:
         """Flush all current windows"""
         results = []
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         for key in list(self.windows.keys()):
             result = self._emit_window(key, now)
             if result:
@@ -391,7 +394,7 @@ class RollingStatistics:
 
 from typing import Dict, Optional, Tuple
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 import math
 
 @dataclass
@@ -412,13 +415,10 @@ class StatisticalAnomalyDetector:
     def __init__(
         self,
         threshold_std: float = 3.0,  # Number of standard deviations
-        min_samples: int = 30,        # Minimum samples before detection
-        learning_rate: float = 0.01   # Rate of adaptation to new data
+        min_samples: int = 30        # Minimum samples before detection
     ):
         self.threshold_std = threshold_std
         self.min_samples = min_samples
-        self.learning_rate = learning_rate
-
         # Store statistics per metric
         # Key: (device_id, metric)
         self.stats: Dict[tuple, Dict] = {}
@@ -469,7 +469,7 @@ class StatisticalAnomalyDetector:
         """Check if a value is anomalous"""
         key = (device_id, metric)
         stats = self._get_stats(key)
-        timestamp = timestamp or datetime.utcnow()
+        timestamp = timestamp or datetime.now(timezone.utc)
 
         # Need minimum samples before detection
         if stats["count"] < self.min_samples:
@@ -512,7 +512,6 @@ class StatisticalAnomalyDetector:
             )
 
         # Update statistics with new value
-        # Use exponential moving average for adaptation
         self._update_stats(key, value)
 
         return anomaly
@@ -537,7 +536,7 @@ class ThresholdAnomalyDetector:
             return None
 
         min_val, max_val = self.thresholds[metric]
-        timestamp = timestamp or datetime.utcnow()
+        timestamp = timestamp or datetime.now(timezone.utc)
 
         if value < min_val:
             return AnomalyEvent(
@@ -574,7 +573,7 @@ class ThresholdAnomalyDetector:
 
 import json
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from queue import Queue
 import threading
 
@@ -650,7 +649,7 @@ pipeline = Pipeline("sensor-pipeline")
 pipeline.add_processor(ThresholdFilter(min_value=-50, max_value=100))
 pipeline.add_processor(DeduplicationProcessor(window_seconds=5, threshold=0.1))
 pipeline.add_processor(EnrichmentProcessor({
-    "processed_at": lambda d: datetime.utcnow().isoformat(),
+    "processed_at": lambda d: datetime.now(timezone.utc).isoformat(),
     "edge_node": lambda d: DEVICE_ID
 }))
 pipeline.add_output(process_output)
@@ -705,7 +704,7 @@ def simulate_sensor():
                 device_id=DEVICE_ID,
                 metric=metric,
                 value=round(value, 2),
-                timestamp=datetime.utcnow()
+                timestamp=datetime.now(timezone.utc)
             )
 
             # Process through pipeline
