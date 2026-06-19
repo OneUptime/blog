@@ -67,38 +67,40 @@ import {
   simpleEstimator,
   fieldExtensionsEstimator,
 } from 'graphql-query-complexity';
-import { GraphQLSchema, separateOperations } from 'graphql';
+import { GraphQLSchema } from 'graphql';
 
 const MAX_COMPLEXITY = 1000;
 
 export function createComplexityPlugin(schema: GraphQLSchema) {
   return {
-    requestDidStart: () => ({
-      didResolveOperation({ request, document }) {
-        // Calculate complexity for the query
-        const complexity = getComplexity({
-          schema,
-          operationName: request.operationName,
-          query: document,
-          variables: request.variables,
-          estimators: [
-            // Use field extensions first (custom complexity values)
-            fieldExtensionsEstimator(),
-            // Fall back to simple estimator (1 point per field)
-            simpleEstimator({ defaultComplexity: 1 }),
-          ],
-        });
+    async requestDidStart() {
+      return {
+        async didResolveOperation({ request, document }) {
+          // Calculate complexity for the query
+          const complexity = getComplexity({
+            schema,
+            operationName: request.operationName,
+            query: document,
+            variables: request.variables,
+            estimators: [
+              // Use field extensions first (custom complexity values)
+              fieldExtensionsEstimator(),
+              // Fall back to simple estimator (1 point per field)
+              simpleEstimator({ defaultComplexity: 1 }),
+            ],
+          });
 
-        if (complexity > MAX_COMPLEXITY) {
-          throw new Error(
-            `Query complexity ${complexity} exceeds maximum allowed complexity ${MAX_COMPLEXITY}`
-          );
-        }
+          if (complexity > MAX_COMPLEXITY) {
+            throw new Error(
+              `Query complexity ${complexity} exceeds maximum allowed complexity ${MAX_COMPLEXITY}`
+            );
+          }
 
-        // Optional: Log complexity for monitoring
-        console.log(`Query complexity: ${complexity}/${MAX_COMPLEXITY}`);
-      },
-    }),
+          // Optional: Log complexity for monitoring
+          console.log(`Query complexity: ${complexity}/${MAX_COMPLEXITY}`);
+        },
+      };
+    },
   };
 }
 ```
@@ -170,11 +172,28 @@ type Post {
 }
 ```
 
+Use the directive estimator when you define complexity with SDL directives:
+
+```typescript
+import {
+  directiveEstimator,
+  fieldExtensionsEstimator,
+  simpleEstimator,
+} from 'graphql-query-complexity';
+
+const estimators = [
+  fieldExtensionsEstimator(),
+  directiveEstimator({ name: 'complexity' }),
+  simpleEstimator({ defaultComplexity: 1 }),
+];
+```
+
 ### Code-First Configuration (TypeGraphQL)
 
 ```typescript
 // types/User.ts
-import { ObjectType, Field, ID, Int } from 'type-graphql';
+import { ObjectType, Field, ID, Int, Arg } from 'type-graphql';
+import { Post } from './Post';
 
 @ObjectType()
 export class User {
@@ -192,7 +211,7 @@ export class User {
   }
 
   @Field(() => [User], { complexity: 20 })
-  recommendations: User[] {
+  recommendations(): User[] {
     return [];
   }
 }
@@ -258,7 +277,7 @@ Create a sophisticated estimator that handles your specific needs:
 import { ComplexityEstimator, ComplexityEstimatorArgs } from 'graphql-query-complexity';
 
 // Define complexity costs for different field types
-const FIELD_COSTS = {
+const FIELD_COSTS: Record<string, number> = {
   // Expensive operations
   'Query.search': 10,
   'Query.analytics': 15,
@@ -276,7 +295,7 @@ const FIELD_COSTS = {
 };
 
 // List fields that multiply by argument
-const LIST_MULTIPLIERS = {
+const LIST_MULTIPLIERS: Record<string, string> = {
   'Query.users': 'first',
   'Query.posts': 'first',
   'User.posts': 'first',
@@ -310,7 +329,11 @@ export const customEstimator: ComplexityEstimator = (
 
 ```typescript
 // Usage
-import { getComplexity } from 'graphql-query-complexity';
+import {
+  getComplexity,
+  fieldExtensionsEstimator,
+  simpleEstimator,
+} from 'graphql-query-complexity';
 import { customEstimator } from './customEstimator';
 
 const complexity = getComplexity({
@@ -377,15 +400,15 @@ export class QueryComplexityError extends GraphQLError {
 
 ```typescript
 // client.ts
-import { ApolloClient, ApolloError } from '@apollo/client';
+import { CombinedGraphQLErrors } from '@apollo/client/errors';
 
 async function executeQuery(query, variables) {
   try {
     const result = await client.query({ query, variables });
     return result.data;
   } catch (error) {
-    if (error instanceof ApolloError) {
-      const complexityError = error.graphQLErrors.find(
+    if (CombinedGraphQLErrors.is(error)) {
+      const complexityError = error.errors.find(
         (e) => e.extensions?.code === 'QUERY_COMPLEXITY_EXCEEDED'
       );
 
@@ -411,7 +434,8 @@ async function retryWithReducedScope(query, variables) {
   }
 
   // Retry with reduced scope
-  return client.query({ query, variables: reducedVariables });
+  const result = await client.query({ query, variables: reducedVariables });
+  return result.data;
 }
 ```
 
@@ -421,6 +445,15 @@ Different users may have different complexity allowances:
 
 ```typescript
 // complexity.ts
+import {
+  getComplexity,
+  fieldExtensionsEstimator,
+  simpleEstimator,
+} from 'graphql-query-complexity';
+import { GraphQLSchema } from 'graphql';
+import { customEstimator } from './customEstimator';
+import { QueryComplexityError } from './QueryComplexityError';
+
 interface ComplexityLimits {
   anonymous: number;
   authenticated: number;
@@ -437,43 +470,45 @@ const COMPLEXITY_LIMITS: ComplexityLimits = {
 
 export function createComplexityPlugin(schema: GraphQLSchema) {
   return {
-    requestDidStart: () => ({
-      async didResolveOperation({ request, document, contextValue }) {
-        const complexity = getComplexity({
-          schema,
-          operationName: request.operationName,
-          query: document,
-          variables: request.variables,
-          estimators: [
-            fieldExtensionsEstimator(),
-            customEstimator,
-            simpleEstimator({ defaultComplexity: 1 }),
-          ],
-        });
+    async requestDidStart() {
+      return {
+        async didResolveOperation({ request, document, contextValue }) {
+          const complexity = getComplexity({
+            schema,
+            operationName: request.operationName,
+            query: document,
+            variables: request.variables,
+            estimators: [
+              fieldExtensionsEstimator(),
+              customEstimator,
+              simpleEstimator({ defaultComplexity: 1 }),
+            ],
+          });
 
-        // Determine user tier
-        const user = contextValue.user;
-        let maxComplexity: number;
+          // Determine user tier
+          const user = contextValue.user;
+          let maxComplexity: number;
 
-        if (!user) {
-          maxComplexity = COMPLEXITY_LIMITS.anonymous;
-        } else if (user.roles.includes('admin')) {
-          maxComplexity = COMPLEXITY_LIMITS.admin;
-        } else if (user.subscription === 'premium') {
-          maxComplexity = COMPLEXITY_LIMITS.premium;
-        } else {
-          maxComplexity = COMPLEXITY_LIMITS.authenticated;
-        }
+          if (!user) {
+            maxComplexity = COMPLEXITY_LIMITS.anonymous;
+          } else if (user.roles.includes('admin')) {
+            maxComplexity = COMPLEXITY_LIMITS.admin;
+          } else if (user.subscription === 'premium') {
+            maxComplexity = COMPLEXITY_LIMITS.premium;
+          } else {
+            maxComplexity = COMPLEXITY_LIMITS.authenticated;
+          }
 
-        if (complexity > maxComplexity) {
-          throw new QueryComplexityError(complexity, maxComplexity);
-        }
+          if (complexity > maxComplexity) {
+            throw new QueryComplexityError(complexity, maxComplexity);
+          }
 
-        // Add complexity to response headers for debugging
-        contextValue.queryComplexity = complexity;
-        contextValue.maxComplexity = maxComplexity;
-      },
-    }),
+          // Store complexity on context for debugging or response formatting
+          contextValue.queryComplexity = complexity;
+          contextValue.maxComplexity = maxComplexity;
+        },
+      };
+    },
   };
 }
 ```
