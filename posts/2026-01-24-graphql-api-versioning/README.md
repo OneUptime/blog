@@ -260,9 +260,9 @@ async function createContext({ req }) {
   // Parse and validate version
   let parsedVersion = null;
   if (clientVersion) {
-    try {
-      parsedVersion = semver.parse(clientVersion);
-    } catch (e) {
+    parsedVersion = semver.parse(clientVersion);
+
+    if (!parsedVersion) {
       console.warn(`Invalid client version: ${clientVersion}`);
     }
   }
@@ -409,6 +409,11 @@ class SchemaRegistry {
 
     return timeline;
   }
+
+  async getSchema(hash) {
+    const schema = await this.storage.get(`schema:${hash}`);
+    return schema ? JSON.parse(schema) : null;
+  }
 }
 ```
 
@@ -416,7 +421,7 @@ class SchemaRegistry {
 
 Provide clear migration documentation in your schema.
 
-```graphql
+````graphql
 """
 User represents a registered user in the system.
 
@@ -441,7 +446,7 @@ query {
     avatar
   }
 }
-```bash
+```
 
 After (v2):
 ```graphql
@@ -452,7 +457,7 @@ query {
     avatarUrl
   }
 }
-```bash
+```
 """
 type User {
   id: ID!
@@ -476,7 +481,7 @@ type User {
   email: String!
   preferences: UserPreferences
 }
-```text
+````
 
 ## Version Evolution Timeline
 
