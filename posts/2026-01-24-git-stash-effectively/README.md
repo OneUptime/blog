@@ -182,7 +182,7 @@ git stash drop stash@{2}
 git stash clear
 ```
 
-Be careful with `git stash clear` as it permanently removes all stashes with no way to recover them.
+Be careful with `git stash clear` as it removes all stash entries, making them difficult or sometimes impossible to recover.
 
 ### Creating a Branch from a Stash
 
@@ -192,9 +192,10 @@ If your stashed changes have diverged significantly from the current branch, cre
 # Create a new branch from a stash and apply the changes
 git stash branch new-feature-branch stash@{0}
 
-# This is equivalent to:
+# This is similar to:
 # git checkout -b new-feature-branch <commit-where-stash-was-created>
-# git stash pop
+# git stash apply --index stash@{0}
+# git stash drop stash@{0}
 ```
 
 This command creates a branch from the commit where the stash was originally created, applies the stash, and then drops it. It is useful when applying a stash would cause conflicts with current branch changes.
@@ -266,7 +267,7 @@ git stash pop
 Stash is useful when you need to pull remote changes but have uncommitted local work.
 
 ```bash
-# Cannot pull with local changes
+# Pull can fail if remote changes would overwrite local changes
 git pull
 # error: Your local changes would be overwritten by merge
 
