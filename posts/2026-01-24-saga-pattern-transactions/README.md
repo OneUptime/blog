@@ -8,11 +8,11 @@ Description: Learn how to implement the Saga pattern for managing distributed tr
 
 ---
 
-In microservices architectures, maintaining data consistency across multiple services is challenging because traditional ACID transactions do not span service boundaries. The Saga pattern solves this by breaking a distributed transaction into a sequence of local transactions with compensating actions.
+In microservices architectures, maintaining data consistency across multiple services is challenging because traditional ACID transactions usually do not span service boundaries. The Saga pattern addresses this by breaking a distributed transaction into a sequence of local transactions with compensating actions.
 
 ## Understanding the Saga Pattern
 
-A saga is a sequence of local transactions where each transaction updates a single service. If one transaction fails, compensating transactions undo the changes made by preceding transactions.
+A saga is a sequence of local transactions where each transaction updates a single service. If one transaction fails, compensating transactions semantically reverse the changes made by preceding transactions.
 
 ```mermaid
 sequenceDiagram
@@ -186,8 +186,9 @@ func (s *OrderService) CreateOrder(ctx context.Context, req CreateOrderRequest) 
     }
 
     if err := s.publishEvent(ctx, "order.created", event); err != nil {
-        // Log error but do not fail - event can be retried
-        fmt.Printf("Failed to publish OrderCreated event: %v\n", err)
+        // In production, write this event to a transactional outbox in the same
+        // database transaction as the order so it can be retried reliably.
+        return order, fmt.Errorf("publishing order created event: %w", err)
     }
 
     return order, nil
@@ -539,6 +540,8 @@ func (o *SagaOrchestrator) handleStepFailure(ctx context.Context, saga *OrderSag
 // compensate runs compensating transactions in reverse order
 func (o *SagaOrchestrator) compensate(ctx context.Context, saga *OrderSaga) error {
     // Execute compensating transactions in reverse order
+    compensationFailed := false
+
     for i := len(saga.CompletedSteps) - 1; i >= 0; i-- {
         step := saga.CompletedSteps[i]
 
@@ -553,9 +556,22 @@ func (o *SagaOrchestrator) compensate(ctx context.Context, saga *OrderSaga) erro
         }
 
         if err != nil {
-            // Log and continue - compensation must complete
+            // Log and continue so later compensations still run. Keep the saga
+            // compensating so the failed compensation can be retried.
             fmt.Printf("Compensation for %s failed: %v\n", step, err)
+            compensationFailed = true
         }
+    }
+
+    if compensationFailed {
+        saga.State = StateCompensating
+        saga.UpdatedAt = time.Now()
+
+        if err := o.repo.Save(ctx, saga); err != nil {
+            return fmt.Errorf("updating saga: %w", err)
+        }
+
+        return fmt.Errorf("one or more compensations failed; saga remains compensating")
     }
 
     saga.State = StateFailed
@@ -754,7 +770,7 @@ func (s *SagaRecoveryService) moveToDeadLetter(ctx context.Context, saga *OrderS
 2. Store saga state persistently to survive service restarts
 3. Use correlation IDs to track saga execution across services
 4. Implement timeout handling for each saga step
-5. Design compensating transactions carefully as they must always succeed
+5. Design compensating transactions carefully so they are idempotent and can be retried until completed
 6. Use the outbox pattern to ensure events are published reliably
 7. Monitor saga completion rates and compensation frequency
 8. Keep saga steps small and focused on a single responsibility
