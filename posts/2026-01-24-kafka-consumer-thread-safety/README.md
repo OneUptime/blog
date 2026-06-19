@@ -8,9 +8,9 @@ Description: Learn how to safely use Kafka consumers in multi-threaded applicati
 
 ---
 
-Kafka consumers are not thread-safe. Using a single consumer instance from multiple threads will cause errors and undefined behavior. This guide covers safe patterns for multi-threaded Kafka consumption and concurrent message processing.
+Kafka's Java consumer is not thread-safe. Using a single Java consumer instance from multiple threads will cause errors and undefined behavior. This guide covers safe patterns for multi-threaded Kafka consumption and concurrent message processing, with notes for Python clients where the threading model differs.
 
-## Understanding Consumer Thread Safety
+## Understanding Java Consumer Thread Safety
 
 The Kafka consumer documentation clearly states:
 
@@ -90,6 +90,7 @@ The simplest approach is to create a separate consumer for each thread:
 
 ```java
 import org.apache.kafka.clients.consumer.*;
+import org.apache.kafka.common.errors.WakeupException;
 import java.util.*;
 import java.util.concurrent.*;
 import java.time.Duration;
@@ -167,6 +168,10 @@ public class ConsumerPerThread {
                         consumer.commitSync();
                     }
                 }
+            } catch (WakeupException e) {
+                if (running) {
+                    throw e;
+                }
             } finally {
                 consumer.close();
             }
@@ -205,21 +210,31 @@ Use one consumer thread that dispatches messages to a worker pool:
 ```java
 import org.apache.kafka.clients.consumer.*;
 import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.errors.WakeupException;
 import java.util.*;
 import java.util.concurrent.*;
 import java.time.Duration;
 
 public class ConsumerWithWorkerPool {
 
-    private final KafkaConsumer<String, String> consumer;
+    private volatile KafkaConsumer<String, String> consumer;
     private final ExecutorService workerPool;
-    private final BlockingQueue<ConsumerRecord<String, String>> workQueue;
-    private final Map<TopicPartition, Long> offsets;
+    private final String bootstrapServers;
+    private final String groupId;
+    private final String topic;
     private volatile boolean running = true;
     private final int numWorkers;
 
     public ConsumerWithWorkerPool(String bootstrapServers, String groupId,
                                    String topic, int numWorkers) {
+        this.bootstrapServers = bootstrapServers;
+        this.groupId = groupId;
+        this.topic = topic;
+        this.numWorkers = numWorkers;
+        this.workerPool = Executors.newFixedThreadPool(numWorkers);
+    }
+
+    private Properties createConsumerProps() {
         Properties props = new Properties();
         props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
         props.put(ConsumerConfig.GROUP_ID_CONFIG, groupId);
@@ -230,24 +245,13 @@ public class ConsumerWithWorkerPool {
         props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
         props.put(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, 500);
 
-        this.consumer = new KafkaConsumer<>(props);
-        this.consumer.subscribe(Collections.singletonList(topic));
-
-        this.numWorkers = numWorkers;
-        this.workerPool = Executors.newFixedThreadPool(numWorkers);
-        this.workQueue = new LinkedBlockingQueue<>(10000);
-        this.offsets = new ConcurrentHashMap<>();
+        return props;
     }
 
     /**
-     * Start the consumer and worker threads.
+     * Start the consumer thread.
      */
     public void start() {
-        // Start worker threads
-        for (int i = 0; i < numWorkers; i++) {
-            workerPool.submit(this::workerLoop);
-        }
-
         // Start consumer thread
         Thread consumerThread = new Thread(this::consumerLoop, "consumer-thread");
         consumerThread.start();
@@ -258,20 +262,32 @@ public class ConsumerWithWorkerPool {
      * Only this thread accesses the consumer.
      */
     private void consumerLoop() {
+        consumer = new KafkaConsumer<>(createConsumerProps());
+        consumer.subscribe(Collections.singletonList(topic));
+
         try {
             while (running) {
                 ConsumerRecords<String, String> records =
                     consumer.poll(Duration.ofMillis(100));
 
+                List<Future<ConsumerRecord<String, String>>> futures = new ArrayList<>();
                 for (ConsumerRecord<String, String> record : records) {
-                    // Block if queue is full (backpressure)
-                    while (!workQueue.offer(record, 100, TimeUnit.MILLISECONDS)) {
-                        if (!running) return;
-                    }
+                    futures.add(workerPool.submit(() -> {
+                        processRecord(record);
+                        return record;
+                    }));
                 }
 
-                // Commit processed offsets periodically
-                commitProcessedOffsets();
+                Map<TopicPartition, OffsetAndMetadata> offsetsToCommit =
+                    collectProcessedOffsets(futures);
+
+                if (!offsetsToCommit.isEmpty()) {
+                    consumer.commitSync(offsetsToCommit);
+                }
+            }
+        } catch (WakeupException e) {
+            if (running) {
+                throw e;
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -280,26 +296,25 @@ public class ConsumerWithWorkerPool {
         }
     }
 
-    /**
-     * Worker loop - processes messages from queue.
-     */
-    private void workerLoop() {
-        while (running) {
-            try {
-                ConsumerRecord<String, String> record =
-                    workQueue.poll(100, TimeUnit.MILLISECONDS);
+    private Map<TopicPartition, OffsetAndMetadata> collectProcessedOffsets(
+            List<Future<ConsumerRecord<String, String>>> futures) throws InterruptedException {
+        Map<TopicPartition, OffsetAndMetadata> offsetsToCommit = new HashMap<>();
 
-                if (record != null) {
-                    processRecord(record);
-                    trackOffset(record);
-                }
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                break;
-            } catch (Exception e) {
+        for (Future<ConsumerRecord<String, String>> future : futures) {
+            try {
+                ConsumerRecord<String, String> record = future.get();
+                TopicPartition tp = new TopicPartition(record.topic(), record.partition());
+                offsetsToCommit.merge(
+                    tp,
+                    new OffsetAndMetadata(record.offset() + 1),
+                    (current, next) -> current.offset() >= next.offset() ? current : next);
+            } catch (ExecutionException e) {
                 System.err.println("Worker error: " + e.getMessage());
+                return Collections.emptyMap();
             }
         }
+
+        return offsetsToCommit;
     }
 
     private void processRecord(ConsumerRecord<String, String> record) {
@@ -308,32 +323,11 @@ public class ConsumerWithWorkerPool {
             record.partition(), record.offset());
     }
 
-    /**
-     * Track the latest processed offset for each partition.
-     */
-    private void trackOffset(ConsumerRecord<String, String> record) {
-        TopicPartition tp = new TopicPartition(record.topic(), record.partition());
-        offsets.merge(tp, record.offset() + 1, Math::max);
-    }
-
-    /**
-     * Commit offsets that have been processed.
-     * Only called from consumer thread.
-     */
-    private void commitProcessedOffsets() {
-        if (offsets.isEmpty()) return;
-
-        Map<TopicPartition, OffsetAndMetadata> toCommit = new HashMap<>();
-        for (Map.Entry<TopicPartition, Long> entry : offsets.entrySet()) {
-            toCommit.put(entry.getKey(), new OffsetAndMetadata(entry.getValue()));
-        }
-
-        consumer.commitSync(toCommit);
-        offsets.clear();
-    }
-
     public void shutdown() {
         running = false;
+        if (consumer != null) {
+            consumer.wakeup();
+        }
         workerPool.shutdown();
         try {
             workerPool.awaitTermination(30, TimeUnit.SECONDS);
@@ -351,8 +345,10 @@ Assign partitions to dedicated threads for ordered processing:
 ```java
 import org.apache.kafka.clients.consumer.*;
 import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.errors.WakeupException;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicLong;
 import java.time.Duration;
 
 public class PartitionBasedThreading {
@@ -374,6 +370,12 @@ public class PartitionBasedThreading {
     }
 
     public void start() {
+        // Main poll loop
+        Thread pollThread = new Thread(this::pollLoop, "poll-thread");
+        pollThread.start();
+    }
+
+    private Properties createConsumerProps() {
         Properties props = new Properties();
         props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
         props.put(ConsumerConfig.GROUP_ID_CONFIG, groupId);
@@ -383,7 +385,11 @@ public class PartitionBasedThreading {
             "org.apache.kafka.common.serialization.StringDeserializer");
         props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
 
-        consumer = new KafkaConsumer<>(props);
+        return props;
+    }
+
+    private void pollLoop() {
+        consumer = new KafkaConsumer<>(createConsumerProps());
 
         // Subscribe with rebalance listener
         consumer.subscribe(Collections.singletonList(topic), new ConsumerRebalanceListener() {
@@ -392,6 +398,7 @@ public class PartitionBasedThreading {
                 for (TopicPartition tp : partitions) {
                     PartitionProcessor processor = processors.remove(tp.partition());
                     if (processor != null) {
+                        commitProcessedOffset(tp, processor);
                         processor.shutdown();
                     }
                 }
@@ -407,38 +414,62 @@ public class PartitionBasedThreading {
             }
         });
 
-        // Main poll loop
-        Thread pollThread = new Thread(this::pollLoop, "poll-thread");
-        pollThread.start();
-    }
+        try {
+            while (running) {
+                ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(100));
 
-    private void pollLoop() {
-        while (running) {
-            ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(100));
-
-            // Dispatch records to partition processors
-            for (ConsumerRecord<String, String> record : records) {
-                PartitionProcessor processor = processors.get(record.partition());
-                if (processor != null) {
-                    processor.enqueue(record);
+                // Dispatch records to partition processors
+                for (ConsumerRecord<String, String> record : records) {
+                    PartitionProcessor processor = processors.get(record.partition());
+                    if (processor != null) {
+                        processor.enqueue(record);
+                    }
                 }
+
+                commitProcessedOffsets();
             }
 
-            // Commit offsets
-            if (!records.isEmpty()) {
-                consumer.commitAsync();
+        } catch (WakeupException e) {
+            if (running) {
+                throw e;
             }
+        } finally {
+            consumer.close();
         }
-
-        consumer.close();
     }
 
     public void shutdown() {
         running = false;
+        if (consumer != null) {
+            consumer.wakeup();
+        }
         for (PartitionProcessor processor : processors.values()) {
             processor.shutdown();
         }
         executor.shutdown();
+    }
+
+    private void commitProcessedOffsets() {
+        Map<TopicPartition, OffsetAndMetadata> offsetsToCommit = new HashMap<>();
+        for (Map.Entry<Integer, PartitionProcessor> entry : processors.entrySet()) {
+            long offset = entry.getValue().nextOffsetToCommit();
+            if (offset >= 0) {
+                offsetsToCommit.put(
+                    new TopicPartition(topic, entry.getKey()),
+                    new OffsetAndMetadata(offset));
+            }
+        }
+
+        if (!offsetsToCommit.isEmpty()) {
+            consumer.commitSync(offsetsToCommit);
+        }
+    }
+
+    private void commitProcessedOffset(TopicPartition tp, PartitionProcessor processor) {
+        long offset = processor.nextOffsetToCommit();
+        if (offset >= 0) {
+            consumer.commitSync(Collections.singletonMap(tp, new OffsetAndMetadata(offset)));
+        }
     }
 
     /**
@@ -448,6 +479,7 @@ public class PartitionBasedThreading {
     private static class PartitionProcessor implements Runnable {
         private final int partition;
         private final BlockingQueue<ConsumerRecord<String, String>> queue;
+        private final AtomicLong nextOffsetToCommit = new AtomicLong(-1);
         private volatile boolean running = true;
 
         public PartitionProcessor(int partition) {
@@ -472,6 +504,7 @@ public class PartitionBasedThreading {
 
                     if (record != null) {
                         process(record);
+                        nextOffsetToCommit.set(record.offset() + 1);
                     }
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
@@ -488,16 +521,22 @@ public class PartitionBasedThreading {
         public void shutdown() {
             running = false;
         }
+
+        public long nextOffsetToCommit() {
+            return nextOffsetToCommit.get();
+        }
     }
 }
 ```
 
 ## Python Thread-Safe Patterns
 
+The following examples use `confluent-kafka-python`, which is based on `librdkafka`. Unlike the Java consumer, this client supports thread-safe polling; these patterns are still useful when you want predictable ownership, ordering, and offset management.
+
 ```python
 from confluent_kafka import Consumer, KafkaError
 import threading
-from queue import Queue, Empty
+from queue import Queue, Empty, Full
 from typing import Callable, List
 import logging
 from concurrent.futures import ThreadPoolExecutor
@@ -593,12 +632,11 @@ class SingleConsumerWithWorkers:
             'bootstrap.servers': bootstrap_servers,
             'group.id': group_id,
             'auto.offset.reset': 'earliest',
-            'enable.auto.commit': False,
-            'max.poll.records': 500
+            'enable.auto.commit': False
         }
         self.topics = topics
         self.num_workers = num_workers
-        self.work_queue = Queue(maxsize=10000)
+        self.work_queues = [Queue(maxsize=1000) for _ in range(num_workers)]
         self.running = True
         self.consumer = None
         self.executor = ThreadPoolExecutor(max_workers=num_workers)
@@ -609,8 +647,10 @@ class SingleConsumerWithWorkers:
 
         while self.running:
             try:
-                msg = self.work_queue.get(timeout=1.0)
+                msg = self.work_queues[worker_id].get(timeout=1.0)
                 handler(msg, worker_id)
+                self.consumer.commit(msg, asynchronous=True)
+                self.work_queues[worker_id].task_done()
             except Empty:
                 continue
             except Exception as e:
@@ -619,7 +659,7 @@ class SingleConsumerWithWorkers:
         logger.info(f"Worker {worker_id} stopped")
 
     def _consumer_loop(self):
-        """Consumer thread - only this thread accesses the consumer."""
+        """Consumer thread - polls and dispatches messages."""
         self.consumer = Consumer(self.config)
         self.consumer.subscribe(self.topics)
 
@@ -639,13 +679,10 @@ class SingleConsumerWithWorkers:
 
                 # Dispatch to worker queue
                 try:
-                    self.work_queue.put(msg, timeout=5.0)
-                except Exception:
+                    worker_id = msg.partition() % self.num_workers
+                    self.work_queues[worker_id].put(msg, timeout=5.0)
+                except Full:
                     logger.warning("Queue full, applying backpressure")
-
-                # Commit periodically
-                if self.work_queue.qsize() < 5000:
-                    self.consumer.commit(asynchronous=True)
 
         finally:
             self.consumer.close()
@@ -672,8 +709,8 @@ class SingleConsumerWithWorkers:
 
 class ThreadSafeConsumerWrapper:
     """
-    Thread-safe wrapper that synchronizes access to consumer.
-    Use only when you must share a consumer (not recommended).
+    Serialized-access wrapper for clients that are not thread-safe.
+    With confluent-kafka-python, Consumer is already thread-safe.
     """
 
     def __init__(self, bootstrap_servers: str, group_id: str, topics: List[str]):
@@ -728,11 +765,11 @@ if __name__ == '__main__':
     consumer_per_thread.stop()
 ```
 
-## Thread Safety Rules
+## Java Thread Safety Rules
 
 ```mermaid
 flowchart TD
-    A[Consumer Thread Safety Rules] --> B[Rule 1: One Thread Per Consumer]
+    A[Java Consumer Thread Safety Rules] --> B[Rule 1: One Thread Per Consumer]
     A --> C[Rule 2: All Operations Same Thread]
     A --> D[Rule 3: Use wakeup for Shutdown]
     A --> E[Rule 4: Synchronize If Sharing]
@@ -754,4 +791,4 @@ flowchart TD
 
 ## Conclusion
 
-Kafka consumers are not thread-safe, but there are several safe patterns for concurrent consumption. The consumer-per-thread pattern is simplest and works well when you have fewer partitions than threads. The single-consumer-with-workers pattern provides better throughput for I/O-bound processing. The partition-based pattern maintains ordering within partitions while allowing parallel processing. Choose the pattern that best fits your ordering and throughput requirements.
+Kafka's Java consumer is not thread-safe, but there are several safe patterns for concurrent consumption. The consumer-per-thread pattern is simplest and works well when your number of consumer threads does not exceed the number of partitions. The single-consumer-with-workers pattern provides better throughput for I/O-bound processing. The partition-based pattern maintains ordering within partitions while allowing parallel processing. Choose the pattern that best fits your ordering and throughput requirements.
