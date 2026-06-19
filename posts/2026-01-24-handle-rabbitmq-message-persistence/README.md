@@ -8,7 +8,7 @@ Description: A comprehensive guide to configuring message persistence in RabbitM
 
 ---
 
-Message persistence in RabbitMQ ensures that your messages survive broker restarts, crashes, and other failures. Without proper persistence configuration, messages stored only in memory will be lost when the broker stops. This guide covers all aspects of RabbitMQ message persistence, from basic configuration to advanced patterns for high-reliability messaging.
+Message persistence in RabbitMQ helps messages survive broker restarts and node failures when durable topology, persistent publishing, and publisher confirms are used together. Without proper persistence configuration, messages stored only in memory will be lost when the broker stops. This guide covers all aspects of RabbitMQ message persistence, from basic configuration to advanced patterns for high-reliability messaging.
 
 ## Understanding Message Persistence
 
@@ -45,9 +45,9 @@ flowchart LR
 |-----------|--------------|---------|
 | Exchange | `durable: true` | Exchange survives broker restart |
 | Queue | `durable: true` | Queue survives broker restart |
-| Message | `delivery_mode: 2` | Message written to disk |
+| Message | `delivery_mode: 2` | Message marked for disk persistence |
 
-All three must be configured for complete message persistence.
+All three must be configured for message persistence across broker restarts. For stronger publisher-side guarantees, also use publisher confirms.
 
 ## Configuring Durable Exchanges
 
@@ -56,16 +56,16 @@ All three must be configured for complete message persistence.
 ```bash
 # Create a durable direct exchange
 
-rabbitmqadmin declare exchange name=orders_exchange type=direct durable=true
+rabbitmqadmin exchanges declare --name "orders_exchange" --type "direct" --durable true
 
 # Create a durable topic exchange
-rabbitmqadmin declare exchange name=events_exchange type=topic durable=true
+rabbitmqadmin exchanges declare --name "events_exchange" --type "topic" --durable true
 
 # Create a durable fanout exchange
-rabbitmqadmin declare exchange name=notifications_exchange type=fanout durable=true
+rabbitmqadmin exchanges declare --name "notifications_exchange" --type "fanout" --durable true
 
 # Verify exchange durability
-rabbitmqadmin list exchanges name durable
+rabbitmqadmin exchanges list
 ```
 
 ### Using the Management API
@@ -89,14 +89,16 @@ curl -u admin:password -X PUT \
 
 ```bash
 # Create a durable queue
-rabbitmqadmin declare queue name=orders_queue durable=true
+rabbitmqadmin queues declare --name "orders_queue" --durable true
 
 # Create a durable queue with additional arguments
-rabbitmqadmin declare queue name=orders_queue durable=true \
-  arguments='{"x-max-length": 100000, "x-queue-type": "quorum"}'
+rabbitmqadmin queues declare --name "orders_queue" --durable true --type "quorum"
+rabbitmqctl set_policy orders-limits "^orders_queue$" \
+  '{"max-length": 100000}' \
+  --apply-to queues
 
 # List queues with durability status
-rabbitmqadmin list queues name durable messages
+rabbitmqadmin queues list
 ```
 
 ### Queue Types and Persistence
@@ -134,28 +136,36 @@ flowchart TD
 
 ```bash
 # Create a classic durable queue
-rabbitmqadmin declare queue name=classic_queue durable=true \
-  arguments='{"x-queue-type": "classic"}'
+rabbitmqadmin queues declare --name "classic_queue" --type "classic" --durable true
 ```
 
 #### Quorum Queues (Recommended for Critical Data)
 
 ```bash
 # Create a quorum queue (always durable)
-rabbitmqadmin declare queue name=critical_orders durable=true \
-  arguments='{"x-queue-type": "quorum"}'
+rabbitmqadmin queues declare --name "critical_orders" --type "quorum" --durable true
 
 # Quorum queue with custom replication factor
-rabbitmqadmin declare queue name=critical_orders durable=true \
-  arguments='{"x-queue-type": "quorum", "x-quorum-initial-group-size": 5}'
+curl -u admin:password -X PUT \
+  -H "Content-Type: application/json" \
+  http://localhost:15672/api/queues/%2f/critical_orders \
+  -d '{
+    "durable": true,
+    "arguments": {
+      "x-queue-type": "quorum",
+      "x-quorum-initial-group-size": 5
+    }
+  }'
 ```
 
 #### Stream Queues
 
 ```bash
 # Create a stream queue (always durable, append-only)
-rabbitmqadmin declare queue name=events_stream durable=true \
-  arguments='{"x-queue-type": "stream", "x-max-length-bytes": 1073741824}'
+rabbitmqadmin queues declare --name "events_stream" --type "stream" --durable true
+rabbitmqctl set_policy stream-retention "^events_stream$" \
+  '{"max-length-bytes": 1073741824}' \
+  --apply-to queues
 ```
 
 ## Publishing Persistent Messages
@@ -207,7 +217,7 @@ channel.basic_publish(
     routing_key='order.new',
     body=message,
     properties=pika.BasicProperties(
-        delivery_mode=2,  # Make message persistent (written to disk)
+        delivery_mode=2,  # Mark message as persistent
         content_type='application/json',
         # Optional: Add message expiration (TTL in milliseconds)
         # expiration='3600000'  # 1 hour
@@ -253,7 +263,7 @@ async function publishPersistentMessage() {
     });
 
     channel.publish(exchange, routingKey, Buffer.from(message), {
-        persistent: true,  // delivery_mode: 2 - Message written to disk
+        persistent: true,  // delivery_mode: 2 - mark message as persistent
         contentType: 'application/json'
     });
 
@@ -272,6 +282,7 @@ publishPersistentMessage().catch(console.error);
 import org.springframework.amqp.core.*;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Bean;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -306,8 +317,8 @@ public class OrderPublisher {
     }
 
     public void publishOrder(Order order) {
-        // RabbitTemplate automatically sets persistent delivery mode
-        // when the exchange and queue are durable
+        // Spring AMQP messages are persistent by default, but set it
+        // explicitly here to make the persistence requirement clear.
         rabbitTemplate.convertAndSend(
             "orders_exchange",
             "order.new",
@@ -324,7 +335,7 @@ public class OrderPublisher {
 
 ## Publisher Confirms for Guaranteed Delivery
 
-Publisher confirms provide acknowledgment that messages have been persisted to disk.
+Publisher confirms provide acknowledgment that RabbitMQ has accepted published messages. For persistent messages routed to durable queues, the confirm is sent after the message has been persisted to disk.
 
 ```mermaid
 sequenceDiagram
@@ -395,40 +406,39 @@ connection.close()
 
 For high-throughput scenarios, batch confirms improve performance.
 
-```python
-import pika
+```javascript
+const amqp = require('amqplib');
 
-connection = pika.BlockingConnection(
-    pika.ConnectionParameters('localhost')
-)
-channel = connection.channel()
-channel.confirm_delivery()
-channel.queue_declare(queue='batch_orders', durable=True)
+async function publishBatchWithConfirms() {
+    const connection = await amqp.connect('amqp://localhost');
+    const channel = await connection.createConfirmChannel();
 
-# Batch publish with periodic confirms
-batch_size = 100
-messages_sent = 0
+    const queue = 'batch_orders';
+    await channel.assertQueue(queue, { durable: true });
 
-for i in range(1000):
-    channel.basic_publish(
-        exchange='',
-        routing_key='batch_orders',
-        body=f'Order {i}',
-        properties=pika.BasicProperties(delivery_mode=2)
-    )
-    messages_sent += 1
+    const batchSize = 100;
+    let messagesSent = 0;
 
-    # Confirm every batch_size messages
-    if messages_sent % batch_size == 0:
-        # This waits for all outstanding confirms
-        channel.wait_for_pending_acks(timeout=30)
-        print(f"Batch confirmed: {messages_sent} messages")
+    for (let i = 0; i < 1000; i++) {
+        channel.sendToQueue(queue, Buffer.from(`Order ${i}`), {
+            persistent: true
+        });
+        messagesSent += 1;
 
-# Final confirmation for remaining messages
-channel.wait_for_pending_acks(timeout=30)
-print(f"All {messages_sent} messages confirmed")
+        if (messagesSent % batchSize === 0) {
+            await channel.waitForConfirms();
+            console.log(`Batch confirmed: ${messagesSent} messages`);
+        }
+    }
 
-connection.close()
+    await channel.waitForConfirms();
+    console.log(`All ${messagesSent} messages confirmed`);
+
+    await channel.close();
+    await connection.close();
+}
+
+publishBatchWithConfirms().catch(console.error);
 ```
 
 ## Consumer Acknowledgments
@@ -509,36 +519,39 @@ Configure dead letter exchanges to capture messages that cannot be processed.
 
 ```bash
 # Create dead letter exchange
-rabbitmqadmin declare exchange name=dlx_exchange type=direct durable=true
+rabbitmqadmin exchanges declare --name "dlx_exchange" --type "direct" --durable true
 
 # Create dead letter queue
-rabbitmqadmin declare queue name=dead_letters durable=true
+rabbitmqadmin queues declare --name "dead_letters" --durable true
 
 # Bind dead letter queue
-rabbitmqadmin declare binding source=dlx_exchange destination=dead_letters routing_key=failed
+rabbitmqadmin bindings declare \
+  --source "dlx_exchange" \
+  --destination-type "queue" \
+  --destination "dead_letters" \
+  --routing-key "failed"
 
 # Create main queue with dead letter configuration
-rabbitmqadmin declare queue name=orders_queue durable=true \
-  arguments='{
-    "x-dead-letter-exchange": "dlx_exchange",
-    "x-dead-letter-routing-key": "failed",
-    "x-message-ttl": 86400000
-  }'
+rabbitmqadmin queues declare --name "orders_queue" --durable true
+rabbitmqctl set_policy orders-dlx "^orders_queue$" \
+  '{
+    "dead-letter-exchange": "dlx_exchange",
+    "dead-letter-routing-key": "failed",
+    "message-ttl": 86400000
+  }' \
+  --apply-to queues
 ```
 
-## Lazy Queues for Large Backlogs
+## Classic Queues for Large Backlogs
 
-Lazy queues store messages on disk immediately, reducing memory usage.
+RabbitMQ no longer supports the old classic queue `lazy` mode. In current RabbitMQ versions, classic queues use a similar storage behavior by default, while streams and quorum queues keep little message data in memory and are better fits for large persistent backlogs.
 
 ```bash
-# Create a lazy queue (classic queue mode)
-rabbitmqadmin declare queue name=large_backlog durable=true \
-  arguments='{"x-queue-mode": "lazy"}'
+# Create a durable classic queue
+rabbitmqadmin queues declare --name "large_backlog" --type "classic" --durable true
 
-# Or via policy
-rabbitmqctl set_policy lazy-queues "^lazy\." \
-  '{"queue-mode": "lazy"}' \
-  --apply-to queues
+# Or create a stream for append-only event backlogs
+rabbitmqadmin queues declare --name "events_backlog" --type "stream" --durable true
 ```
 
 ```mermaid
@@ -548,8 +561,8 @@ flowchart LR
         DD[Overflow to Disk]
     end
 
-    subgraph Lazy["Lazy Queue"]
-        LD[Messages on Disk]
+    subgraph Stream["Stream"]
+        LD[Append-Only Log on Disk]
         LC[Small Cache in Memory]
     end
 
@@ -569,20 +582,18 @@ flowchart LR
 ```ini
 # rabbitmq.conf
 
-# Increase the sync batch size for better throughput
-# Messages are fsync'd in batches
-queue_index_embed_msgs_below = 4096
+# Use classic queue storage version 2 for more predictable behavior
+# under memory pressure
+classic_queue.default_version = 2
 
-# Configure persistence sync interval (milliseconds)
-# Higher values improve throughput but increase data loss risk on crash
-collect_statistics_interval = 5000
+# Tune quorum queue write-ahead log flush size only after benchmarking
+raft.wal_max_size_bytes = 64000000
 
-# Memory threshold before paging messages to disk
+# Memory threshold before RabbitMQ raises memory alarms
 vm_memory_high_watermark.relative = 0.6
-vm_memory_high_watermark_paging_ratio = 0.5
 
 # Disk free limit - stop accepting messages when disk is low
-disk_free_limit.relative = 2.0
+disk_free_limit.absolute = 10GB
 ```
 
 ### Quorum Queue Tuning
@@ -591,12 +602,10 @@ disk_free_limit.relative = 2.0
 # Configure quorum queue settings via policy
 rabbitmqctl set_policy quorum-config "^quorum\." \
   '{
-    "queue-type": "quorum",
-    "x-quorum-initial-group-size": 3,
-    "x-max-in-memory-length": 0,
+    "max-length": 100000,
     "delivery-limit": 5
   }' \
-  --apply-to queues
+  --apply-to "quorum_queues"
 ```
 
 ## Monitoring Persistence
@@ -605,15 +614,12 @@ rabbitmqctl set_policy quorum-config "^quorum\." \
 
 ```bash
 # View queue message statistics
-rabbitmqadmin list queues name messages messages_ready messages_unacknowledged \
-  message_bytes message_bytes_persistent
+rabbitmqctl list_queues name messages messages_ready messages_unacknowledged \
+  message_bytes messages_persistent message_bytes_persistent
 
 # Sample output:
-# +---------------+----------+----------------+------------------------+---------------+---------------------------+
-# | name          | messages | messages_ready | messages_unacknowledged | message_bytes | message_bytes_persistent |
-# +---------------+----------+----------------+------------------------+---------------+---------------------------+
-# | orders_queue  | 1000     | 950            | 50                     | 102400        | 102400                   |
-# +---------------+----------+----------------+------------------------+---------------+---------------------------+
+# name          messages  messages_ready  messages_unacknowledged  message_bytes  messages_persistent  message_bytes_persistent
+# orders_queue  1000      950             50                       102400         1000                 102400
 ```
 
 ### Prometheus Metrics
@@ -622,10 +628,10 @@ rabbitmqadmin list queues name messages messages_ready messages_unacknowledged \
 # Key persistence metrics to monitor
 - rabbitmq_queue_messages_persistent
 - rabbitmq_queue_messages_ram
-- rabbitmq_queue_messages_paged_out
-- rabbitmq_disk_writes_total
-- rabbitmq_disk_write_bytes_total
-- rabbitmq_io_sync_time_seconds
+- rabbitmq_queue_messages_persistent_bytes
+- rabbitmq_io_write_ops_total
+- rabbitmq_io_write_bytes_total
+- rabbitmq_io_sync_time_seconds_total
 ```
 
 ## Summary
