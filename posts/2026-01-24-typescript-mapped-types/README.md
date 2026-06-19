@@ -48,12 +48,12 @@ type Optional<T> = {
 };
 
 // Example: Create a type that makes all properties required
-type Required<T> = {
+type CustomRequired<T> = {
   [K in keyof T]-?: T[K];
 };
 
 // Example: Create a type that makes all properties readonly
-type Readonly<T> = {
+type CustomReadonly<T> = {
   readonly [K in keyof T]: T[K];
 };
 ```
