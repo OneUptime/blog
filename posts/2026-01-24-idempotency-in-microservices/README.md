@@ -53,8 +53,6 @@ package idempotency
 
 import (
     "context"
-    "crypto/sha256"
-    "encoding/hex"
     "encoding/json"
     "errors"
     "net/http"
@@ -123,6 +121,21 @@ func (s *IdempotencyStore) GetOrLock(ctx context.Context, idempotencyKey string)
         return nil, false, ErrRequestInProgress
     }
 
+    // A result may have been stored between the initial read and lock acquisition.
+    data, err = s.redis.Get(ctx, resultKey).Bytes()
+    if err == nil {
+        s.redis.Del(ctx, lockKey)
+        var response StoredResponse
+        if err := json.Unmarshal(data, &response); err != nil {
+            return nil, false, err
+        }
+        return &response, false, nil
+    }
+    if err != redis.Nil {
+        s.redis.Del(ctx, lockKey)
+        return nil, false, err
+    }
+
     return nil, true, nil
 }
 
@@ -136,8 +149,8 @@ func (s *IdempotencyStore) StoreResponse(ctx context.Context, idempotencyKey str
         return err
     }
 
-    // Store result and release lock atomically
-    pipe := s.redis.Pipeline()
+    // Store result and release lock in a Redis transaction
+    pipe := s.redis.TxPipeline()
     pipe.Set(ctx, resultKey, data, s.ttl)
     pipe.Del(ctx, lockKey)
     _, err = pipe.Exec(ctx)
@@ -172,7 +185,7 @@ func IdempotencyMiddleware(store *IdempotencyStore) func(http.Handler) http.Hand
             ctx := r.Context()
 
             // Check for existing response or acquire lock
-            existing, locked, err := store.GetOrLock(ctx, idempotencyKey)
+            existing, _, err := store.GetOrLock(ctx, idempotencyKey)
             if err == ErrRequestInProgress {
                 http.Error(w, "Request already in progress", http.StatusConflict)
                 return
@@ -295,6 +308,7 @@ import (
     "time"
 
     "github.com/google/uuid"
+    "github.com/lib/pq"
 )
 
 var (
@@ -431,9 +445,8 @@ func (s *PaymentService) CreatePayment(ctx context.Context, req PaymentRequest) 
 
 func isUniqueViolation(err error) bool {
     // Check for PostgreSQL unique violation error code
-    return err != nil &&
-           (err.Error() == "pq: duplicate key value violates unique constraint" ||
-            err.Error() == "UNIQUE constraint failed")
+    var pqErr *pq.Error
+    return errors.As(err, &pqErr) && pqErr.Code == "23505"
 }
 
 // PaymentGateway interface for payment processing
@@ -473,7 +486,6 @@ from typing import Callable, Optional
 import hashlib
 import json
 import asyncio
-from contextlib import asynccontextmanager
 
 import asyncpg
 from aiokafka import AIOKafkaConsumer
@@ -487,7 +499,7 @@ class Event:
     source: str
 
 class IdempotentEventProcessor:
-    """Processes events exactly once using database-backed deduplication."""
+    """Processes events idempotently using database-backed deduplication."""
 
     def __init__(self, db_pool: asyncpg.Pool, retention_days: int = 7):
         self.db_pool = db_pool
@@ -513,6 +525,9 @@ class IdempotentEventProcessor:
         """Register a handler for an event type."""
         self.handlers[event_type] = handler
 
+    def _decode_result(self, value: Optional[str]) -> Optional[dict]:
+        return json.loads(value) if value else None
+
     async def process_event(self, event: Event) -> Optional[dict]:
         """
         Process an event idempotently.
@@ -530,7 +545,9 @@ class IdempotentEventProcessor:
 
                     if existing:
                         # Already processed, return cached result
-                        return existing['result']
+                        if existing['result'] is None:
+                            raise RuntimeError(f"Event is already being processed: {event.id}")
+                        return self._decode_result(existing['result'])
 
                     # Lock the row to prevent concurrent processing
                     await conn.execute("""
@@ -543,7 +560,9 @@ class IdempotentEventProcessor:
                     existing = await conn.fetchrow("""
                         SELECT result FROM processed_events WHERE event_id = $1
                     """, event.id)
-                    return existing['result'] if existing else None
+                    if existing and existing['result'] is None:
+                        raise RuntimeError(f"Event is already being processed: {event.id}")
+                    return self._decode_result(existing['result']) if existing else None
 
                 # Process the event
                 handler = self.handlers.get(event.type)
@@ -591,7 +610,7 @@ class IdempotentKafkaConsumer:
             *topics,
             bootstrap_servers=bootstrap_servers,
             group_id=group_id,
-            enable_auto_commit=False,  # Manual commit for exactly-once
+            enable_auto_commit=False,  # Manual commit after processing
             auto_offset_reset='earliest'
         )
         self.processor = processor
@@ -733,6 +752,14 @@ class IdempotencyService {
             'NX'
         );
 
+        if (locked === 'OK') {
+            const cachedAfterLock = await this.redis.get(resultKey);
+            if (cachedAfterLock) {
+                await this.redis.del(lockKey);
+                return { cached: JSON.parse(cachedAfterLock), locked: false };
+            }
+        }
+
         return { cached: null, locked: locked === 'OK' };
     }
 
@@ -740,10 +767,10 @@ class IdempotencyService {
         const resultKey = `idempotency:result:${key}`;
         const lockKey = `idempotency:lock:${key}`;
 
-        const pipeline = this.redis.pipeline();
-        pipeline.set(resultKey, JSON.stringify(response), 'EX', this.config.ttlSeconds);
-        pipeline.del(lockKey);
-        await pipeline.exec();
+        const transaction = this.redis.multi();
+        transaction.set(resultKey, JSON.stringify(response), 'EX', this.config.ttlSeconds);
+        transaction.del(lockKey);
+        await transaction.exec();
     }
 
     async releaseLock(key: string): Promise<void> {
@@ -752,7 +779,8 @@ class IdempotencyService {
     }
 
     getKeyFromRequest(req: Request): string | null {
-        return req.headers[this.config.headerName.toLowerCase()] as string | null;
+        const value = req.headers[this.config.headerName.toLowerCase()];
+        return typeof value === 'string' ? value : null;
     }
 }
 
