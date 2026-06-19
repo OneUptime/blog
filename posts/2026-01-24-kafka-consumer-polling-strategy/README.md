@@ -24,12 +24,12 @@ sequenceDiagram
 
         Consumer->>Consumer: Process Records
 
-        alt Processing Time < max.poll.interval.ms
-            Consumer->>Coordinator: Heartbeat
-            Coordinator-->>Consumer: OK
-        else Processing Time > max.poll.interval.ms
-            Consumer->>Coordinator: Heartbeat (late)
-            Coordinator-->>Consumer: RebalanceInProgressException
+        alt Next poll within max.poll.interval.ms
+            Consumer->>Coordinator: Heartbeats continue
+            Coordinator-->>Consumer: Membership retained
+        else Next poll exceeds max.poll.interval.ms
+            Consumer->>Coordinator: Consumer leaves group
+            Coordinator-->>Consumer: Partitions reassigned
         end
 
         Consumer->>Broker: Commit Offsets
@@ -66,6 +66,7 @@ public class BasicConsumer {
             "org.apache.kafka.common.serialization.StringDeserializer");
         props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG,
             "org.apache.kafka.common.serialization.StringDeserializer");
+        props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
 
         // Polling configuration
         props.put(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, 500);
@@ -182,6 +183,7 @@ public class LowLatencyConsumer {
             "org.apache.kafka.common.serialization.StringDeserializer");
         props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG,
             "org.apache.kafka.common.serialization.StringDeserializer");
+        props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
 
         // Low latency settings
         props.put(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, 100);  // Smaller batches
@@ -201,7 +203,7 @@ public class LowLatencyConsumer {
                     processWithLogging(record);
                 }
 
-                // Commit synchronously for exactly-once semantics
+                // Commit synchronously after processing for at-least-once delivery
                 if (!records.isEmpty()) {
                     consumer.commitSync();
                 }
@@ -222,6 +224,7 @@ For scenarios where each record takes significant time to process:
 
 ```java
 import org.apache.kafka.clients.consumer.*;
+import org.apache.kafka.common.TopicPartition;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
@@ -320,7 +323,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 @dataclass
 class PollingConfig:
     """Configuration for consumer polling behavior"""
-    max_poll_records: int = 500
     max_poll_interval_ms: int = 300000
     fetch_min_bytes: int = 1
     fetch_max_wait_ms: int = 500
@@ -578,7 +580,6 @@ def main():
     # Configurable consumer with batching
     print("\nBatch Consumer:")
     config = PollingConfig(
-        max_poll_records=1000,
         fetch_min_bytes=1048576,
         poll_timeout_seconds=0.5
     )
@@ -640,6 +641,7 @@ public class MonitoredConsumer {
     private long lastReportTime = System.currentTimeMillis();
 
     public MonitoredConsumer(Properties props) {
+        props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
         this.consumer = new KafkaConsumer<>(props);
         this.metricsReporter = Executors.newScheduledThreadPool(1);
 
@@ -722,9 +724,8 @@ fetch.min.bytes=1048576
 fetch.max.wait.ms=500
 max.partition.fetch.bytes=10485760
 
-# Async commits
-enable.auto.commit=true
-auto.commit.interval.ms=5000
+# Manual async commits after processing
+enable.auto.commit=false
 ```
 
 ### For Low Latency
@@ -734,6 +735,7 @@ auto.commit.interval.ms=5000
 max.poll.records=100
 fetch.min.bytes=1
 fetch.max.wait.ms=10
+enable.auto.commit=false
 
 # Shorter poll timeout in code
 # poll(Duration.ofMillis(50))
@@ -754,7 +756,7 @@ enable.auto.commit=false
 
 Choosing the right polling strategy depends on your specific requirements for throughput, latency, and processing time. Key considerations include:
 
-1. **High throughput**: Increase `max.poll.records` and `fetch.min.bytes`, use async commits
+1. **High throughput**: Increase `max.poll.records` and `fetch.min.bytes`, use manual async commits after processing
 2. **Low latency**: Decrease `fetch.min.bytes` and `fetch.max.wait.ms`, use short poll timeouts
 3. **Long processing**: Reduce `max.poll.records`, increase `max.poll.interval.ms`, use parallel processing
 
