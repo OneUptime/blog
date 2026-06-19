@@ -55,7 +55,7 @@ traceparent: 00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01
              |  |                                |                +-- Trace flags (01 = sampled)
              |  |                                +------------------- Parent span ID (16 hex chars)
              |  +--------------------------------------------------- Trace ID (32 hex characters)
-             +------------------------------------------------------ Version (always 00)
+             +------------------------------------------------------ Version (currently 00)
 ```
 
 ## Configuring Propagators
@@ -155,8 +155,7 @@ export OTEL_PROPAGATORS=tracecontext,baggage,b3multi
 // http-client-propagation.js
 // Manually inject trace context into outgoing HTTP requests
 
-const { trace, context, propagation } = require('@opentelemetry/api');
-const https = require('https');
+const { trace, context, propagation, SpanStatusCode } = require('@opentelemetry/api');
 
 async function makeTracedRequest(url, options = {}) {
   // Get the current tracer
@@ -189,7 +188,7 @@ async function makeTracedRequest(url, options = {}) {
     } catch (error) {
       // Record error
       span.recordException(error);
-      span.setStatus({ code: 2, message: error.message });
+      span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
       throw error;
     } finally {
       span.end();
@@ -209,7 +208,7 @@ makeTracedRequest('https://api.example.com/users')
 // http-server-propagation.js
 // Extract trace context from incoming HTTP requests
 
-const { trace, context, propagation } = require('@opentelemetry/api');
+const { trace, context, propagation, SpanKind } = require('@opentelemetry/api');
 const express = require('express');
 
 const app = express();
@@ -220,26 +219,28 @@ app.use((req, res, next) => {
   // Extract trace context from incoming headers
   const extractedContext = propagation.extract(context.active(), req.headers);
 
-  // Create a span within the extracted context
+  // Create an active span within the extracted context
   // This ensures the new span is a child of the incoming trace
   context.with(extractedContext, () => {
-    const span = tracer.startSpan('HTTP ' + req.method + ' ' + req.path);
+    tracer.startActiveSpan('HTTP ' + req.method + ' ' + req.path, {
+      kind: SpanKind.SERVER,
+    }, (span) => {
+      // Add request attributes
+      span.setAttribute('http.method', req.method);
+      span.setAttribute('http.url', req.url);
+      span.setAttribute('http.route', req.path);
 
-    // Add request attributes
-    span.setAttribute('http.method', req.method);
-    span.setAttribute('http.url', req.url);
-    span.setAttribute('http.route', req.path);
+      // Store span in request for later use
+      req.span = span;
 
-    // Store span in request for later use
-    req.span = span;
+      // End span when response is finished
+      res.on('finish', () => {
+        span.setAttribute('http.status_code', res.statusCode);
+        span.end();
+      });
 
-    // End span when response is finished
-    res.on('finish', () => {
-      span.setAttribute('http.status_code', res.statusCode);
-      span.end();
+      next();
     });
-
-    next();
   });
 });
 
@@ -248,9 +249,10 @@ app.get('/api/users', (req, res) => {
   // The request is already being traced
   // Any child spans created here will be linked to the parent trace
 
-  const span = tracer.startSpan('fetch-users-from-db');
-  // ... database operation
-  span.end();
+  tracer.startActiveSpan('fetch-users-from-db', (span) => {
+    // ... database operation
+    span.end();
+  });
 
   res.json({ users: [] });
 });
@@ -267,8 +269,8 @@ app.listen(3000, () => {
 # Manually inject trace context into outgoing HTTP requests
 
 import requests
-from opentelemetry import trace, context, propagate
-from opentelemetry.trace import SpanKind
+from opentelemetry import trace, propagate
+from opentelemetry.trace import SpanKind, Status, StatusCode
 
 tracer = trace.get_tracer(__name__)
 
@@ -313,7 +315,7 @@ def make_traced_request(url: str, method: str = "GET", **kwargs) -> requests.Res
 
         except Exception as e:
             span.record_exception(e)
-            span.set_status(trace.Status(trace.StatusCode.ERROR, str(e)))
+            span.set_status(Status(StatusCode.ERROR, str(e)))
             raise
 
 # Example usage
@@ -347,13 +349,13 @@ def extract_trace_context():
     g.trace_context = ctx
 
     # Start a span for this request within the extracted context
-    token = context.attach(ctx)
-    g.context_token = token
-
     span = tracer.start_span(
         f"HTTP {request.method} {request.path}",
+        context=ctx,
         kind=SpanKind.SERVER,
     )
+    token = context.attach(trace.set_span_in_context(span, ctx))
+    g.context_token = token
 
     # Add request attributes
     span.set_attribute("http.method", request.method)
@@ -401,7 +403,7 @@ if __name__ == '__main__':
 // kafka-producer-propagation.js
 // Inject trace context into Kafka messages
 
-const { trace, context, propagation } = require('@opentelemetry/api');
+const { trace, context, propagation, SpanStatusCode } = require('@opentelemetry/api');
 const { Kafka } = require('kafkajs');
 
 const kafka = new Kafka({ brokers: ['localhost:9092'] });
@@ -436,10 +438,10 @@ async function sendTracedMessage(topic, message) {
         }],
       });
 
-      span.setStatus({ code: 0 });
+      span.setStatus({ code: SpanStatusCode.OK });
     } catch (error) {
       span.recordException(error);
-      span.setStatus({ code: 2, message: error.message });
+      span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
       throw error;
     } finally {
       span.end();
@@ -454,7 +456,7 @@ async function sendTracedMessage(topic, message) {
 // kafka-consumer-propagation.js
 // Extract trace context from Kafka messages
 
-const { trace, context, propagation } = require('@opentelemetry/api');
+const { trace, context, propagation, SpanStatusCode } = require('@opentelemetry/api');
 const { Kafka } = require('kafkajs');
 
 const kafka = new Kafka({ brokers: ['localhost:9092'] });
@@ -486,10 +488,10 @@ async function processMessage(message) {
 
         // Your business logic here
 
-        span.setStatus({ code: 0 });
+        span.setStatus({ code: SpanStatusCode.OK });
       } catch (error) {
         span.recordException(error);
-        span.setStatus({ code: 2, message: error.message });
+        span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
         throw error;
       } finally {
         span.end();
@@ -566,25 +568,19 @@ Baggage allows you to propagate custom key-value pairs alongside trace context.
 // baggage-example.js
 // Using baggage to propagate custom context
 
-const { trace, context, propagation, baggage } = require('@opentelemetry/api');
+const { context, propagation } = require('@opentelemetry/api');
 
 // Service A: Set baggage values
 function serviceA() {
   // Create baggage entries
-  const bag = baggage.setEntry(
-    baggage.active(),
-    'user.id',
-    { value: 'user-123' }
-  );
-
-  const bagWithTenant = baggage.setEntry(
-    bag,
-    'tenant.id',
-    { value: 'tenant-456' }
-  );
+  const bag = propagation.createBaggage({
+    'user.id': { value: 'user-123' },
+    'tenant.id': { value: 'tenant-456' },
+  });
+  const baggageContext = propagation.setBaggage(context.active(), bag);
 
   // Run code with baggage context
-  context.with(baggage.setActiveBaggage(bagWithTenant), () => {
+  context.with(baggageContext, () => {
     // Baggage will be automatically propagated
     // when making outgoing requests
     makeOutgoingRequest();
@@ -598,10 +594,10 @@ function serviceB(incomingHeaders) {
 
   context.with(extractedContext, () => {
     // Read baggage values
-    const currentBaggage = baggage.getActiveBaggage();
+    const currentBaggage = propagation.getBaggage(context.active());
 
-    const userId = currentBaggage.getEntry('user.id');
-    const tenantId = currentBaggage.getEntry('tenant.id');
+    const userId = currentBaggage?.getEntry('user.id');
+    const tenantId = currentBaggage?.getEntry('tenant.id');
 
     console.log('User ID:', userId?.value);     // 'user-123'
     console.log('Tenant ID:', tenantId?.value); // 'tenant-456'
