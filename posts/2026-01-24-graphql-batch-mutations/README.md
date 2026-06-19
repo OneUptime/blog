@@ -22,7 +22,7 @@ flowchart TD
         A[Client Request] --> B{Pattern Type}
 
         B -->|Single Field| C[bulkCreateUsers]
-        B -->|Multiple Fields| D[createUser1, createUser2, ...]
+        B -->|Multiple Fields| D[user1: createUser, user2: createUser, ...]
         B -->|Input Array| E[createUsers with array input]
     end
 
@@ -93,6 +93,30 @@ type BatchCreateUsersResponse {
   users: [User!]!
 }
 
+# Response type for batch update operations
+type BatchUpdateUsersResponse {
+  successCount: Int!
+  failureCount: Int!
+  results: [BatchOperationResult!]!
+  users: [User!]!
+}
+
+# Result for a single delete operation in a batch
+type BatchDeleteOperationResult {
+  index: Int!
+  id: ID!
+  success: Boolean!
+  error: BatchOperationError
+}
+
+# Response type for batch delete operations
+type BatchDeleteUsersResponse {
+  successCount: Int!
+  failureCount: Int!
+  results: [BatchDeleteOperationResult!]!
+  deletedIds: [ID!]!
+}
+
 type Mutation {
   # Create multiple users in a single request
   # Supports partial success - some users may be created even if others fail
@@ -112,6 +136,7 @@ type Mutation {
   batchDeleteUsers(
     ids: [ID!]!
     atomic: Boolean = false
+    softDelete: Boolean = false
   ): BatchDeleteUsersResponse!
 }
 ```
@@ -139,6 +164,14 @@ interface BatchOperationResult {
   success: boolean;
   user: any | null;
   error: { code: string; message: string; field?: string } | null;
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function hasPrismaErrorCode(error: unknown, code: string): boolean {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === code;
 }
 
 // Validate a single user input
@@ -228,6 +261,13 @@ export const batchCreateUsersResolver = async (
     emailSet.add(normalizedEmail);
   });
 
+  if (atomic && duplicateIndices.size > 0) {
+    throw new GraphQLError(
+      `Duplicate emails found at indices: ${Array.from(duplicateIndices).join(', ')}`,
+      { extensions: { code: 'DUPLICATE_IN_BATCH' } }
+    );
+  }
+
   if (atomic) {
     // Atomic mode: Use a transaction for all-or-nothing behavior
     try {
@@ -274,7 +314,7 @@ export const batchCreateUsersResolver = async (
     } catch (error) {
       // Transaction failed - no users were created
       throw new GraphQLError(
-        `Batch operation failed: ${error.message}`,
+        `Batch operation failed: ${getErrorMessage(error)}`,
         { extensions: { code: 'TRANSACTION_FAILED' } }
       );
     }
@@ -326,7 +366,7 @@ export const batchCreateUsersResolver = async (
         // Handle specific database errors
         let errorResult: BatchOperationResult;
 
-        if (error.code === 'P2002') {
+        if (hasPrismaErrorCode(error, 'P2002')) {
           // Prisma unique constraint violation
           errorResult = {
             index: i,
@@ -345,7 +385,7 @@ export const batchCreateUsersResolver = async (
             user: null,
             error: {
               code: 'CREATE_FAILED',
-              message: error.message
+              message: getErrorMessage(error)
             }
           };
         }
@@ -372,6 +412,7 @@ Use DataLoader to optimize database access for batch updates.
 // dataloaders/userLoader.ts
 import DataLoader from 'dataloader';
 import { PrismaClient } from '@prisma/client';
+import { GraphQLError } from 'graphql';
 
 const prisma = new PrismaClient();
 
@@ -397,6 +438,17 @@ interface UpdateUserInput {
   email?: string;
   name?: string;
   role?: 'USER' | 'ADMIN';
+}
+
+interface BatchOperationResult {
+  index: number;
+  success: boolean;
+  user: any | null;
+  error: { code: string; message: string; field?: string } | null;
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 export const batchUpdateUsersResolver = async (
@@ -451,7 +503,7 @@ export const batchUpdateUsersResolver = async (
       });
     } catch (error) {
       throw new GraphQLError(
-        `Batch update failed: ${error.message}`,
+        `Batch update failed: ${getErrorMessage(error)}`,
         { extensions: { code: 'TRANSACTION_FAILED' } }
       );
     }
@@ -488,7 +540,7 @@ export const batchUpdateUsersResolver = async (
           index: i,
           success: false,
           user: null,
-          error: { code: 'UPDATE_FAILED', message: error.message }
+          error: { code: 'UPDATE_FAILED', message: getErrorMessage(error) }
         });
       }
     }
@@ -509,6 +561,10 @@ Implement batch delete with optional soft delete functionality.
 
 ```typescript
 // resolvers/mutations/batchDeleteUsers.ts
+import { PrismaClient } from '@prisma/client';
+import { GraphQLError } from 'graphql';
+
+const prisma = new PrismaClient();
 
 interface BatchDeleteResponse {
   successCount: number;
@@ -520,6 +576,10 @@ interface BatchDeleteResponse {
     error: { code: string; message: string } | null;
   }>;
   deletedIds: string[];
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 export const batchDeleteUsersResolver = async (
@@ -539,6 +599,13 @@ export const batchDeleteUsersResolver = async (
     }
     return acc;
   }, [] as number[]);
+
+  if (atomic && duplicateIndices.length > 0) {
+    throw new GraphQLError(
+      `Duplicate IDs found at indices: ${duplicateIndices.join(', ')}`,
+      { extensions: { code: 'DUPLICATE_IN_BATCH' } }
+    );
+  }
 
   // Check which users exist
   const existingUsers = await prisma.user.findMany({
@@ -589,7 +656,7 @@ export const batchDeleteUsersResolver = async (
       });
     } catch (error) {
       throw new GraphQLError(
-        `Batch delete failed: ${error.message}`,
+        `Batch delete failed: ${getErrorMessage(error)}`,
         { extensions: { code: 'TRANSACTION_FAILED' } }
       );
     }
@@ -635,7 +702,7 @@ export const batchDeleteUsersResolver = async (
           index: i,
           id,
           success: false,
-          error: { code: 'DELETE_FAILED', message: error.message }
+          error: { code: 'DELETE_FAILED', message: getErrorMessage(error) }
         });
       }
     }
@@ -683,9 +750,15 @@ sequenceDiagram
 
 Here is how to use batch mutations from the client side.
 
-```typescript
+```tsx
 // Apollo Client batch mutation example
 import { gql, useMutation } from '@apollo/client';
+
+interface CreateUserInput {
+  email: string;
+  name: string;
+  role?: 'USER' | 'ADMIN';
+}
 
 // Define the mutation
 const BATCH_CREATE_USERS = gql`
@@ -718,7 +791,7 @@ const BATCH_CREATE_USERS = gql`
 
 // React component using the batch mutation
 function CreateUsersForm() {
-  const [createUsers, { loading, error }] = useMutation(BATCH_CREATE_USERS);
+  const [createUsers] = useMutation(BATCH_CREATE_USERS);
 
   const handleSubmit = async (usersData: CreateUserInput[]) => {
     try {
@@ -729,25 +802,32 @@ function CreateUsersForm() {
         }
       });
 
-      const { successCount, failureCount, results } = result.data.batchCreateUsers;
+      const { successCount, failureCount, results } = result.data!.batchCreateUsers;
 
       if (failureCount > 0) {
         // Handle partial failures
         const failures = results.filter(r => !r.success);
         failures.forEach(failure => {
-          console.error(`Failed at index ${failure.index}: ${failure.error.message}`);
+          const message = failure.error?.message ?? 'Unknown error';
+          console.error(`Failed at index ${failure.index}: ${message}`);
         });
       }
 
       console.log(`Created ${successCount} users`);
     } catch (err) {
       // Handle complete failure (e.g., atomic mode transaction failed)
-      console.error('Batch creation failed:', err.message);
+      const message = err instanceof Error ? err.message : String(err);
+      console.error('Batch creation failed:', message);
     }
   };
 
   return (
-    // Form implementation
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        void handleSubmit([]);
+      }}
+    />
   );
 }
 ```
@@ -758,6 +838,7 @@ Implement rate limiting based on batch size and complexity.
 
 ```typescript
 // plugins/rateLimitPlugin.ts
+import { GraphQLError } from 'graphql';
 
 interface RateLimitConfig {
   // Maximum items per batch
