@@ -629,6 +629,12 @@ class BlueGreenMigration:
         """Add a migration step."""
         self._migrations.append(step)
 
+    def _execute_sql(self, cursor, sql: str) -> None:
+        """Execute one or more simple SQL statements."""
+        for statement in sql.split(";"):
+            if statement.strip():
+                cursor.execute(statement)
+
     def execute_phase(self, phase: MigrationPhase) -> bool:
         """
         Execute all steps for a specific phase.
@@ -653,7 +659,7 @@ class BlueGreenMigration:
             try:
                 logger.info(f"Running: {step.name}")
                 cursor = self._db.cursor()
-                cursor.execute(step.up_sql)
+                self._execute_sql(cursor, step.up_sql)
                 self._db.commit()
                 logger.info(f"Completed: {step.name}")
             except Exception as e:
@@ -682,7 +688,7 @@ class BlueGreenMigration:
             try:
                 logger.info(f"Rolling back: {step.name}")
                 cursor = self._db.cursor()
-                cursor.execute(step.down_sql)
+                self._execute_sql(cursor, step.down_sql)
                 self._db.commit()
             except Exception as e:
                 logger.error(f"Rollback failed: {step.name} - {e}")
@@ -838,10 +844,11 @@ class TrafficVerifier:
 
             response_time = (time.time() - start_time) * 1000
             version = response.headers.get(self.version_header)
+            version_matches = version == self.expected_version
 
             return TrafficCheckResult(
                 endpoint=path,
-                success=response.status_code < 500,
+                success=200 <= response.status_code < 400 and version_matches,
                 response_time_ms=response_time,
                 status_code=response.status_code,
                 version_header=version
@@ -920,20 +927,18 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
-    inputs:
-      rollback:
-        description: 'Rollback to previous version'
-        required: false
-        default: 'false'
 
 env:
   APP_NAME: myapp
   NAMESPACE: production
-  REGISTRY: gcr.io/myproject
+  REGISTRY: us-central1-docker.pkg.dev/myproject/myrepo
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     outputs:
       image_tag: ${{ steps.build.outputs.tag }}
     steps:
@@ -941,6 +946,18 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
 
       - name: Build and push
         id: build
@@ -954,11 +971,26 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     environment: production
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
 
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Get GKE credentials
+        uses: google-github-actions/get-gke-credentials@v3
+        with:
+          cluster_name: ${{ secrets.GKE_CLUSTER_NAME }}
+          location: ${{ secrets.GKE_LOCATION }}
+
       - name: Setup kubectl
-        uses: azure/setup-kubectl@v3
+        uses: azure/setup-kubectl@v4
 
       - name: Deploy
         run: |
