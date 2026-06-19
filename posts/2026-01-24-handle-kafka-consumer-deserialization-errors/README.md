@@ -195,8 +195,8 @@ KafkaConsumer<String, User> consumer = new KafkaConsumer<>(props);
 // Process records, checking for nulls
 for (ConsumerRecord<String, User> record : records) {
     if (record.value() == null) {
-        // Deserialization failed - handle appropriately
-        handleFailedRecord(record);
+        // Could be a tombstone or a deserialization failure - handle appropriately
+        handleNullRecord(record);
     } else {
         processRecord(record);
     }
@@ -243,13 +243,16 @@ public class DeadLetterProducer {
     public void send(ConsumerRecord<?, ?> failedRecord, Exception error) {
         String dlqTopic = dlqTopicPrefix + "." + failedRecord.topic();
 
+        byte[] keyBytes = extractRawBytes(failedRecord, true);
+        byte[] valueBytes = extractRawBytes(failedRecord, false);
+
         // Create DLQ record with original bytes
         ProducerRecord<byte[], byte[]> dlqRecord = new ProducerRecord<>(
             dlqTopic,
             null,  // partition
             failedRecord.timestamp(),
-            toBytes(failedRecord.key()),
-            toBytes(failedRecord.value())
+            keyBytes,
+            valueBytes
         );
 
         // Add headers with error context
@@ -275,6 +278,26 @@ public class DeadLetterProducer {
                 System.err.println("Failed to send to DLQ: " + exception.getMessage());
             }
         });
+    }
+
+    private byte[] extractRawBytes(ConsumerRecord<?, ?> record, boolean key) {
+        DeserializationException exception = deserializationException(record, key);
+        if (exception != null) {
+            return exception.getData();
+        }
+        return toBytes(key ? record.key() : record.value());
+    }
+
+    private DeserializationException deserializationException(ConsumerRecord<?, ?> record,
+                                                              boolean key) {
+        String headerName = key
+            ? ErrorHandlingDeserializer.KEY_DESERIALIZER_EXCEPTION_HEADER
+            : ErrorHandlingDeserializer.VALUE_DESERIALIZER_EXCEPTION_HEADER;
+        Header header = record.headers().lastHeader(headerName);
+        if (header == null) {
+            return null;
+        }
+        return (DeserializationException) SerializationUtils.deserialize(header.value());
     }
 
     private byte[] toBytes(Object obj) {
@@ -392,7 +415,7 @@ curl -X PUT \
 
 ## Strategy 5: Retry with Exponential Backoff
 
-For transient errors, retry with increasing delays.
+For transient processing errors after a record has been fetched, retry with increasing delays. A malformed payload will usually fail deterministically and should go to a DLQ instead of being retried forever.
 
 ```java
 public class RetryingConsumer {
@@ -437,7 +460,7 @@ public class RetryingConsumer {
 
 ## Spring Kafka Error Handling
 
-If using Spring Kafka, use `SeekToCurrentErrorHandler` or `DefaultErrorHandler`.
+If using current Spring Kafka versions, use `DefaultErrorHandler`. It replaces the legacy `SeekToCurrentErrorHandler`.
 
 ```java
 import org.springframework.kafka.listener.DefaultErrorHandler;
@@ -450,7 +473,7 @@ public class KafkaConfig {
     @Bean
     public ConcurrentKafkaListenerContainerFactory<String, User> kafkaListenerContainerFactory(
             ConsumerFactory<String, User> consumerFactory,
-            KafkaTemplate<byte[], byte[]> dlqTemplate) {
+            KafkaTemplate<Object, Object> dlqTemplate) {
 
         ConcurrentKafkaListenerContainerFactory<String, User> factory =
             new ConcurrentKafkaListenerContainerFactory<>();
@@ -504,9 +527,9 @@ public class UserListener {
 
         // Handle dead letter queue messages
         String originalTopic = new String(
-            (byte[]) headers.get("kafka_dlt-original-topic"));
+            (byte[]) headers.get(KafkaHeaders.DLT_ORIGINAL_TOPIC));
         String exception = new String(
-            (byte[]) headers.get("kafka_dlt-exception-message"));
+            (byte[]) headers.get(KafkaHeaders.DLT_EXCEPTION_MESSAGE));
 
         System.err.println("DLQ message from " + originalTopic + ": " + exception);
 
