@@ -374,10 +374,10 @@ type BadUnion =
     | { value: number };  // Missing type property!
 
 function handleBad(item: BadUnion) {
-    // TypeScript cannot narrow properly
-    if (item.type === 'a') {
-        // item.value is still string | number here
-    }
+    // Error: Property 'type' does not exist on every union member
+    // if (item.type === 'a') {
+    //     // This check is invalid because one variant has no type property
+    // }
 }
 ```
 
