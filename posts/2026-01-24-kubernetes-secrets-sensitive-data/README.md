@@ -155,8 +155,8 @@ spec:
       envFrom:
         - secretRef:
             name: db-credentials
-            # Optional prefix
-            # prefix: DB_
+          # Optional prefix
+          # prefix: DB_
 ```
 
 ### As Volume Mount
@@ -254,14 +254,14 @@ kubectl create secret generic db-credentials \
 - Environment variables: Pod must restart to see changes
 - Volume mounts: Updated automatically (may take a minute)
 
-For immediate updates with volume mounts:
+To make the Secret required for startup:
 
 ```yaml
 volumes:
   - name: secrets-volume
     secret:
       secretName: db-credentials
-      # Force specific mount options
+      # Default is false; set true to allow a missing Secret
       optional: false
 ```
 
@@ -320,7 +320,7 @@ For production, consider external secret managers:
 
 ```yaml
 # Using External Secrets Operator
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: db-credentials
@@ -345,7 +345,7 @@ spec:
 ### AWS Secrets Manager
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: db-credentials
