@@ -101,46 +101,47 @@ GrpcInstrumentorServer().instrument()
 
 ```javascript
 // Install required packages:
+// npm install @opentelemetry/sdk-node
+// npm install @opentelemetry/sdk-trace-base
+// npm install @opentelemetry/resources
+// npm install @opentelemetry/semantic-conventions
 // npm install @opentelemetry/instrumentation-grpc
 // npm install @opentelemetry/exporter-trace-otlp-grpc
 // npm install @grpc/grpc-js
 
-const { NodeTracerProvider } = require('@opentelemetry/sdk-trace-node');
+const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { BatchSpanProcessor } = require('@opentelemetry/sdk-trace-base');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
 const { GrpcInstrumentation } = require('@opentelemetry/instrumentation-grpc');
-const { registerInstrumentations } = require('@opentelemetry/instrumentation');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const {
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+} = require('@opentelemetry/semantic-conventions');
 
 // Create resource with service information
-const resource = new Resource({
-  [SemanticResourceAttributes.SERVICE_NAME]: 'my-grpc-service',
-  [SemanticResourceAttributes.SERVICE_VERSION]: '1.0.0',
+const resource = resourceFromAttributes({
+  [ATTR_SERVICE_NAME]: 'my-grpc-service',
+  [ATTR_SERVICE_VERSION]: '1.0.0',
 });
-
-// Configure the tracer provider
-const provider = new NodeTracerProvider({ resource });
 
 // Configure the OTLP exporter
 const exporter = new OTLPTraceExporter({
   url: 'http://otel-collector:4317',
 });
 
-// Add batch processor
-provider.addSpanProcessor(new BatchSpanProcessor(exporter));
-provider.register();
-
-// Register gRPC instrumentation
-// This automatically instruments both client and server calls
-registerInstrumentations({
+// Configure the SDK and register gRPC instrumentation
+const sdk = new NodeSDK({
+  resource,
+  spanProcessors: [new BatchSpanProcessor(exporter)],
   instrumentations: [
     new GrpcInstrumentation({
-      // Capture metadata as span attributes
       ignoreGrpcMethods: [], // Instrument all methods
     }),
   ],
 });
+
+sdk.start();
 
 // Now create your gRPC client/server as normal
 const grpc = require('@grpc/grpc-js');
@@ -160,7 +161,7 @@ import (
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
     "go.opentelemetry.io/otel/sdk/resource"
     sdktrace "go.opentelemetry.io/otel/sdk/trace"
-    semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
+    semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
     "google.golang.org/grpc"
     "google.golang.org/grpc/credentials/insecure"
 )
@@ -206,20 +207,16 @@ func main() {
     }
     defer tp.Shutdown(context.Background())
 
-    // Create gRPC server with OpenTelemetry interceptors
+    // Create gRPC server with OpenTelemetry stats handler
     server := grpc.NewServer(
-        // Add unary interceptor for single request/response calls
-        grpc.UnaryInterceptor(otelgrpc.UnaryServerInterceptor()),
-        // Add stream interceptor for streaming calls
-        grpc.StreamInterceptor(otelgrpc.StreamServerInterceptor()),
+        grpc.StatsHandler(otelgrpc.NewServerHandler()),
     )
+    _ = server
 
-    // Create gRPC client with OpenTelemetry interceptors
-    conn, err := grpc.Dial("target-service:50051",
+    // Create gRPC client with OpenTelemetry stats handler
+    conn, err := grpc.NewClient("target-service:50051",
         grpc.WithTransportCredentials(insecure.NewCredentials()),
-        // Add client interceptors
-        grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor()),
-        grpc.WithStreamInterceptor(otelgrpc.StreamClientInterceptor()),
+        grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
     )
     if err != nil {
         log.Fatal(err)
@@ -232,22 +229,21 @@ func main() {
 
 ```java
 // Add dependencies to build.gradle:
-// implementation 'io.opentelemetry.instrumentation:opentelemetry-grpc-1.6:1.32.0-alpha'
-// implementation 'io.opentelemetry:opentelemetry-exporter-otlp:1.32.0'
+// implementation 'io.opentelemetry.instrumentation:opentelemetry-grpc-1.6:OPENTELEMETRY_INSTRUMENTATION_VERSION'
+// implementation 'io.opentelemetry:opentelemetry-exporter-otlp:OPENTELEMETRY_VERSION'
 
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import io.grpc.Server;
 import io.grpc.ServerBuilder;
 import io.opentelemetry.api.OpenTelemetry;
-import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.exporter.otlp.trace.OtlpGrpcSpanExporter;
 import io.opentelemetry.instrumentation.grpc.v1_6.GrpcTelemetry;
 import io.opentelemetry.sdk.OpenTelemetrySdk;
 import io.opentelemetry.sdk.resources.Resource;
 import io.opentelemetry.sdk.trace.SdkTracerProvider;
 import io.opentelemetry.sdk.trace.export.BatchSpanProcessor;
-import io.opentelemetry.semconv.ResourceAttributes;
 
 public class GrpcOpenTelemetrySetup {
 
@@ -260,8 +256,8 @@ public class GrpcOpenTelemetrySetup {
         // Create resource with service information
         Resource resource = Resource.getDefault()
             .merge(Resource.create(io.opentelemetry.api.common.Attributes.of(
-                ResourceAttributes.SERVICE_NAME, "my-grpc-service",
-                ResourceAttributes.SERVICE_VERSION, "1.0.0"
+                AttributeKey.stringKey("service.name"), "my-grpc-service",
+                AttributeKey.stringKey("service.version"), "1.0.0"
             )));
 
         // Create tracer provider
@@ -362,10 +358,10 @@ import (
 
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/attribute"
-    "go.opentelemetry.io/otel/codes"
+    otelcodes "go.opentelemetry.io/otel/codes"
     "go.opentelemetry.io/otel/trace"
-    "google.golang.org/grpc"
     "google.golang.org/grpc/metadata"
+    "google.golang.org/grpc/status"
 )
 
 var tracer = otel.Tracer("grpc-client")
@@ -376,9 +372,8 @@ func MakeUserRequest(ctx context.Context, client UserServiceClient, userID strin
     ctx, span := tracer.Start(ctx, "GetUser",
         trace.WithSpanKind(trace.SpanKindClient),
         trace.WithAttributes(
-            attribute.String("rpc.system", "grpc"),
-            attribute.String("rpc.service", "UserService"),
-            attribute.String("rpc.method", "GetUser"),
+            attribute.String("rpc.system.name", "grpc"),
+            attribute.String("rpc.method", "UserService/GetUser"),
             attribute.String("user.id", userID),
         ),
     )
@@ -398,13 +393,15 @@ func MakeUserRequest(ctx context.Context, client UserServiceClient, userID strin
     if err != nil {
         // Record the error in the span
         span.RecordError(err)
-        span.SetStatus(codes.Error, err.Error())
+        span.SetAttributes(attribute.String("rpc.response.status_code", status.Code(err).String()))
+        span.SetStatus(otelcodes.Error, err.Error())
         return nil, err
     }
 
     // Record success
-    span.SetStatus(codes.Ok, "")
+    span.SetStatus(otelcodes.Ok, "")
     span.SetAttributes(
+        attribute.String("rpc.response.status_code", "OK"),
         attribute.Bool("user.found", resp.User != nil),
     )
 
@@ -450,6 +447,7 @@ from opentelemetry.baggage.propagation import W3CBaggagePropagator
 
 # Configure multiple propagators for compatibility with different systems
 # W3C TraceContext is the standard, B3 is used by Zipkin
+# Install B3 support with: pip install opentelemetry-propagator-b3
 propagator = CompositePropagator([
     TraceContextTextMapPropagator(),  # W3C standard
     W3CBaggagePropagator(),           # For baggage propagation
@@ -462,7 +460,7 @@ set_global_textmap(propagator)
 ### Manual Context Propagation in gRPC
 
 ```javascript
-const { context, propagation, trace } = require('@opentelemetry/api');
+const { context, propagation, trace, SpanStatusCode } = require('@opentelemetry/api');
 const grpc = require('@grpc/grpc-js');
 
 // Client-side: Inject context into metadata
@@ -504,10 +502,10 @@ async function callRemoteService(client, request) {
         client.doSomething(request, metadata, (err, response) => {
           if (err) {
             span.recordException(err);
-            span.setStatus({ code: 2, message: err.message });
+            span.setStatus({ code: SpanStatusCode.ERROR, message: err.message });
             reject(err);
           } else {
-            span.setStatus({ code: 1 });
+            span.setStatus({ code: SpanStatusCode.OK });
             resolve(response);
           }
         });
@@ -573,7 +571,6 @@ class StreamingServiceServicer(streaming_pb2_grpc.StreamingServiceServicer):
 package main
 
 import (
-    "context"
     "io"
 
     "go.opentelemetry.io/otel"
@@ -655,25 +652,25 @@ import grpc
 from opentelemetry import trace
 from opentelemetry.trace import StatusCode
 
-# Mapping of gRPC status codes to OpenTelemetry status codes
+# Mapping of gRPC server status codes to OpenTelemetry span status codes
 GRPC_TO_OTEL_STATUS = {
-    grpc.StatusCode.OK: StatusCode.OK,
-    grpc.StatusCode.CANCELLED: StatusCode.ERROR,
+    grpc.StatusCode.OK: StatusCode.UNSET,
+    grpc.StatusCode.CANCELLED: StatusCode.UNSET,
     grpc.StatusCode.UNKNOWN: StatusCode.ERROR,
-    grpc.StatusCode.INVALID_ARGUMENT: StatusCode.ERROR,
+    grpc.StatusCode.INVALID_ARGUMENT: StatusCode.UNSET,
     grpc.StatusCode.DEADLINE_EXCEEDED: StatusCode.ERROR,
-    grpc.StatusCode.NOT_FOUND: StatusCode.ERROR,
-    grpc.StatusCode.ALREADY_EXISTS: StatusCode.ERROR,
-    grpc.StatusCode.PERMISSION_DENIED: StatusCode.ERROR,
-    grpc.StatusCode.RESOURCE_EXHAUSTED: StatusCode.ERROR,
-    grpc.StatusCode.FAILED_PRECONDITION: StatusCode.ERROR,
-    grpc.StatusCode.ABORTED: StatusCode.ERROR,
-    grpc.StatusCode.OUT_OF_RANGE: StatusCode.ERROR,
+    grpc.StatusCode.NOT_FOUND: StatusCode.UNSET,
+    grpc.StatusCode.ALREADY_EXISTS: StatusCode.UNSET,
+    grpc.StatusCode.PERMISSION_DENIED: StatusCode.UNSET,
+    grpc.StatusCode.RESOURCE_EXHAUSTED: StatusCode.UNSET,
+    grpc.StatusCode.FAILED_PRECONDITION: StatusCode.UNSET,
+    grpc.StatusCode.ABORTED: StatusCode.UNSET,
+    grpc.StatusCode.OUT_OF_RANGE: StatusCode.UNSET,
     grpc.StatusCode.UNIMPLEMENTED: StatusCode.ERROR,
     grpc.StatusCode.INTERNAL: StatusCode.ERROR,
     grpc.StatusCode.UNAVAILABLE: StatusCode.ERROR,
     grpc.StatusCode.DATA_LOSS: StatusCode.ERROR,
-    grpc.StatusCode.UNAUTHENTICATED: StatusCode.ERROR,
+    grpc.StatusCode.UNAUTHENTICATED: StatusCode.UNSET,
 }
 
 def handle_grpc_error(span, context, grpc_code, message):
@@ -681,11 +678,11 @@ def handle_grpc_error(span, context, grpc_code, message):
 
     # Set the span status
     otel_status = GRPC_TO_OTEL_STATUS.get(grpc_code, StatusCode.ERROR)
-    span.set_status(trace.Status(otel_status, message))
+    if otel_status == StatusCode.ERROR:
+        span.set_status(trace.Status(otel_status, message))
 
     # Add gRPC-specific attributes
-    span.set_attribute("rpc.grpc.status_code", grpc_code.value[0])
-    span.set_attribute("rpc.grpc.status_text", grpc_code.name)
+    span.set_attribute("rpc.response.status_code", grpc_code.name)
 
     # Set the gRPC context
     context.set_code(grpc_code)
@@ -700,7 +697,6 @@ def handle_grpc_error(span, context, grpc_code, message):
 
 ```python
 from opentelemetry import trace
-from opentelemetry.semconv.trace import SpanAttributes
 
 tracer = trace.get_tracer(__name__)
 
@@ -712,16 +708,15 @@ def create_grpc_client_span(service, method, server_address, server_port):
         kind=trace.SpanKind.CLIENT,
         attributes={
             # RPC attributes (required)
-            SpanAttributes.RPC_SYSTEM: "grpc",
-            SpanAttributes.RPC_SERVICE: service,
-            SpanAttributes.RPC_METHOD: method,
+            "rpc.system.name": "grpc",
+            "rpc.method": f"{service}/{method}",
 
             # Network attributes
-            SpanAttributes.NET_PEER_NAME: server_address,
-            SpanAttributes.NET_PEER_PORT: server_port,
+            "server.address": server_address,
+            "server.port": server_port,
 
             # gRPC-specific attributes
-            "rpc.grpc.status_code": 0,  # Will be updated on completion
+            "rpc.response.status_code": "OK",  # Will be updated on completion
         }
     )
 
@@ -733,12 +728,11 @@ def create_grpc_server_span(service, method, client_address):
         kind=trace.SpanKind.SERVER,
         attributes={
             # RPC attributes (required)
-            SpanAttributes.RPC_SYSTEM: "grpc",
-            SpanAttributes.RPC_SERVICE: service,
-            SpanAttributes.RPC_METHOD: method,
+            "rpc.system.name": "grpc",
+            "rpc.method": f"{service}/{method}",
 
             # Network attributes
-            SpanAttributes.NET_SOCK_PEER_ADDR: client_address,
+            "network.peer.address": client_address,
         }
     )
 ```
@@ -770,7 +764,7 @@ def configure_observability():
     resource = Resource.create({
         SERVICE_NAME: os.getenv("SERVICE_NAME", "grpc-service"),
         "service.version": os.getenv("SERVICE_VERSION", "1.0.0"),
-        "deployment.environment": os.getenv("ENVIRONMENT", "production"),
+        "deployment.environment.name": os.getenv("ENVIRONMENT", "production"),
         "service.instance.id": os.getenv("HOSTNAME", "unknown"),
     })
 
@@ -886,11 +880,9 @@ processors:
 
   # Filter out health check spans if needed
   filter:
-    spans:
-      exclude:
-        match_type: regexp
-        span_names:
-          - "grpc.health.*"
+    error_mode: ignore
+    trace_conditions:
+      - 'IsMatch(name, "^grpc\\.health.*")'
 
 exporters:
   otlp:
