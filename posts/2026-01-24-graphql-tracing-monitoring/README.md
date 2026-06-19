@@ -106,7 +106,7 @@ const tracingPlugin = {
         const executionStart = Date.now();
         return {
           // Called for each resolver execution
-          async willResolveField({ info }) {
+          willResolveField({ info }) {
             const fieldStart = Date.now();
             // Return a function that runs after the field resolves
             return (error, result) => {
@@ -197,6 +197,15 @@ const errorCounter = new Counter({
   registers: [graphqlRegistry]
 });
 
+// Histogram for tracking query complexity scores
+const queryComplexityHistogram = new Histogram({
+  name: 'graphql_query_complexity',
+  help: 'Calculated complexity score of GraphQL operations',
+  labelNames: ['operation_name'],
+  buckets: [10, 50, 100, 250, 500, 1000, 2500],
+  registers: [graphqlRegistry]
+});
+
 // Create the metrics collection plugin
 const metricsPlugin = {
   async requestDidStart(requestContext) {
@@ -268,16 +277,16 @@ OpenTelemetry provides vendor-neutral instrumentation for distributed tracing. H
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { Resource } from '@opentelemetry/resources';
-import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
-import { trace, SpanStatusCode } from '@opentelemetry/api';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from '@opentelemetry/semantic-conventions';
+import { context, trace, SpanStatusCode } from '@opentelemetry/api';
 
 // Initialize the OpenTelemetry SDK
 const sdk = new NodeSDK({
-  resource: new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: 'graphql-api',
-    [SemanticResourceAttributes.SERVICE_VERSION]: '1.0.0',
-    [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV
+  resource: resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: 'graphql-api',
+    [ATTR_SERVICE_VERSION]: '1.0.0',
+    'deployment.environment.name': process.env.NODE_ENV || 'development'
   }),
   traceExporter: new OTLPTraceExporter({
     // Configure your collector endpoint
@@ -315,7 +324,8 @@ const openTelemetryPlugin = {
             // Create child spans for each resolver
             const resolverSpan = tracer.startSpan(
               `resolve.${info.parentType.name}.${info.fieldName}`,
-              { parent: trace.setSpan(trace.active(), span) }
+              {},
+              trace.setSpan(context.active(), span)
             );
 
             return (error) => {
@@ -380,7 +390,7 @@ Monitoring query complexity helps prevent resource exhaustion from expensive que
 
 ```typescript
 // Import graphql-query-complexity for cost analysis
-import { getComplexity, simpleEstimator, fieldExtensionsEstimator } from 'graphql-query-complexity';
+import { getComplexity, simpleEstimator, directiveEstimator } from 'graphql-query-complexity';
 
 // Define maximum allowed complexity
 const MAX_COMPLEXITY = 1000;
@@ -397,8 +407,8 @@ const complexityPlugin = {
           query: context.document,
           variables: context.request.variables,
           estimators: [
-            // Use field extensions for custom costs
-            fieldExtensionsEstimator(),
+            // Use SDL directives for custom costs
+            directiveEstimator(),
             // Default estimator counts each field as 1
             simpleEstimator({ defaultComplexity: 1 })
           ]
@@ -426,6 +436,8 @@ const complexityPlugin = {
 
 // Add complexity hints to your schema
 const typeDefs = `
+  directive @complexity(value: Int!, multipliers: [String!]) on FIELD_DEFINITION
+
   type Query {
     # Simple query with default complexity
     user(id: ID!): User
@@ -520,6 +532,7 @@ Here is a complete example combining all monitoring capabilities.
 import { ApolloServer } from '@apollo/server';
 import { expressMiddleware } from '@apollo/server/express4';
 import express from 'express';
+import { randomUUID } from 'node:crypto';
 import { typeDefs, resolvers } from './schema';
 
 // Import all monitoring plugins
@@ -568,7 +581,7 @@ async function startServer() {
   app.use('/graphql', expressMiddleware(server, {
     context: async ({ req }) => ({
       // Include request ID for trace correlation
-      requestId: req.headers['x-request-id'] || crypto.randomUUID()
+      requestId: req.headers['x-request-id'] || randomUUID()
     })
   }));
 
