@@ -35,10 +35,10 @@ flowchart TD
 
 ### 1. Calling setState Directly in Render
 
-The most basic mistake is calling a state setter function directly during render.
+The most basic mistake is calling a state setter function directly during render. In function components, this often appears as React's related "Too many re-renders" error, but the root cause is the same: a render loop.
 
 ```jsx
-// BAD: This causes infinite re-renders
+// BAD: This causes a render loop
 function Counter() {
   const [count, setCount] = useState(0);
 
@@ -225,34 +225,34 @@ flowchart LR
 ```jsx
 // BAD: Child immediately calls onChange when value changes
 function Parent() {
-  const [value, setValue] = useState('');
+  const [value, setValue] = useState({ text: '' });
 
   return <Child value={value} onChange={setValue} />;
 }
 
 function Child({ value, onChange }) {
   useEffect(() => {
-    // This runs every time value changes, calling onChange,
-    // which changes value, which runs this effect...
-    onChange(value.toUpperCase());
+    // This creates a new object every time the effect runs,
+    // which changes value, which runs this effect again...
+    onChange({ text: value.text.toUpperCase() });
   }, [value, onChange]);
 
-  return <input value={value} onChange={e => onChange(e.target.value)} />;
+  return <input value={value.text} onChange={e => onChange({ text: e.target.value })} />;
 }
 
 // GOOD: Transform in the parent or use local state
 function Parent() {
-  const [value, setValue] = useState('');
+  const [value, setValue] = useState({ text: '' });
 
   const handleChange = (newValue) => {
-    setValue(newValue.toUpperCase());
+    setValue({ text: newValue.toUpperCase() });
   };
 
   return <Child value={value} onChange={handleChange} />;
 }
 
 function Child({ value, onChange }) {
-  return <input value={value} onChange={e => onChange(e.target.value)} />;
+  return <input value={value.text} onChange={e => onChange(e.target.value)} />;
 }
 
 // GOOD: Use local state with controlled sync
@@ -355,13 +355,13 @@ export default ProblematicComponent;
 
 ## Prevention Patterns
 
-### Use useCallback for Event Handlers
+### Use useCallback for Stable Handlers When Needed
 
 ```jsx
 function SearchForm({ onSearch }) {
   const [query, setQuery] = useState('');
 
-  // Memoize the handler to prevent child re-renders
+  // Memoize the handler when passing it to memoized children or Hook dependencies
   const handleSubmit = useCallback((e) => {
     e.preventDefault();
     onSearch(query);
@@ -431,6 +431,7 @@ function UserDashboard({ userId }) {
   const [user, setUser] = useState(null);
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   // Issue 1: Object recreated every render
   const fetchOptions = { includeDeleted: false };
@@ -440,15 +441,15 @@ function UserDashboard({ userId }) {
     setLoading(true);
     fetchUser(userId, fetchOptions).then(userData => {
       setUser(userData);
-      // Issue 3: Nested state update can cause issues
+      // Issue 3: No cancellation for stale or unmounted requests
       fetchPosts(userData.id).then(setPosts);
       setLoading(false);
     });
-  }, [fetchOptions]); // userId missing, fetchOptions changes every render
+  }, [fetchOptions, refreshKey]); // userId missing, fetchOptions changes every render
 
   // Issue 4: Calling function in render
   const handleRefresh = () => {
-    setLoading(true);
+    setRefreshKey(key => key + 1);
   };
 
   if (loading) return <Spinner onClick={handleRefresh()} />;
@@ -466,6 +467,7 @@ function UserDashboard({ userId }) {
   const [user, setUser] = useState(null);
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   // Fix 1: Memoize the options object
   const fetchOptions = useMemo(() => ({ includeDeleted: false }), []);
@@ -502,11 +504,11 @@ function UserDashboard({ userId }) {
     return () => {
       cancelled = true;
     };
-  }, [userId, fetchOptions]); // Correct dependencies
+  }, [userId, fetchOptions, refreshKey]); // Correct dependencies
 
   // Fix 4: Memoize handler and pass reference correctly
   const handleRefresh = useCallback(() => {
-    setLoading(true);
+    setRefreshKey(key => key + 1);
   }, []);
 
   if (loading) {
@@ -517,6 +519,7 @@ function UserDashboard({ userId }) {
   return (
     <div>
       <h1>{user?.name}</h1>
+      <button onClick={handleRefresh}>Refresh</button>
       <PostList posts={posts} />
     </div>
   );
@@ -538,8 +541,8 @@ flowchart TB
     subgraph "Re-render Triggers"
         I[userId Changes] --> B
         J[User Clicks Refresh] --> K[handleRefresh Called]
-        K --> L[loading Set True]
-        L --> M[Show Spinner]
+        K --> N[refreshKey Changes]
+        N --> B
     end
 
     style H fill:#90EE90
@@ -557,8 +560,8 @@ The "Maximum update depth exceeded" error always indicates an infinite loop in y
 
 To prevent these issues:
 
-- Always use dependency arrays in useEffect
-- Use useMemo for objects and useCallback for functions in dependencies
+- Use correct dependency arrays in effects that read reactive values, especially when they update state
+- Use useMemo for objects and useCallback for functions that must stay stable in dependencies
 - Use functional state updates when the new state depends on previous state
 - Configure ESLint with react-hooks rules
 - Use React DevTools and logging hooks to debug render loops
