@@ -101,15 +101,16 @@ The Implicit Flow has several well-documented security issues.
 // - Accessible to browser extensions
 ```
 
-### 2. Token Leakage via Referrer Header
+### 2. Token Leakage via Browser Environment
 
 ```javascript
 // If your callback page has external links or resources:
 // <a href="https://external-site.com">Link</a>
 // <img src="https://analytics.com/pixel.gif">
 
-// The Referer header will contain the access token:
-// Referer: https://app.com/callback#access_token=eyJhbG...
+// URL fragments are not sent in the HTTP Referer header, but the token is
+// still exposed to JavaScript running on the callback page and to extensions.
+// It can leak if code reads window.location.hash and forwards it elsewhere.
 ```
 
 ### 3. No Token Binding
@@ -312,7 +313,7 @@ Follow these steps to migrate from Implicit Flow to Authorization Code with PKCE
 ### Step 1: Update Authorization Server Configuration
 
 ```yaml
-# Auth0 example configuration
+# Example SPA client configuration
 
 clients:
   - name: "My SPA"
@@ -367,7 +368,7 @@ function newCallback() {
 The OAuth2 Implicit Flow is deprecated due to:
 
 1. Token exposure in browser history and URLs
-2. Token leakage via Referer headers
+2. Token leakage via browser scripts or extensions
 3. No ability to bind tokens to clients
 4. No refresh token support
 
@@ -379,4 +380,4 @@ Migrate to Authorization Code Flow with PKCE:
 4. Store tokens in memory, not localStorage
 5. Use refresh tokens for session continuity
 
-All modern authorization servers support PKCE. If yours does not, prioritize upgrading it.
+Most modern authorization servers support PKCE. If yours does not, prioritize upgrading it.
