@@ -89,30 +89,30 @@ bad_boundaries = [10, 25, 25, 50, 100]  # 25 appears twice
 good_boundaries = [10, 25, 50, 100]
 ```
 
-### Error 3: Negative or NaN Boundaries
+### Error 3: NaN or Infinite Boundaries
 
-Bucket boundaries must be valid positive numbers.
+Bucket boundaries must be valid finite numbers. Negative boundaries are allowed by the OpenTelemetry data model, but they usually do not make sense for latency metrics.
 
 ```python
 import math
 
 # Incorrect: Invalid boundary values
-bad_boundaries = [-10, 25, math.nan, 100, math.inf]
+bad_boundaries = [10, 25, math.nan, 100, math.inf]
 
-# Correct: Valid positive boundaries
-# Note: +Inf is automatically added as the final bucket
-good_boundaries = [10, 25, 50, 100]
+# Correct: Valid finite boundaries
+# Note: +Inf is represented by the implicit final bucket
+good_boundaries = [0, 10, 25, 50, 100]
 ```
 
-### Error 4: Empty Boundaries Array
+### Error 4: Unintentionally Empty Boundaries Array
 
-At least one explicit boundary is required for explicit bucket histograms.
+An empty boundaries list is valid, but it creates a single bucket for all values. For useful latency distributions, configure boundaries that match the values you need to query.
 
 ```python
-# Incorrect: Empty boundaries
+# Valid but usually not useful for latency analysis
 bad_boundaries = []
 
-# Correct: At least one boundary
+# Better: define useful boundaries
 # For request latencies, use appropriate boundaries
 good_boundaries = [5, 10, 25, 50, 100, 250, 500, 1000]
 ```
@@ -228,23 +228,24 @@ metrics.set_meter_provider(provider)
 Create a helper function to validate boundaries before use.
 
 ```python
-def validate_histogram_boundaries(boundaries):
+def validate_histogram_boundaries(boundaries, require_non_negative=False):
     """
     Validate histogram bucket boundaries.
 
     Args:
         boundaries: List of bucket boundaries
+        require_non_negative: Set to True for latency/size metrics
 
     Returns:
         Tuple of (is_valid, error_message)
     """
     import math
 
-    if not boundaries:
-        return False, "Boundaries list cannot be empty"
-
     if not isinstance(boundaries, (list, tuple)):
         return False, "Boundaries must be a list or tuple"
+
+    if not boundaries:
+        return True, "Boundaries are valid, but all values will fall into one bucket"
 
     for i, boundary in enumerate(boundaries):
         # Check for valid number
@@ -255,9 +256,9 @@ def validate_histogram_boundaries(boundaries):
         if math.isnan(boundary):
             return False, f"Boundary at index {i} is NaN"
 
-        # Check for negative values
-        if boundary < 0:
-            return False, f"Boundary at index {i} is negative: {boundary}"
+        # Check for negative values when the metric domain should be non-negative
+        if require_non_negative and boundary < 0:
+            return False, f"Boundary at index {i} is negative for a non-negative metric: {boundary}"
 
         # Check for infinity (should be auto-added)
         if math.isinf(boundary):
@@ -326,62 +327,49 @@ histogram = meter.create_histogram(
 )
 ```
 
-### Solution 4: Fix Collector View Configuration
+### Solution 4: Fix the Source SDK Configuration
 
-If the error occurs in the Collector, check your views configuration.
+If the error appears in the Collector, fix the SDK or instrumentation that creates the invalid histogram. The Collector forwards and transforms metric data, but the configuration below does not re-bucket already exported histograms.
 
-```yaml
-# otel-collector-config.yaml
-receivers:
-  otlp:
-    protocols:
-      grpc:
-        endpoint: 0.0.0.0:4317
+```python
+from opentelemetry import metrics
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.view import View, ExplicitBucketHistogramAggregation
+from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 
-processors:
-  # Transform processor to fix histogram boundaries
-  transform:
-    metric_statements:
-      - context: datapoint
-        statements:
-          # Filter out invalid histogram data points
-          - keep() where IsMatch(metric.name, ".*") == true
+fixed_view = View(
+    instrument_name="http.server.duration",
+    aggregation=ExplicitBucketHistogramAggregation(
+        boundaries=[5, 10, 25, 50, 100, 250, 500, 1000]
+    )
+)
 
-exporters:
-  otlp:
-    endpoint: "backend:4317"
-
-connectors:
-  # Use connector to re-aggregate histograms with proper boundaries
-  routing:
-    default_pipelines: [metrics/output]
-
-service:
-  pipelines:
-    metrics:
-      receivers: [otlp]
-      processors: [transform]
-      exporters: [otlp]
+reader = PeriodicExportingMetricReader(
+    OTLPMetricExporter(endpoint="localhost:4317")
+)
+provider = MeterProvider(metric_readers=[reader], views=[fixed_view])
+metrics.set_meter_provider(provider)
 ```
 
 ## Common Scenarios and Fixes
 
-### Scenario 1: Different SDKs with Different Defaults
+### Scenario 1: Different Services with Different Boundaries
 
-Different language SDKs may have different default bucket boundaries.
+OpenTelemetry SDKs commonly use the specification's default explicit histogram boundaries, but services can diverge when teams configure custom views or use different instrumentation libraries.
 
 ```mermaid
 flowchart TB
     subgraph Python["Python SDK"]
-        PB["Default: 0, 5, 10, 25, 50,<br/>75, 100, 250, 500, 1000"]
+        PB["Configured: 5, 10, 25, 50,<br/>100, 250, 500, 1000"]
     end
 
     subgraph Java["Java SDK"]
-        JB["Default: 5, 10, 25, 50,<br/>75, 100, 250, 500, 750,<br/>1000, 2500, 5000, 7500, 10000"]
+        JB["Configured: 0, 5, 10, 25, 50,<br/>75, 100, 250, 500, 750,<br/>1000, 2500, 5000, 7500, 10000"]
     end
 
     subgraph Go["Go SDK"]
-        GB["Default: 0, 5, 10, 25, 50,<br/>75, 100, 250, 500, 1000"]
+        GB["Configured: 10, 25, 50,<br/>100, 250, 500, 1000"]
     end
 
     C[Collector]
@@ -392,7 +380,7 @@ flowchart TB
 
     C --> B[(Backend)]
 
-    Note["Different defaults may cause<br/>aggregation issues"]
+    Note["Different boundaries can make<br/>cross-service aggregation misleading"]
 ```
 
 **Fix: Standardize boundaries across all services.**
@@ -639,4 +627,4 @@ groups:
 
 ## Conclusion
 
-Invalid histogram bucket errors can be avoided by understanding the requirements for bucket boundaries: they must be unique, positive, finite numbers in strictly ascending order. By validating boundaries, choosing appropriate values for your use case, and considering exponential histograms for automatic boundary determination, you can ensure your histogram metrics provide accurate insights into your system's behavior.
+Invalid histogram bucket errors can be avoided by understanding the requirements for bucket boundaries: they must be unique, finite numbers in strictly ascending order. By validating boundaries, choosing appropriate values for your use case, and considering exponential histograms for automatic boundary determination, you can ensure your histogram metrics provide accurate insights into your system's behavior.
