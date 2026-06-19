@@ -66,7 +66,6 @@ flowchart TD
 // Utility to diagnose OAuth2 token issues
 
 const jwt = require('jsonwebtoken');
-const crypto = require('crypto');
 
 class TokenDebugger {
     constructor() {
@@ -80,10 +79,11 @@ class TokenDebugger {
         console.log('=== Token Diagnostic Report ===\n');
 
         // Step 1: Check basic format
-        this.checkFormat(token);
+        const normalizedToken = this.normalizeToken(token);
+        this.checkFormat(normalizedToken);
 
         // Step 2: Decode and inspect header
-        const decoded = this.decodeToken(token);
+        const decoded = this.decodeToken(normalizedToken);
         if (!decoded) {
             return this.generateReport();
         }
@@ -96,10 +96,19 @@ class TokenDebugger {
 
         // Step 5: Check signature if key provided
         if (expectedConfig.secret || expectedConfig.publicKey) {
-            this.verifySignature(token, expectedConfig);
+            this.verifySignature(normalizedToken, expectedConfig);
         }
 
         return this.generateReport();
+    }
+
+    // Normalize token string
+    normalizeToken(token) {
+        if (typeof token === 'string' && token.startsWith('Bearer ')) {
+            console.log('   - Bearer prefix found and removed');
+            return token.slice(7);
+        }
+        return token;
     }
 
     // Check basic token format
@@ -110,12 +119,6 @@ class TokenDebugger {
         if (!token) {
             this.addIssue('CRITICAL', 'Token is empty or undefined');
             return false;
-        }
-
-        // Remove Bearer prefix if present
-        if (token.startsWith('Bearer ')) {
-            token = token.slice(7);
-            console.log('   - Bearer prefix found and removed');
         }
 
         const parts = token.split('.');
@@ -206,7 +209,7 @@ class TokenDebugger {
         }
 
         // Key ID check for JWKS
-        if (alg.startsWith('RS') || alg.startsWith('ES')) {
+        if (alg && (alg.startsWith('RS') || alg.startsWith('ES'))) {
             if (!kid) {
                 this.addIssue('WARNING',
                     'No key ID (kid) in header - may cause issues with JWKS validation'
@@ -316,6 +319,7 @@ class TokenDebugger {
             // Don't validate claims, just signature
             options.clockTolerance = 999999999;
             options.ignoreExpiration = true;
+            options.ignoreNotBefore = true;
 
             const key = config.secret || config.publicKey;
             jwt.verify(token, key, options);
@@ -401,7 +405,7 @@ module.exports = { TokenDebugger };
 // Problem: Server expects RS256 but token uses HS256
 // This can be a security vulnerability (algorithm confusion attack)
 
-// BAD: Accepting any algorithm
+// BAD: Relying on defaults instead of pinning the expected algorithm
 const decoded = jwt.verify(token, publicKey);
 
 // GOOD: Explicitly specify allowed algorithms
@@ -416,8 +420,11 @@ const decoded = jwt.verify(token, getKeyForAlgorithm(header.alg), {
 
 function getKeyForAlgorithm(alg) {
     // Return appropriate key based on algorithm
-    if (alg === 'RS256' || alg === 'ES256') {
-        return publicKey;
+    if (alg === 'RS256') {
+        return rsaPublicKey;
+    }
+    if (alg === 'ES256') {
+        return ecPublicKey;
     }
     throw new Error('Unsupported algorithm');
 }
@@ -515,14 +522,10 @@ async function getSigningKey(header) {
             // Key not found - might need to refresh cache
             console.error(`Key ${header.kid} not found in JWKS`);
 
-            // Force cache refresh and retry
-            client.getSigningKeys((err, keys) => {
-                if (err) {
-                    console.error('Failed to refresh JWKS:', err);
-                } else {
-                    console.log('Available key IDs:', keys.map(k => k.kid));
-                }
-            });
+            // Log the available keys from the JWKS endpoint for debugging
+            const response = await fetch('https://auth.example.com/.well-known/jwks.json');
+            const jwks = await response.json();
+            console.log('Available key IDs:', jwks.keys.map(k => k.kid));
         }
         throw error;
     }
@@ -604,7 +607,7 @@ class OAuth2ErrorHandler {
                 type: 'expired',
                 error: 'invalid_token',
                 description: 'The access token has expired',
-                uri: 'https://tools.ietf.org/html/rfc6750#section-3.1'
+                uri: 'https://datatracker.ietf.org/doc/html/rfc6750#section-3.1'
             };
         }
 
@@ -616,17 +619,17 @@ class OAuth2ErrorHandler {
                     type: 'signature',
                     error: 'invalid_token',
                     description: 'Token signature verification failed',
-                    uri: 'https://tools.ietf.org/html/rfc6750#section-3.1'
+                    uri: 'https://datatracker.ietf.org/doc/html/rfc6750#section-3.1'
                 };
             }
 
             if (error.message.includes('jwt malformed')) {
                 return {
-                    status: 400,
+                    status: 401,
                     type: 'format',
-                    error: 'invalid_request',
+                    error: 'invalid_token',
                     description: 'Token is malformed',
-                    uri: 'https://tools.ietf.org/html/rfc6750#section-3.1'
+                    uri: 'https://datatracker.ietf.org/doc/html/rfc6750#section-3.1'
                 };
             }
 
@@ -636,7 +639,7 @@ class OAuth2ErrorHandler {
                     type: 'algorithm',
                     error: 'invalid_token',
                     description: 'Token uses an unsupported algorithm',
-                    uri: 'https://tools.ietf.org/html/rfc6750#section-3.1'
+                    uri: 'https://datatracker.ietf.org/doc/html/rfc6750#section-3.1'
                 };
             }
         }
@@ -647,7 +650,7 @@ class OAuth2ErrorHandler {
                 type: 'not_before',
                 error: 'invalid_token',
                 description: 'Token is not yet valid',
-                uri: 'https://tools.ietf.org/html/rfc6750#section-3.1'
+                uri: 'https://datatracker.ietf.org/doc/html/rfc6750#section-3.1'
             };
         }
 
@@ -658,7 +661,7 @@ class OAuth2ErrorHandler {
                 type: 'issuer',
                 error: 'invalid_token',
                 description: 'Token issuer is not trusted',
-                uri: 'https://tools.ietf.org/html/rfc6750#section-3.1'
+                uri: 'https://datatracker.ietf.org/doc/html/rfc6750#section-3.1'
             };
         }
 
@@ -668,7 +671,7 @@ class OAuth2ErrorHandler {
                 type: 'audience',
                 error: 'invalid_token',
                 description: 'Token audience does not match',
-                uri: 'https://tools.ietf.org/html/rfc6750#section-3.1'
+                uri: 'https://datatracker.ietf.org/doc/html/rfc6750#section-3.1'
             };
         }
 
@@ -678,7 +681,7 @@ class OAuth2ErrorHandler {
             type: 'unknown',
             error: 'invalid_token',
             description: 'Token validation failed',
-            uri: 'https://tools.ietf.org/html/rfc6750#section-3.1'
+            uri: 'https://datatracker.ietf.org/doc/html/rfc6750#section-3.1'
         };
     }
 }
@@ -695,7 +698,6 @@ module.exports = { OAuth2ErrorHandler };
 
 import jwt
 import json
-import base64
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass, field
@@ -736,6 +738,8 @@ class TokenDebugger:
 
         print("=== Token Diagnostic Report ===\n")
 
+        token = self._normalize_token(token)
+
         # Step 1: Check format
         if not self._check_format(token):
             return DiagnosticReport(valid=False, issues=self.issues)
@@ -768,11 +772,6 @@ class TokenDebugger:
         if not token:
             self._add_issue("CRITICAL", "Token is empty or None")
             return False
-
-        # Remove Bearer prefix
-        if token.startswith("Bearer "):
-            token = token[7:]
-            print("   - Bearer prefix found and removed")
 
         parts = token.split(".")
         print(f"   - Token parts: {len(parts)} (expected: 3)")
@@ -913,7 +912,9 @@ class TokenDebugger:
                 options={
                     "verify_exp": False,
                     "verify_iat": False,
-                    "verify_nbf": False
+                    "verify_nbf": False,
+                    "verify_aud": False,
+                    "verify_iss": False
                 }
             )
             print("   - Signature: VALID")
@@ -925,6 +926,13 @@ class TokenDebugger:
             self._add_issue("CRITICAL", f"Signature error: {str(e)}")
 
         print()
+
+    def _normalize_token(self, token: str) -> str:
+        """Remove the Bearer prefix if present."""
+        if token and token.startswith("Bearer "):
+            print("   - Bearer prefix found and removed")
+            return token[7:]
+        return token
 
     def _add_issue(self, severity: str, message: str):
         """Add an issue to the list."""
