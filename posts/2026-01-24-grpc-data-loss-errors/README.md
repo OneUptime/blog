@@ -8,7 +8,7 @@ Description: A comprehensive guide to diagnosing and fixing DATA_LOSS errors in 
 
 ---
 
-The DATA_LOSS status code (code 15) in gRPC represents one of the most severe error conditions, indicating unrecoverable data loss or corruption. Unlike transient errors that can be retried, DATA_LOSS signals a fundamental problem that requires immediate investigation. This guide covers the causes, detection methods, and strategies for handling and preventing data loss errors in gRPC applications.
+The DATA_LOSS status code (code 15) in gRPC represents one of the most severe error conditions, indicating unrecoverable data loss or corruption. Unlike transient errors that can often be retried, DATA_LOSS signals a fundamental problem that requires immediate investigation. This guide covers the causes, detection methods, and strategies for handling and preventing data loss errors in gRPC applications.
 
 ## Understanding the DATA_LOSS Status Code
 
@@ -40,8 +40,8 @@ flowchart TD
 
 | Scenario | Appropriate | Reason |
 |----------|-------------|--------|
-| Database write failed after commit | Yes | Data confirmed lost |
-| Network timeout during write | No | Use UNAVAILABLE |
+| Post-commit read detects missing or corrupted data | Yes | Data loss or corruption confirmed |
+| Network timeout during write | No | Use DEADLINE_EXCEEDED or UNAVAILABLE depending on the failure |
 | Corrupted file detected | Yes | Data integrity compromised |
 | Partial write to storage | Yes | Incomplete data is lost data |
 | Query returned no results | No | Use NOT_FOUND |
@@ -95,6 +95,12 @@ func (s *StorageService) SaveData(ctx context.Context, req *pb.SaveDataRequest) 
         os.Remove(filePath) // Clean up partial file
         return nil, status.Errorf(codes.DataLoss,
             "partial write detected: wrote %d of %d bytes, data may be corrupted",
+            written, len(req.Data))
+    }
+    if written != len(req.Data) {
+        os.Remove(filePath)
+        return nil, status.Errorf(codes.DataLoss,
+            "short write detected: wrote %d of %d bytes, data may be corrupted",
             written, len(req.Data))
     }
 
@@ -157,7 +163,7 @@ package server
 import (
     "context"
     "database/sql"
-    "fmt"
+    "errors"
 
     "google.golang.org/grpc/codes"
     "google.golang.org/grpc/status"
@@ -213,18 +219,22 @@ func (s *DatabaseService) CreateRecord(ctx context.Context, req *pb.CreateRecord
 
     // Commit transaction
     if err := tx.Commit(); err != nil {
-        // Commit failure after successful insert is DATA_LOSS
-        // The data was written but the commit failed
-        return nil, status.Errorf(codes.DataLoss,
-            "transaction commit failed: %v, data may be lost or in inconsistent state",
+        // A commit failure does not by itself prove data loss.
+        // The transaction may have rolled back, committed, or reached an unknown state depending on the driver/database.
+        return nil, status.Errorf(codes.Unknown,
+            "transaction commit failed: %v, transaction outcome unknown",
             err)
     }
 
     // Verify data can be read back
     record, err := s.verifyRecord(ctx, req.Id)
     if err != nil {
-        return nil, status.Errorf(codes.DataLoss,
-            "post-commit verification failed: %v, data may be corrupted",
+        if errors.Is(err, sql.ErrNoRows) {
+            return nil, status.Errorf(codes.DataLoss,
+                "post-commit verification failed: record %s was not found", req.Id)
+        }
+        return nil, status.Errorf(codes.Unknown,
+            "post-commit verification query failed: %v, transaction outcome unknown",
             err)
     }
 
@@ -255,7 +265,6 @@ package server
 import (
     "context"
     "encoding/json"
-    "fmt"
     "time"
 
     "google.golang.org/grpc/codes"
@@ -298,9 +307,9 @@ func (s *QueueService) PublishMessage(ctx context.Context, req *pb.PublishReques
         // Check if this is a timeout after send
         if isTimeoutAfterSend(err) {
             // Message was sent but acknowledgment timed out
-            // This is potential data loss - we do not know if message was received
-            return nil, status.Errorf(codes.DataLoss,
-                "message sent but acknowledgment timed out for message %s: %v, message may be lost",
+            // The result is unknown; use idempotent message IDs before retrying
+            return nil, status.Errorf(codes.DeadlineExceeded,
+                "message sent but acknowledgment timed out for message %s: %v, delivery state unknown",
                 req.MessageId, err)
         }
 
@@ -347,7 +356,6 @@ package integrity
 import (
     "crypto/sha256"
     "encoding/hex"
-    "fmt"
 
     "google.golang.org/grpc/codes"
     "google.golang.org/grpc/status"
@@ -411,7 +419,6 @@ package wal
 
 import (
     "encoding/json"
-    "fmt"
     "os"
     "sync"
     "time"
@@ -499,11 +506,14 @@ func (w *WriteAheadLog) CommitOperation(id string) error {
     entry.Committed = true
 
     // Write commit marker
-    commitData, _ := json.Marshal(map[string]interface{}{
+    commitData, err := json.Marshal(map[string]interface{}{
         "id":        id,
         "committed": true,
         "timestamp": time.Now(),
     })
+    if err != nil {
+        return status.Errorf(codes.Internal, "failed to serialize commit marker: %v", err)
+    }
 
     if _, err := w.file.Write(append(commitData, '\n')); err != nil {
         return status.Errorf(codes.DataLoss,
@@ -550,11 +560,11 @@ package client
 
 import (
     "context"
+    "fmt"
     "log"
     "time"
 
     "google.golang.org/genproto/googleapis/rpc/errdetails"
-    "google.golang.org/grpc"
     "google.golang.org/grpc/codes"
     "google.golang.org/grpc/status"
     pb "myapp/proto"
@@ -831,12 +841,12 @@ func (s *IdempotencyStore) cleanup() {
 package server
 
 import (
+    "bytes"
     "context"
     "sync"
 
     "google.golang.org/grpc/codes"
     "google.golang.org/grpc/status"
-    pb "myapp/proto"
 )
 
 type ReplicatedStorage struct {
@@ -910,7 +920,7 @@ func (r *ReplicatedStorage) ReadWithVerification(ctx context.Context, id string)
 
         if primaryErr == nil && replicaErr == nil {
             // Both succeeded - verify consistency
-            if string(primaryData) != string(replicaData) {
+            if !bytes.Equal(primaryData, replicaData) {
                 return nil, status.Error(codes.DataLoss,
                     "data inconsistency detected between primary and replica")
             }
@@ -942,7 +952,7 @@ func (r *ReplicatedStorage) ReadWithVerification(ctx context.Context, id string)
 package monitoring
 
 import (
-    "context"
+    "fmt"
     "log"
     "sync/atomic"
     "time"
