@@ -12,7 +12,7 @@ The "Commands out of sync; you can't run this command now" error is one of the m
 
 ## Understanding the Error
 
-MySQL uses a request-response protocol. When you execute a query that returns results, those results sit in a buffer waiting to be read. Attempting to execute another query before reading all results or closing the cursor causes this error.
+MySQL uses a request-response protocol. When you execute a query that returns results, that result set remains pending on the connection until the client reads it, buffers it, or closes it. Attempting to execute another query before clearing the pending result causes this error.
 
 ```mermaid
 sequenceDiagram
@@ -20,7 +20,7 @@ sequenceDiagram
     participant MySQL as MySQL Server
 
     App->>MySQL: SELECT * FROM users
-    MySQL-->>App: Result Set (buffered)
+    MySQL-->>App: Result Set pending
     Note over App: Results not fully consumed
     App->>MySQL: SELECT * FROM orders
     MySQL-->>App: ERROR: Commands out of sync
@@ -46,7 +46,7 @@ PHP's mysqli extension is particularly prone to this issue. Here are the fixes.
 // Problem: Not consuming results
 $mysqli = new mysqli("localhost", "user", "password", "database");
 
-$result = $mysqli->query("SELECT * FROM users");
+$result = $mysqli->query("SELECT * FROM users", MYSQLI_USE_RESULT);
 // Bug: Results never consumed or freed
 
 // This will fail with "Commands out of sync"
@@ -62,7 +62,7 @@ $result->free();  // Free the result set
 // Now you can run another query
 $result2 = $mysqli->query("SELECT * FROM orders");
 
-// Solution 2: Use store_result for unbuffered queries
+// Solution 2: Use store_result after real_query to buffer results
 $mysqli->real_query("SELECT * FROM users");
 $result = $mysqli->store_result();  // Buffer all results
 // Process or skip results
@@ -208,24 +208,15 @@ conn = mysql.connector.connect(
 cursor = conn.cursor()
 
 # Execute stored procedure with multiple results
-cursor.callproc('GetUserOrders', [1])
-
-# Process all result sets
-for result in cursor.stored_results():
-    rows = result.fetchall()
-    print(f"Got {len(rows)} rows")
-
-# Alternative: manual iteration
 cursor.execute("CALL GetUserOrders(1)")
 
-# First result set
-for row in cursor:
-    print(row)
+# Process all result sets
+while True:
+    rows = cursor.fetchall()
+    print(f"Got {len(rows)} rows")
 
-# Check for more result sets
-while cursor.nextset():
-    for row in cursor:
-        print(row)
+    if not cursor.nextset():
+        break
 ```
 
 ## Node.js Solutions
@@ -236,25 +227,31 @@ Node.js MySQL libraries handle this differently depending on whether you use cal
 
 ```javascript
 const mysql = require('mysql2/promise');
+const mysqlCallback = require('mysql2');
 
 async function main() {
-    const connection = await mysql.createConnection({
+    const config = {
         host: 'localhost',
         user: 'user',
         password: 'password',
         database: 'database'
-    });
+    };
+
+    const connection = await mysql.createConnection(config);
 
     // mysql2 buffers results by default, so this works
     const [users] = await connection.execute('SELECT * FROM users');
     const [orders] = await connection.execute('SELECT * FROM orders');
 
     // For streaming large results, you must consume the stream
-    const stream = connection.connection.query('SELECT * FROM large_table').stream();
+    const streamConnection = mysqlCallback.createConnection(config);
+    const stream = streamConnection.query('SELECT * FROM large_table').stream();
 
     for await (const row of stream) {
         // Process each row
     }
+
+    streamConnection.end();
 
     // Now safe to query again
     const [moreData] = await connection.execute('SELECT 1');
@@ -275,8 +272,7 @@ async function callProcedure() {
         host: 'localhost',
         user: 'user',
         password: 'password',
-        database: 'database',
-        multipleStatements: true  // Required for procedures
+        database: 'database'
     });
 
     // Stored procedures return arrays of result sets
@@ -417,10 +413,10 @@ logging.getLogger('mysql.connector').setLevel(logging.DEBUG)
 ```
 
 ```javascript
-// Node.js: Log query events
+// Node.js: Enable mysql2 debug logging
 const connection = await mysql.createConnection({
     // ... config
-    debug: ['ComQuery', 'ComPrepare']  // Log query events
+    debug: true
 });
 ```
 
