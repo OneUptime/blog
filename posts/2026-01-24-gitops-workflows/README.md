@@ -205,12 +205,17 @@ kind: Deployment
 metadata:
   name: myapp
 spec:
+  selector:
+    matchLabels:
+      app: myapp
   template:
+    metadata:
+      labels:
+        app: myapp
     spec:
       containers:
         - name: myapp
-          # {"$imagepolicy": "flux-system:myapp"}
-          image: registry.example.com/myapp:1.2.3
+          image: registry.example.com/myapp:1.2.3 # {"$imagepolicy": "flux-system:myapp"}
 ```
 
 ## Managing Multi-Cluster Deployments
@@ -299,7 +304,7 @@ metadata:
   namespace: myapp
   annotations:
     argocd.argoproj.io/sync-wave: "1"
-    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook: Sync
     argocd.argoproj.io/hook-delete-policy: HookSucceeded
 spec:
   template:
