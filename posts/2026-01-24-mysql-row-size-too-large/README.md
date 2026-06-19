@@ -19,7 +19,7 @@ ERROR 1118 (42000): Row size too large (> 8126). Changing some columns to TEXT o
 In current row format, BLOB prefix of 768 bytes is stored inline.
 ```
 
-InnoDB has a maximum row size of approximately 65,535 bytes, but the practical limit depends on your page size and row format.
+MySQL has a maximum row size of 65,535 bytes for the internal table representation, but InnoDB has a smaller limit for the data stored locally on a database page. The practical InnoDB limit depends on your page size and row format.
 
 ```mermaid
 graph TD
@@ -42,7 +42,7 @@ graph TD
 
 ### InnoDB Page Layout
 
-InnoDB stores data in pages (default 16KB). At least two rows must fit on each page, which limits the maximum row size to about half the page size minus overhead.
+InnoDB stores data in pages (default 16KB). For 4KB, 8KB, 16KB, and 32KB page sizes, locally stored row data is limited to slightly less than half the page size. For 64KB pages, the local row limit is still slightly less than 16KB.
 
 ### Row Format Impact
 
@@ -50,10 +50,10 @@ Different row formats store data differently:
 
 | Row Format | BLOB/TEXT Storage | VARCHAR Storage | Max Inline |
 |------------|------------------|-----------------|------------|
-| REDUNDANT | 768 bytes inline | All inline | ~8000 bytes |
-| COMPACT | 768 bytes inline | All inline | ~8000 bytes |
-| DYNAMIC | 20-byte pointer | Overflow if needed | ~8000 bytes |
-| COMPRESSED | 20-byte pointer | Overflow if needed | ~8000 bytes |
+| REDUNDANT | 768-byte prefix when stored off-page | 768-byte prefix when stored off-page | ~8000 bytes |
+| COMPACT | 768-byte prefix when stored off-page | 768-byte prefix when stored off-page | ~8000 bytes |
+| DYNAMIC | 20-byte pointer when stored off-page | Overflow if needed | ~8000 bytes |
+| COMPRESSED | Similar to DYNAMIC, with compression | Overflow if needed | Depends on page and key block size |
 
 ## Diagnosing the Problem
 
@@ -76,8 +76,8 @@ SELECT
         WHEN DATA_TYPE = 'blob' THEN 768
         WHEN DATA_TYPE = 'int' THEN 4
         WHEN DATA_TYPE = 'bigint' THEN 8
-        WHEN DATA_TYPE = 'datetime' THEN 8
-        WHEN DATA_TYPE = 'timestamp' THEN 4
+        WHEN DATA_TYPE = 'datetime' THEN 5  -- 5 bytes plus 0-3 bytes for fractional seconds
+        WHEN DATA_TYPE = 'timestamp' THEN 4 -- 4 bytes plus 0-3 bytes for fractional seconds
         WHEN DATA_TYPE = 'decimal' THEN
             FLOOR((NUMERIC_PRECISION - NUMERIC_SCALE) / 9) * 4 +
             CEIL(((NUMERIC_PRECISION - NUMERIC_SCALE) % 9) / 2) +
@@ -99,7 +99,7 @@ SELECT
             WHEN DATA_TYPE IN ('text', 'mediumtext', 'longtext', 'blob') THEN 768
             WHEN DATA_TYPE = 'int' THEN 4
             WHEN DATA_TYPE = 'bigint' THEN 8
-            WHEN DATA_TYPE = 'datetime' THEN 8
+            WHEN DATA_TYPE = 'datetime' THEN 5
             WHEN DATA_TYPE = 'timestamp' THEN 4
             ELSE 8
         END
@@ -123,16 +123,18 @@ WHERE TABLE_SCHEMA = 'your_database'
 AND TABLE_NAME = 'your_table';
 
 -- Check InnoDB settings
-SHOW VARIABLES LIKE 'innodb_file_format';
 SHOW VARIABLES LIKE 'innodb_default_row_format';
 SHOW VARIABLES LIKE 'innodb_page_size';
+
+-- MySQL 5.7 and earlier only; removed in MySQL 8.0
+SHOW VARIABLES LIKE 'innodb_file_format';
 ```
 
 ## Solutions
 
 ### Solution 1: Use DYNAMIC or COMPRESSED Row Format
 
-The DYNAMIC row format stores large columns off-page, keeping only a 20-byte pointer inline:
+The DYNAMIC row format can store long variable-length columns off-page, keeping only a 20-byte pointer inline when a value is stored externally:
 
 ```sql
 -- Change table to DYNAMIC row format
@@ -147,7 +149,7 @@ CREATE TABLE new_table (
 ) ENGINE=InnoDB ROW_FORMAT=DYNAMIC;
 ```
 
-For MySQL 5.6, you may need to enable the Barracuda file format first:
+For older MySQL 5.6 installations, you may need to enable the Barracuda file format first. This setting is deprecated in MySQL 5.7 and removed in MySQL 8.0:
 
 ```sql
 -- MySQL 5.6 - enable Barracuda
@@ -160,7 +162,7 @@ ALTER TABLE your_table ROW_FORMAT=DYNAMIC;
 
 ### Solution 2: Convert Large VARCHAR to TEXT
 
-VARCHAR columns are stored inline, but TEXT columns can overflow to separate pages:
+Large VARCHAR columns count against MySQL's 65,535-byte row size limit based on their maximum declared length. TEXT columns count only a small pointer toward that limit and can overflow to separate pages:
 
 ```sql
 -- Before: Many large VARCHAR columns
@@ -308,7 +310,7 @@ For new installations, you can use larger page sizes:
 innodb_page_size = 32K  # Options: 4K, 8K, 16K (default), 32K, 64K
 ```
 
-Note: This requires reinitializing the data directory and is not suitable for existing databases.
+Note: This must be set before initializing the MySQL data directory and is not suitable for existing databases. A 64KB page size does not raise the local InnoDB row limit beyond slightly less than 16KB.
 
 ## Working Example: Fixing a Real Error
 
@@ -388,7 +390,7 @@ ALTER TABLE mytable MODIFY large_column TEXT;
 SELECT SUM(
     CASE
         WHEN DATA_TYPE = 'varchar' THEN CHARACTER_MAXIMUM_LENGTH * 4 + 2
-        WHEN DATA_TYPE IN ('text','blob') THEN 768
+        WHEN DATA_TYPE IN ('text','blob') THEN 768  -- COMPACT/REDUNDANT inline prefix
         ELSE 8
     END
 ) as bytes
