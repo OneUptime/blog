@@ -91,7 +91,7 @@ class MemoryMonitor:
             return 0.0
 
         first, last = recent[0], recent[-1]
-        time_diff_hours = (last.timestamp - first.timestamp).seconds / 3600
+        time_diff_hours = (last.timestamp - first.timestamp).total_seconds() / 3600
 
         if time_diff_hours == 0:
             return 0.0
@@ -245,6 +245,8 @@ flowchart LR
 ```python
 # database_connection_leak.py - Before and after fix
 
+import psycopg2
+
 # LEAKY CODE - connections never returned to pool
 class LeakyDatabaseService:
     def __init__(self, connection_string):
@@ -350,6 +352,10 @@ class FixedEventHandler {
     res.on('error', () => {
       this.cleanup(requestId);
     });
+
+    res.on('close', () => {
+      this.cleanup(requestId);
+    });
   }
 
   cleanup(requestId) {
@@ -443,8 +449,10 @@ class BoundedCache:
 
     def set(self, key, value):
         with self.lock:
+            if key in self.cache:
+                self.cache.move_to_end(key)
             # Remove oldest items if at capacity
-            while len(self.cache) >= self.max_size:
+            while key not in self.cache and len(self.cache) >= self.max_size:
                 self.cache.popitem(last=False)
 
             self.cache[key] = (value, time.time())
@@ -593,7 +601,11 @@ func (p *WorkerPool) worker(id int) {
                 return
             }
             result := process(job)
-            p.results <- result
+            select {
+            case p.results <- result:
+            case <-p.ctx.Done():
+                return
+            }
 
         case <-p.ctx.Done():
             // Context cancelled, exit gracefully
@@ -683,18 +695,21 @@ class SafeOperationQueue {
 
   enqueue(operation) {
     const id = this.nextId++;
-    this.operations.set(id, operation);
+    this.operations.set(id, {
+      operation,
+      createdAt: Date.now()
+    });
     return id;
   }
 
   async process(id) {
-    const operation = this.operations.get(id);
-    if (!operation) {
+    const entry = this.operations.get(id);
+    if (!entry) {
       throw new Error(`Operation ${id} not found`);
     }
 
     try {
-      return await operation();
+      return await entry.operation();
     } finally {
       // Always clean up reference after processing
       this.operations.delete(id);
@@ -706,8 +721,8 @@ class SafeOperationQueue {
     const now = Date.now();
     let cleaned = 0;
 
-    for (const [id, op] of this.operations) {
-      if (op.createdAt && now - op.createdAt > maxAgeMs) {
+    for (const [id, entry] of this.operations) {
+      if (now - entry.createdAt > maxAgeMs) {
         this.operations.delete(id);
         cleaned++;
       }
@@ -730,9 +745,9 @@ groups:
       - alert: MemoryLeakSuspected
         expr: |
           (
-            rate(process_resident_memory_bytes[1h]) > 0
+            delta(process_resident_memory_bytes[6h]) > 500000000
             and
-            increase(process_resident_memory_bytes[6h]) > 500000000
+            deriv(process_resident_memory_bytes[1h]) > 0
           )
         for: 30m
         labels:
@@ -745,8 +760,8 @@ groups:
 
       - alert: HighMemoryUtilization
         expr: |
-          (process_resident_memory_bytes /
-           container_spec_memory_limit_bytes) > 0.85
+          100 * (process_resident_memory_bytes /
+                 container_spec_memory_limit_bytes) > 85
         for: 10m
         labels:
           severity: critical
@@ -760,6 +775,7 @@ groups:
 # automated_leak_test.py - Integration test for memory leaks
 import gc
 import tracemalloc
+import time
 import pytest
 
 class TestMemoryLeaks:
@@ -886,12 +902,15 @@ kubectl autoscale deployment myapp \
   --max=10 \
   --cpu-percent=70
 
-# Take heap dump from running container for analysis
+# Take heap dump from the running Node.js process for analysis.
+# The process must have been started with --heapsnapshot-signal=SIGUSR2.
 kubectl exec -it myapp-pod-123 -- \
-  node --expose-gc -e "global.gc(); require('v8').writeHeapSnapshot()"
+  sh -c 'kill -USR2 $(pidof node)'
 
-# Copy heap dump locally
-kubectl cp myapp-pod-123:/app/heapdump.heapsnapshot ./heapdump.heapsnapshot
+# Copy the newest heap dump locally
+HEAPDUMP_PATH=$(kubectl exec myapp-pod-123 -- \
+  sh -c 'ls -t /app/Heap.*.heapsnapshot | head -n1')
+kubectl cp "myapp-pod-123:${HEAPDUMP_PATH}" ./heapdump.heapsnapshot
 ```
 
 Memory leaks are inevitable in complex systems, but with proper monitoring, testing, and quick remediation strategies, you can catch them early and minimize their impact. The key is establishing baselines, monitoring trends, and building automated detection into your pipeline.
