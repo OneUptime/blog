@@ -20,7 +20,7 @@ Understanding the traffic flow helps pinpoint where things break:
 flowchart LR
     C[Client] --> LB[Load Balancer]
     LB --> IG[Istio Ingress Gateway]
-    IG -->|Gateway + VirtualService| SP[Sidecar Proxy]
+    IG -->|Gateway + VirtualService| SP[Sidecar Proxy, if injected]
     SP --> A[Application]
 
     G[Gateway Resource] -.->|Configures| IG
@@ -32,7 +32,7 @@ Traffic flows through:
 2. Istio Ingress Gateway (Envoy pod)
 3. Gateway resource defines which hosts/ports the gateway accepts
 4. VirtualService defines routing rules to backend services
-5. Sidecar proxy in the destination pod
+5. Sidecar proxy in the destination pod, if the workload is sidecar-injected
 6. Application container
 
 Problems at any step cause ingress failures.
@@ -123,7 +123,7 @@ metadata:
   name: myapp
 spec:
   hosts:
-    - "*.example.com"  # Wildcard does not match exactly
+    - "*.example.com"  # Broader than the Gateway host, so it is not allowed
   gateways:
     - myapp-gateway
   http:
@@ -135,7 +135,7 @@ spec:
 **Fix: Make hosts match:**
 
 ```yaml
-# Both should have the same host
+# Make the VirtualService host fit within the Gateway host
 # Gateway
 hosts:
   - "myapp.example.com"
@@ -280,8 +280,9 @@ spec:
         - myapp.example.com
       tls:
         mode: SIMPLE
-        # credentialName must reference a secret in istio-system namespace
-        # or the namespace where the gateway pod runs
+        # credentialName must reference a secret available to the selected
+        # gateway workload. For the default ingress gateway, this is usually
+        # the istio-system namespace.
         credentialName: myapp-cert
 ```
 
@@ -439,7 +440,7 @@ apiVersion: networking.istio.io/v1beta1
 kind: Gateway
 metadata:
   name: myapp-gateway
-  namespace: production
+  namespace: istio-system
 spec:
   selector:
     istio: ingressgateway
@@ -472,7 +473,7 @@ spec:
   hosts:
     - "myapp.example.com"
   gateways:
-    - myapp-gateway
+    - istio-system/myapp-gateway
   http:
     - match:
         - uri:
