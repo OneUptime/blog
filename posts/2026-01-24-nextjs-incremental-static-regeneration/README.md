@@ -73,6 +73,8 @@ Pre-generate pages at build time:
 
 ```typescript
 // app/blog/[slug]/page.tsx
+import { notFound } from 'next/navigation';
+
 interface PageProps {
   params: Promise<{ slug: string }>;
 }
@@ -113,10 +115,6 @@ async function getPost(slug: string) {
   const res = await fetch(`https://api.example.com/posts/${slug}`);
   if (!res.ok) return null;
   return res.json();
-}
-
-function notFound(): never {
-  throw new Error('Not found');
 }
 ```
 
@@ -342,7 +340,7 @@ export async function POST(request: NextRequest) {
 
     if (tag) {
       // Revalidate by cache tag
-      revalidateTag(tag);
+      revalidateTag(tag, 'max');
       return NextResponse.json({ revalidated: true, tag });
     }
 
@@ -422,6 +420,7 @@ export default async function handler(
 ```typescript
 // app/products/[id]/page.tsx
 import { db } from '@/lib/database';
+import { notFound } from 'next/navigation';
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -477,10 +476,6 @@ export default async function ProductPage({ params }: PageProps) {
     </div>
   );
 }
-
-function notFound(): never {
-  throw new Error('Not found');
-}
 ```
 
 ## ISR Caching Strategy
@@ -508,13 +503,14 @@ Choosing revalidation intervals:
 | Blog posts | 300 (5 min) | Article content |
 | Product listings | 60 (1 min) | E-commerce catalog |
 | User-generated | 30 seconds | Comments, reviews |
-| Real-time data | 0 (no ISR) | Stock prices, live scores |
+| Real-time data | 0 (dynamic rendering, no ISR) | Stock prices, live scores |
 
 ## Error Handling in ISR
 
 ```typescript
 // app/blog/[slug]/page.tsx
 import { unstable_cache } from 'next/cache';
+import { notFound } from 'next/navigation';
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -547,20 +543,10 @@ const getPostCached = unstable_cache(
 
 export default async function BlogPost({ params }: PageProps) {
   const { slug } = await params;
+  let post;
 
   try {
-    const post = await getPostCached(slug);
-
-    if (!post) {
-      notFound();
-    }
-
-    return (
-      <article>
-        <h1>{post.title}</h1>
-        <div dangerouslySetInnerHTML={{ __html: post.content }} />
-      </article>
-    );
+    post = await getPostCached(slug);
   } catch (error) {
     // Show error UI instead of breaking the page
     return (
@@ -570,10 +556,17 @@ export default async function BlogPost({ params }: PageProps) {
       </div>
     );
   }
-}
 
-function notFound(): never {
-  throw new Error('Not found');
+  if (!post) {
+    notFound();
+  }
+
+  return (
+    <article>
+      <h1>{post.title}</h1>
+      <div dangerouslySetInnerHTML={{ __html: post.content }} />
+    </article>
+  );
 }
 ```
 
@@ -614,9 +607,9 @@ export default async function BlogPost({ params }: PageProps) {
 
   const post = await getPost(slug);
 
-  // Track regeneration time (runs during ISR)
+  // Track render/regeneration time
   const duration = Date.now() - startTime;
-  trackISRRegeneration(`/blog/${slug}`, duration);
+  await trackISRRegeneration(`/blog/${slug}`, duration);
 
   return (
     <article>
@@ -640,6 +633,6 @@ async function getPost(slug: string) {
 | Static params | `generateStaticParams()` | `getStaticPaths()` |
 | On-demand revalidation | `revalidatePath()`, `revalidateTag()` | `res.revalidate()` |
 | Cache tags | `next: { tags: [] }` | Not available |
-| Fallback UI | `loading.tsx` | `router.isFallback` |
+| Loading/fallback UI | `loading.tsx` | `router.isFallback` |
 
-ISR provides an excellent balance between static performance and content freshness. Use time-based revalidation for predictable updates and on-demand revalidation when you need immediate content changes. Monitor your regeneration patterns to optimize the revalidation intervals for your specific use case.
+ISR provides an excellent balance between static performance and content freshness. Use time-based revalidation for predictable updates and on-demand revalidation when content changes should invalidate cached data outside the normal interval. Monitor your regeneration patterns to optimize the revalidation intervals for your specific use case.
