@@ -65,7 +65,7 @@ The OpenTelemetry Operator simplifies collector deployment and management.
 
 # opentelemetry-collector.yaml
 # Custom Resource for the OpenTelemetry Collector
-apiVersion: opentelemetry.io/v1alpha1
+apiVersion: opentelemetry.io/v1beta1
 kind: OpenTelemetryCollector
 metadata:
   name: otel-collector
@@ -83,8 +83,14 @@ spec:
       cpu: 100m
       memory: 128Mi
 
+  env:
+    - name: K8S_NODE_NAME
+      valueFrom:
+        fieldRef:
+          fieldPath: spec.nodeName
+
   # Collector configuration
-  config: |
+  config:
     receivers:
       otlp:
         protocols:
@@ -101,7 +107,7 @@ spec:
       kubeletstats:
         collection_interval: 30s
         auth_type: serviceAccount
-        endpoint: "${K8S_NODE_NAME}:10250"
+        endpoint: "${env:K8S_NODE_NAME}:10250"
         insecure_skip_verify: true
 
     processors:
@@ -148,22 +154,22 @@ spec:
           insecure: false
 
       # Debug exporter for troubleshooting
-      logging:
-        loglevel: info
+      debug:
+        verbosity: basic
 
     service:
       pipelines:
         traces:
           receivers: [otlp]
-          processors: [k8sattributes, memory_limiter, batch]
+          processors: [memory_limiter, k8sattributes, batch]
           exporters: [otlp]
         metrics:
           receivers: [otlp, kubeletstats]
-          processors: [k8sattributes, memory_limiter, batch]
+          processors: [memory_limiter, k8sattributes, batch]
           exporters: [otlp]
         logs:
           receivers: [otlp, k8s_events]
-          processors: [k8sattributes, memory_limiter, batch]
+          processors: [memory_limiter, k8sattributes, batch]
           exporters: [otlp]
 ```
 
@@ -282,15 +288,15 @@ config:
     pipelines:
       traces:
         receivers: [otlp]
-        processors: [k8sattributes, memory_limiter, batch]
+        processors: [memory_limiter, k8sattributes, batch]
         exporters: [otlp]
       metrics:
         receivers: [otlp, prometheus]
-        processors: [k8sattributes, memory_limiter, batch]
+        processors: [memory_limiter, k8sattributes, batch]
         exporters: [otlp]
       logs:
         receivers: [otlp]
-        processors: [k8sattributes, memory_limiter, batch]
+        processors: [memory_limiter, k8sattributes, batch]
         exporters: [otlp]
 ```
 
@@ -332,9 +338,11 @@ spec:
             - name: OTEL_SERVICE_NAME
               value: "my-application"
 
-            # Export to collector DaemonSet on the same node
+            # Export to the collector service
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: "http://otel-collector.observability.svc.cluster.local:4317"
+              value: "http://otel-collector-collector.observability.svc.cluster.local:4317"
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: "grpc"
 
             # Enable all signal types
             - name: OTEL_TRACES_EXPORTER
@@ -397,7 +405,7 @@ metadata:
   namespace: default
 spec:
   exporter:
-    endpoint: http://otel-collector.observability.svc.cluster.local:4317
+    endpoint: http://otel-collector-collector.observability.svc.cluster.local:4317
 
   propagators:
     - tracecontext
@@ -480,7 +488,13 @@ kind: Deployment
 metadata:
   name: high-throughput-app
 spec:
+  selector:
+    matchLabels:
+      app: high-throughput-app
   template:
+    metadata:
+      labels:
+        app: high-throughput-app
     spec:
       containers:
         # Application container
@@ -491,6 +505,8 @@ spec:
           env:
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: "http://localhost:4317"  # Send to sidecar
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: "grpc"
 
         # OpenTelemetry Collector sidecar
         - name: otel-collector
@@ -721,7 +737,7 @@ data:
       kubeletstats:
         collection_interval: 30s
         auth_type: serviceAccount
-        endpoint: "https://${K8S_NODE_NAME}:10250"
+        endpoint: "${env:K8S_NODE_NAME}:10250"
         insecure_skip_verify: true
         extra_metadata_labels:
           - container.id
@@ -788,21 +804,16 @@ kind: IstioOperator
 spec:
   meshConfig:
     enableTracing: true
-    defaultConfig:
-      tracing:
-        sampling: 100.0
-        zipkin:
-          address: otel-collector.observability.svc.cluster.local:9411
 
     extensionProviders:
       - name: otel
         opentelemetry:
-          service: otel-collector.observability.svc.cluster.local
+          service: otel-collector-collector.observability.svc.cluster.local
           port: 4317
 
 ---
 # Telemetry configuration for OpenTelemetry
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: otel-tracing
@@ -861,7 +872,7 @@ data:
 
     exporters:
       # Log everything for debugging
-      logging:
+      debug:
         verbosity: detailed
         sampling_initial: 5
         sampling_thereafter: 200
@@ -891,17 +902,22 @@ data:
         logs:
           level: debug
         metrics:
-          address: 0.0.0.0:8888
+          readers:
+            - pull:
+                exporter:
+                  prometheus:
+                    host: 0.0.0.0
+                    port: 8888
 
       pipelines:
         traces:
           receivers: [otlp]
           processors: [batch]
-          exporters: [logging, otlp]
+          exporters: [debug, otlp]
         metrics:
           receivers: [otlp]
           processors: [batch]
-          exporters: [logging, otlp]
+          exporters: [debug, otlp]
 ```
 
 ## Summary
