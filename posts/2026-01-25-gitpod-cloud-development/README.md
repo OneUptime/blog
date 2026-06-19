@@ -118,8 +118,6 @@ Most applications need databases and other services. Gitpod supports Docker Comp
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   postgres:
     image: postgres:15
@@ -172,7 +170,7 @@ tasks:
   - name: Worker
     # Start background job processor
     command: |
-      gp await-port 5432
+      gp ports await 5432
       npm run worker
 
 ports:
@@ -193,25 +191,11 @@ vscode:
 
 ## Prebuilds for Faster Startup
 
-Prebuilds run the `init` phase ahead of time, so developers get instant workspaces. Configure prebuilds through your Git provider integration:
+Prebuilds run the `init` phase ahead of time, so developers get instant workspaces. Configure the tasks that can run in a prebuild through `.gitpod.yml`, then enable prebuilds in the repository's Gitpod settings:
 
 ```yaml
 # .gitpod.yml
 image: gitpod/workspace-node-lts
-
-# Prebuild configuration
-github:
-  prebuilds:
-    # Enable prebuilds for the default branch
-    master: true
-    # Enable prebuilds for all branches
-    branches: true
-    # Enable prebuilds for pull requests from the same repo
-    pullRequests: true
-    # Enable prebuilds for pull requests from forks
-    pullRequestsFromForks: true
-    # Add a commit status for prebuild progress
-    addCheck: prevent-hierarchical-merge
 
 tasks:
   - name: Dev Server
@@ -223,21 +207,24 @@ tasks:
     command: npm run dev
 ```
 
+After committing the file, import the repository in Gitpod and enable prebuilds from the repository settings. You can constrain prebuilds to the default branch, all branches, or branches matching a glob pattern.
+
 The prebuild process flow:
 
 ```mermaid
 flowchart LR
-    A[Push to Branch] --> B[Gitpod Detects Change]
-    B --> C[Run init Commands]
-    C --> D[Snapshot Workspace]
-    D --> E[Store Prebuild Image]
+    A[Developer Opens Workspace] --> B{Prebuild Available?}
+    B -->|Yes| C[Load Snapshot]
+    B -->|No| D[Run before and init]
+    D --> E[Snapshot Workspace]
+    E --> F[Start Workspace]
+    C --> F
+    F --> G[Run command]
+    G --> H[Workspace Ready]
 
-    F[Developer Opens Workspace] --> G{Prebuild Available?}
-    G -->|Yes| H[Load Snapshot]
-    G -->|No| I[Run init from Scratch]
-    H --> J[Run command]
-    I --> J
-    J --> K[Workspace Ready]
+    I[Repository Prebuild Trigger] --> J[Run before and init]
+    J --> K[Store Snapshot]
+    K --> B
 ```
 
 ## Environment Variables and Secrets
@@ -269,11 +256,14 @@ tasks:
 Configure variables through the Gitpod dashboard or CLI:
 
 ```bash
-# Set a variable for all workspaces in a repository
+# Set a variable for workspaces in this repository
 gp env DATABASE_URL=postgresql://user:pass@host:5432/db
 
-# Set a variable for all your workspaces
-gp env -u API_KEY=your-api-key
+# Set another project variable
+gp env API_KEY=your-api-key
+
+# Unset a variable
+gp env -u API_KEY
 
 # List configured variables
 gp env
@@ -325,9 +315,9 @@ tasks:
     command: npm run dev
 ```
 
-Workspace states:
+Workspace-related phases and states:
 
-1. **Prebuild**: Runs `init` commands, creates snapshot
+1. **Prebuild**: Runs `before` and `init` commands, creates snapshot
 2. **Starting**: Restores snapshot, runs `before` and `command`
 3. **Running**: Workspace is active
 4. **Stopping**: Workspace going idle (30 min default)
@@ -370,7 +360,7 @@ Gitpod provides a CLI for workspace management:
 
 ```bash
 # Open a workspace from your terminal
-gitpod open https://github.com/yourorg/yourproject
+gitpod workspace create https://github.com/yourorg/yourproject --open
 
 # Stop the current workspace
 gp stop
@@ -379,16 +369,13 @@ gp stop
 gp snapshot
 
 # Wait for a port to be available
-gp await-port 3000
+gp ports await 3000
 
 # Open a URL in the browser
 gp preview http://localhost:3000
 
 # Get workspace information
 gp info
-
-# Synchronize environment variables
-gp env sync
 ```
 
 ## Integrating with CI/CD
@@ -412,8 +399,7 @@ jobs:
 
       - name: Run Tests
         run: |
-          docker run --rm test-image npm ci
-          docker run --rm test-image npm test
+          docker run --rm -v "$PWD:/workspace" -w /workspace test-image sh -lc "npm ci && npm test"
 ```
 
 ## Best Practices
