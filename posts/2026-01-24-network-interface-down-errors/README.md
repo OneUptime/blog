@@ -16,7 +16,7 @@ This guide provides a systematic approach to troubleshooting network interface p
 
 ## Understanding Network Interface States
 
-Network interfaces can be in several states:
+Network interfaces expose administrative flags and operational states:
 
 ```mermaid
 stateDiagram-v2
@@ -28,7 +28,7 @@ stateDiagram-v2
     DOWN --> [*]: Interface Removed
 
     note right of UP: Interface ready for traffic
-    note right of NO_CARRIER: Interface up but no link
+    note right of NO_CARRIER: NO-CARRIER flag: no physical link
     note right of DOWN: Interface administratively down
 ```
 
@@ -41,7 +41,7 @@ stateDiagram-v2
 ```bash
 # List all network interfaces with their states
 
-# Shows whether interfaces are UP, DOWN, or have NO-CARRIER
+# Shows whether interfaces are UP, DOWN, or have the NO-CARRIER flag
 ip link show
 
 # Example output:
@@ -109,7 +109,7 @@ flowchart TD
     A[Network Interface Down] --> B{ip link show}
 
     B --> |State: DOWN| C{Manual or Automatic?}
-    B --> |NO-CARRIER| D[Check Physical Layer]
+    B --> |NO-CARRIER flag| D[Check Physical Layer]
     B --> |Not Listed| E[Check Hardware/Driver]
 
     C --> |Manual| F[Bring Interface Up]
@@ -156,7 +156,7 @@ nmcli device connect eth0
 
 # Make the change persistent (systemd-networkd)
 # Create or edit the network file
-cat > /etc/systemd/network/10-eth0.network << 'EOF'
+sudo tee /etc/systemd/network/10-eth0.network > /dev/null << 'EOF'
 [Match]
 Name=eth0
 
@@ -165,7 +165,7 @@ DHCP=yes
 EOF
 
 # Restart networkd to apply
-systemctl restart systemd-networkd
+sudo systemctl restart systemd-networkd
 ```
 
 ### Issue 2: No Carrier (Physical Layer Problem)
@@ -290,7 +290,7 @@ networkctl status
 networkctl status eth0
 
 # Create network configuration
-cat > /etc/systemd/network/10-eth0.network << 'EOF'
+sudo tee /etc/systemd/network/10-eth0.network > /dev/null << 'EOF'
 [Match]
 Name=eth0
 
@@ -305,15 +305,15 @@ DHCP=yes
 # DNS=8.8.4.4
 
 [Link]
-# Wait for link to be detected
+# Require this link when systemd-networkd-wait-online checks network-online.target
 RequiredForOnline=yes
 EOF
 
 # Set correct permissions
-chmod 644 /etc/systemd/network/10-eth0.network
+sudo chmod 644 /etc/systemd/network/10-eth0.network
 
 # Restart networkd
-systemctl restart systemd-networkd
+sudo systemctl restart systemd-networkd
 
 # Check status
 networkctl status eth0
@@ -323,7 +323,7 @@ networkctl status eth0
 
 ```bash
 # Edit the interfaces file
-cat > /etc/network/interfaces << 'EOF'
+sudo tee /etc/network/interfaces > /dev/null << 'EOF'
 # Loopback interface
 auto lo
 iface lo inet loopback
@@ -342,10 +342,10 @@ iface eth0 inet dhcp
 EOF
 
 # Restart networking
-systemctl restart networking
+sudo systemctl restart networking
 
 # Or bring interface up/down manually
-ifdown eth0 && ifup eth0
+sudo ifdown eth0 && sudo ifup eth0
 ```
 
 ---
@@ -381,7 +381,7 @@ ip netns list
 ip netns exec namespace_name ip link show
 
 # Move interface back to default namespace
-ip netns exec namespace_name ip link set eth0 netns 1
+sudo ip netns exec namespace_name ip link set eth0 netns 1
 ```
 
 ### Bonding/Teaming Issues
@@ -391,14 +391,14 @@ ip netns exec namespace_name ip link set eth0 netns 1
 cat /proc/net/bonding/bond0
 
 # Check team status (RHEL/CentOS)
-teamdctl team0 state
+sudo teamdctl team0 state view
 
 # Verify slave interfaces are up
 ip link show | grep -E "eth0|eth1|bond0"
 
 # Restart bond interface
-ip link set bond0 down
-ip link set bond0 up
+sudo ip link set bond0 down
+sudo ip link set bond0 up
 ```
 
 ---
@@ -490,6 +490,11 @@ attempt_recovery() {
 }
 
 # Main execution
+if [ "$(id -u)" -ne 0 ]; then
+    echo "ERROR: Run this script as root"
+    exit 1
+fi
+
 log "=========================================="
 attempt_recovery
 exit $?
@@ -527,6 +532,9 @@ INTERFACES="eth0 eth1"
 ERROR_THRESHOLD=100
 
 for iface in $INTERFACES; do
+    rx_errors="N/A"
+    tx_errors="N/A"
+
     # Check if interface exists
     if ! ip link show "$iface" &>/dev/null; then
         echo "CRITICAL: Interface $iface not found"
@@ -550,7 +558,7 @@ for iface in $INTERFACES; do
     fi
 
     # Output stats
-    echo "OK: $iface - State: $state, RX errors: ${rx_errors:-N/A}, TX errors: ${tx_errors:-N/A}"
+    echo "OK: $iface - State: $state, RX errors: $rx_errors, TX errors: $tx_errors"
 done
 ```
 
