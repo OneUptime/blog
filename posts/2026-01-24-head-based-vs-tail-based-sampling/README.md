@@ -69,7 +69,7 @@ sequenceDiagram
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 const {
   ParentBasedSampler,
   TraceIdRatioBasedSampler
@@ -83,7 +83,7 @@ const sampler = new ParentBasedSampler({
 });
 
 const sdk = new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     'service.name': 'payment-service',
     'deployment.environment': process.env.NODE_ENV || 'development',
   }),
@@ -183,7 +183,7 @@ flowchart TD
 ### Advantages of Tail-Based Sampling
 
 1. **Intelligent selection** - Keep traces based on actual behavior
-2. **Always capture errors** - Never miss error traces
+2. **Error-aware capture** - Keep error traces that reach the collector
 3. **Latency-aware** - Keep slow traces for performance analysis
 4. **Attribute-based** - Sample based on customer tier, endpoint, etc.
 
@@ -281,7 +281,7 @@ processors:
     timeout: 10s
 
 exporters:
-  otlphttp:
+  otlp_http:
     endpoint: https://oneuptime.com/otlp
     encoding: json
     headers:
@@ -293,14 +293,14 @@ service:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, tail_sampling, batch]
-      exporters: [otlphttp]
+      exporters: [otlp_http]
 ```
 
 ---
 
 ## Combining Head and Tail Sampling
 
-The most effective strategy often combines both approaches. Use head sampling as a first filter to reduce volume, then apply tail sampling for intelligent selection.
+The most effective strategy often combines both approaches. Use head sampling as a first filter to reduce volume, then apply tail sampling for intelligent selection. Be careful with this approach: traces dropped by head sampling never reach the collector, so tail sampling can only evaluate the traces that pass the first filter.
 
 ### Architecture: Hybrid Sampling
 
@@ -383,10 +383,10 @@ pie title Trace Distribution After Hybrid Sampling
 
 With hybrid sampling:
 - **Head sampling**: 20% of traces pass through
-- **Tail sampling on errors**: ~100% of error traces kept (from the 20%)
+- **Tail sampling on errors**: 100% of error traces kept from the 20% that reach the collector
 - **Tail sampling baseline**: 25% of non-error traces kept
 - **Effective rate for normal traces**: 20% x 25% = 5%
-- **Effective rate for errors**: Close to 100% (assuming errors are <20% of traffic)
+- **Effective rate for errors**: About 20% with this simple head sampler; use tail sampling without an upstream head filter if you need to retain nearly all error traces
 
 ---
 
@@ -398,7 +398,7 @@ With hybrid sampling:
 |----------|---------------------|-----------|
 | Low traffic (<1000 req/min) | Head sampling 50-100% | Volume is manageable |
 | High traffic (>10000 req/min) | Hybrid sampling | Balance cost and insights |
-| Critical production system | Tail sampling for errors | Never miss failures |
+| Critical production system | Tail sampling for errors | Preserve failure traces that reach the collector |
 | Cost-constrained environment | Aggressive head sampling | Minimize data volume |
 | Debugging specific issues | Attribute-based tail sampling | Target specific conditions |
 
@@ -421,7 +421,7 @@ With hybrid sampling:
 |--------|------------|------------|--------|
 | Decision Point | Start of trace | End of trace | Both |
 | Resource Usage | Low | High | Medium |
-| Error Capture | Random | Guaranteed | Guaranteed |
+| Error Capture | Random | Policy-based | Policy-based after head filter |
 | Complexity | Simple | Complex | Medium |
 | Best For | Low traffic | Critical systems | High traffic production |
 
