@@ -8,11 +8,11 @@ Description: A comprehensive guide to diagnosing and fixing OOMKilled errors in 
 
 ---
 
-OOMKilled is one of the most common reasons for pod restarts in Kubernetes. It happens when a container exceeds its memory limit, and the kernel's Out-Of-Memory (OOM) killer terminates it. This guide covers how to identify, diagnose, and fix these errors.
+OOMKilled is one of the most common reasons for pod restarts in Kubernetes. It can happen when a container exceeds its memory limit and the kernel's Out-Of-Memory (OOM) killer terminates it. This guide covers how to identify, diagnose, and fix these errors.
 
 ## Understanding OOMKilled
 
-When a container uses more memory than its limit allows, the Linux kernel terminates it with an OOMKilled status. Unlike CPU throttling (which just slows down the container), memory overuse results in immediate termination.
+When a container uses more memory than its limit allows, the Linux kernel may terminate it with an OOMKilled status when memory pressure is detected. Unlike CPU throttling (which just slows down the container), memory overuse can result in termination.
 
 ```bash
 # Check if a pod was OOMKilled
@@ -175,11 +175,15 @@ kubectl exec -it myapp-xyz -- /bin/sh
 # Check process memory
 cat /proc/1/status | grep -i "VmRSS\|VmSize"
 
-# Check cgroup memory usage
-cat /sys/fs/cgroup/memory/memory.usage_in_bytes
+# Check cgroup memory usage (cgroup v2)
+cat /sys/fs/cgroup/memory.current
 
-# Check memory limit
-cat /sys/fs/cgroup/memory/memory.limit_in_bytes
+# Check memory limit (cgroup v2)
+cat /sys/fs/cgroup/memory.max
+
+# On older cgroup v1 nodes, use:
+# cat /sys/fs/cgroup/memory/memory.usage_in_bytes
+# cat /sys/fs/cgroup/memory/memory.limit_in_bytes
 ```
 
 ### Application-Level Profiling
@@ -269,20 +273,35 @@ spec:
 import psutil
 import os
 
+def get_memory_limit():
+    """Return the container memory limit for cgroup v2 or v1"""
+    paths = [
+        '/sys/fs/cgroup/memory.max',
+        '/sys/fs/cgroup/memory/memory.limit_in_bytes',
+    ]
+
+    for path in paths:
+        try:
+            with open(path) as f:
+                value = f.read().strip()
+                if value != 'max':
+                    return int(value)
+        except FileNotFoundError:
+            continue
+
+    return psutil.virtual_memory().total
+
 def check_memory_pressure():
     """Check if approaching memory limit"""
     process = psutil.Process(os.getpid())
     memory_info = process.memory_info()
 
-    # Get cgroup limit
-    with open('/sys/fs/cgroup/memory/memory.limit_in_bytes') as f:
-        limit = int(f.read())
+    limit = get_memory_limit()
 
     usage_percent = (memory_info.rss / limit) * 100
 
     if usage_percent > 80:
         # Clear caches, reject new requests, etc.
-        clear_caches()
         return True
     return False
 ```
@@ -290,21 +309,25 @@ def check_memory_pressure():
 ### Strategy 4: Configure Quality of Service
 
 ```yaml
-# Guaranteed QoS - least likely to be OOMKilled
+# Guaranteed QoS - last to be evicted under node memory pressure
 resources:
   requests:
+    cpu: "500m"
     memory: "512Mi"
   limits:
+    cpu: "500m"
     memory: "512Mi"    # Same as request
 
-# Burstable QoS - middle priority
+# Burstable QoS - middle eviction priority
 resources:
   requests:
+    cpu: "250m"
     memory: "256Mi"
   limits:
+    cpu: "500m"
     memory: "512Mi"    # Higher than request
 
-# BestEffort QoS - first to be OOMKilled
+# BestEffort QoS - first to be evicted under node memory pressure
 resources: {}           # No limits set
 ```
 
@@ -345,7 +368,7 @@ container_spec_memory_limit_bytes{pod="myapp-xyz"}
 kube_pod_container_status_last_terminated_reason{reason="OOMKilled"}
 
 # Memory usage trend
-rate(container_memory_usage_bytes{pod=~"myapp.*"}[5m])
+max_over_time(container_memory_usage_bytes{pod=~"myapp.*"}[5m])
 ```
 
 ### Alert Rules
@@ -393,7 +416,7 @@ kubectl scale deployment myapp --replicas=5
 
 ```bash
 # Not recommended for production, but useful for debugging
-kubectl patch deployment myapp -p '{"spec":{"template":{"spec":{"containers":[{"name":"app","resources":{"limits":{}}}]}}}}'
+kubectl patch deployment myapp -p '{"spec":{"template":{"spec":{"containers":[{"name":"app","resources":{"limits":{"memory":null}}}]}}}}'
 ```
 
 ## Debugging Tools
