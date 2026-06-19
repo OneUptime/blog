@@ -125,26 +125,26 @@ The most common cause is simply using the wrong import syntax:
 
 ```typescript
 // Wrong - default import on named exports
-import lodash from "lodash";  // Error if lodash only has named exports
+import utils from "./utils";  // Error if ./utils only has named exports
 
 // Correct - namespace import
-import * as _ from "lodash";
+import * as utils from "./utils";
 
 // Or import specific named exports
-import { map, filter, reduce } from "lodash";
+import { PI, square, Calculator } from "./utils";
 ```
 
 **Solution: Use named imports or namespace imports.**
 
 ```typescript
 // Option 1: Import specific functions
-import { debounce, throttle } from "lodash";
+import { square, Calculator } from "./utils";
 
 // Option 2: Import everything as namespace
-import * as _ from "lodash";
-_.debounce(fn, 300);
+import * as utils from "./utils";
+utils.square(5);
 
-// Option 3: With esModuleInterop enabled
+// Option 3: For CommonJS modules like lodash, with esModuleInterop enabled
 import _ from "lodash";  // Works with esModuleInterop
 ```
 
@@ -192,7 +192,7 @@ import legacy from "./legacy";  // Error without proper config
 **Solution: Configure module interop or adjust import style.**
 
 ```typescript
-// Option 1: Use require (if allowJs is enabled)
+// Option 1: Use require (if CommonJS require is available)
 const legacy = require("./legacy");
 
 // Option 2: Use namespace import
@@ -244,12 +244,14 @@ export * from "./math";  // This does NOT re-export the default!
 
 // utils/index.ts - Correct way
 export { default as calculate } from "./math";
-// Or
+
+// Or, to re-export it as this module's default
 export { default } from "./math";
 
-// Now this works
+// With export { default }, this works
 import calculate from "./utils";
-// Or
+
+// With export { default as calculate }, this works
 import { calculate } from "./utils";
 ```
 
