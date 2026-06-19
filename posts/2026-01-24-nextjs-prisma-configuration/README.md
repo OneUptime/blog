@@ -8,7 +8,7 @@ Description: A complete guide to setting up Prisma ORM with Next.js including sc
 
 ---
 
-Prisma is a modern database ORM that pairs exceptionally well with Next.js. It provides type-safe database queries, automatic migrations, and an intuitive schema language. This guide walks through the complete setup process from installation to production deployment.
+Prisma is a modern database ORM that pairs exceptionally well with Next.js. It provides type-safe database queries, migration workflows, and an intuitive schema language. This guide walks through the complete setup process from installation to production deployment.
 
 ## Architecture Overview
 
@@ -34,11 +34,11 @@ flowchart LR
 ```bash
 # Install Prisma as a dev dependency and the client as a regular dependency
 
-npm install prisma --save-dev
-npm install @prisma/client
+npm install prisma tsx @types/pg --save-dev
+npm install @prisma/client @prisma/adapter-pg pg
 
-# Initialize Prisma with PostgreSQL (or mysql, sqlite, mongodb, etc.)
-npx prisma init --datasource-provider postgresql
+# Initialize Prisma with a generated client output path
+npx prisma init --output ../app/generated/prisma
 ```
 
 This creates the following structure:
@@ -47,6 +47,7 @@ This creates the following structure:
 project/
   prisma/
     schema.prisma    # Database schema definition
+  prisma.config.ts   # Prisma CLI configuration
   .env               # Environment variables (DATABASE_URL)
 ```
 
@@ -56,12 +57,12 @@ project/
 // prisma/schema.prisma
 
 generator client {
-  provider = "prisma-client-js"
+  provider = "prisma-client"
+  output   = "../app/generated/prisma"
 }
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 // User model with relations
@@ -131,12 +132,30 @@ enum Role {
 DATABASE_URL="postgresql://user:password@localhost:5432/mydb?schema=public"
 
 # For connection pooling in production (e.g., with PgBouncer)
+# For PgBouncer versions below 1.21.0, add pgbouncer=true and use transaction mode.
 # DATABASE_URL="postgresql://user:password@pooler.example.com:6543/mydb?pgbouncer=true"
+# DIRECT_URL="postgresql://user:password@db.example.com:5432/mydb"
 ```
 
 ```bash
-# .env.local (for local development overrides)
+# .env.local (for Next.js runtime local development overrides)
 DATABASE_URL="postgresql://postgres:postgres@localhost:5432/nextjs_dev"
+```
+
+```typescript
+// prisma.config.ts
+import 'dotenv/config';
+import { defineConfig, env } from 'prisma/config';
+
+export default defineConfig({
+  schema: 'prisma/schema.prisma',
+  migrations: {
+    path: 'prisma/migrations',
+  },
+  datasource: {
+    url: env('DATABASE_URL'),
+  },
+});
 ```
 
 ## Prisma Client Singleton
@@ -145,13 +164,19 @@ Create a singleton instance to prevent multiple Prisma Client instances in devel
 
 ```typescript
 // lib/prisma.ts
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '@/app/generated/prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
+const adapter = new PrismaPg({
+  connectionString: process.env.DATABASE_URL!,
+});
+
 export const prisma = globalForPrisma.prisma ?? new PrismaClient({
+  adapter,
   log: process.env.NODE_ENV === 'development'
     ? ['query', 'error', 'warn']
     : ['error'],
@@ -222,6 +247,7 @@ export default async function UsersPage() {
 ```typescript
 // app/api/users/route.ts
 import { NextRequest, NextResponse } from 'next/server';
+import { Prisma } from '@/app/generated/prisma/client';
 import prisma from '@/lib/prisma';
 
 export async function GET(request: NextRequest) {
@@ -271,7 +297,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(user, { status: 201 });
   } catch (error) {
-    if (error.code === 'P2002') {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
       return NextResponse.json(
         { error: 'Email already exists' },
         { status: 409 }
@@ -332,6 +358,7 @@ export async function deletePost(postId: string) {
 
 ```typescript
 // lib/queries/posts.ts
+import { Prisma } from '@/app/generated/prisma/client';
 import prisma from '@/lib/prisma';
 
 export async function getPostsWithFilters({
@@ -349,7 +376,7 @@ export async function getPostsWithFilters({
   page?: number;
   limit?: number;
 }) {
-  const where = {
+  const where: Prisma.PostWhereInput = {
     // Conditionally add filters
     ...(published !== undefined && { published }),
     ...(authorId && { authorId }),
@@ -454,10 +481,15 @@ export async function transferPosts(fromUserId: string, toUserId: string) {
 
 ```typescript
 // lib/prisma.ts
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '@/app/generated/prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
 
 const prismaClientSingleton = () => {
-  return new PrismaClient().$extends({
+  const adapter = new PrismaPg({
+    connectionString: process.env.DATABASE_URL!,
+  });
+
+  return new PrismaClient({ adapter }).$extends({
     // Add computed fields
     result: {
       user: {
@@ -472,7 +504,7 @@ const prismaClientSingleton = () => {
         excerpt: {
           needs: { content: true },
           compute(post) {
-            return post.content?.slice(0, 200) + '...' || '';
+            return post.content ? `${post.content.slice(0, 200)}...` : '';
           },
         },
       },
@@ -540,24 +572,20 @@ flowchart TD
 
 ```typescript
 // lib/prisma.ts - Optimized for serverless
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '@/app/generated/prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { Pool } from 'pg';
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
-  pool: Pool | undefined;
 };
 
 // Use connection pooling in production
-const pool = globalForPrisma.pool ?? new Pool({
+const adapter = new PrismaPg({
   connectionString: process.env.DATABASE_URL,
   max: 10, // Maximum connections in pool
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 10000,
 });
-
-const adapter = new PrismaPg(pool);
 
 export const prisma = globalForPrisma.prisma ?? new PrismaClient({
   adapter,
@@ -566,7 +594,6 @@ export const prisma = globalForPrisma.prisma ?? new PrismaClient({
 
 if (process.env.NODE_ENV !== 'production') {
   globalForPrisma.prisma = prisma;
-  globalForPrisma.pool = pool;
 }
 
 export default prisma;
@@ -576,9 +603,15 @@ export default prisma;
 
 ```typescript
 // prisma/seed.ts
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '../app/generated/prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
+import 'dotenv/config';
 
-const prisma = new PrismaClient();
+const adapter = new PrismaPg({
+  connectionString: process.env.DATABASE_URL,
+});
+
+const prisma = new PrismaClient({ adapter });
 
 async function main() {
   // Clean existing data
@@ -649,13 +682,21 @@ main()
   });
 ```
 
-```json
-// package.json - Add seed script
-{
-  "prisma": {
-    "seed": "ts-node --compiler-options {\"module\":\"CommonJS\"} prisma/seed.ts"
-  }
-}
+```typescript
+// prisma.config.ts - Add seed script
+import 'dotenv/config';
+import { defineConfig, env } from 'prisma/config';
+
+export default defineConfig({
+  schema: 'prisma/schema.prisma',
+  migrations: {
+    path: 'prisma/migrations',
+    seed: 'tsx prisma/seed.ts',
+  },
+  datasource: {
+    url: env('DATABASE_URL'),
+  },
+});
 ```
 
 ## Production Checklist
@@ -664,7 +705,8 @@ main()
 |------|----------------|
 | Run migrations | `npx prisma migrate deploy` |
 | Generate client | `npx prisma generate` |
-| Set DATABASE_URL | Use connection pooler URL |
+| Set DATABASE_URL | Use connection pooler URL for runtime traffic |
+| Configure migration URL | Use a direct database URL in `prisma.config.ts` if runtime uses PgBouncer |
 | Enable query logging | Set to `['error']` only |
 | Connection pool size | Match serverless concurrency |
 | Health check | Add `/api/health` endpoint |
@@ -685,11 +727,13 @@ export async function GET() {
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown database error';
+
     return NextResponse.json(
       {
         status: 'unhealthy',
         database: 'disconnected',
-        error: error.message,
+        error: message,
       },
       { status: 503 }
     );
