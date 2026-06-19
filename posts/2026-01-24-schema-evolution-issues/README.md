@@ -56,7 +56,6 @@ Avro is widely used in data pipelines because of its schema evolution support.
 ### Adding a New Field (Backward Compatible)
 
 ```json
-// Original schema v1
 {
   "type": "record",
   "name": "User",
@@ -70,7 +69,6 @@ Avro is widely used in data pipelines because of its schema evolution support.
 ```
 
 ```json
-// New schema v2 - Adding optional field with default
 {
   "type": "record",
   "name": "User",
@@ -87,7 +85,6 @@ Avro is widely used in data pipelines because of its schema evolution support.
 ### Removing a Field (Forward Compatible)
 
 ```json
-// Schema v2 - Field to be removed must have a default
 {
   "type": "record",
   "name": "User",
@@ -102,7 +99,6 @@ Avro is widely used in data pipelines because of its schema evolution support.
 ```
 
 ```json
-// Schema v3 - Field removed (old readers still work due to default)
 {
   "type": "record",
   "name": "User",
@@ -166,7 +162,7 @@ curl -X POST -H "Content-Type: application/vnd.schemaregistry.v1+json" \
 ```python
 # schema_manager.py
 
-from confluent_kafka.schema_registry import SchemaRegistryClient
+from confluent_kafka.schema_registry import Schema, SchemaRegistryClient
 from confluent_kafka.schema_registry.avro import AvroSerializer, AvroDeserializer
 import json
 
@@ -193,8 +189,6 @@ class SchemaManager:
 
     def register_schema(self, subject, schema_str):
         """Register a new schema version if compatible."""
-        from confluent_kafka.schema_registry import Schema
-
         # Check compatibility first
         if not self.check_compatibility(subject, schema_str):
             raise ValueError(f"Schema is not compatible with subject {subject}")
@@ -239,10 +233,10 @@ class SchemaManager:
         added_fields = new_fields - old_fields
         for field in new_schema['fields']:
             if field['name'] in added_fields:
-                if 'default' not in field and 'null' not in str(field['type']):
+                if 'default' not in field:
                     raise ValueError(
                         f"New field '{field['name']}' must have a default value "
-                        "or be nullable for backward compatibility."
+                        "for backward compatibility."
                     )
 
         print("Schema evolution is safe!")
@@ -420,8 +414,8 @@ handler.process_message(old_message)
 | Remove field | Ensure field has default first |
 | Rename field | Add new, migrate, delete old |
 | Change type | Create new field, deprecate old |
-| Add enum value | Append to end of enum list |
-| Remove enum value | Never remove, only deprecate |
+| Add enum value | Add a reader default or verify compatibility |
+| Remove enum value | Keep a reader default or only deprecate |
 
 ---
 
