@@ -73,13 +73,13 @@ function getTheme(user: User): string | undefined {
 }
 
 // Works with method calls too
-interface Document {
+interface AppDocument {
     metadata?: {
         getTitle?(): string;
     };
 }
 
-function getTitle(doc: Document): string | undefined {
+function getTitle(doc: AppDocument): string | undefined {
     return doc.metadata?.getTitle?.();
 }
 
@@ -320,23 +320,28 @@ const knownUser = users.find(u => u.id === 1)!;  // Use carefully
 ### Map Access
 
 ```typescript
+interface User {
+    id: number;
+    name: string;
+}
+
 const userMap = new Map<string, User>();
 userMap.set('user1', { id: 1, name: 'Alice' });
 
 // ERROR: Object is possibly 'undefined'
-const user = userMap.get('user1');
-console.log(user.name);  // Error!
+const mappedUser = userMap.get('user1');
+console.log(mappedUser.name);  // Error!
 
 // Solution 1: Check existence
 if (userMap.has('user1')) {
-    const user = userMap.get('user1')!;  // Safe after has() check
-    console.log(user.name);
+    const checkedUser = userMap.get('user1')!;  // Safe after has() check
+    console.log(checkedUser.name);
 }
 
 // Solution 2: Null check
-const user = userMap.get('user1');
-if (user) {
-    console.log(user.name);
+const nullableUser = userMap.get('user1');
+if (nullableUser) {
+    console.log(nullableUser.name);
 }
 
 // Solution 3: Optional chaining
@@ -351,9 +356,9 @@ interface StringMap {
 }
 
 // Or with noUncheckedIndexedAccess in tsconfig
-interface StringMap {
-    [key: string]: string;
-}
+// interface StringMap {
+//     [key: string]: string;
+// }
 
 const map: StringMap = { foo: 'bar' };
 
@@ -379,18 +384,18 @@ console.log((map['foo'] ?? '').toUpperCase());
 
 ```typescript
 // Optional parameter
-function greet(name?: string): string {
+function greetUnsafe(name?: string): string {
     // ERROR: Object is possibly 'undefined'
     return `Hello, ${name.toUpperCase()}!`;  // Error!
 }
 
 // Solution 1: Default parameter
-function greet(name: string = 'Guest'): string {
+function greetWithDefault(name: string = 'Guest'): string {
     return `Hello, ${name.toUpperCase()}!`;
 }
 
 // Solution 2: Null check
-function greet(name?: string): string {
+function greetWithNullCheck(name?: string): string {
     if (!name) {
         return 'Hello, Guest!';
     }
@@ -398,7 +403,7 @@ function greet(name?: string): string {
 }
 
 // Solution 3: Nullish coalescing
-function greet(name?: string): string {
+function greetWithNullishCoalescing(name?: string): string {
     return `Hello, ${(name ?? 'Guest').toUpperCase()}!`;
 }
 ```
@@ -408,6 +413,12 @@ function greet(name?: string): string {
 ## Class Properties
 
 ```typescript
+interface User {
+    name: string;
+}
+
+declare function fetchUser(id: number): Promise<User>;
+
 class UserService {
     private user?: User;
 
@@ -416,12 +427,12 @@ class UserService {
     }
 
     // ERROR: Object is possibly 'undefined'
-    getName(): string {
+    getNameUnsafe(): string {
         return this.user.name;  // Error!
     }
 
     // Solution 1: Guard with error
-    getName(): string {
+    getNameOrThrow(): string {
         if (!this.user) {
             throw new Error('User not loaded');
         }
@@ -429,20 +440,20 @@ class UserService {
     }
 
     // Solution 2: Return optional
-    getName(): string | undefined {
+    getOptionalName(): string | undefined {
         return this.user?.name;
     }
 
     // Solution 3: Ensure loaded before use
     getNameSafe(): string {
-        this.ensureLoaded();
-        return this.user!.name;  // Safe after ensureLoaded
+        return this.getLoadedUser().name;
     }
 
-    private ensureLoaded(): asserts this is this & { user: User } {
+    private getLoadedUser(): User {
         if (!this.user) {
             throw new Error('User not loaded. Call loadUser first.');
         }
+        return this.user;
     }
 }
 ```
