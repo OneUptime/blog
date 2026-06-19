@@ -45,7 +45,7 @@ Gateways configure the Istio ingress gateway to accept external traffic. Here's 
 ```yaml
 # Gateway configuration for external traffic
 
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: my-gateway
@@ -66,7 +66,7 @@ For HTTPS traffic with TLS termination:
 
 ```yaml
 # Gateway with TLS configuration
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: secure-gateway
@@ -93,7 +93,7 @@ Here's a basic VirtualService that routes all traffic to a single service:
 
 ```yaml
 # Simple VirtualService routing to one backend
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app-vs
@@ -116,7 +116,7 @@ Route different URL paths to different services:
 
 ```yaml
 # Route based on URL path
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-routing
@@ -158,7 +158,7 @@ Route based on HTTP headers, useful for A/B testing or feature flags:
 
 ```yaml
 # Route based on headers
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: header-routing
@@ -190,7 +190,7 @@ First, you need a DestinationRule to define subsets:
 
 ```yaml
 # Define version subsets
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-app-dr
@@ -209,7 +209,7 @@ Then create a VirtualService with weighted routing:
 
 ```yaml
 # Canary deployment with 90/10 traffic split
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app-canary
@@ -246,11 +246,11 @@ http:
 
 ## Load Balancing Strategies
 
-DestinationRules let you configure load balancing algorithms. The default is round-robin, but you have several options.
+DestinationRules let you configure load balancing algorithms. If you do not specify one, Istio selects an appropriate default, but you can choose from several options.
 
 ```yaml
 # DestinationRule with load balancing configuration
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service-lb
@@ -272,7 +272,7 @@ For session affinity (sticky sessions), use consistent hashing:
 
 ```yaml
 # Sticky sessions based on user header
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: sticky-sessions
@@ -290,7 +290,7 @@ Protect your services from cascading failures with circuit breakers:
 
 ```yaml
 # Circuit breaker configuration
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: circuit-breaker
@@ -317,7 +317,7 @@ Configure timeouts to prevent slow services from blocking requests:
 
 ```yaml
 # Timeout and retry configuration
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: timeout-retry
@@ -341,7 +341,7 @@ Mirror production traffic to a test service for shadow testing:
 
 ```yaml
 # Mirror traffic to test environment
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: traffic-mirror
