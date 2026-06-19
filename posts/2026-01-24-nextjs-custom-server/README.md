@@ -109,6 +109,7 @@ app.prepare().then(() => {
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "module": "commonjs",
+    "rootDir": ".",
     "outDir": "dist",
     "target": "es2017",
     "isolatedModules": false,
@@ -188,7 +189,7 @@ app.prepare().then(() => {
     });
 
     socket.on('chat-message', (data: ChatMessage) => {
-      // Broadcast to all clients in the room
+      // Broadcast to all connected clients
       io.emit('new-message', {
         ...data,
         timestamp: Date.now(),
@@ -309,8 +310,8 @@ app.prepare().then(() => {
 
   // Handle all other routes with Next.js
   fastify.all('*', async (request, reply) => {
-    await handle(request.raw, reply.raw);
     reply.hijack();
+    await handle(request.raw, reply.raw);
   });
 
   fastify.listen({ port, host: '0.0.0.0' }, (err) => {
@@ -466,6 +467,12 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 
+# Production dependencies
+FROM base AS prod-deps
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --omit=dev
+
 # Builder
 FROM base AS builder
 WORKDIR /app
@@ -481,10 +488,11 @@ ENV NODE_ENV=production
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
-COPY --from=builder /app/dist/server ./dist/server
+COPY --chown=nextjs:nodejs --from=prod-deps /app/node_modules ./node_modules
+COPY --chown=nextjs:nodejs --from=prod-deps /app/package*.json ./
+COPY --chown=nextjs:nodejs --from=builder /app/public ./public
+COPY --chown=nextjs:nodejs --from=builder /app/.next ./.next
+COPY --chown=nextjs:nodejs --from=builder /app/dist/server ./dist/server
 
 USER nextjs
 
@@ -559,13 +567,13 @@ app.prepare().then(() => {
   const server = express();
 
   // Serve static files with caching
-  server.use('/static', express.static(path.join(__dirname, '../public/static'), {
+  server.use('/static', express.static(path.join(process.cwd(), 'public/static'), {
     maxAge: '1y',
     immutable: true,
   }));
 
   // Serve uploads
-  server.use('/uploads', express.static(path.join(__dirname, '../uploads'), {
+  server.use('/uploads', express.static(path.join(process.cwd(), 'uploads'), {
     maxAge: '1d',
   }));
 
