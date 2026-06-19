@@ -42,8 +42,7 @@ Install k6 based on your operating system:
 brew install k6
 
 # Ubuntu/Debian
-sudo gpg -k
-sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+curl -fsSL https://dl.k6.io/key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/k6-archive-keyring.gpg
 echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
 sudo apt-get update
 sudo apt-get install k6
@@ -290,7 +289,7 @@ import { Counter, Trend, Rate, Gauge } from 'k6/metrics';
 const orderSuccessRate = new Rate('order_success_rate');
 const orderDuration = new Trend('order_duration');
 const ordersCreated = new Counter('orders_created');
-const activeOrders = new Gauge('active_orders');
+const lastOrderItemCount = new Gauge('last_order_item_count');
 
 export const options = {
   vus: 50,
@@ -319,7 +318,7 @@ export default function () {
 
   if (success) {
     ordersCreated.add(1);
-    activeOrders.add(1);
+    lastOrderItemCount.add(1);
   }
 }
 ```
@@ -343,7 +342,7 @@ export const options = {
 
 export default function () {
   // Each VU gets a different user based on VU ID
-  const user = users[__VU % users.length];
+  const user = users[(__VU - 1) % users.length];
 
   const response = http.post('https://api.example.com/auth/login', JSON.stringify({
     email: user.email,
@@ -407,8 +406,7 @@ jobs:
 
       - name: Install k6
         run: |
-          sudo gpg -k
-          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          curl -fsSL https://dl.k6.io/key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/k6-archive-keyring.gpg
           echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
           sudo apt-get update
           sudo apt-get install k6
@@ -419,6 +417,7 @@ jobs:
           K6_TARGET_URL: ${{ secrets.STAGING_URL }}
 
       - name: Upload results
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: k6-results
