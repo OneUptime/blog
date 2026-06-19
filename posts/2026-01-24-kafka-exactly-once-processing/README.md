@@ -10,7 +10,7 @@ Description: A comprehensive guide to implementing exactly-once message processi
 
 ## Introduction
 
-Exactly-once processing is one of the most challenging guarantees to achieve in distributed systems. In Apache Kafka, exactly-once semantics (EOS) ensure that each message is processed exactly one time, even in the presence of failures. This eliminates the risks of duplicate processing or data loss.
+Exactly-once processing is one of the most challenging guarantees to achieve in distributed systems. In Apache Kafka, exactly-once semantics (EOS) ensure that records consumed from Kafka, processed, and produced back to Kafka are committed exactly once, even in the presence of failures. This eliminates the risks of duplicate processing or data loss within the Kafka transaction boundary.
 
 This guide covers how to configure Kafka consumers for exactly-once processing, including transactional producers, idempotent operations, and patterns for achieving end-to-end exactly-once semantics.
 
@@ -277,9 +277,9 @@ public class ExactlyOnceProcessor {
         Properties producerProps = new Properties();
         producerProps.put("bootstrap.servers", "localhost:9092");
 
-        // Unique transactional ID
+        // Stable transactional ID, unique per running processor instance
         producerProps.put(ProducerConfig.TRANSACTIONAL_ID_CONFIG,
-            "exactly-once-processor-" + UUID.randomUUID());
+            "exactly-once-processor-1");
 
         producerProps.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, true);
         producerProps.put(ProducerConfig.ACKS_CONFIG, "all");
@@ -388,17 +388,21 @@ public class ExactlyOnceProcessor {
 ### Python Implementation with confluent-kafka
 
 ```python
-from confluent_kafka import Consumer, Producer, KafkaError, KafkaException
-from confluent_kafka.admin import AdminClient
-import json
-import uuid
+from confluent_kafka import (
+    Consumer,
+    KafkaError,
+    KafkaException,
+    Producer,
+    TopicPartition,
+)
 
 class ExactlyOnceProcessor:
     """
     Exactly-once processor using Kafka transactions.
     """
 
-    def __init__(self, bootstrap_servers, input_topic, output_topic, group_id):
+    def __init__(self, bootstrap_servers, input_topic, output_topic, group_id,
+                 transactional_id):
         self.input_topic = input_topic
         self.output_topic = output_topic
         self.group_id = group_id
@@ -416,8 +420,8 @@ class ExactlyOnceProcessor:
         # Producer configuration with transactions
         self.producer_config = {
             'bootstrap.servers': bootstrap_servers,
-            # Unique transactional ID
-            'transactional.id': f'eos-processor-{uuid.uuid4()}',
+            # Stable transactional ID, unique per running processor instance
+            'transactional.id': transactional_id,
             'enable.idempotence': True,
             'acks': 'all',
         }
@@ -482,6 +486,7 @@ class ExactlyOnceProcessor:
             print("Shutting down...")
         finally:
             self.consumer.close()
+            self.producer.flush()
 
     def _process_message(self, value):
         """Process a single message."""
@@ -496,9 +501,9 @@ from kafka import KafkaConsumer, KafkaProducer
 import hashlib
 import redis
 
-class SimpleExactlyOnceProcessor:
+class SimpleIdempotentProcessor:
     """
-    Simplified exactly-once processing using idempotency.
+    Simplified at-least-once processing with idempotency.
     This approach works when the output system supports idempotent writes.
     """
 
@@ -621,9 +626,8 @@ flowchart LR
 
 ```python
 import psycopg2
-from kafka import KafkaConsumer
+from kafka import KafkaConsumer, KafkaProducer
 import json
-import threading
 import time
 
 class TransactionalOutboxProcessor:
@@ -695,6 +699,7 @@ class TransactionalOutboxProcessor:
 
                     if message.offset <= last_offset:
                         print(f"Skipping already processed: {message.offset}")
+                        self.consumer.commit()
                         continue
 
                     # Begin database transaction
@@ -717,6 +722,10 @@ class TransactionalOutboxProcessor:
 
                     # Commit database transaction
                     conn.commit()
+
+                    # Commit Kafka offset after the database transaction.
+                    # If this fails, the database offset check makes the retry idempotent.
+                    self.consumer.commit()
 
                     print(f"Processed message at offset {message.offset}")
 
@@ -818,6 +827,7 @@ class OutboxRelay:
 
 ```python
 from kafka import KafkaConsumer
+import psycopg2
 import redis
 import json
 import hashlib
@@ -840,6 +850,10 @@ class IdempotentDatabaseWriter:
         self.db = self._connect_db(db_config)
         self.redis = redis.Redis(host=redis_host)
         self.dedup_ttl = 86400 * 7
+
+    def _connect_db(self, db_config):
+        """Connect to PostgreSQL."""
+        return psycopg2.connect(**db_config)
 
     def _message_key(self, message):
         """Generate deduplication key."""
@@ -929,8 +943,7 @@ transaction.state.log.min.isr=2
 # Transaction timeout
 transaction.max.timeout.ms=900000
 
-# Enable idempotent producers
-enable.idempotence=true
+# Idempotence is a producer setting, not a broker setting.
 ```
 
 ### Producer Configuration Summary
@@ -1012,33 +1025,33 @@ flowchart TB
 
 ```yaml
 # prometheus-alerts.yaml
+# Metric names vary by JMX exporter configuration. Replace the example metric
+# names below with the names your exporter generates for Kafka producer metrics
+# such as txn-commit-time-ns-total and txn-abort-time-ns-total.
 groups:
   - name: kafka-exactly-once
     rules:
-      # Alert on high transaction abort rate
-      - alert: KafkaHighTransactionAbortRate
+      # Alert when the producer is spending time aborting transactions
+      - alert: KafkaTransactionAborts
         expr: |
-          rate(kafka_producer_txn_abort_total[5m]) /
-          (rate(kafka_producer_txn_commit_total[5m]) +
-           rate(kafka_producer_txn_abort_total[5m])) > 0.1
+          rate(kafka_producer_producer_metrics_txn_abort_time_ns_total[5m]) > 0
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "High Kafka transaction abort rate"
-          description: "Transaction abort rate is {{ $value | humanizePercentage }}"
+          summary: "Kafka transactions are aborting"
+          description: "Kafka producer spent time aborting transactions"
 
-      # Alert on long transaction times
-      - alert: KafkaLongTransactionTime
+      # Alert on high cumulative transaction commit time
+      - alert: KafkaHighTransactionCommitTime
         expr: |
-          kafka_producer_txn_commit_time_ns_total /
-          kafka_producer_txn_commit_total > 5000000000
+          rate(kafka_producer_producer_metrics_txn_commit_time_ns_total[5m]) > 5000000000
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "Kafka transactions taking too long"
-          description: "Average transaction time is {{ $value | humanizeDuration }}"
+          summary: "Kafka transaction commits are taking significant time"
+          description: "Kafka producer commit transaction time is increasing quickly"
 ```
 
 ## Conclusion
