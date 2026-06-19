@@ -54,6 +54,18 @@ HOP_BY_HOP_HEADERS = {
 }
 
 
+def get_hop_by_hop_headers(headers):
+    """Return hop-by-hop headers, including those named by Connection"""
+    hop_by_hop = set(HOP_BY_HOP_HEADERS)
+    connection = headers.get('Connection', '')
+    hop_by_hop.update(
+        header.strip().lower()
+        for header in connection.split(',')
+        if header.strip()
+    )
+    return hop_by_hop
+
+
 class ForwardProxy:
     """Simple HTTP forward proxy"""
 
@@ -84,10 +96,11 @@ class ForwardProxy:
         logger.info(f"Proxying request to: {target_url}")
 
         # Build headers, filtering out hop-by-hop headers
+        request_hop_by_hop = get_hop_by_hop_headers(request.headers)
         headers = {
             key: value
             for key, value in request.headers.items()
-            if key.lower() not in HOP_BY_HOP_HEADERS
+            if key.lower() not in request_hop_by_hop
         }
 
         # Read request body if present
@@ -103,10 +116,11 @@ class ForwardProxy:
                 allow_redirects=False  # Let client handle redirects
             ) as response:
                 # Build response headers
+                response_hop_by_hop = get_hop_by_hop_headers(response.headers)
                 response_headers = {
                     key: value
                     for key, value in response.headers.items()
-                    if key.lower() not in HOP_BY_HOP_HEADERS
+                    if key.lower() not in response_hop_by_hop
                 }
 
                 # Read response body
@@ -299,10 +313,11 @@ class ReverseProxy:
         logger.info(f"Forwarding to {target_url}")
 
         # Filter headers
+        request_hop_by_hop = get_hop_by_hop_headers(request.headers)
         headers = {
             key: value
             for key, value in request.headers.items()
-            if key.lower() not in HOP_BY_HOP_HEADERS
+            if key.lower() not in request_hop_by_hop
         }
         # Add forwarding headers
         headers['X-Forwarded-For'] = request.remote or ''
@@ -321,10 +336,11 @@ class ReverseProxy:
             ) as response:
                 await self.load_balancer.mark_healthy(backend)
 
+                response_hop_by_hop = get_hop_by_hop_headers(response.headers)
                 response_headers = {
                     key: value
                     for key, value in response.headers.items()
-                    if key.lower() not in HOP_BY_HOP_HEADERS
+                    if key.lower() not in response_hop_by_hop
                 }
                 response_body = await response.read()
 
@@ -348,6 +364,18 @@ HOP_BY_HOP_HEADERS = {
     'proxy-authorization', 'te', 'trailers',
     'transfer-encoding', 'upgrade'
 }
+
+
+def get_hop_by_hop_headers(headers):
+    """Return hop-by-hop headers, including those named by Connection"""
+    hop_by_hop = set(HOP_BY_HOP_HEADERS)
+    connection = headers.get('Connection', '')
+    hop_by_hop.update(
+        header.strip().lower()
+        for header in connection.split(',')
+        if header.strip()
+    )
+    return hop_by_hop
 
 
 def create_reverse_proxy(backends: List[str]) -> web.Application:
@@ -380,13 +408,32 @@ Proxies often need to modify requests and responses. Here is a middleware patter
 
 ```python
 # middleware_proxy.py
-from aiohttp import web, ClientSession
-from typing import Callable, Awaitable, Dict, Any
+from aiohttp import web, ClientSession, ClientTimeout
+from typing import Callable, Awaitable, Dict, Any, List
 from dataclasses import dataclass
+from datetime import datetime
 import json
 import logging
 
 logger = logging.getLogger(__name__)
+
+HOP_BY_HOP_HEADERS = {
+    'connection', 'keep-alive', 'proxy-authenticate',
+    'proxy-authorization', 'te', 'trailers',
+    'transfer-encoding', 'upgrade'
+}
+
+
+def get_hop_by_hop_headers(headers):
+    """Return hop-by-hop headers, including those named by Connection"""
+    hop_by_hop = set(HOP_BY_HOP_HEADERS)
+    connection = headers.get('Connection', '')
+    hop_by_hop.update(
+        header.strip().lower()
+        for header in connection.split(',')
+        if header.strip()
+    )
+    return hop_by_hop
 
 # Type alias for middleware functions
 RequestMiddleware = Callable[[web.Request, Dict], Awaitable[Dict]]
@@ -422,7 +469,9 @@ class MiddlewareProxy:
         self._response_middlewares.append(middleware)
 
     async def start(self, app: web.Application) -> None:
-        self.session = ClientSession()
+        self.session = ClientSession(
+            timeout=ClientTimeout(total=self.config.timeout)
+        )
 
     async def stop(self, app: web.Application) -> None:
         if self.session:
@@ -435,7 +484,11 @@ class MiddlewareProxy:
             'method': request.method,
             'path': request.path,
             'query_string': request.query_string,
-            'headers': dict(request.headers),
+            'headers': {
+                key: value
+                for key, value in request.headers.items()
+                if key.lower() not in get_hop_by_hop_headers(request.headers)
+            },
             'body': await request.read() if request.body_exists else None,
         }
 
@@ -465,7 +518,12 @@ class MiddlewareProxy:
                 data=context['body']
             ) as response:
                 # Build response
-                response_headers = dict(response.headers)
+                response_hop_by_hop = get_hop_by_hop_headers(response.headers)
+                response_headers = {
+                    key: value
+                    for key, value in response.headers.items()
+                    if key.lower() not in response_hop_by_hop
+                }
                 response_body = await response.read()
 
                 # Strip configured response headers
@@ -568,6 +626,24 @@ import asyncio
 import logging
 
 logger = logging.getLogger(__name__)
+
+HOP_BY_HOP_HEADERS = {
+    'connection', 'keep-alive', 'proxy-authenticate',
+    'proxy-authorization', 'te', 'trailers',
+    'transfer-encoding', 'upgrade'
+}
+
+
+def get_hop_by_hop_headers(headers):
+    """Return hop-by-hop headers, including those named by Connection"""
+    hop_by_hop = set(HOP_BY_HOP_HEADERS)
+    connection = headers.get('Connection', '')
+    hop_by_hop.update(
+        header.strip().lower()
+        for header in connection.split(',')
+        if header.strip()
+    )
+    return hop_by_hop
 
 
 @dataclass
@@ -682,8 +758,12 @@ class CachingProxy:
         if status not in (200, 203, 204, 206, 300, 301, 404, 405, 410, 414, 501):
             return False
         # Respect Cache-Control headers
-        cache_control = headers.get('Cache-Control', '')
-        if 'no-store' in cache_control or 'private' in cache_control:
+        cache_control = headers.get('Cache-Control', '').lower()
+        if (
+            'no-store' in cache_control
+            or 'private' in cache_control
+            or 'no-cache' in cache_control
+        ):
             return False
         return True
 
@@ -723,7 +803,12 @@ class CachingProxy:
                 )
 
         # Forward request
-        headers = dict(request.headers)
+        request_hop_by_hop = get_hop_by_hop_headers(request.headers)
+        headers = {
+            key: value
+            for key, value in request.headers.items()
+            if key.lower() not in request_hop_by_hop
+        }
         body = await request.read() if request.body_exists else None
 
         try:
@@ -733,7 +818,12 @@ class CachingProxy:
                 headers=headers,
                 data=body
             ) as response:
-                response_headers = dict(response.headers)
+                response_hop_by_hop = get_hop_by_hop_headers(response.headers)
+                response_headers = {
+                    key: value
+                    for key, value in response.headers.items()
+                    if key.lower() not in response_hop_by_hop
+                }
                 response_body = await response.read()
 
                 # Cache if appropriate
