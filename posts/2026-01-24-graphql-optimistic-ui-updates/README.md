@@ -120,7 +120,7 @@ function CommentForm({ postId, currentUser }) {
 
   const [addComment, { loading }] = useMutation(ADD_COMMENT_MUTATION, {
     // Generate a temporary ID for the optimistic comment
-    // Using a negative number helps identify optimistic entries
+    // Using a "temp-" prefix helps identify optimistic entries
     optimisticResponse: {
       addComment: {
         __typename: 'Comment',
@@ -378,7 +378,7 @@ function useOptimisticMutation(mutation, options = {}) {
   const [mutate, result] = useMutation(mutation, {
     ...options,
 
-    // Called when the optimistic response is applied
+    // Called when the mutation completes successfully
     onCompleted(data) {
       setError(null);
       setIsRolledBack(false);
@@ -603,7 +603,7 @@ function useConcurrentOptimisticUpdates() {
 
 // Component using concurrent updates
 function BulkActions({ items }) {
-  const { addPendingUpdate, removePendingUpdate } =
+  const { addPendingUpdate, removePendingUpdate, getPendingUpdate } =
     useConcurrentOptimisticUpdates();
 
   const [updateItems] = useMutation(BULK_UPDATE_MUTATION, {
