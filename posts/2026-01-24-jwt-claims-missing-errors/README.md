@@ -80,7 +80,7 @@ First, examine what is actually in your token. Never decode tokens containing se
 import jwt
 import json
 import base64
-from datetime import datetime
+from datetime import datetime, timezone
 
 def decode_jwt_parts(token: str) -> dict:
     """
@@ -107,7 +107,8 @@ def decode_jwt_parts(token: str) -> dict:
     for claim in ['exp', 'iat', 'nbf']:
         if claim in payload:
             payload[f'{claim}_readable'] = datetime.fromtimestamp(
-                payload[claim]
+                payload[claim],
+                tz=timezone.utc
             ).isoformat()
 
     return {
@@ -168,7 +169,7 @@ print(json.dumps(validation, indent=2))
 
 ```python
 import jwt
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 class JWTGenerator:
@@ -200,7 +201,7 @@ class JWTGenerator:
             custom_claims: Additional application-specific claims
             expires_in_hours: Token validity period
         """
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         # Build the payload with registered claims
         payload = {
@@ -265,7 +266,7 @@ Some claim values may not serialize correctly:
 ```python
 import jwt
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from enum import Enum
 
@@ -334,7 +335,7 @@ def create_token_with_complex_claims():
         'sub': '12345',
         'role': UserRole.ADMIN,  # Enum - needs serialization
         'balance': Decimal('99.99'),  # Decimal - needs conversion
-        'created_at': datetime.utcnow(),  # datetime - needs timestamp
+        'created_at': datetime.now(timezone.utc),  # datetime - needs timestamp
         'metadata': {
             'nested': UserRole.USER,  # Nested enum
             'count': 42
@@ -455,7 +456,7 @@ def wrong_validation(token, secret):
     # This accepts tokens even if missing expected claims
     payload = jwt.decode(token, secret, algorithms=['HS256'])
     # Crashes later when accessing missing claim
-    user_id = payload['user_id']  # KeyError if missing!
+    user_id = payload['sub']  # KeyError if missing!
 
 # CORRECT - Specify required claims upfront
 def correct_validation(token, secret):
@@ -614,8 +615,9 @@ def validate_token():
 ### Pattern: Claim Validators
 
 ```python
-from typing import Callable, Any
+from typing import Any
 from abc import ABC, abstractmethod
+import jwt
 
 class ClaimValidator(ABC):
     """Base class for claim validators."""
@@ -758,7 +760,8 @@ def validate_user_token(token: str, secret: str) -> dict:
 ## Error Response Patterns
 
 ```python
-from flask import Flask, jsonify
+import jwt
+from flask import Flask, current_app, jsonify, request
 from functools import wraps
 
 def jwt_required(required_claims: list = None):
@@ -869,16 +872,16 @@ flowchart TD
 """
 JWT Claims Debugging Script
 
-Usage: python debug_jwt.py <token> [secret]
+Usage: python debug_jwt.py <token> [secret] [expected_algorithm]
 """
 
 import sys
 import json
 import jwt
 import base64
-from datetime import datetime
+from datetime import datetime, timezone
 
-def debug_jwt(token: str, secret: str = None):
+def debug_jwt(token: str, secret: str = None, expected_algorithm: str = 'HS256'):
     """
     Comprehensive JWT debugging.
     """
@@ -919,7 +922,7 @@ def debug_jwt(token: str, secret: str = None):
             if claim in payload:
                 value = payload[claim]
                 if claim in ['exp', 'nbf', 'iat']:
-                    dt = datetime.fromtimestamp(value)
+                    dt = datetime.fromtimestamp(value, tz=timezone.utc)
                     print(f"      {claim}: {value} ({dt.isoformat()})")
                 else:
                     print(f"      {claim}: {value}")
@@ -948,11 +951,13 @@ def debug_jwt(token: str, secret: str = None):
     if not secret:
         print("    SKIPPED (no secret provided)")
     else:
+        if header.get('alg') != expected_algorithm:
+            print(f"    WARNING: Token alg is {header.get('alg')}, expected {expected_algorithm}")
         try:
             verified_payload = jwt.decode(
                 token,
                 secret,
-                algorithms=[header.get('alg', 'HS256')]
+                algorithms=[expected_algorithm]
             )
             print("    SUCCESS: Signature valid")
         except jwt.ExpiredSignatureError:
@@ -964,7 +969,7 @@ def debug_jwt(token: str, secret: str = None):
 
     # 5. Token age and expiry
     print("\n[5] Token Timing")
-    now = datetime.utcnow().timestamp()
+    now = datetime.now(timezone.utc).timestamp()
 
     if 'iat' in payload:
         age = now - payload['iat']
@@ -982,12 +987,13 @@ def debug_jwt(token: str, secret: str = None):
 
 if __name__ == '__main__':
     if len(sys.argv) < 2:
-        print("Usage: python debug_jwt.py <token> [secret]")
+        print("Usage: python debug_jwt.py <token> [secret] [expected_algorithm]")
         sys.exit(1)
 
     token = sys.argv[1]
     secret = sys.argv[2] if len(sys.argv) > 2 else None
-    debug_jwt(token, secret)
+    expected_algorithm = sys.argv[3] if len(sys.argv) > 3 else 'HS256'
+    debug_jwt(token, secret, expected_algorithm)
 ```
 
 ---
