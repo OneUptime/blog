@@ -44,9 +44,9 @@ The simplest approach limits the number of requests per time window regardless o
 
 ```javascript
 // rate-limiter.js
-// Basic request-based rate limiting using in-memory storage
-const rateLimit = require("express-rate-limit");
-const RedisStore = require("rate-limit-redis");
+// Basic request-based rate limiting using Redis storage
+const { rateLimit, ipKeyGenerator } = require("express-rate-limit");
+const { RedisStore } = require("rate-limit-redis");
 const Redis = require("ioredis");
 
 // Create Redis client for distributed rate limiting
@@ -65,7 +65,9 @@ const requestRateLimiter = rateLimit({
 
   // Configuration
   windowMs: 60 * 1000, // 1 minute window
-  max: 100, // 100 requests per minute
+  limit: 100, // 100 requests per minute
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
   message: {
     errors: [
       {
@@ -85,7 +87,7 @@ const requestRateLimiter = rateLimit({
       return `user:${req.user.id}`;
     }
     // Fall back to IP address
-    return `ip:${req.ip}`;
+    return `ip:${ipKeyGenerator(req.ip)}`;
   },
 
   // Skip rate limiting for certain requests
@@ -113,8 +115,9 @@ A more sophisticated approach calculates the cost of each query based on its com
 const {
   getComplexity,
   simpleEstimator,
-  fieldExtensionsEstimator
+  directiveEstimator
 } = require("graphql-query-complexity");
+const { parse } = require("graphql");
 
 // Define complexity configuration
 const complexityConfig = {
@@ -124,7 +127,7 @@ const complexityConfig = {
   // Estimators determine the cost of each field
   estimators: [
     // Use @complexity directive values if present
-    fieldExtensionsEstimator(),
+    directiveEstimator({ name: "complexity" }),
 
     // Default estimator for fields without directives
     simpleEstimator({ defaultComplexity: 1 })
@@ -153,12 +156,15 @@ function complexityLimitMiddleware(schema) {
     }
 
     try {
+      const document = parse(query);
       const complexity = getComplexity({
         schema,
-        query,
+        query: document,
+        operationName: req.body?.operationName,
         variables: req.body?.variables || {},
         estimators: complexityConfig.estimators
       });
+      complexityConfig.onComplete(complexity);
 
       // Store complexity for logging/monitoring
       req.queryComplexity = complexity;
@@ -254,35 +260,11 @@ type Report {
 
 ```javascript
 // complexity-directive.js
-const { mapSchema, getDirective, MapperKind } = require("@graphql-tools/utils");
+const { directiveEstimator } = require("graphql-query-complexity");
 
-// Custom estimator that reads @complexity directives
-function complexityDirectiveEstimator(schema) {
-  return (options) => {
-    const { field, args } = options;
-
-    // Get complexity directive from field
-    const directive = getDirective(schema, field, "complexity")?.[0];
-
-    if (!directive) {
-      // Default complexity of 1
-      return 1;
-    }
-
-    let complexity = directive.value;
-
-    // Apply multipliers from arguments
-    if (directive.multipliers) {
-      for (const multiplierField of directive.multipliers) {
-        const multiplierValue = args[multiplierField];
-        if (typeof multiplierValue === "number") {
-          complexity *= multiplierValue;
-        }
-      }
-    }
-
-    return complexity;
-  };
+// Estimator that reads @complexity directives from SDL
+function complexityDirectiveEstimator() {
+  return directiveEstimator({ name: "complexity" });
 }
 
 module.exports = { complexityDirectiveEstimator };
@@ -359,6 +341,7 @@ class CostBasedRateLimiter {
     const key = this.getKey(identifier);
     const now = Date.now();
     const windowStart = now - this.windowMs;
+    const member = `${now}:${cost}:${Math.random().toString(36).slice(2)}`;
 
     // Use Redis transaction for atomic operations
     const results = await this.redis
@@ -368,7 +351,7 @@ class CostBasedRateLimiter {
       // Get current total cost in window
       .zrange(key, 0, -1, "WITHSCORES")
       // Add current request cost
-      .zadd(key, now, `${now}:${cost}`)
+      .zadd(key, now, member)
       // Set expiry on the key
       .pexpire(key, this.windowMs)
       .exec();
@@ -376,23 +359,29 @@ class CostBasedRateLimiter {
     // Calculate current cost from results
     const entries = results[1][1];
     let currentCost = 0;
+    let oldestTimestamp = now;
 
     for (let i = 0; i < entries.length; i += 2) {
       const entry = entries[i];
+      const score = Number(entries[i + 1]);
       const entryCost = parseInt(entry.split(":")[1], 10);
       currentCost += entryCost;
+      oldestTimestamp = Math.min(oldestTimestamp, score);
     }
+
+    const resetAt = new Date(oldestTimestamp + this.windowMs);
 
     // Check if adding this request would exceed limit
     if (currentCost + cost > this.maxCost) {
       // Remove the entry we just added
-      await this.redis.zrem(key, `${now}:${cost}`);
+      await this.redis.zrem(key, member);
 
       return {
         allowed: false,
         currentCost,
         remainingCost: Math.max(0, this.maxCost - currentCost),
-        resetAt: new Date(windowStart + this.windowMs)
+        maxCost: this.maxCost,
+        resetAt
       };
     }
 
@@ -400,7 +389,8 @@ class CostBasedRateLimiter {
       allowed: true,
       currentCost: currentCost + cost,
       remainingCost: this.maxCost - currentCost - cost,
-      resetAt: new Date(windowStart + this.windowMs)
+      maxCost: this.maxCost,
+      resetAt
     };
   }
 
@@ -441,68 +431,79 @@ const { CostBasedRateLimiter } = require("./cost-rate-limiter");
 const {
   getComplexity,
   simpleEstimator,
-  fieldExtensionsEstimator
+  directiveEstimator
 } = require("graphql-query-complexity");
+const { GraphQLError } = require("graphql");
 
 function createRateLimitPlugin(options = {}) {
   const rateLimiter = new CostBasedRateLimiter(options);
 
   return {
-    async requestDidStart({ request, context }) {
+    async requestDidStart({ request }) {
       // Skip introspection queries
       if (request.operationName === "IntrospectionQuery") {
         return {};
       }
 
       return {
-        async didResolveOperation({ request, document, schema, context }) {
+        async didResolveOperation({ request, document, schema, contextValue }) {
           // Calculate query complexity
           const complexity = getComplexity({
             schema,
             query: document,
+            operationName: request.operationName,
             variables: request.variables || {},
             estimators: [
-              fieldExtensionsEstimator(),
+              directiveEstimator({ name: "complexity" }),
               simpleEstimator({ defaultComplexity: 1 })
             ]
           });
 
           // Get identifier from context (user ID or IP)
-          const identifier = context.user?.id || context.clientIp || "anonymous";
+          const identifier = contextValue.user?.id || contextValue.clientIp || "anonymous";
 
           // Check rate limit
           const result = await rateLimiter.checkAndTrack(identifier, complexity);
 
           // Store result in context for response headers
-          context.rateLimitResult = result;
-          context.queryComplexity = complexity;
+          contextValue.rateLimitResult = result;
+          contextValue.queryComplexity = complexity;
 
           if (!result.allowed) {
-            throw new Error(
+            throw new GraphQLError(
               `Rate limit exceeded. Cost: ${complexity}, ` +
               `Current usage: ${result.currentCost}/${options.maxCost || 10000}. ` +
-              `Retry after: ${result.resetAt.toISOString()}`
+              `Retry after: ${result.resetAt.toISOString()}`,
+              {
+                extensions: {
+                  code: "RATE_LIMITED",
+                  complexity,
+                  maxCost: options.maxCost || 10000,
+                  retryAfter: result.resetAt.toISOString(),
+                  http: { status: 429 }
+                }
+              }
             );
           }
         },
 
-        async willSendResponse({ response, context }) {
+        async willSendResponse({ response, contextValue }) {
           // Add rate limit headers to response
-          if (context.rateLimitResult) {
+          if (contextValue.rateLimitResult) {
             const headers = response.http?.headers;
             if (headers) {
               headers.set("X-RateLimit-Limit", String(options.maxCost || 10000));
               headers.set(
                 "X-RateLimit-Remaining",
-                String(context.rateLimitResult.remainingCost)
+                String(contextValue.rateLimitResult.remainingCost)
               );
               headers.set(
                 "X-RateLimit-Reset",
-                context.rateLimitResult.resetAt.toISOString()
+                contextValue.rateLimitResult.resetAt.toISOString()
               );
               headers.set(
                 "X-Query-Complexity",
-                String(context.queryComplexity)
+                String(contextValue.queryComplexity)
               );
             }
           }
@@ -523,6 +524,7 @@ Here is a complete Apollo Server setup with all rate limiting strategies.
 // server.js
 const { ApolloServer } = require("@apollo/server");
 const { expressMiddleware } = require("@apollo/server/express4");
+const { makeExecutableSchema } = require("@graphql-tools/schema");
 const express = require("express");
 const cors = require("cors");
 const { json } = require("body-parser");
@@ -536,11 +538,11 @@ const { createRateLimitPlugin } = require("./apollo-rate-limit-plugin");
 
 async function startServer() {
   const app = express();
+  const schema = makeExecutableSchema({ typeDefs, resolvers });
 
   // Create Apollo Server with rate limiting plugin
   const server = new ApolloServer({
-    typeDefs,
-    resolvers,
+    schema,
 
     // Validation rules including depth limiting
     validationRules: [
@@ -582,7 +584,7 @@ async function startServer() {
     // Basic request rate limiting
     requestRateLimiter,
     // Complexity limiting middleware
-    complexityLimitMiddleware(server.schema),
+    complexityLimitMiddleware(schema),
     // Apollo Server middleware
     expressMiddleware(server, {
       context: async ({ req }) => ({
@@ -757,20 +759,20 @@ function metricsPlugin() {
   return {
     async requestDidStart() {
       return {
-        async didResolveOperation({ context, operationName }) {
+        async didResolveOperation({ contextValue, request }) {
           // Record complexity
-          if (context.queryComplexity) {
+          if (contextValue.queryComplexity) {
             queryComplexityHistogram
-              .labels(operationName || "anonymous")
-              .observe(context.queryComplexity);
+              .labels(request.operationName || "anonymous")
+              .observe(contextValue.queryComplexity);
           }
         },
 
-        async willSendResponse({ context }) {
+        async willSendResponse({ contextValue }) {
           // Record rate limit events
-          if (context.rateLimitResult) {
-            const result = context.rateLimitResult;
-            const tier = context.user?.tier || "anonymous";
+          if (contextValue.rateLimitResult) {
+            const result = contextValue.rateLimitResult;
+            const tier = contextValue.user?.tier || "anonymous";
 
             if (!result.allowed) {
               rateLimitCounter.labels(tier, "cost").inc();
@@ -780,7 +782,7 @@ function metricsPlugin() {
             if (result.maxCost) {
               const usageRatio = result.currentCost / result.maxCost;
               rateLimitUsageGauge
-                .labels(context.user?.id || "anonymous", "cost")
+                .labels(contextValue.user?.id || "anonymous", "cost")
                 .set(usageRatio);
             }
           }
@@ -834,7 +836,7 @@ flowchart TD
 
 3. **Provide clear error messages**: Help clients understand why they were rate limited and when to retry.
 
-4. **Include rate limit headers**: Always return X-RateLimit headers so clients can track their usage.
+4. **Include rate limit headers**: Always return RateLimit or X-RateLimit headers so clients can track their usage.
 
 5. **Monitor and alert**: Track rate limiting metrics and alert on unusual patterns.
 
