@@ -34,12 +34,12 @@ The Profiler helps identify which components are rendering and why:
 
 ```tsx
 // src/App.tsx
-import { Profiler, ProfilerOnRenderCallback } from 'react';
+import { Profiler, type ProfilerOnRenderCallback } from 'react';
 
 // Callback function that receives render timing information
 const onRenderCallback: ProfilerOnRenderCallback = (
   id,           // Profiler tree id
-  phase,        // "mount" or "update"
+  phase,        // "mount", "update", or "nested-update"
   actualDuration, // Time spent rendering
   baseDuration,   // Estimated time without memoization
   startTime,      // When React started rendering
@@ -144,7 +144,8 @@ const MemoizedListItemCustom = memo(ListItem, (prevProps, nextProps) => {
   return (
     prevProps.item.id === nextProps.item.id &&
     prevProps.item.name === nextProps.item.name &&
-    prevProps.item.price === nextProps.item.price
+    prevProps.item.price === nextProps.item.price &&
+    prevProps.onSelect === nextProps.onSelect
   );
 });
 ```
@@ -190,8 +191,14 @@ function DataTable({ data }: DataTableProps) {
   const statistics = useMemo(() => {
     const total = processedData.reduce((sum, item) => sum + item.value, 0);
     const average = processedData.length > 0 ? total / processedData.length : 0;
-    const max = Math.max(...processedData.map((item) => item.value), 0);
-    const min = Math.min(...processedData.map((item) => item.value), 0);
+    const max =
+      processedData.length > 0
+        ? Math.max(...processedData.map((item) => item.value))
+        : 0;
+    const min =
+      processedData.length > 0
+        ? Math.min(...processedData.map((item) => item.value))
+        : 0;
 
     return { total, average, max, min };
   }, [processedData]);
@@ -398,8 +405,7 @@ function GoodLayout() {
 
 ```tsx
 // src/components/VirtualizedList.tsx
-import { FixedSizeList, ListChildComponentProps } from 'react-window';
-import { memo } from 'react';
+import { List, type RowComponentProps } from 'react-window';
 
 interface Item {
   id: number;
@@ -413,13 +419,12 @@ interface VirtualizedListProps {
   itemHeight: number;
 }
 
-// Memoize row component to prevent unnecessary re-renders
-const Row = memo(function Row({
+function Row({
   index,
   style,
-  data,
-}: ListChildComponentProps<Item[]>) {
-  const item = data[index];
+  items,
+}: RowComponentProps<{ items: Item[] }>) {
+  const item = items[index];
 
   return (
     <div style={style} className="list-item">
@@ -427,7 +432,7 @@ const Row = memo(function Row({
       <p>{item.description}</p>
     </div>
   );
-});
+}
 
 export function VirtualizedList({
   items,
@@ -435,15 +440,13 @@ export function VirtualizedList({
   itemHeight,
 }: VirtualizedListProps) {
   return (
-    <FixedSizeList
-      height={height}
-      width="100%"
-      itemCount={items.length}
-      itemSize={itemHeight}
-      itemData={items}
-    >
-      {Row}
-    </FixedSizeList>
+    <List
+      rowComponent={Row}
+      rowCount={items.length}
+      rowHeight={itemHeight}
+      rowProps={{ items }}
+      style={{ height, width: '100%' }}
+    />
   );
 }
 
@@ -466,8 +469,7 @@ function ItemList() {
 
 ```tsx
 // src/components/VariableHeightList.tsx
-import { VariableSizeList, ListChildComponentProps } from 'react-window';
-import { useRef, useCallback } from 'react';
+import { List, type RowComponentProps } from 'react-window';
 
 interface Message {
   id: number;
@@ -480,50 +482,46 @@ interface MessageListProps {
 }
 
 export function MessageList({ messages }: MessageListProps) {
-  const listRef = useRef<VariableSizeList>(null);
-
   // Calculate item height based on content type
-  const getItemHeight = useCallback(
-    (index: number) => {
-      const message = messages[index];
-      switch (message.type) {
-        case 'short':
-          return 50;
-        case 'medium':
-          return 100;
-        case 'long':
-          return 200;
-        default:
-          return 50;
-      }
-    },
-    [messages]
-  );
+  const getItemHeight = (
+    index: number,
+    { messages }: { messages: Message[] }
+  ) => {
+    const message = messages[index];
+    switch (message.type) {
+      case 'short':
+        return 50;
+      case 'medium':
+        return 100;
+      case 'long':
+        return 200;
+      default:
+        return 50;
+    }
+  };
 
-  const Row = useCallback(
-    ({ index, style }: ListChildComponentProps) => {
-      const message = messages[index];
+  function Row({
+    index,
+    style,
+    messages,
+  }: RowComponentProps<{ messages: Message[] }>) {
+    const message = messages[index];
 
-      return (
-        <div style={style} className={`message message-${message.type}`}>
-          {message.text}
-        </div>
-      );
-    },
-    [messages]
-  );
+    return (
+      <div style={style} className={`message message-${message.type}`}>
+        {message.text}
+      </div>
+    );
+  }
 
   return (
-    <VariableSizeList
-      ref={listRef}
-      height={600}
-      width="100%"
-      itemCount={messages.length}
-      itemSize={getItemHeight}
-      estimatedItemSize={100}
-    >
-      {Row}
-    </VariableSizeList>
+    <List
+      rowComponent={Row}
+      rowCount={messages.length}
+      rowHeight={getItemHeight}
+      rowProps={{ messages }}
+      style={{ height: 600, width: '100%' }}
+    />
   );
 }
 ```
@@ -577,7 +575,7 @@ export function HeavyChart() {
 }
 
 // src/pages/Analytics.tsx
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useState } from 'react';
 
 // Lazy load component with named export
 const HeavyChart = lazy(() =>
