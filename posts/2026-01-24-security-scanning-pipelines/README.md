@@ -49,7 +49,7 @@ SAST tools analyze your source code without executing it. They can find vulnerab
 
 ### GitHub Actions with CodeQL
 
-CodeQL is GitHub's free SAST tool that supports multiple languages. It builds a database of your code and runs queries to find vulnerability patterns.
+CodeQL is GitHub's code analysis engine for SAST and supports multiple languages. Code scanning with CodeQL is available for public repositories, and for private or internal repositories when GitHub Code Security is enabled. It builds a database of your code and runs queries to find vulnerability patterns.
 
 ```yaml
 # .github/workflows/codeql.yml
@@ -80,8 +80,8 @@ jobs:
       fail-fast: false
       matrix:
         # Specify languages to analyze
-        # CodeQL supports: javascript, python, java, go, csharp, cpp, ruby
-        language: ['javascript', 'python']
+        # CodeQL supports: javascript-typescript, python, java-kotlin, go, csharp, cpp, ruby, rust, swift
+        language: ['javascript-typescript', 'python']
 
     steps:
       - name: Checkout repository
@@ -89,20 +89,15 @@ jobs:
 
       # Initialize CodeQL with the specified language
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
+        uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
           # Use extended security queries for more thorough scanning
           queries: security-extended,security-and-quality
 
-      # For compiled languages, CodeQL needs to observe the build
-      # For interpreted languages like JavaScript/Python, autobuild works
-      - name: Autobuild
-        uses: github/codeql-action/autobuild@v3
-
       # Perform the analysis and upload results
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
+        uses: github/codeql-action/analyze@v4
         with:
           category: "/language:${{ matrix.language }}"
 ```
@@ -123,25 +118,29 @@ on:
 jobs:
   semgrep:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    container:
+      image: semgrep/semgrep
 
     steps:
       - uses: actions/checkout@v4
 
       - name: Run Semgrep
-        uses: returntocorp/semgrep-action@v1
-        with:
-          # Use multiple rulesets for comprehensive coverage
-          config: >-
-            p/security-audit
-            p/secrets
-            p/owasp-top-ten
-            p/nodejs
-          # Generate SARIF output for GitHub Security tab
-          generateSarif: "1"
+        run: |
+          semgrep scan \
+            --config p/security-audit \
+            --config p/secrets \
+            --config p/owasp-top-ten \
+            --config p/nodejs \
+            --sarif \
+            --output semgrep.sarif
 
       # Upload results to GitHub Security tab
       - name: Upload SARIF
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: semgrep.sarif
         if: always()
@@ -302,8 +301,8 @@ jobs:
       - name: Install Safety
         run: pip install safety
 
-      - name: Run Safety check
-        run: safety check -r requirements.txt --json > safety-report.json
+      - name: Run Safety scan
+        run: safety --key "${{ secrets.SAFETY_API_KEY }}" scan --target . --save-as json safety-report.json
 
       - name: Upload Safety report
         uses: actions/upload-artifact@v4
@@ -350,6 +349,9 @@ on:
 jobs:
   build-and-scan:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
 
     steps:
       - uses: actions/checkout@v4
@@ -360,7 +362,7 @@ jobs:
 
       # Scan with Trivy
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: 'myapp:${{ github.sha }}'
           format: 'sarif'
@@ -372,13 +374,13 @@ jobs:
 
       # Upload results to GitHub Security tab
       - name: Upload Trivy scan results
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: 'trivy-results.sarif'
 
       # Fail the build if critical vulnerabilities found
       - name: Check for critical vulnerabilities
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: 'myapp:${{ github.sha }}'
           format: 'table'
@@ -405,6 +407,10 @@ on:
 jobs:
   checkov:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
     steps:
       - uses: actions/checkout@v4
 
@@ -421,7 +427,7 @@ jobs:
           skip_check: CKV_AWS_123
 
       - name: Upload SARIF
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: checkov.sarif
         if: always()
@@ -437,12 +443,14 @@ name: Security Summary
 
 on:
   workflow_run:
-    workflows: ["CodeQL", "Dependency Scan", "Container Scan"]
+    workflows: ["CodeQL Security Analysis", "Dependency Security Scan", "Container Security Scan"]
     types: [completed]
 
 jobs:
   summarize:
     runs-on: ubuntu-latest
+    permissions:
+      issues: write
     steps:
       - name: Generate Security Report
         run: |
@@ -454,11 +462,11 @@ jobs:
           # from various security scanning workflows
 
       - name: Create Issue for Failures
-        if: failure()
+        if: ${{ github.event.workflow_run.conclusion == 'failure' }}
         uses: actions/github-script@v7
         with:
           script: |
-            github.rest.issues.create({
+            await github.rest.issues.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
               title: 'Security Scan Failed',
