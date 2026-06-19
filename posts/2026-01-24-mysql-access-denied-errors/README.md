@@ -41,10 +41,12 @@ flowchart TD
 
 The most frequent cause is simply entering the wrong credentials. Verify your credentials by checking the user exists in MySQL.
 
-```sql
--- Connect as root or admin user first
+```bash
+# Connect as root or admin user first
 mysql -u root -p
+```
 
+```sql
 -- Check if the user exists
 SELECT User, Host FROM mysql.user WHERE User = 'myuser';
 
@@ -64,10 +66,11 @@ If the user does not exist, create it:
 -- The host part determines where connections can originate from
 CREATE USER 'myuser'@'localhost' IDENTIFIED BY 'secure_password';
 
--- For remote connections, use % as wildcard or specific IP
+-- For remote connections, use % as wildcard, or prefer a specific IP/host
 CREATE USER 'myuser'@'%' IDENTIFIED BY 'secure_password';
 
--- Or allow connections from specific IP range
+-- Or allow connections from a specific IP range
+-- Note: % and _ host wildcards are deprecated in MySQL 8.4
 CREATE USER 'myuser'@'192.168.1.%' IDENTIFIED BY 'secure_password';
 ```
 
@@ -84,6 +87,7 @@ WHERE User = 'myuser';
 -- Solution: Add the user for the connecting host
 
 -- Allow from any host
+-- Note: % and _ host wildcards are deprecated in MySQL 8.4
 CREATE USER 'myuser'@'%' IDENTIFIED BY 'secure_password';
 
 -- Or allow from specific host
@@ -97,10 +101,10 @@ The host matching follows specific rules. MySQL finds the most specific match fi
 
 ```sql
 -- MySQL host matching priority (most specific first):
--- 1. Exact IP match: '192.168.1.100'
--- 2. IP with wildcard: '192.168.1.%'
--- 3. Hostname: 'webserver.example.com'
--- 4. Wildcard: '%'
+-- 1. Literal IP addresses and hostnames: '192.168.1.100' or 'webserver.example.com'
+-- 2. CIDR or subnet-mask entries: '192.168.1.0/255.255.255.0'
+-- 3. Pattern entries such as '192.168.1.%' (deprecated in MySQL 8.4)
+-- 4. Wildcard: '%' (least specific, deprecated in MySQL 8.4)
 
 -- Example: If both exist, connection from 192.168.1.100 uses the first:
 -- myuser@192.168.1.100 (used)
@@ -109,7 +113,7 @@ The host matching follows specific rules. MySQL finds the most specific match fi
 
 ### 3. Authentication Plugin Issues
 
-MySQL 8.0 uses `caching_sha2_password` by default, which older clients may not support. This causes access denied errors even with correct credentials.
+MySQL 8.0 and later use `caching_sha2_password` by default, which older clients may not support. This causes access denied errors even with correct credentials.
 
 ```sql
 -- Check the authentication plugin for a user
@@ -122,13 +126,24 @@ SELECT User, Host, plugin FROM mysql.user WHERE User = 'myuser';
 -- | myuser | localhost | caching_sha2_password |
 -- +--------+-----------+-----------------------+
 
--- Change to mysql_native_password for compatibility with older clients
+-- Change to mysql_native_password only as a temporary compatibility workaround
+-- for older clients. It is deprecated and disabled by default in MySQL 8.4.
 ALTER USER 'myuser'@'localhost'
 IDENTIFIED WITH mysql_native_password BY 'secure_password';
+```
 
--- Or set default authentication plugin in my.cnf for new users
--- [mysqld]
--- default_authentication_plugin=mysql_native_password
+In MySQL 8.0, you can set the default authentication plugin in `my.cnf` for new users.
+
+```ini
+[mysqld]
+default_authentication_plugin=mysql_native_password
+```
+
+In MySQL 8.4+, use `mysql_native_password=ON` to enable the deprecated plugin first.
+
+```ini
+[mysqld]
+mysql_native_password=ON
 ```
 
 ### 4. Password Reset for Root User
@@ -145,13 +160,20 @@ sudo mysqld_safe --skip-grant-tables &
 
 # Connect without password
 mysql -u root
+```
 
-# Reset the password
+```sql
+-- Reset the password
 FLUSH PRIVILEGES;
 ALTER USER 'root'@'localhost' IDENTIFIED BY 'new_secure_password';
+```
 
+```text
 # Exit and restart MySQL normally
 exit
+```
+
+```bash
 sudo systemctl stop mysql
 sudo systemctl start mysql
 ```
@@ -265,8 +287,8 @@ const pool = mysql.createPool({
 
   // Connection settings that can affect authentication
   connectTimeout: 10000,
-  // For MySQL 8.0 with older clients, you might need:
-  // authPlugins: { mysql_native_password: () => () => Buffer.from(password) }
+  // If authentication fails because of an unsupported MySQL plugin,
+  // update mysql2 or use a server-side authentication plugin the client supports.
 });
 
 // Test the connection on startup
@@ -299,8 +321,8 @@ try:
         password=os.environ['DB_PASSWORD'],
         database=os.environ['DB_NAME'],
         connect_timeout=10,
-        # For authentication plugin issues:
-        # auth_plugin_map={'mysql_native_password': 'pymysql.auth.mysql_native_password'}
+        # If authentication fails because of an unsupported MySQL plugin,
+        # update PyMySQL or configure the server user to use a supported plugin.
     )
     print("Connected successfully")
 except pymysql.err.OperationalError as e:
