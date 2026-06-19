@@ -188,14 +188,15 @@ Set limits based on your server's resources and application needs.
 # But consider your application's actual needs
 max_connections = 300
 
-# Reserve connection for admin (root) access
-# This allows connecting even when max_connections is reached
-# Only users with CONNECTION_ADMIN or SUPER privilege can use this
+# Administrative connection interface
+# This allows admin access on a separate port
+# Only users with SERVICE_CONNECTION_ADMIN privilege can use this
 # MySQL 8.0+:
 admin_address = 127.0.0.1
 admin_port = 33062
 
-# Or for older versions, max_connections + 1 is reserved for SUPER users
+# On the ordinary interface, MySQL also permits max_connections + 1
+# client connections for users with CONNECTION_ADMIN or SUPER privilege
 
 # Close idle connections automatically
 wait_timeout = 300           # 5 minutes for non-interactive
@@ -257,7 +258,7 @@ const pool = mysql.createPool({
 
   // Timeouts
   connectTimeout: 10000,      // 10s to establish connection
-  acquireTimeout: 10000,      // 10s to acquire from pool
+  idleTimeout: 60000,         // Close idle pool connections after 60s
 
   // Keep connections alive
   enableKeepAlive: true,
@@ -295,7 +296,7 @@ async function transferFunds(fromId, toId, amount) {
 **Python with SQLAlchemy:**
 
 ```python
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.pool import QueuePool
 
 # Create engine with connection pool
@@ -465,7 +466,7 @@ fi
 |-----------|---------|----------------|
 | max_connections | 151 | Based on RAM and needs |
 | wait_timeout | 28800 | 300-600 for web apps |
-| thread_cache_size | 9 | 50-100 for busy servers |
+| thread_cache_size | Autosized | 50-100 for busy servers |
 | connection pool size | - | 10-20 per app instance |
 
 The "too many connections" error is usually a symptom of either insufficient limits, connection leaks, or missing connection pooling. Start by analyzing your connection patterns, then implement the appropriate solution. Connection pooling should be standard practice for any production application.
