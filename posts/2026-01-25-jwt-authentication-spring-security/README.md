@@ -52,18 +52,18 @@ Start with a Spring Boot project. You will need these dependencies in your `pom.
     <dependency>
         <groupId>io.jsonwebtoken</groupId>
         <artifactId>jjwt-api</artifactId>
-        <version>0.12.3</version>
+        <version>0.13.0</version>
     </dependency>
     <dependency>
         <groupId>io.jsonwebtoken</groupId>
         <artifactId>jjwt-impl</artifactId>
-        <version>0.12.3</version>
+        <version>0.13.0</version>
         <scope>runtime</scope>
     </dependency>
     <dependency>
         <groupId>io.jsonwebtoken</groupId>
         <artifactId>jjwt-jackson</artifactId>
-        <version>0.12.3</version>
+        <version>0.13.0</version>
         <scope>runtime</scope>
     </dependency>
 
@@ -82,7 +82,7 @@ Add your JWT configuration to `application.yml`:
 # application.yml
 
 jwt:
-  secret: your-256-bit-secret-key-here-make-it-long-and-random
+  secret: bWFrZS10aGlzLWEtMzItYnl0ZS1zZWNyZXQta2V5ISE=  # Base64-encoded 256-bit key; replace in production
   expiration: 86400000  # 24 hours in milliseconds
 ```
 
@@ -98,6 +98,7 @@ package com.example.security;
 
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -172,8 +173,9 @@ public class JwtService {
 
     // Create the signing key from the secret
     private SecretKey getSigningKey() {
-        // For production, use a properly generated key
-        return Keys.hmacShaKeyFor(secretKey.getBytes());
+        // For production, use a properly generated Base64-encoded key
+        byte[] keyBytes = Decoders.BASE64.decode(secretKey);
+        return Keys.hmacShaKeyFor(keyBytes);
     }
 }
 ```
@@ -192,6 +194,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import io.jsonwebtoken.JwtException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.lang.NonNull;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -230,28 +233,32 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         // Extract the token (everything after "Bearer ")
         final String jwt = authHeader.substring(7);
-        final String username = jwtService.extractUsername(jwt);
+        try {
+            final String username = jwtService.extractUsername(jwt);
 
-        // If we have a username and no authentication exists yet
-        if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-            // Load user details from database
-            UserDetails userDetails = this.userDetailsService.loadUserByUsername(username);
+            // If we have a username and no authentication exists yet
+            if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+                // Load user details from database
+                UserDetails userDetails = this.userDetailsService.loadUserByUsername(username);
 
-            // Validate the token
-            if (jwtService.isTokenValid(jwt, userDetails)) {
-                // Create authentication token
-                UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
-                        userDetails,
-                        null,  // No credentials needed - JWT already validated
-                        userDetails.getAuthorities()
-                );
+                // Validate the token
+                if (jwtService.isTokenValid(jwt, userDetails)) {
+                    // Create authentication token
+                    UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
+                            userDetails,
+                            null,  // No credentials needed - JWT already validated
+                            userDetails.getAuthorities()
+                    );
 
-                // Attach request details
-                authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                    // Attach request details
+                    authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
 
-                // Set the authentication in the security context
-                SecurityContextHolder.getContext().setAuthentication(authToken);
+                    // Set the authentication in the security context
+                    SecurityContextHolder.getContext().setAuthentication(authToken);
+                }
             }
+        } catch (JwtException | IllegalArgumentException e) {
+            SecurityContextHolder.clearContext();
         }
 
         // Continue the filter chain
@@ -325,8 +332,7 @@ public class SecurityConfig {
 
     @Bean
     public AuthenticationProvider authenticationProvider() {
-        DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider();
-        authProvider.setUserDetailsService(userDetailsService);
+        DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider(userDetailsService);
         authProvider.setPasswordEncoder(passwordEncoder());
         return authProvider;
     }
@@ -491,7 +497,7 @@ A few things to keep in mind for production:
 
 3. **Validate all claims** - Check issuer, audience, and expiration. Do not just verify the signature.
 
-4. **Use HTTPS** - JWTs are not encrypted. Anyone who intercepts the token can read its contents and impersonate the user.
+4. **Use HTTPS** - These signed JWTs are not encrypted. Anyone who intercepts the token can read its contents and impersonate the user.
 
 5. **Handle token revocation** - If you need to invalidate tokens before expiry, maintain a blacklist or use short expiration with refresh tokens.
 
