@@ -32,8 +32,8 @@ except (ValueError, TypeError) as e:
 
 # Multiple except blocks
 try:
-    file = open("missing.txt")
-    data = file.read()
+    with open("missing.txt") as file:
+        data = file.read()
 except FileNotFoundError:
     print("File not found")
 except PermissionError:
@@ -447,7 +447,8 @@ def calculate_average(numbers):
 def load_config(filepath):
     if not os.path.exists(filepath):
         raise FileNotFoundError(f"Config not found: {filepath}")
-    return json.load(open(filepath))
+    with open(filepath) as f:
+        return json.load(f)
 
 # Assertions can be disabled with python -O
 # Never use assertions for input validation!
@@ -496,7 +497,7 @@ except Exception:  # Usually too broad
 # Don't swallow exceptions in finally
 finally:
     try:
-        cleanup()  # If this raises, original exception is lost
+        cleanup()  # If this raises, the cleanup failure is hidden
     except:
         pass
 ```
