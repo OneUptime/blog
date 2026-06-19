@@ -157,9 +157,9 @@ git status
 # Stash handles both
 git stash
 git rebase main
-git stash pop
+git stash pop --index
 
-# Your staged changes return to staged state
+# --index restores the staged changes to staged state
 ```
 
 ### Scenario 3: Changes Conflict with Rebase
@@ -226,8 +226,11 @@ git stash -p
 Stash but keep staged changes:
 
 ```bash
-# Stash unstaged changes only
+# Stash unstaged changes while keeping staged changes in place
 git stash --keep-index
+
+# Commit or otherwise clear the staged changes before rebasing
+git commit -m "Save staged work"
 
 git rebase main
 
