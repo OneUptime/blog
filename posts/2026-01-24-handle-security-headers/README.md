@@ -194,7 +194,8 @@ Prevents clickjacking attacks.
 
 ```javascript
 function frameOptionsHeader(option = 'DENY') {
-    // Options: DENY, SAMEORIGIN, or ALLOW-FROM uri
+    // Options: DENY or SAMEORIGIN
+    // For allowed origins, use CSP frame-ancestors instead of obsolete ALLOW-FROM
     return (req, res, next) => {
         res.setHeader('X-Frame-Options', option);
         next();
@@ -251,13 +252,13 @@ function permissionsPolicy(options = {}) {
         geolocation: [],
         microphone: [],
         camera: [],
-        payment: ["'self'"],
+        payment: ['self'],
         usb: [],
         accelerometer: [],
         gyroscope: [],
         magnetometer: [],
-        fullscreen: ["'self'"],
-        pictureInPicture: ["'self'"]
+        fullscreen: ['self'],
+        pictureInPicture: ['self']
     };
 
     const config = { ...defaults, ...options };
@@ -376,6 +377,8 @@ Set up CSP violation reporting to monitor issues:
 
 ```javascript
 // CSP with reporting
+const reportEndpoint = 'https://example.com/api/csp-report'; // Replace with your endpoint
+
 const cspWithReporting = [
     "default-src 'self'",
     "script-src 'self'",
@@ -383,28 +386,31 @@ const cspWithReporting = [
     "report-to csp-endpoint"
 ].join('; ');
 
-// Report-To header for modern browsers
-const reportTo = JSON.stringify({
-    group: 'csp-endpoint',
-    max_age: 86400,
-    endpoints: [{ url: '/api/csp-report' }]
-});
+// Reporting-Endpoints header for modern browsers
+const reportingEndpoints = `csp-endpoint="${reportEndpoint}"`;
 
 app.use((req, res, next) => {
     res.setHeader('Content-Security-Policy', cspWithReporting);
-    res.setHeader('Report-To', reportTo);
+    res.setHeader('Reporting-Endpoints', reportingEndpoints);
     next();
 });
 
 // CSP report endpoint
-app.post('/api/csp-report', express.json({ type: 'application/csp-report' }), (req, res) => {
-    const report = req.body['csp-report'];
-    console.log('CSP Violation:', {
-        blockedUri: report['blocked-uri'],
-        violatedDirective: report['violated-directive'],
-        documentUri: report['document-uri'],
-        sourceFile: report['source-file'],
-        lineNumber: report['line-number']
+app.post('/api/csp-report', express.json({
+    type: ['application/csp-report', 'application/reports+json']
+}), (req, res) => {
+    const reports = Array.isArray(req.body)
+        ? req.body.map((entry) => entry.body)
+        : [req.body['csp-report']];
+
+    reports.filter(Boolean).forEach((report) => {
+        console.log('CSP Violation:', {
+            blockedUri: report['blocked-uri'] || report.blockedURL,
+            violatedDirective: report['violated-directive'] || report.effectiveDirective,
+            documentUri: report['document-uri'] || report.documentURL,
+            sourceFile: report['source-file'] || report.sourceFile,
+            lineNumber: report['line-number'] || report.lineNumber
+        });
     });
     res.status(204).end();
 });
