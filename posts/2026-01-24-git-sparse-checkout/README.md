@@ -49,11 +49,8 @@ Git 2.25 introduced cone mode, which is the recommended approach for sparse chec
 git clone --no-checkout https://github.com/company/monorepo.git
 cd monorepo
 
-# Initialize sparse checkout in cone mode
-git sparse-checkout init --cone
-
 # Specify directories you want
-git sparse-checkout set frontend docs
+git sparse-checkout set --cone frontend docs
 
 # Now checkout
 git checkout main
@@ -97,8 +94,7 @@ git read-tree -mu HEAD
 Cone mode only allows directory-based patterns, which is faster and simpler.
 
 ```bash
-git sparse-checkout init --cone
-git sparse-checkout set frontend backend/api
+git sparse-checkout set --cone frontend backend/api
 
 # You can only specify directories
 # These patterns work:
@@ -117,10 +113,8 @@ git sparse-checkout set frontend backend/api
 Non-cone mode supports full gitignore-style patterns but is slower.
 
 ```bash
-git sparse-checkout init --no-cone
-
 # Now you can use patterns
-git sparse-checkout set '/*' '!backend/' 'backend/api/'
+git sparse-checkout set --no-cone '/*' '!backend/' 'backend/api/'
 
 # Pattern examples:
 #   /*            - All root files
@@ -183,13 +177,13 @@ git sparse-checkout reapply
 # Initial setup
 git clone --filter=blob:none --sparse https://github.com/company/monorepo.git
 cd monorepo
-git sparse-checkout set frontend shared package.json
+git sparse-checkout set frontend shared
 
 # Later, need to check something in backend
 git sparse-checkout add backend/api
 
 # Done with backend, remove it
-git sparse-checkout set frontend shared package.json
+git sparse-checkout set frontend shared
 ```
 
 ### Workflow 2: Documentation Writer
@@ -198,7 +192,7 @@ git sparse-checkout set frontend shared package.json
 # Only need docs and examples
 git clone --filter=blob:none --sparse https://github.com/company/monorepo.git
 cd monorepo
-git sparse-checkout set docs examples README.md
+git sparse-checkout set docs examples
 ```
 
 ### Workflow 3: CI/CD Pipeline
@@ -233,8 +227,7 @@ git clone --filter=blob:none https://github.com/company/huge-repo.git
 cd huge-repo
 
 # Sparse checkout: Only populate specific directories
-git sparse-checkout init --cone
-git sparse-checkout set my-project
+git sparse-checkout set --cone my-project
 
 # Now you have:
 # - Full commit history
@@ -298,8 +291,7 @@ git sparse-checkout reapply
 ```bash
 # In cone mode, root files always appear
 # To exclude them in non-cone mode:
-git sparse-checkout init --no-cone
-git sparse-checkout set '!/.*' '/frontend/'
+git sparse-checkout set --no-cone '!/.*' '/frontend/'
 ```
 
 ### Conflicts During Operations
@@ -318,7 +310,7 @@ git stash pop
 git config index.sparse true
 
 # Use cone mode (faster than non-cone)
-git sparse-checkout init --cone
+git sparse-checkout set --cone <directories>
 ```
 
 ## Best Practices
@@ -345,9 +337,7 @@ cd monorepo
 git sparse-checkout set \
     frontend \
     shared \
-    tools/frontend-cli \
-    package.json \
-    tsconfig.json
+    tools/frontend-cli
 
 echo "Setup complete. Run 'cd monorepo && npm install' to get started."
 ```
@@ -359,13 +349,11 @@ Or use a configuration file:
 frontend
 shared
 tools/frontend-cli
-package.json
-tsconfig.json
 
 # Team members run:
 git clone --filter=blob:none --sparse https://github.com/company/monorepo.git
 cd monorepo
-git sparse-checkout set $(cat .sparse-checkout-frontend)
+git sparse-checkout set --stdin < .sparse-checkout-frontend
 ```
 
 ## Quick Reference
@@ -373,8 +361,7 @@ git sparse-checkout set $(cat .sparse-checkout-frontend)
 ```bash
 # Initial setup
 git clone --filter=blob:none --sparse <url>
-git sparse-checkout init --cone
-git sparse-checkout set dir1 dir2
+git sparse-checkout set --cone dir1 dir2
 
 # Modify patterns
 git sparse-checkout add dir3          # Add directory
