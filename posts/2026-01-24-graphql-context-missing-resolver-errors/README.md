@@ -38,11 +38,17 @@ flowchart TD
 The most common cause is a context function that does not return the expected properties.
 
 ```javascript
+import { ApolloServer } from '@apollo/server';
+import { startStandaloneServer } from '@apollo/server/standalone';
+
 // BROKEN: Context function returns nothing for unauthenticated users
-const server = new ApolloServer({
+const brokenServer = new ApolloServer({
   typeDefs,
   resolvers,
-  context: ({ req }) => {
+});
+
+await startStandaloneServer(brokenServer, {
+  context: async ({ req }) => {
     const token = req.headers.authorization;
 
     if (token) {
@@ -55,10 +61,13 @@ const server = new ApolloServer({
 });
 
 // FIXED: Always return a context object
-const server = new ApolloServer({
+const fixedServer = new ApolloServer({
   typeDefs,
   resolvers,
-  context: ({ req }) => {
+});
+
+await startStandaloneServer(fixedServer, {
+  context: async ({ req }) => {
     const token = req.headers.authorization;
 
     // Always return an object, even if user is null
@@ -78,26 +87,35 @@ const server = new ApolloServer({
 });
 ```
 
-### Scenario 2: Async Context Without Await
+### Scenario 2: Promise Stored in Context
 
-Context can be async, but forgetting to await can cause issues.
+Context can be async, but forgetting to await inside your context function can put a Promise where your resolvers expect the resolved value.
 
 ```javascript
-// BROKEN: Async context not properly handled
-const server = new ApolloServer({
+import { ApolloServer } from '@apollo/server';
+import { startStandaloneServer } from '@apollo/server/standalone';
+
+// BROKEN: user is a Promise, not the resolved user
+const brokenServer = new ApolloServer({
   typeDefs,
   resolvers,
-  context: ({ req }) => {
-    // This returns a Promise, not the resolved context
-    return getUserFromToken(req.headers.authorization);
-  },
+});
+
+await startStandaloneServer(brokenServer, {
+  context: async ({ req }) => {
+    const user = getUserFromToken(req.headers.authorization);
+    return { user };
+  }
 });
 
 // FIXED: Properly handle async context
-const server = new ApolloServer({
+const fixedServer = new ApolloServer({
   typeDefs,
   resolvers,
-  // Use async/await for async context functions
+});
+
+await startStandaloneServer(fixedServer, {
+  // Use async/await for asynchronous work inside context functions
   context: async ({ req }) => {
     try {
       const user = await getUserFromToken(req.headers.authorization);
@@ -127,20 +145,29 @@ const server = new ApolloServer({
 Subscriptions have a different context creation path.
 
 ```javascript
+import { ApolloServer } from '@apollo/server';
+import { startStandaloneServer } from '@apollo/server/standalone';
+import { expressMiddleware } from '@as-integrations/express4';
+import { createServer } from 'http';
+import express from 'express';
+import { useServer } from 'graphql-ws/lib/use/ws';
+import { WebSocketServer } from 'ws';
+
 // BROKEN: Subscriptions use different context setup
-const server = new ApolloServer({
+const httpOnlyServer = new ApolloServer({
   typeDefs,
   resolvers,
-  // This only works for queries and mutations
-  context: ({ req }) => {
+});
+
+await startStandaloneServer(httpOnlyServer, {
+  // This only works for HTTP queries and mutations
+  context: async ({ req }) => {
     return { user: getUserFromRequest(req) };
   },
 });
 
 // FIXED: Handle both HTTP and WebSocket contexts
-import { useServer } from 'graphql-ws/lib/use/ws';
-import { WebSocketServer } from 'ws';
-
+const app = express();
 const httpServer = createServer(app);
 const wsServer = new WebSocketServer({
   server: httpServer,
@@ -173,7 +200,7 @@ useServer(
       console.log('Client connected for subscriptions');
       // Validate connection params here
       const token = ctx.connectionParams?.authToken;
-      if (!token && requireAuth) {
+      if (!token && subscriptionsRequireAuth) {
         return false; // Reject connection
       }
       return true;
@@ -183,8 +210,13 @@ useServer(
 );
 
 // HTTP context for queries and mutations
-const server = new ApolloServer({
+const apolloHttpServer = new ApolloServer({
   schema,
+});
+
+await apolloHttpServer.start();
+
+app.use('/graphql', express.json(), expressMiddleware(apolloHttpServer, {
   context: async ({ req }) => {
     const token = req.headers.authorization?.replace('Bearer ', '');
 
@@ -199,7 +231,7 @@ const server = new ApolloServer({
 
     return { user: null, isAuthenticated: false };
   },
-});
+}));
 ```
 
 ## Defensive Resolver Patterns
@@ -208,6 +240,7 @@ Write resolvers that handle missing context gracefully.
 
 ```javascript
 // resolvers.js
+import { GraphQLError } from 'graphql';
 
 const resolvers = {
   Query: {
@@ -219,7 +252,9 @@ const resolvers = {
       }
 
       if (!context.user) {
-        throw new AuthenticationError('You must be logged in');
+        throw new GraphQLError('You must be logged in', {
+          extensions: { code: 'UNAUTHENTICATED' },
+        });
       }
 
       return context.user;
@@ -270,7 +305,9 @@ function requireAuth(context) {
   }
 
   if (!context.user) {
-    throw new AuthenticationError('Authentication required');
+    throw new GraphQLError('Authentication required', {
+      extensions: { code: 'UNAUTHENTICATED' },
+    });
   }
 
   return context.user;
@@ -280,8 +317,11 @@ function requireRole(context, allowedRoles) {
   const user = requireAuth(context);
 
   if (!allowedRoles.includes(user.role)) {
-    throw new ForbiddenError(
-      `Insufficient permissions. Required roles: ${allowedRoles.join(', ')}`
+    throw new GraphQLError(
+      `Insufficient permissions. Required roles: ${allowedRoles.join(', ')}`,
+      {
+        extensions: { code: 'FORBIDDEN' },
+      }
     );
   }
 
@@ -338,14 +378,16 @@ export interface DataLoaders {
 ```typescript
 // resolvers/user.ts
 import { GraphQLContext, AuthenticatedContext } from '../types/context';
-import { AuthenticationError } from 'apollo-server-errors';
+import { GraphQLError } from 'graphql';
 
 // Type guard to narrow context type
 function assertAuthenticated(
   context: GraphQLContext
 ): asserts context is AuthenticatedContext {
   if (!context.user) {
-    throw new AuthenticationError('You must be logged in');
+    throw new GraphQLError('You must be logged in', {
+      extensions: { code: 'UNAUTHENTICATED' },
+    });
   }
 }
 
@@ -414,16 +456,16 @@ export default userResolvers;
 const contextDebugPlugin = {
   async requestDidStart(requestContext) {
     // Log context at request start
-    const { context, request } = requestContext;
+    const { contextValue, request } = requestContext;
 
     // Only log in development
     if (process.env.NODE_ENV === 'development') {
       console.log('GraphQL Request:', {
         operationName: request.operationName,
-        hasContext: !!context,
-        contextKeys: context ? Object.keys(context) : [],
-        isAuthenticated: context?.isAuthenticated || false,
-        userId: context?.user?.id || null,
+        hasContext: !!contextValue,
+        contextKeys: contextValue ? Object.keys(contextValue) : [],
+        isAuthenticated: contextValue?.isAuthenticated || false,
+        userId: contextValue?.user?.id || null,
       });
     }
 
@@ -445,10 +487,10 @@ const contextDebugPlugin = {
               locations: e.locations,
             })),
             contextSnapshot: {
-              hasUser: !!ctx.context?.user,
-              hasDb: !!ctx.context?.db,
-              hasDataloaders: !!ctx.context?.dataloaders,
-              keys: Object.keys(ctx.context || {}),
+              hasUser: !!ctx.contextValue?.user,
+              hasDb: !!ctx.contextValue?.db,
+              hasDataloaders: !!ctx.contextValue?.dataloaders,
+              keys: Object.keys(ctx.contextValue || {}),
             },
           });
         }
@@ -469,13 +511,14 @@ const server = new ApolloServer({
 
 ```javascript
 // middleware/validate-context.js
+import { GraphQLError } from 'graphql';
 
 // Validate context before resolvers run
 const validateContextPlugin = {
   async requestDidStart() {
     return {
       async didResolveOperation(requestContext) {
-        const { context, operation } = requestContext;
+        const { contextValue, operation } = requestContext;
 
         // Define required context properties per operation type
         const requirements = {
@@ -487,7 +530,7 @@ const validateContextPlugin = {
         const operationType = operation.operation;
         const required = requirements[operationType] || [];
 
-        const missing = required.filter((key) => !context[key]);
+        const missing = required.filter((key) => !contextValue?.[key]);
 
         if (missing.length > 0) {
           console.warn(
@@ -496,9 +539,9 @@ const validateContextPlugin = {
 
           // Optionally throw error for mutations
           if (operationType === 'mutation' && missing.includes('user')) {
-            throw new AuthenticationError(
-              'Authentication required for mutations'
-            );
+            throw new GraphQLError('Authentication required for mutations', {
+              extensions: { code: 'UNAUTHENTICATED' },
+            });
           }
         }
       },
@@ -511,8 +554,7 @@ const validateContextPlugin = {
 
 ```javascript
 // __tests__/context.test.js
-import { createTestClient } from 'apollo-server-testing';
-import { ApolloServer } from 'apollo-server';
+import { ApolloServer } from '@apollo/server';
 import { typeDefs, resolvers } from '../schema';
 import { createContext } from '../context';
 
@@ -565,21 +607,27 @@ describe('Context Setup', () => {
     const server = new ApolloServer({
       typeDefs,
       resolvers,
-      context: () => ({
-        user: null,
-        isAuthenticated: false,
-        db: mockDb,
-      }),
     });
 
-    const { query } = createTestClient(server);
+    const result = await server.executeOperation(
+      {
+        query: `query { me { id } }`,
+      },
+      {
+        contextValue: {
+          user: null,
+          isAuthenticated: false,
+          db: mockDb,
+        },
+      }
+    );
 
-    const result = await query({
-      query: `query { me { id } }`,
-    });
+    if (result.body.kind !== 'single') {
+      throw new Error('Expected a single GraphQL response');
+    }
 
-    expect(result.errors).toBeDefined();
-    expect(result.errors[0].message).toContain('logged in');
+    expect(result.body.singleResult.errors).toBeDefined();
+    expect(result.body.singleResult.errors[0].message).toContain('logged in');
   });
 });
 ```
