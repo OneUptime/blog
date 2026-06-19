@@ -75,7 +75,7 @@ data-platform/
 # schemas/orders_v2.py
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import ClassVar, Optional
 from datetime import datetime
 
 @dataclass
@@ -93,10 +93,10 @@ class OrderSchemaV2:
     quantity: int
     unit_price: float
     discount_amount: Optional[float] = 0.0  # New field
-    created_at: datetime = None
+    created_at: Optional[datetime] = None
 
     # Schema version for tracking
-    _schema_version: str = "2.0.0"
+    _schema_version: ClassVar[str] = "2.0.0"
 
     @classmethod
     def from_v1(cls, v1_record: dict) -> 'OrderSchemaV2':
@@ -133,10 +133,10 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v6
         with:
           python-version: '3.10'
 
@@ -165,10 +165,10 @@ jobs:
           - 5432:5432
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v6
         with:
           python-version: '3.10'
 
@@ -193,28 +193,32 @@ jobs:
     needs: lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v6
         with:
           python-version: '3.10'
 
       - name: Install Airflow
-        run: pip install apache-airflow==2.7.0
+        run: |
+          AIRFLOW_VERSION=2.11.0
+          PYTHON_VERSION="$(python -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
+          CONSTRAINT_URL="https://raw.githubusercontent.com/apache/airflow/constraints-${AIRFLOW_VERSION}/constraints-no-providers-${PYTHON_VERSION}.txt"
+          pip install "apache-airflow==${AIRFLOW_VERSION}" --constraint "${CONSTRAINT_URL}"
 
       - name: Validate DAGs
         run: |
           export AIRFLOW_HOME=$(pwd)
-          airflow db init
-          python -c "from airflow.models import DagBag; d = DagBag(); assert not d.import_errors, d.import_errors"
+          airflow db migrate
+          python -c "from airflow.models import DagBag; d = DagBag(dag_folder='dags', include_examples=False); assert not d.import_errors, d.import_errors"
 
   deploy:
     needs: [test, validate-dags]
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
 
       - name: Deploy to production
         run: |
@@ -300,75 +304,59 @@ def test_handles_null_values(spark):
 ```python
 # tests/data_quality/test_orders_quality.py
 import great_expectations as gx
-from great_expectations.core.batch import RuntimeBatchRequest
 
 def create_order_expectations():
     """Define data quality expectations for orders table"""
     context = gx.get_context()
 
     # Create expectation suite
-    suite = context.add_expectation_suite("orders_quality_suite")
+    suite = gx.ExpectationSuite(name="orders_quality_suite")
 
     # Add expectations
     expectations = [
         # Primary key should be unique
-        {
-            "expectation_type": "expect_column_values_to_be_unique",
-            "kwargs": {"column": "order_id"}
-        },
+        gx.expectations.ExpectColumnValuesToBeUnique(column="order_id"),
         # Required fields should not be null
-        {
-            "expectation_type": "expect_column_values_to_not_be_null",
-            "kwargs": {"column": "customer_id"}
-        },
+        gx.expectations.ExpectColumnValuesToNotBeNull(column="customer_id"),
         # Quantity should be positive
-        {
-            "expectation_type": "expect_column_values_to_be_between",
-            "kwargs": {"column": "quantity", "min_value": 1}
-        },
+        gx.expectations.ExpectColumnValuesToBeBetween(column="quantity", min_value=1),
         # Status should be valid enum
-        {
-            "expectation_type": "expect_column_values_to_be_in_set",
-            "kwargs": {
-                "column": "status",
-                "value_set": ["pending", "processing", "shipped", "delivered", "cancelled"]
-            }
-        },
-        # Order date should not be in future
-        {
-            "expectation_type": "expect_column_values_to_be_dateutil_parseable",
-            "kwargs": {"column": "order_date"}
-        },
+        gx.expectations.ExpectColumnValuesToBeInSet(
+            column="status",
+            value_set=["pending", "processing", "shipped", "delivered", "cancelled"]
+        ),
+        # Order date should be parseable
+        gx.expectations.ExpectColumnValuesToBeDateutilParseable(column="order_date"),
         # Table should have minimum row count
-        {
-            "expectation_type": "expect_table_row_count_to_be_between",
-            "kwargs": {"min_value": 1}
-        }
+        gx.expectations.ExpectTableRowCountToBeBetween(min_value=1)
     ]
 
-    for exp in expectations:
-        suite.add_expectation(gx.expectations.ExpectationConfiguration(**exp))
+    for expectation in expectations:
+        suite.add_expectation(expectation)
 
-    return suite
+    return context.suites.add(suite)
 
 def validate_orders_data(df):
     """Run validation on orders dataframe"""
     context = gx.get_context()
 
-    # Create batch request
-    batch_request = RuntimeBatchRequest(
-        datasource_name="spark_datasource",
-        data_connector_name="runtime_data_connector",
-        data_asset_name="orders",
-        runtime_parameters={"batch_data": df},
-        batch_identifiers={"batch_id": "validation_run"}
+    suite = context.suites.get(name="orders_quality_suite")
+
+    data_source = context.data_sources.add_spark(name="spark_datasource")
+    data_asset = data_source.add_dataframe_asset(name="orders")
+    batch_definition = data_asset.add_batch_definition_whole_dataframe(
+        "orders_validation_batch"
     )
 
-    # Run validation
-    results = context.run_checkpoint(
-        checkpoint_name="orders_checkpoint",
-        batch_request=batch_request
+    validation_definition = gx.ValidationDefinition(
+        data=batch_definition,
+        suite=suite,
+        name="orders_validation"
     )
+    validation_definition = context.validation_definitions.add(validation_definition)
+
+    # Run validation
+    results = validation_definition.run(batch_parameters={"dataframe": df})
 
     return results.success
 ```
@@ -381,28 +369,32 @@ def validate_orders_data(df):
 # monitoring/pipeline_metrics.py
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Dict, Any
 import json
-from prometheus_client import Counter, Histogram, Gauge, push_to_gateway
+from prometheus_client import CollectorRegistry, Counter, Histogram, Gauge, push_to_gateway
+
+PIPELINE_REGISTRY = CollectorRegistry()
 
 # Define metrics
 RECORDS_PROCESSED = Counter(
     'pipeline_records_processed_total',
     'Total records processed',
-    ['pipeline', 'stage']
+    ['pipeline', 'stage'],
+    registry=PIPELINE_REGISTRY
 )
 
 PROCESSING_DURATION = Histogram(
     'pipeline_processing_duration_seconds',
     'Pipeline processing duration',
     ['pipeline', 'stage'],
-    buckets=[1, 5, 10, 30, 60, 120, 300, 600]
+    buckets=[1, 5, 10, 30, 60, 120, 300, 600],
+    registry=PIPELINE_REGISTRY
 )
 
 DATA_QUALITY_SCORE = Gauge(
     'pipeline_data_quality_score',
     'Data quality score (0-100)',
-    ['pipeline', 'table']
+    ['pipeline', 'table'],
+    registry=PIPELINE_REGISTRY
 )
 
 @dataclass
@@ -437,7 +429,7 @@ class PipelineMetrics:
         push_to_gateway(
             gateway_url,
             job=f'pipeline_{self.pipeline_name}',
-            registry=None
+            registry=PIPELINE_REGISTRY
         )
 
     def to_json(self) -> str:
@@ -458,7 +450,7 @@ class PipelineMetrics:
 
 ```python
 # monitoring/freshness_check.py
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import List
 import logging
 
@@ -534,8 +526,7 @@ freshness_checks = [
 ```python
 # catalog/data_catalog.py
 from dataclasses import dataclass
-from typing import List, Dict, Optional
-import yaml
+from typing import List, Dict
 
 @dataclass
 class TableMetadata:
