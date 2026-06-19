@@ -12,7 +12,7 @@ The rebase vs merge debate is one of the most discussed topics in Git workflows.
 
 ## How Merge Works
 
-Merge creates a new commit that combines changes from two branches. It preserves the complete history of both branches, including the order in which commits were made.
+Merge combines changes from two branches. When a fast-forward is not possible, it creates a new merge commit; either way, it preserves the complete history of both branches, including the order in which commits were made.
 
 ```mermaid
 gitGraph
@@ -33,7 +33,7 @@ gitGraph
 git checkout main
 git merge feature-branch
 
-# Creates a merge commit that combines histories
+# Creates a merge commit when a fast-forward is not possible
 # Both branches' commits remain in their original order
 ```
 
@@ -65,7 +65,7 @@ git rebase main
 |--------|-------|--------|
 | **History** | Non-linear, shows branches | Linear, single line |
 | **Commit hashes** | Preserved | Changed |
-| **Merge commits** | Created | None |
+| **Merge commits** | Created when not fast-forwarded | None by default |
 | **Conflict resolution** | Once | Per commit |
 | **Safe for shared branches** | Yes | No |
 | **Shows when work happened** | Yes | No |
@@ -114,7 +114,7 @@ git push origin feature-branch
 
 # Developer B pulls and merges their work
 git pull origin feature-branch
-# This creates merge commits but is safe
+# This may create merge commits but is safe
 
 # Rebasing would rewrite commits Developer A already has
 # causing confusion and potential data loss
@@ -133,7 +133,7 @@ git fetch origin
 git rebase origin/main
 
 # Your commits now apply on top of latest main
-# Pull request will have no merge conflicts
+# Pull request should have no conflicts with the current origin/main
 ```
 
 ### Scenario 2: Cleaning Up Local History
@@ -225,14 +225,16 @@ git rebase --abort
 
 Git offers different merge strategies for various situations.
 
-### Recursive (Default)
+### Ort (Default)
 
 The standard three-way merge:
 
 ```bash
 git merge feature-branch
-# Uses recursive strategy by default
+# Uses the ort strategy by default for a single branch
 ```
+
+The older `recursive` strategy name is now a synonym for `ort` in current Git versions.
 
 ### Ours Strategy
 
@@ -387,7 +389,7 @@ git rebase origin/main
 git reflog
 
 # Find the commit before rebase
-# a1b2c3d HEAD@{2}: rebase (start): checkout main
+# Example: a1b2c3d HEAD@{3}: commit before the rebase
 
 # Reset to that point
 git reset --hard HEAD@{3}
