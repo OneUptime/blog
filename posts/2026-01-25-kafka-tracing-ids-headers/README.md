@@ -39,32 +39,34 @@ Kafka records support headers since version 0.11. Headers are key-value pairs at
 public class TracingProducer {
 
     private final KafkaProducer<String, String> producer;
-    private final Tracer tracer;
+
+    private static final TextMapSetter<Headers> KAFKA_HEADER_SETTER =
+        (headers, key, value) -> {
+            if (headers != null && value != null) {
+                headers.remove(key);
+                headers.add(key, value.getBytes(StandardCharsets.UTF_8));
+            }
+        };
 
     public void sendWithTrace(String topic, String key, String value) {
         // Get current trace context
-        Span currentSpan = tracer.currentSpan();
-        TraceContext context = currentSpan.context();
+        Span currentSpan = Span.current();
+        SpanContext context = currentSpan.getSpanContext();
 
         ProducerRecord<String, String> record = new ProducerRecord<>(
             topic, key, value
         );
 
-        // Add W3C trace context headers
-        // traceparent format: version-traceId-spanId-flags
-        String traceparent = String.format("00-%s-%s-01",
-            context.traceIdString(),
-            context.spanIdString()
-        );
-        record.headers().add("traceparent", traceparent.getBytes());
-
-        // Optional: add tracestate for vendor-specific data
-        record.headers().add("tracestate",
-            "vendorname=opaqueValue".getBytes());
+        // Add W3C trace context headers using the configured propagator
+        GlobalOpenTelemetry.getPropagators()
+            .getTextMapPropagator()
+            .inject(Context.current(), record.headers(), KAFKA_HEADER_SETTER);
 
         // Add correlation ID for simpler debugging
-        record.headers().add("correlation-id",
-            context.traceIdString().getBytes());
+        if (context.isValid()) {
+            record.headers().add("correlation-id",
+                context.getTraceId().getBytes(StandardCharsets.UTF_8));
+        }
 
         producer.send(record, (metadata, exception) -> {
             if (exception != null) {
@@ -73,6 +75,20 @@ public class TracingProducer {
         });
     }
 }
+```
+
+If you build headers manually, keep the W3C `traceparent` format intact:
+
+```java
+// traceparent format: version-traceId-spanId-flags
+SpanContext context = Span.current().getSpanContext();
+String traceparent = String.format("00-%s-%s-%s",
+    context.getTraceId(),
+    context.getSpanId(),
+    context.getTraceFlags().asHex()
+);
+record.headers().add("traceparent",
+    traceparent.getBytes(StandardCharsets.UTF_8));
 ```
 
 ## Extracting Context in Consumers
@@ -85,20 +101,49 @@ public class TracingConsumer {
 
     private final Tracer tracer;
 
+    private static final TextMapGetter<Headers> KAFKA_HEADER_GETTER =
+        new TextMapGetter<Headers>() {
+            @Override
+            public Iterable<String> keys(Headers headers) {
+                List<String> keys = new ArrayList<>();
+                if (headers != null) {
+                    headers.forEach(header -> keys.add(header.key()));
+                }
+                return keys;
+            }
+
+            @Override
+            public String get(Headers headers, String key) {
+                if (headers == null) {
+                    return null;
+                }
+                Header header = headers.lastHeader(key);
+                return header == null
+                    ? null
+                    : new String(header.value(), StandardCharsets.UTF_8);
+            }
+        };
+
     @KafkaListener(topics = "orders", groupId = "payment-service")
     public void processOrder(ConsumerRecord<String, String> record) {
         // Extract trace context from headers
-        TraceContext parentContext = extractTraceContext(record);
+        Context parentContext = extractTraceContext(record);
 
         // Create a new span as a child of the producer's span
-        Span consumerSpan = tracer.spanBuilder("process-order")
-            .setParent(Context.current().with(parentContext))
+        SpanBuilder spanBuilder = tracer.spanBuilder("process-order")
             .setSpanKind(SpanKind.CONSUMER)
             .setAttribute("messaging.system", "kafka")
-            .setAttribute("messaging.destination", record.topic())
-            .setAttribute("messaging.kafka.partition", record.partition())
-            .setAttribute("messaging.kafka.offset", record.offset())
-            .startSpan();
+            .setAttribute("messaging.destination.name", record.topic())
+            .setAttribute("messaging.kafka.source.partition", record.partition())
+            .setAttribute("messaging.kafka.message.offset", record.offset());
+
+        if (Span.fromContext(parentContext).getSpanContext().isValid()) {
+            spanBuilder.setParent(parentContext);
+        } else {
+            spanBuilder.setNoParent();
+        }
+
+        Span consumerSpan = spanBuilder.startSpan();
 
         try (Scope scope = consumerSpan.makeCurrent()) {
             // Process the message within the trace context
@@ -114,36 +159,41 @@ public class TracingConsumer {
         }
     }
 
-    private TraceContext extractTraceContext(ConsumerRecord<?, ?> record) {
-        Header traceparentHeader = record.headers().lastHeader("traceparent");
-
-        if (traceparentHeader == null) {
-            // No trace context - start a new trace
-            return null;
-        }
-
-        String traceparent = new String(traceparentHeader.value());
-        // Parse: 00-traceId-spanId-flags
-        String[] parts = traceparent.split("-");
-
-        return TraceContext.create(
-            parts[1],  // traceId
-            parts[2],  // spanId
-            TraceFlags.fromHex(parts[3], 0),
-            TraceState.getDefault()
-        );
+    private Context extractTraceContext(ConsumerRecord<?, ?> record) {
+        return GlobalOpenTelemetry.getPropagators()
+            .getTextMapPropagator()
+            .extract(Context.current(), record.headers(), KAFKA_HEADER_GETTER);
     }
 }
 ```
 
-## OpenTelemetry Auto-Instrumentation
+If you parse `traceparent` directly, create a remote parent `SpanContext`:
 
-OpenTelemetry provides automatic Kafka instrumentation that handles context propagation.
+```java
+String traceparent = new String(traceparentHeader.value(),
+    StandardCharsets.UTF_8);
+String[] parts = traceparent.split("-");
+
+SpanContext parentSpanContext = SpanContext.createFromRemoteParent(
+    parts[1],  // traceId
+    parts[2],  // spanId
+    TraceFlags.fromHex(parts[3], 0),
+    TraceState.getDefault()
+);
+
+Context parentContext = Context.current()
+    .with(Span.wrap(parentSpanContext));
+```
+
+## OpenTelemetry Kafka Instrumentation
+
+OpenTelemetry provides Kafka client instrumentation that handles context propagation.
 
 ```java
 // build.gradle
 dependencies {
-    implementation 'io.opentelemetry.instrumentation:opentelemetry-kafka-clients-2.6:1.32.0'
+    implementation platform('io.opentelemetry.instrumentation:opentelemetry-instrumentation-bom-alpha:2.28.1-alpha')
+    implementation 'io.opentelemetry.instrumentation:opentelemetry-kafka-clients-2.6'
 }
 ```
 
@@ -153,7 +203,7 @@ dependencies {
 public class KafkaTracingConfig {
 
     @Bean
-    public KafkaProducer<String, String> tracingProducer() {
+    public Producer<String, String> tracingProducer() {
         Properties props = new Properties();
         props.put("bootstrap.servers", "localhost:9092");
         props.put("key.serializer", StringSerializer.class.getName());
@@ -284,28 +334,33 @@ public class ResilientTracingConsumer {
 
     @KafkaListener(topics = "external-events")
     public void process(ConsumerRecord<String, String> record) {
-        Span span;
-        Header traceparent = record.headers().lastHeader("traceparent");
+        Context parentContext = GlobalOpenTelemetry.getPropagators()
+            .getTextMapPropagator()
+            .extract(Context.current(), record.headers(), KAFKA_HEADER_GETTER);
 
-        if (traceparent != null) {
+        SpanBuilder spanBuilder = tracer.spanBuilder("process-external-event")
+            .setSpanKind(SpanKind.CONSUMER)
+            .setAttribute("messaging.system", "kafka");
+
+        if (Span.fromContext(parentContext).getSpanContext().isValid()) {
             // Continue existing trace
-            TraceContext parentContext = parseTraceparent(
-                new String(traceparent.value()));
-            span = tracer.spanBuilder("process-external-event")
-                .setParent(Context.current().with(parentContext))
-                .startSpan();
+            spanBuilder.setParent(parentContext);
         } else {
             // Start new trace - use message key or generate ID for correlation
             String correlationId = record.key() != null
                 ? record.key()
                 : UUID.randomUUID().toString();
 
-            span = tracer.spanBuilder("process-external-event")
+            spanBuilder
                 .setNoParent()  // Root span
-                .setAttribute("correlation.id", correlationId)
-                .setAttribute("messaging.kafka.message_key", record.key())
-                .startSpan();
+                .setAttribute("correlation.id", correlationId);
+            if (record.key() != null) {
+                spanBuilder.setAttribute("messaging.kafka.message_key",
+                    record.key());
+            }
         }
+
+        Span span = spanBuilder.startSpan();
 
         try (Scope scope = span.makeCurrent()) {
             handleEvent(record.value());
@@ -321,41 +376,46 @@ public class ResilientTracingConsumer {
 Kafka Streams requires manual span management around processing.
 
 ```java
-public class TracingTransformer implements
-        Transformer<String, String, KeyValue<String, String>> {
+public class TracingProcessor implements
+        Processor<String, String, String, String> {
 
     private final Tracer tracer;
-    private ProcessorContext context;
+    private ProcessorContext<String, String> context;
 
     @Override
-    public void init(ProcessorContext context) {
+    public void init(ProcessorContext<String, String> context) {
         this.context = context;
     }
 
     @Override
-    public KeyValue<String, String> transform(String key, String value) {
+    public void process(Record<String, String> record) {
         // Extract context from record headers
-        Headers headers = context.headers();
-        TraceContext parentContext = extractContext(headers);
+        Headers headers = new RecordHeaders(record.headers());
+        Context parentContext = GlobalOpenTelemetry.getPropagators()
+            .getTextMapPropagator()
+            .extract(Context.current(), headers, KAFKA_HEADER_GETTER);
 
-        Span span = tracer.spanBuilder("streams-transform")
-            .setParent(Context.current().with(parentContext))
-            .setAttribute("kafka.streams.application.id",
-                context.applicationId())
-            .setAttribute("kafka.streams.task.id",
-                context.taskId().toString())
-            .startSpan();
+        SpanBuilder spanBuilder = tracer.spanBuilder("streams-process")
+            .setAttribute("messaging.system", "kafka");
+
+        if (Span.fromContext(parentContext).getSpanContext().isValid()) {
+            spanBuilder.setParent(parentContext);
+        } else {
+            spanBuilder.setNoParent();
+        }
+
+        Span span = spanBuilder.startSpan();
 
         try (Scope scope = span.makeCurrent()) {
             // Transform logic
-            String result = process(value);
+            String result = transformValue(record.value());
 
             // Propagate context to downstream
-            String traceparent = formatTraceparent(span.getSpanContext());
-            context.headers().add("traceparent", traceparent.getBytes());
+            GlobalOpenTelemetry.getPropagators()
+                .getTextMapPropagator()
+                .inject(Context.current(), headers, KAFKA_HEADER_SETTER);
 
-            return KeyValue.pair(key, result);
-
+            context.forward(record.withValue(result).withHeaders(headers));
         } finally {
             span.end();
         }
