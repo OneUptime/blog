@@ -49,11 +49,11 @@ SHOW VARIABLES LIKE 'net_read_timeout';
 SHOW VARIABLES LIKE 'net_write_timeout';
 
 -- Check server uptime (did it restart?)
-SHOW STATUS LIKE 'Uptime';
+SHOW GLOBAL STATUS LIKE 'Uptime';
 
 -- Check for aborted connections
-SHOW STATUS LIKE 'Aborted_connects';
-SHOW STATUS LIKE 'Aborted_clients';
+SHOW GLOBAL STATUS LIKE 'Aborted_connects';
+SHOW GLOBAL STATUS LIKE 'Aborted_clients';
 ```
 
 ## Cause 1: Connection Timeout
@@ -152,6 +152,9 @@ async function queryWithRetry(sql, params, retries = 3) {
 <?php
 class DatabaseConnection {
     private $pdo;
+    private $dsn;
+    private $user;
+    private $pass;
     private $options = [
         PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
         PDO::ATTR_PERSISTENT => false,
@@ -176,7 +179,8 @@ class DatabaseConnection {
             return $stmt;
         } catch (PDOException $e) {
             // Check if connection was lost
-            if ($e->getCode() == 'HY000' || strpos($e->getMessage(), 'gone away') !== false) {
+            $driverCode = $e->errorInfo[1] ?? null;
+            if (in_array($driverCode, [2006, 2013], true) || strpos($e->getMessage(), 'gone away') !== false) {
                 $this->connect();  // Reconnect
                 $stmt = $this->pdo->prepare($sql);
                 $stmt->execute($params);
@@ -206,21 +210,21 @@ Check current value:
 
 ```sql
 SHOW VARIABLES LIKE 'max_allowed_packet';
--- Default is often 4MB or 16MB
+-- Current MySQL server default is 64MB; some client programs use lower defaults
 ```
 
 Increase in configuration:
 
 ```ini
 [mysqld]
-# Increase to 64MB or higher based on your needs
-max_allowed_packet = 64M
+# Increase above the default if your workload needs larger packets
+max_allowed_packet = 128M
 ```
 
 Or set dynamically (temporary, until restart):
 
 ```sql
-SET GLOBAL max_allowed_packet = 67108864;  -- 64MB
+SET GLOBAL max_allowed_packet = 134217728;  -- 128MB
 ```
 
 ### Solution: Chunk Large Data Operations
@@ -246,9 +250,9 @@ def insert_large_data(connection, data_list, chunk_size=1000):
         print(f"Inserted rows {i} to {i + len(chunk)}")
 ```
 
-## Cause 3: Long Running Queries
+## Cause 3: Long Data Transfers
 
-Queries that take too long can exceed network timeouts.
+Queries or result sets that take too long to read from or write to the connection can exceed network timeouts.
 
 ### Solution: Increase Network Timeouts
 
