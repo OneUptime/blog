@@ -353,8 +353,11 @@ async function setupHeadersExchange() {
     // Queue for high-priority notifications of any type
     await channel.assertQueue('high-priority', { durable: true });
     await channel.bindQueue('high-priority', exchange, '', {
-        'x-match': 'any',
-        'priority': 'urgent',
+        'x-match': 'all',
+        'priority': 'urgent'
+    });
+    await channel.bindQueue('high-priority', exchange, '', {
+        'x-match': 'all',
         'priority': 'high'
     });
 
@@ -726,26 +729,12 @@ class RoutingKeyValidator {
     constructor(schema) {
         // Schema defines valid routing key patterns
         this.schema = schema;
-        this.compiledPatterns = this._compilePatterns();
-    }
-
-    _compilePatterns() {
-        // Convert schema patterns to regex
-        return this.schema.map(pattern => {
-            // Escape special regex characters except * and #
-            let regex = pattern
-                .replace(/\./g, '\\.')
-                .replace(/\*/g, '[^.]+')
-                .replace(/#/g, '.*');
-
-            return new RegExp(`^${regex}$`);
-        });
     }
 
     validate(routingKey) {
         // Check if routing key matches any pattern in schema
-        for (const pattern of this.compiledPatterns) {
-            if (pattern.test(routingKey)) {
+        for (const pattern of this.schema) {
+            if (this._matchesPattern(pattern, routingKey)) {
                 return { valid: true };
             }
         }
@@ -755,6 +744,40 @@ class RoutingKeyValidator {
             error: `Routing key "${routingKey}" does not match any known pattern`,
             allowedPatterns: this.schema
         };
+    }
+
+    _matchesPattern(pattern, routingKey) {
+        const patternWords = pattern === '' ? [] : pattern.split('.');
+        const keyWords = routingKey === '' ? [] : routingKey.split('.');
+
+        const match = (patternIndex, keyIndex) => {
+            if (patternIndex === patternWords.length) {
+                return keyIndex === keyWords.length;
+            }
+
+            const word = patternWords[patternIndex];
+
+            if (word === '#') {
+                for (let nextKeyIndex = keyIndex; nextKeyIndex <= keyWords.length; nextKeyIndex++) {
+                    if (match(patternIndex + 1, nextKeyIndex)) {
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            if (keyIndex >= keyWords.length) {
+                return false;
+            }
+
+            if (word === '*') {
+                return keyWords[keyIndex].length > 0 && match(patternIndex + 1, keyIndex + 1);
+            }
+
+            return word === keyWords[keyIndex] && match(patternIndex + 1, keyIndex + 1);
+        };
+
+        return match(0, 0);
     }
 
     validateOrThrow(routingKey) {
@@ -789,47 +812,47 @@ try {
 
 ---
 
-## Dead Letter Routing
+## Alternate Exchange Routing
 
 Handle unroutable messages:
 
 ```mermaid
 flowchart TD
     P[Publisher] -->|"order.unknown.event"| E[Exchange]
-    E -->|No matching binding| DLX[Dead Letter Exchange]
-    DLX --> DLQ[Dead Letter Queue]
-    DLQ --> A[Alert/Investigation]
+    E -->|No matching binding| AE[Alternate Exchange]
+    AE --> UQ[Unrouted Messages Queue]
+    UQ --> A[Alert/Investigation]
 ```
 
 ```python
-# dead_letter_routing.py
+# alternate_exchange_routing.py
 import pika
 import json
 
-def setup_dead_letter_routing():
-    """Set up dead letter exchange for unroutable messages"""
+def setup_alternate_exchange_routing():
+    """Set up alternate exchange routing for unroutable messages"""
 
     connection = pika.BlockingConnection(
         pika.ConnectionParameters('localhost')
     )
     channel = connection.channel()
 
-    # Create dead letter exchange and queue
+    # Create alternate exchange and queue
     channel.exchange_declare(
-        exchange='dlx',
+        exchange='unrouted',
         exchange_type='topic',
         durable=True
     )
 
     channel.queue_declare(
-        queue='dead-letters',
+        queue='unrouted-messages',
         durable=True
     )
 
     # Catch all unroutable messages
     channel.queue_bind(
-        queue='dead-letters',
-        exchange='dlx',
+        queue='unrouted-messages',
+        exchange='unrouted',
         routing_key='#'
     )
 
@@ -839,8 +862,8 @@ def setup_dead_letter_routing():
         exchange_type='topic',
         durable=True,
         arguments={
-            # Route unroutable messages to DLX
-            'alternate-exchange': 'dlx'
+            # Route unroutable messages to the alternate exchange
+            'alternate-exchange': 'unrouted'
         }
     )
 
@@ -853,11 +876,11 @@ def setup_dead_letter_routing():
     )
 
     connection.close()
-    print("Dead letter routing configured")
+    print("Alternate exchange routing configured")
 
 
 def publish_with_mandatory(host: str, exchange: str, routing_key: str, message: dict):
-    """Publish with mandatory flag to detect unroutable messages"""
+    """Publish with mandatory flag to detect messages that remain unroutable"""
 
     connection = pika.BlockingConnection(
         pika.ConnectionParameters(host)
@@ -867,24 +890,10 @@ def publish_with_mandatory(host: str, exchange: str, routing_key: str, message: 
     # Enable publisher confirms
     channel.confirm_delivery()
 
-    # Track returned messages
-    returned_messages = []
-
-    def on_return(ch, method, props, body):
-        """Called when message cannot be routed"""
-        returned_messages.append({
-            'routing_key': method.routing_key,
-            'body': body,
-            'reply_code': method.reply_code,
-            'reply_text': method.reply_text
-        })
-        print(f"Message returned: {method.reply_text}")
-
-    channel.add_on_return_callback(on_return)
-
     try:
         # Publish with mandatory=True
-        # Message will be returned if no queue is bound
+        # Pika raises UnroutableError if the message cannot be routed to any queue.
+        # If an alternate exchange routes it to a queue, it is considered routed.
         channel.basic_publish(
             exchange=exchange,
             routing_key=routing_key,
@@ -893,26 +902,23 @@ def publish_with_mandatory(host: str, exchange: str, routing_key: str, message: 
             mandatory=True
         )
 
-        # Process events to receive returns
-        connection.process_data_events(time_limit=1)
-
-        if returned_messages:
-            print(f"Warning: Message was unroutable")
-            return False
-
+        print("Message was routed")
         return True
+    except pika.exceptions.UnroutableError:
+        print("Warning: Message was unroutable")
+        return False
 
     finally:
         connection.close()
 
 
 if __name__ == '__main__':
-    setup_dead_letter_routing()
+    setup_alternate_exchange_routing()
 
     # This will be routed to order-events queue
     publish_with_mandatory('localhost', 'events', 'order.created', {'id': 1})
 
-    # This will go to dead-letters (no binding for user.*)
+    # This will go to unrouted-messages through the alternate exchange
     publish_with_mandatory('localhost', 'events', 'user.created', {'id': 1})
 ```
 
@@ -928,7 +934,7 @@ if __name__ == '__main__':
 
 4. **Use topic exchanges for flexibility** - They support both exact and wildcard matching
 
-5. **Set up dead letter routing** - Capture and investigate unroutable messages
+5. **Set up alternate exchange routing** - Capture and investigate unroutable messages
 
 6. **Keep routing keys stable** - Changing keys requires updating all consumers
 
@@ -950,7 +956,7 @@ Effective routing key design is crucial for building flexible messaging systems.
 - **Design hierarchical routing keys** for maximum flexibility
 - **Use wildcard patterns** to allow consumers to subscribe to subsets of messages
 - **Validate routing keys** before publishing
-- **Handle unroutable messages** with dead letter exchanges
+- **Handle unroutable messages** with alternate exchanges
 - **Document and version** your routing schema
 
 ---
