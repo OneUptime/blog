@@ -44,9 +44,10 @@ ArgoCD has built-in health checks for common Kubernetes resources.
 ### Deployment Health
 
 A Deployment is healthy when:
-- The desired number of replicas are available
-- All pods are running and ready
-- No rollout is in progress
+- The controller has observed the latest generation
+- The desired number of updated replicas exist
+- Old replicas are terminated and the updated replicas are available
+- The deployment has not exceeded its progress deadline
 
 ```yaml
 apiVersion: apps/v1
@@ -66,7 +67,7 @@ spec:
       containers:
         - name: myapp
           image: myapp:latest
-          # Readiness probe affects ArgoCD health
+          # Readiness probes affect when updated replicas become available
           readinessProbe:
             httpGet:
               path: /health
@@ -117,7 +118,7 @@ spec:
 
 ### Service Health
 
-Services are healthy when they have endpoints:
+Services are usually healthy by default. For `LoadBalancer` Services, ArgoCD waits for `status.loadBalancer.ingress` to contain a hostname or IP address:
 
 ```yaml
 apiVersion: v1
@@ -125,6 +126,7 @@ kind: Service
 metadata:
   name: myapp
 spec:
+  type: LoadBalancer
   selector:
     app: myapp
   ports:
@@ -132,7 +134,7 @@ spec:
       targetPort: 8080
 ```
 
-If no pods match the selector, the service shows as Degraded.
+If the load balancer has not assigned an ingress address yet, the service shows as Progressing.
 
 ### Job Health
 
@@ -328,27 +330,28 @@ data:
 Some resources should not affect overall health:
 
 ```yaml
-apiVersion: argoproj.io/v1alpha1
-kind: Application
+apiVersion: apps/v1
+kind: Deployment
 metadata:
   name: myapp
+  annotations:
+    argocd.argoproj.io/ignore-healthcheck: "true"
 spec:
-  source:
-    repoURL: https://github.com/myorg/myapp.git
-    path: k8s
-  destination:
-    server: https://kubernetes.default.svc
-    namespace: myapp
-  # Ignore specific resources in health assessment
-  ignoreDifferences:
-    - group: ""
-      kind: ConfigMap
-      name: cache-config
-      jsonPointers:
-        - /data
+  replicas: 3
+  selector:
+    matchLabels:
+      app: myapp
+  template:
+    metadata:
+      labels:
+        app: myapp
+    spec:
+      containers:
+        - name: myapp
+          image: myapp:latest
 ```
 
-Or exclude entire resource types:
+Or exclude entire resource types from ArgoCD discovery and sync:
 
 ```yaml
 apiVersion: v1
@@ -357,7 +360,7 @@ metadata:
   name: argocd-cm
   namespace: argocd
 data:
-  # Exclude PodDisruptionBudget from health
+  # Exclude PodDisruptionBudget from ArgoCD discovery and sync
   resource.exclusions: |
     - apiGroups:
         - policy
@@ -369,18 +372,11 @@ data:
 
 ## Health Assessment Timeout
 
-Configure how long ArgoCD waits for health:
+When a script or pipeline needs to wait for health, set a timeout on `argocd app wait`:
 
-```yaml
-apiVersion: argoproj.io/v1alpha1
-kind: Application
-metadata:
-  name: myapp
-spec:
-  syncPolicy:
-    syncOptions:
-      # Wait up to 5 minutes for health
-      - HealthCheckTimeout=300
+```bash
+# Wait up to 5 minutes for health
+argocd app wait myapp --health --timeout 300
 ```
 
 ## Debugging Health Issues
@@ -393,22 +389,25 @@ spec:
 argocd app get myapp
 
 # List resources with health
-argocd app resources myapp
+argocd app resources myapp --output tree=detailed
 
-# Get specific resource health
+# Inspect the live deployment status
 kubectl get deployment myapp -n myapp -o yaml | grep -A 20 status:
 ```
 
 ### Test Custom Health Scripts
 
-Use the ArgoCD API to test health scripts:
+Use the ArgoCD CLI to test health scripts locally:
 
 ```bash
+# Assess a local resource with the Lua scripts in argocd-cm
+argocd admin settings resource-overrides health ./deployment.yaml --argocd-cm-path ./argocd-cm.yaml
+
 # Get the raw health assessment
 argocd app get myapp --output json | jq '.status.health'
 
-# Check individual resource health
-argocd app resources myapp --output json | jq '.[] | select(.kind == "Deployment") | .health'
+# Check resource health in the application tree
+argocd app resources myapp --output tree=detailed
 ```
 
 ### Common Health Issues
@@ -423,10 +422,10 @@ kubectl describe deployment myapp -n myapp
 kubectl get events -n myapp --sort-by='.lastTimestamp'
 ```
 
-**Service shows Degraded:**
+**LoadBalancer Service stuck Progressing:**
 ```bash
-# Verify endpoints exist
-kubectl get endpoints myapp -n myapp
+# Verify the load balancer has an ingress address
+kubectl get service myapp -n myapp -o yaml | grep -A 10 loadBalancer:
 
 # Check selector matches
 kubectl get pods -n myapp --show-labels
