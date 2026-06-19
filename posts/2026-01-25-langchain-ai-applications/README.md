@@ -36,7 +36,8 @@ pip install langchain-anthropic   # Claude models
 pip install langchain-community   # Community integrations
 
 # Additional dependencies
-pip install chromadb              # Vector store
+pip install langchain-chroma      # Chroma vector store integration
+pip install langchain-text-splitters  # Text splitting utilities
 pip install tiktoken              # Token counting
 ```
 
@@ -116,7 +117,7 @@ print(response.content)
 
 Chains connect multiple components into a pipeline:
 
-```python
+````python
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser, JsonOutputParser
@@ -145,7 +146,7 @@ Review this code and provide structured feedback:
 
 ```python
 {code}
-```bash
+```
 
 Return your review as JSON with keys: issues, suggestions, score
 """)
@@ -162,7 +163,7 @@ def fetch_data(url):
 review = review_chain.invoke({"code": code_to_review})
 print(f"Score: {review['score']}")
 print(f"Issues: {review['issues']}")
-```text
+````
 
 ## Retrieval-Augmented Generation (RAG)
 
@@ -170,11 +171,11 @@ Build a RAG system that answers questions using your documents:
 
 ```python
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
-from langchain_community.vectorstores import Chroma
+from langchain_chroma import Chroma
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 # Sample documents (in practice, load from files or databases)
 documents = [
@@ -297,10 +298,8 @@ Create agents that can use tools to accomplish tasks:
 
 ```python
 from langchain_openai import ChatOpenAI
-from langchain.agents import AgentExecutor, create_openai_functions_agent
-from langchain_core.tools import tool
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-import requests
+from langchain.agents import create_agent
+from langchain.tools import tool
 
 # Define custom tools
 @tool
@@ -336,21 +335,19 @@ def calculate(expression: str) -> str:
 llm = ChatOpenAI(model="gpt-4", temperature=0)
 tools = [get_weather, search_documentation, calculate]
 
-prompt = ChatPromptTemplate.from_messages([
-    ("system", "You are a helpful assistant with access to tools. Use them when needed."),
-    MessagesPlaceholder(variable_name="chat_history", optional=True),
-    ("human", "{input}"),
-    MessagesPlaceholder(variable_name="agent_scratchpad")
-])
-
-agent = create_openai_functions_agent(llm, tools, prompt)
-agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True)
+agent = create_agent(
+    model=llm,
+    tools=tools,
+    system_prompt="You are a helpful assistant with access to tools. Use them when needed."
+)
 
 # Run the agent
-response = agent_executor.invoke({
-    "input": "What is a Kubernetes deployment and what is 15 * 24?"
+response = agent.invoke({
+    "messages": [
+        {"role": "user", "content": "What is a Kubernetes deployment and what is 15 * 24?"}
+    ]
 })
-print(response["output"])
+print(response["messages"][-1].content)
 ```
 
 ## Error Handling and Retries
@@ -369,7 +366,7 @@ llm = ChatOpenAI(
     model="gpt-4",
     temperature=0,
     max_retries=3,
-    request_timeout=30
+    timeout=30
 )
 
 # Custom retry wrapper for the entire chain
@@ -398,9 +395,9 @@ Track and debug your LangChain applications:
 import os
 
 # Enable LangSmith tracing
-os.environ["LANGCHAIN_TRACING_V2"] = "true"
-os.environ["LANGCHAIN_API_KEY"] = "your-langsmith-key"
-os.environ["LANGCHAIN_PROJECT"] = "my-ai-project"
+os.environ["LANGSMITH_TRACING"] = "true"
+os.environ["LANGSMITH_API_KEY"] = "your-langsmith-key"
+os.environ["LANGSMITH_PROJECT"] = "my-ai-project"
 
 # Now all chain invocations are automatically traced
 # View traces at https://smith.langchain.com
