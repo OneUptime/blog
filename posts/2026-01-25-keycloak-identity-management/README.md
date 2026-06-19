@@ -17,7 +17,7 @@ Keycloak handles identity concerns so your applications do not have to:
 - **Single Sign-On (SSO)**: One login for all applications
 - **User Federation**: Connect to LDAP, Active Directory, or external providers
 - **Social Login**: Google, GitHub, Facebook, and others
-- **Multi-Factor Authentication**: TOTP, WebAuthn, SMS
+- **Multi-Factor Authentication**: TOTP, WebAuthn, and custom SMS authenticators
 - **Fine-Grained Authorization**: Role-based and attribute-based access control
 - **Admin Console**: Web UI for managing users, roles, and clients
 - **Account Management**: Self-service portal for users
@@ -70,11 +70,11 @@ version: '3.8'
 
 services:
   keycloak:
-    image: quay.io/keycloak/keycloak:23.0
+    image: quay.io/keycloak/keycloak:latest
     container_name: keycloak
     environment:
-      KEYCLOAK_ADMIN: admin
-      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
       KC_DB: postgres
       KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
       KC_DB_USERNAME: keycloak
@@ -102,7 +102,7 @@ volumes:
 Start Keycloak:
 
 ```bash
-docker-compose up -d
+docker compose up -d
 ```
 
 Access the admin console at http://localhost:8080/admin (credentials: admin/admin).
@@ -189,7 +189,7 @@ Create via Admin Console:
 3. Client authentication: Off (public client)
 4. Authorization: Off
 5. Set Valid redirect URIs
-6. Enable PKCE for security
+6. Set PKCE method to S256 for security
 
 ### For a Backend API (Confidential Client)
 
@@ -207,6 +207,8 @@ Create via Admin Console:
 ```
 
 After creation, note the client secret from the Credentials tab.
+
+If this API will validate access tokens from the SPA, add an audience mapper for `backend-api` to the SPA client or to a client scope assigned to the SPA, and include the audience in access tokens.
 
 ## User Federation with LDAP
 
@@ -268,27 +270,7 @@ Enable TOTP for all users:
 1. Go to Authentication > Required Actions
 2. Enable "Configure OTP" as Default Action
 
-Or make it conditional based on roles:
-
-```json
-{
-  "alias": "mfa-required-flow",
-  "description": "MFA for privileged users",
-  "providerId": "basic-flow",
-  "topLevel": true,
-  "builtIn": false,
-  "authenticationExecutions": [
-    {
-      "authenticator": "auth-username-password-form",
-      "requirement": "REQUIRED"
-    },
-    {
-      "authenticator": "auth-otp-form",
-      "requirement": "CONDITIONAL"
-    }
-  ]
-}
-```
+Or make it conditional based on roles by duplicating the Browser flow, adding a conditional subflow after the username/password form, and placing "Condition - user role" and "OTP Form" inside that subflow. Set "Condition - user role" and "OTP Form" to Required, configure the role, then bind the new flow as the Browser flow.
 
 ## Integrating Applications
 
@@ -297,10 +279,22 @@ Or make it conditional based on roles:
 ```javascript
 // app.js
 const express = require('express');
+const session = require('express-session');
 const passport = require('passport');
 const KeycloakStrategy = require('passport-keycloak-oauth2-oidc').Strategy;
 
 const app = express();
+
+app.use(session({
+  secret: 'replace-with-a-long-random-secret',
+  resave: false,
+  saveUninitialized: false
+}));
+app.use(passport.initialize());
+app.use(passport.session());
+
+passport.serializeUser((user, done) => done(null, user));
+passport.deserializeUser((user, done) => done(null, user));
 
 // Configure Keycloak strategy
 passport.use(new KeycloakStrategy({
@@ -426,12 +420,14 @@ async def get_jwks():
 async def verify_token(token: str = Depends(oauth2_scheme)):
     try:
         jwks = await get_jwks()
-        # Decode and validate the token
+        # Decode and validate the token. The backend-api audience must be
+        # present in access tokens via an audience mapper or token exchange.
         payload = jwt.decode(
             token,
             jwks,
             algorithms=["RS256"],
-            audience="backend-api"
+            audience="backend-api",
+            issuer="http://localhost:8080/realms/mycompany"
         )
         return payload
     except JWTError as e:
@@ -454,10 +450,13 @@ curl -X POST "http://localhost:8080/admin/realms/mycompany/roles" \
   -d '{"name": "admin"}'
 
 # Assign role to user
+ROLE=$(curl -s "http://localhost:8080/admin/realms/mycompany/roles/admin" \
+  -H "Authorization: Bearer $TOKEN")
+
 curl -X POST "http://localhost:8080/admin/realms/mycompany/users/$USER_ID/role-mappings/realm" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '[{"name": "admin"}]'
+  -d "[$ROLE]"
 ```
 
 Check roles in your application:
