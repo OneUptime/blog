@@ -42,7 +42,7 @@ Set up the Puppet Server on your control node.
 ```bash
 # Add Puppet repository (Ubuntu/Debian)
 
-wget https://apt.puppet.com/puppet8-release-jammy.deb
+wget https://apt-puppetcore.puppet.com/public/puppet8-release-jammy.deb
 sudo dpkg -i puppet8-release-jammy.deb
 sudo apt update
 
@@ -93,7 +93,7 @@ Install the agent on managed nodes.
 
 ```bash
 # Add Puppet repository
-wget https://apt.puppet.com/puppet8-release-jammy.deb
+wget https://apt-puppetcore.puppet.com/public/puppet8-release-jammy.deb
 sudo dpkg -i puppet8-release-jammy.deb
 sudo apt update
 
@@ -197,7 +197,12 @@ class webserver (
   Boolean $ssl_enabled = false,
 ) {
   contain webserver::install
-  contain webserver::config
+  class { 'webserver::config':
+    worker_processes    => $worker_processes,
+    worker_connections  => $worker_connections,
+    server_name         => $server_name,
+    ssl_enabled         => $ssl_enabled,
+  }
   contain webserver::service
 
   Class['webserver::install']
@@ -225,7 +230,12 @@ class webserver::install {
 # modules/webserver/manifests/config.pp
 # Configuration management
 
-class webserver::config {
+class webserver::config (
+  Integer $worker_processes = 4,
+  Integer $worker_connections = 1024,
+  String $server_name = $facts['fqdn'],
+  Boolean $ssl_enabled = false,
+) {
   file { '/etc/nginx/nginx.conf':
     ensure  => file,
     owner   => 'root',
