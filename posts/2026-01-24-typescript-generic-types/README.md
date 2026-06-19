@@ -186,7 +186,7 @@ function processItem<T extends Printable & Loggable>(item: T): void {
 }
 
 // Implementation that satisfies both constraints
-class Document implements Printable, Loggable {
+class PrintableDocument implements Printable, Loggable {
     print(): void {
         console.log("Printing document");
     }
@@ -195,7 +195,7 @@ class Document implements Printable, Loggable {
     }
 }
 
-processItem(new Document());  // Works
+processItem(new PrintableDocument());  // Works
 ```
 
 ---
@@ -405,7 +405,7 @@ interface Person {
 type PersonGetters = Getters<Person>;
 // Equivalent to: { getName: () => string; getAge: () => number; }
 
-// Make all properties optional and nullable
+// Make all properties optional, including nested properties
 type DeepPartial<T> = {
     [K in keyof T]?: T[K] extends object ? DeepPartial<T[K]> : T[K];
 };
@@ -454,11 +454,13 @@ console.log(user.createdAt); // Works - from Entity
 
 ## Generic Components in React
 
-```typescript
+```tsx
+import type { ReactNode } from "react";
+
 // Generic React component for lists
 interface ListProps<T> {
     items: T[];
-    renderItem: (item: T, index: number) => React.ReactNode;
+    renderItem: (item: T, index: number) => ReactNode;
     keyExtractor: (item: T) => string;
 }
 
@@ -503,10 +505,10 @@ const products: Product[] = [
 
 ```typescript
 // Poor naming
-function process<T, U, V>(a: T, b: U): V { }
+declare function process<T, U, V>(a: T, b: U): V;
 
 // Better naming
-function transform<TInput, TOutput>(input: TInput): TOutput { }
+declare function transform<TInput, TOutput>(input: TInput): TOutput;
 
 // Common conventions
 // T - Type (general purpose)
@@ -517,7 +519,7 @@ function transform<TInput, TOutput>(input: TInput): TOutput { }
 // P - Props
 ```
 
-### 2. Prefer Constraints Over Any
+### 2. Prefer Generics Over Any
 
 ```typescript
 // BAD: Loses type safety
@@ -525,7 +527,7 @@ function processAny(items: any[]): any[] {
     return items.filter(Boolean);
 }
 
-// GOOD: Maintains type safety with constraint
+// GOOD: Maintains the array element type with generics
 function processGeneric<T>(items: T[]): T[] {
     return items.filter(Boolean);
 }
