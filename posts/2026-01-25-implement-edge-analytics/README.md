@@ -196,6 +196,8 @@ from typing import List, Dict, Any, Callable
 from dataclasses import dataclass
 from datetime import datetime
 
+from stream_processor import DataPoint
+
 @dataclass
 class AggregationResult:
     """Result of an aggregation"""
@@ -222,9 +224,9 @@ class Aggregator:
             "range": lambda v: max(v) - min(v),
             "first": lambda v: v[0] if v else None,
             "last": lambda v: v[-1] if v else None,
-            "p50": lambda v: statistics.quantiles(v, n=100)[49] if len(v) > 1 else v[0],
-            "p90": lambda v: statistics.quantiles(v, n=100)[89] if len(v) > 1 else v[0],
-            "p99": lambda v: statistics.quantiles(v, n=100)[98] if len(v) > 1 else v[0],
+            "p50": lambda v: statistics.quantiles(v, n=100, method="inclusive")[49] if len(v) > 1 else v[0],
+            "p90": lambda v: statistics.quantiles(v, n=100, method="inclusive")[89] if len(v) > 1 else v[0],
+            "p99": lambda v: statistics.quantiles(v, n=100, method="inclusive")[98] if len(v) > 1 else v[0],
         }
 
     def aggregate(
@@ -313,7 +315,7 @@ class RollingAggregator:
 # Real-time anomaly detection for edge analytics
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
 import math
 from collections import deque
@@ -352,7 +354,7 @@ class ZScoreDetector:
     ) -> Optional[Anomaly]:
         """Check if value is anomalous"""
         key = f"{device_id}:{metric}"
-        timestamp = timestamp or datetime.utcnow()
+        timestamp = timestamp or datetime.now(timezone.utc)
 
         # Initialize
         if key not in self.windows:
@@ -438,7 +440,7 @@ class IQRDetector:
     ) -> Optional[Anomaly]:
         """Check if value is anomalous using IQR method"""
         key = f"{device_id}:{metric}"
-        timestamp = timestamp or datetime.utcnow()
+        timestamp = timestamp or datetime.now(timezone.utc)
 
         if key not in self.windows:
             self.windows[key] = deque(maxlen=self.window_size)
@@ -502,7 +504,7 @@ class ChangePointDetector:
     ) -> Optional[Anomaly]:
         """Detect change points in the data"""
         key = f"{device_id}:{metric}"
-        timestamp = timestamp or datetime.utcnow()
+        timestamp = timestamp or datetime.now(timezone.utc)
 
         if key not in self.history:
             self.history[key] = deque(maxlen=self.window_size * 2)
@@ -561,7 +563,7 @@ class ChangePointDetector:
 # Complete edge analytics pipeline
 
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Callable, Dict, Any
 import logging
 
@@ -692,7 +694,7 @@ async def main():
             value = random.gauss(22, 2)  # Normal
 
         point = DataPoint(
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             device_id=device_id,
             metric="temperature",
             value=value
@@ -717,7 +719,7 @@ if __name__ == "__main__":
 # Pattern detection for edge analytics
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Optional
 from collections import deque
 import numpy as np
@@ -830,8 +832,8 @@ class SeasonalityDetector:
                     pattern_type=f"seasonal_period_{period}",
                     device_id=device_id,
                     metric=metric,
-                    start_time=datetime.utcnow(),
-                    end_time=datetime.utcnow(),
+                    start_time=datetime.now(timezone.utc),
+                    end_time=datetime.now(timezone.utc),
                     confidence=correlation,
                     details={
                         "period": period,
