@@ -25,7 +25,7 @@ The key components are:
 
 Codespaces uses the Dev Container specification. Create a `.devcontainer/devcontainer.json` file:
 
-```json
+```jsonc
 {
   // Name shown in the Codespaces dashboard
   "name": "Production API Development",
@@ -39,9 +39,7 @@ Codespaces uses the Dev Container specification. Create a `.devcontainer/devcont
     // Add Docker CLI for container operations
     "ghcr.io/devcontainers/features/docker-in-docker:2": {},
     // Add AWS CLI for deployment
-    "ghcr.io/devcontainers/features/aws-cli:1": {},
-    // Add PostgreSQL client for database access
-    "ghcr.io/devcontainers/features/postgresql:1": {}
+    "ghcr.io/devcontainers/features/aws-cli:1": {}
   },
 
   // VS Code configuration applied automatically
@@ -53,14 +51,13 @@ Codespaces uses the Dev Container specification. Create a `.devcontainer/devcont
         "charliermarsh.ruff"
       ],
       "settings": {
-        "python.defaultInterpreterPath": "/usr/local/bin/python",
-        "python.linting.enabled": true
+        "python.defaultInterpreterPath": "/usr/local/bin/python"
       }
     }
   },
 
   // Commands executed during Codespace lifecycle
-  "postCreateCommand": "pip install -r requirements.txt",
+  "postCreateCommand": "sudo apt-get update && sudo apt-get install -y postgresql-client && pip install -r requirements.txt",
   "postStartCommand": "echo 'Environment ready!'",
 
   // Ports to forward automatically
@@ -84,7 +81,7 @@ Codespaces uses the Dev Container specification. Create a `.devcontainer/devcont
 
 Different projects need different resources. Configure minimum requirements:
 
-```json
+```jsonc
 {
   "name": "Resource-Intensive Project",
   "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
@@ -112,9 +109,9 @@ Different projects need different resources. Configure minimum requirements:
 
 ## Setting Up Prebuilds
 
-Prebuilds dramatically reduce Codespace startup time by building images ahead of time. Configure them in your repository settings or through the configuration file:
+Prebuilds dramatically reduce Codespace startup time by building images ahead of time. Configure prebuilds in your repository settings, and use lifecycle commands in the configuration file to control what work is included in the prebuild:
 
-```json
+```jsonc
 {
   "name": "Prebuild-Optimized Project",
   "image": "mcr.microsoft.com/devcontainers/javascript-node:20",
@@ -123,9 +120,9 @@ Prebuilds dramatically reduce Codespace startup time by building images ahead of
   "updateContentCommand": "npm ci",
   "postCreateCommand": "npm run setup",
 
-  // Cache node_modules between prebuilds
+  // Keep node_modules outside the repository checkout
   "mounts": [
-    "source=node-modules-cache,target=/workspace/node_modules,type=volume"
+    "source=${localWorkspaceFolderBasename}-node_modules,target=${containerWorkspaceFolder}/node_modules,type=volume"
   ],
 
   "customizations": {
@@ -144,7 +141,7 @@ Enable prebuilds through the repository settings:
 1. Navigate to repository Settings
 2. Select Codespaces in the sidebar
 3. Click "Set up prebuild"
-4. Choose trigger events (push to main, pull requests)
+4. Choose the branch, configuration file, and prebuild trigger
 5. Select regions for prebuild availability
 
 ## Multi-Container Environments
@@ -153,8 +150,6 @@ For applications requiring databases and other services, use Docker Compose:
 
 ```yaml
 # .devcontainer/docker-compose.yml
-
-version: '3.8'
 
 services:
   app:
@@ -193,7 +188,7 @@ volumes:
 
 Reference the compose file in your configuration:
 
-```json
+```jsonc
 {
   "name": "Full Stack Application",
   "dockerComposeFile": "docker-compose.yml",
@@ -210,27 +205,30 @@ Reference the compose file in your configuration:
     }
   },
 
-  // Wait for services to be healthy before running commands
+  // Give dependent services a moment to start before running commands
   "postCreateCommand": "sleep 5 && python manage.py migrate"
 }
 ```
 
 ## Managing Secrets
 
-Codespaces can access secrets stored at the user, repository, or organization level. Configure which secrets are available:
+Codespaces can access secrets stored at the user, repository, or organization level. Repository and organization secrets are configured in GitHub settings; user-specific secrets can be recommended in `devcontainer.json`:
 
-```json
+```jsonc
 {
   "name": "Project with Secrets",
   "image": "mcr.microsoft.com/devcontainers/python:3.11",
 
-  // Secrets are automatically available as environment variables
-  // Configure them through GitHub's Codespaces settings, not here
-  // This comment documents which secrets the project needs:
-  // - API_KEY: Third-party service authentication
-  // - DATABASE_URL: Production database (read-only)
-  // - AWS_ACCESS_KEY_ID: AWS deployment credentials
-  // - AWS_SECRET_ACCESS_KEY: AWS deployment credentials
+  // Recommended user-specific secrets.
+  // Users are prompted for these when they create a codespace with advanced options.
+  "secrets": {
+    "API_KEY": {
+      "description": "Third-party service authentication"
+    },
+    "DATABASE_URL": {
+      "description": "Development database connection string"
+    }
+  },
 
   "postCreateCommand": "pip install -r requirements.txt"
 }
@@ -241,7 +239,7 @@ Add secrets through the GitHub UI:
 1. Go to repository Settings > Secrets and variables > Codespaces
 2. Click "New repository secret"
 3. Enter the name and value
-4. Select which repositories can access the secret
+4. Click "Add secret"
 
 ## Optimizing Startup Performance
 
@@ -265,7 +263,7 @@ flowchart TD
 
 Optimization strategies:
 
-```json
+```jsonc
 {
   "name": "Optimized Startup",
 
@@ -280,7 +278,7 @@ Optimization strategies:
 
   // Split commands by lifecycle stage
   // updateContentCommand runs during prebuild
-  "updateContentCommand": "npm ci --frozen-lockfile",
+  "updateContentCommand": "npm ci",
 
   // postCreateCommand runs after clone
   "postCreateCommand": "npm run setup:local",
@@ -337,7 +335,7 @@ echo "Dotfiles installed successfully!"
 
 Create Codespaces-ready templates for new projects:
 
-```json
+```jsonc
 {
   "name": "Organization Template",
   "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
