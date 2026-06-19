@@ -4,32 +4,32 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RabbitMQ, Clustering, High Availability, Message Queue, DevOps, Infrastructure, Scalability
 
-Description: Learn how to set up and configure a RabbitMQ cluster for high availability and improved throughput in production environments.
+Description: Learn how to set up and configure a RabbitMQ cluster for high availability and connection distribution in production environments.
 
 ---
 
-RabbitMQ clustering allows you to connect multiple RabbitMQ nodes together to form a single logical broker. This provides high availability, improved throughput, and fault tolerance for your messaging infrastructure.
+RabbitMQ clustering allows you to connect multiple RabbitMQ nodes together to form a single logical broker. This provides high availability for replicated queues, distributes client connections and queue leaders across nodes, and improves fault tolerance for your messaging infrastructure.
 
 ## Understanding RabbitMQ Clustering
 
-In a RabbitMQ cluster, all nodes share the same virtual hosts, exchanges, users, and permissions. Queues can either be mirrored across nodes or exist on a single node.
+In a RabbitMQ cluster, all nodes share the same virtual hosts, exchanges, users, and permissions. Classic queues exist on a single leader node by default, while quorum queues and streams replicate their contents across multiple nodes.
 
 ```mermaid
 flowchart TB
     subgraph Cluster["RabbitMQ Cluster"]
         subgraph Node1["Node 1 (rabbit@node1)"]
             Q1[Queue A]
-            Q2[Queue B Mirror]
+            Q2[Queue B Replica]
         end
 
         subgraph Node2["Node 2 (rabbit@node2)"]
-            Q3[Queue A Mirror]
+            Q3[Queue A Replica]
             Q4[Queue B]
         end
 
         subgraph Node3["Node 3 (rabbit@node3)"]
-            Q5[Queue A Mirror]
-            Q6[Queue B Mirror]
+            Q5[Queue A Replica]
+            Q6[Queue B Replica]
         end
 
         Node1 <-->|Erlang Distribution| Node2
@@ -105,8 +105,8 @@ Create or edit the RabbitMQ configuration file on each node.
 ```ini
 # /etc/rabbitmq/rabbitmq.conf
 
-# Cluster formation settings
-cluster_formation.peer_discovery_backend = rabbit_peer_discovery_classic_config
+# Automated cluster formation settings
+cluster_formation.peer_discovery_backend = classic_config
 cluster_formation.classic_config.nodes.1 = rabbit@rabbit1
 cluster_formation.classic_config.nodes.2 = rabbit@rabbit2
 cluster_formation.classic_config.nodes.3 = rabbit@rabbit3
@@ -115,10 +115,6 @@ cluster_formation.classic_config.nodes.3 = rabbit@rabbit3
 listeners.tcp.default = 5672
 management.tcp.port = 15672
 
-# Cluster partition handling strategy
-# Options: pause_minority, autoheal, ignore
-cluster_partition_handling = pause_minority
-
 # Inter-node communication
 distribution.listener.port_range.min = 25672
 distribution.listener.port_range.max = 25672
@@ -126,7 +122,7 @@ distribution.listener.port_range.max = 25672
 
 ## Step 4: Join Nodes to the Cluster
 
-Start RabbitMQ on the first node (rabbit1), then join other nodes to it.
+Start RabbitMQ on the first node (rabbit1), then join other nodes to it. If you use the automated cluster formation settings from Step 3 on blank nodes, RabbitMQ can perform this join during startup; the commands below show the manual `rabbitmqctl` workflow.
 
 **On rabbit1 (first node):**
 
@@ -299,10 +295,12 @@ backend rabbitmq_cluster
 
 # Management UI frontend
 frontend rabbitmq_management
+    mode http
     bind *:15672
     default_backend rabbitmq_management_backend
 
 backend rabbitmq_management_backend
+    mode http
     balance roundrobin
     option httpchk GET /api/health/checks/alarms
     http-check expect status 200
@@ -313,6 +311,7 @@ backend rabbitmq_management_backend
 
 # Stats page for monitoring HAProxy
 listen stats
+    mode http
     bind *:8404
     stats enable
     stats uri /stats
@@ -330,8 +329,8 @@ import pika
 
 def get_connection():
     """
-    Create a connection with automatic failover to cluster nodes.
-    If one node fails, try the next one.
+    Create a connection with failover across cluster nodes.
+    If the initial connection to one node fails, try the next one.
     """
     # List of all cluster nodes
     hosts = ['rabbit1', 'rabbit2', 'rabbit3']
@@ -346,7 +345,7 @@ def get_connection():
                 socket_timeout=5,
                 # Heartbeat to detect dead connections
                 heartbeat=60,
-                # Automatic reconnection
+                # Initial connection retries
                 connection_attempts=3,
                 retry_delay=2
             )
@@ -422,17 +421,17 @@ connectToCluster()
 ### Using rabbitmqctl
 
 ```bash
-# Check overall cluster status
+# Check the local node status
+sudo rabbitmqctl status
+
+# List cluster members and their node types
 sudo rabbitmqctl cluster_status
 
-# List all nodes and their types
-sudo rabbitmqctl list_nodes
+# Check queue leaders and queue types
+sudo rabbitmqctl list_queues name type state pid messages
 
-# Check queue distribution across nodes
-sudo rabbitmqctl list_queues name node messages
-
-# Check for network partitions
-sudo rabbitmqctl eval 'rabbit_mnesia:cluster_status_from_mnesia().'
+# Check reachable peers and spot missing running nodes
+sudo rabbitmq-diagnostics cluster_status
 ```
 
 ### Using the Management API
@@ -462,15 +461,15 @@ flowchart TB
     end
 
     subgraph RabbitMQ_Cluster["RabbitMQ Cluster"]
-        subgraph DC1["Data Center 1"]
+        subgraph AZ1["Availability Zone 1"]
             R1[rabbit@node1<br/>Disk Node]
         end
 
-        subgraph DC2["Data Center 2"]
+        subgraph AZ2["Availability Zone 2"]
             R2[rabbit@node2<br/>Disk Node]
         end
 
-        subgraph DC3["Data Center 3"]
+        subgraph AZ3["Availability Zone 3"]
             R3[rabbit@node3<br/>Disk Node]
         end
 
@@ -488,20 +487,19 @@ flowchart TB
 
 ## Handling Network Partitions
 
-Network partitions occur when cluster nodes lose connectivity with each other. Configure how RabbitMQ handles this:
+Network partitions occur when cluster nodes lose connectivity with each other. In current RabbitMQ 4.x releases, the older `cluster_partition_handling` configuration keys are accepted for backwards compatibility but have no effect; quorum queues and streams rely on Raft majority semantics and require an online majority of replicas to remain available.
 
 ```ini
 # rabbitmq.conf
 
+# RabbitMQ 3.13 and earlier with Mnesia supported these strategies:
 # pause_minority: Nodes in the minority partition pause
-# This is the safest option for most deployments
 cluster_partition_handling = pause_minority
 
 # autoheal: Automatically pick a winning partition and restart losers
-# Use when availability is more important than consistency
 # cluster_partition_handling = autoheal
 
-# ignore: Do nothing (not recommended for production)
+# ignore: Do nothing
 # cluster_partition_handling = ignore
 ```
 
@@ -512,7 +510,7 @@ cluster_partition_handling = pause_minority
 3. **Use quorum queues** - They are more reliable than classic mirrored queues
 4. **Configure proper monitoring** - Alert on cluster health and partitions
 5. **Test failover regularly** - Verify your cluster handles node failures correctly
-6. **Keep Erlang and RabbitMQ versions synchronized** - All nodes must run the same version
+6. **Keep Erlang and RabbitMQ versions compatible** - Outside of planned rolling upgrades, keep all nodes on the same RabbitMQ release series and a compatible Erlang/OTP major version
 
 ```bash
 # Verify all nodes run the same version
@@ -524,4 +522,4 @@ sudo rabbitmqctl status | grep "RabbitMQ version"
 
 ---
 
-RabbitMQ clustering provides the foundation for a highly available messaging system. Start with three nodes, use quorum queues for important data, configure proper failover in your applications, and monitor cluster health continuously. With this setup, your messaging infrastructure can survive node failures without losing messages or impacting application performance.
+RabbitMQ clustering provides the foundation for a highly available messaging system. Start with three nodes, use quorum queues for important data, configure proper failover in your applications, and monitor cluster health continuously. With this setup, queues that still have a quorum of replicas online can survive node failures while reducing the risk of message loss and limiting application impact.
