@@ -46,7 +46,7 @@ on:
       node-version:
         description: 'Node.js version to use'
         required: false
-        default: '20'
+        default: '24'
         type: string
 
       run-coverage:
@@ -72,10 +72,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: ${{ inputs.node-version }}
           cache: 'npm'
@@ -96,10 +96,10 @@ jobs:
       coverage: ${{ steps.coverage.outputs.percent }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: ${{ inputs.node-version }}
           cache: 'npm'
@@ -137,7 +137,7 @@ jobs:
   build-test:
     uses: ./.github/workflows/build-and-test.yml
     with:
-      node-version: '20'
+      node-version: '24'
       run-coverage: true
     secrets:
       NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -161,7 +161,7 @@ jobs:
     # Reference workflow from another repository
     uses: your-org/shared-workflows/.github/workflows/build-and-test.yml@main
     with:
-      node-version: '20'
+      node-version: '24'
     secrets: inherit  # Pass all secrets to the called workflow
 ```
 
@@ -320,7 +320,7 @@ jobs:
   build:
     uses: ./.github/workflows/build-and-test.yml
     with:
-      node-version: '20'
+      node-version: '24'
 
   # Second: build Docker image
   docker:
@@ -442,20 +442,19 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 ```
 
 ## Debugging Reusable Workflows
 
-Enable debug logging when calling:
+Add debug output in the reusable workflow:
 
 ```yaml
 jobs:
   build:
     uses: ./.github/workflows/build.yml
     with:
-      node-version: '20'
-    # Add environment variable for debugging
+      node-version: '24'
 ```
 
 In the reusable workflow:
@@ -464,17 +463,19 @@ In the reusable workflow:
 - name: Debug info
   run: |
     echo "Inputs: ${{ toJson(inputs) }}"
-    echo "GitHub context: ${{ toJson(github) }}"
+    echo "Repository: ${{ github.repository }}"
+    echo "Ref: ${{ github.ref }}"
+    echo "Run ID: ${{ github.run_id }}"
 ```
 
 ## Limitations to Know
 
-1. **Nesting depth**: Reusable workflows can call other reusable workflows up to 4 levels deep
-2. **Same organization**: Private reusable workflows are only accessible within the same organization
-3. **No env at workflow level**: Environment variables must be set at job or step level
-4. **Matrix with reusable workflows**: You cannot use matrix directly with reusable workflow calls
+1. **Nesting depth**: Reusable workflows can be connected up to 10 workflow levels deep, including the top-level caller
+2. **Access control**: Private reusable workflows require repository Actions access settings that allow the caller to use them
+3. **Workflow-level env**: Workflow-level environment variables from the caller are not propagated to the called workflow
+4. **Matrix with reusable workflows**: Jobs using a matrix strategy can call reusable workflows
 
-Workaround for matrix:
+Matrix example:
 
 ```yaml
 jobs:
@@ -484,7 +485,7 @@ jobs:
       matrix: ${{ steps.set.outputs.matrix }}
     steps:
       - id: set
-        run: echo 'matrix=["18", "20"]' >> $GITHUB_OUTPUT
+        run: echo 'matrix=["22", "24"]' >> $GITHUB_OUTPUT
 
   build:
     needs: setup
