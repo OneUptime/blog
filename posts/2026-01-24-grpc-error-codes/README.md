@@ -199,9 +199,10 @@ package main
 
 import (
     "context"
+    "errors"
     "log"
+    "time"
 
-    "google.golang.org/grpc"
     "google.golang.org/grpc/codes"
     "google.golang.org/grpc/status"
 
@@ -473,9 +474,15 @@ def handle_error_with_details(error):
 package main
 
 import (
+    "context"
+    "time"
+
     "google.golang.org/genproto/googleapis/rpc/errdetails"
     "google.golang.org/grpc/codes"
     "google.golang.org/grpc/status"
+    "google.golang.org/protobuf/types/known/durationpb"
+
+    pb "myservice/proto"
 )
 
 // CreateValidationError creates an error with field violation details
@@ -572,6 +579,7 @@ sequenceDiagram
 ### Error Translation Middleware
 
 ```python
+from concurrent import futures
 import grpc
 import logging
 
@@ -585,16 +593,23 @@ class ErrorTranslationInterceptor(grpc.ServerInterceptor):
         self.service_name = service_name
 
     def intercept_service(self, continuation, handler_call_details):
+        handler = continuation(handler_call_details)
+        if handler is None:
+            return None
+
         def wrapper(request, context):
             try:
-                return continuation(request, context)
+                return handler.unary_unary(request, context)
             except Exception as e:
                 return self._handle_error(e, context, handler_call_details)
 
+        if handler.unary_unary is None:
+            return handler
+
         return grpc.unary_unary_rpc_method_handler(
             wrapper,
-            request_deserializer=handler_call_details.request_deserializer,
-            response_serializer=handler_call_details.response_serializer,
+            request_deserializer=handler.request_deserializer,
+            response_serializer=handler.response_serializer,
         )
 
     def _handle_error(self, error, context, call_details):
