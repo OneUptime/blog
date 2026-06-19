@@ -34,6 +34,7 @@ Tutorial / implementation guide
 - The MySQL example used `SHOW MASTER STATUS`, which is no longer supported in current MySQL 8.4 documentation. Replaced it with `SHOW BINARY LOG STATUS`.
 - The MySQL replica configuration directly enabled `replica_skip_errors = 1062`. MySQL documents this as risky because it can make replicas diverge from the source. Commented the setting out and added a warning comment.
 - The PostgreSQL lag query calculated time lag only from `pg_last_xact_replay_timestamp()`. On an idle replica, that timestamp can be old even when the replica has replayed all received WAL. Updated the SQL and JavaScript monitoring query to report `0` seconds/milliseconds when received and replayed LSNs match.
+- The PostgreSQL lag query used direct `pg_lsn` subtraction for byte lag. Replaced it with the documented `pg_wal_lsn_diff()` function.
 
 ## Review Notes
 - The MySQL setup uses current source/replica terminology (`CHANGE REPLICATION SOURCE TO`, `START REPLICA`, `SHOW REPLICA STATUS`) and GTID auto-positioning.

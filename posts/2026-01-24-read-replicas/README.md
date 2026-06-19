@@ -388,7 +388,7 @@ graph LR
 SELECT
     pg_last_wal_receive_lsn() AS received,
     pg_last_wal_replay_lsn() AS replayed,
-    pg_last_wal_receive_lsn() - pg_last_wal_replay_lsn() AS lag_bytes,
+    pg_wal_lsn_diff(pg_last_wal_receive_lsn(), pg_last_wal_replay_lsn()) AS lag_bytes,
     CASE
         WHEN pg_last_wal_receive_lsn() = pg_last_wal_replay_lsn() THEN 0
         ELSE EXTRACT(EPOCH FROM (now() - pg_last_xact_replay_timestamp()))
