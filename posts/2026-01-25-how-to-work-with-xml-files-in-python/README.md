@@ -268,10 +268,14 @@ def remove_elements(filepath, element_path):
     tree = ET.parse(filepath)
     root = tree.getroot()
 
+    # Build a child-to-parent map because ElementTree elements do not
+    # store references to their parents.
+    parent_map = {child: parent for parent in root.iter() for child in parent}
+
     # Find all elements to remove
     for elem in root.findall(element_path):
         # Get the parent element to perform removal
-        parent = root.find(f".//{elem.tag}/..")
+        parent = parent_map.get(elem)
         if parent is not None:
             parent.remove(elem)
 
@@ -444,4 +448,3 @@ Working with XML in Python is straightforward once you understand the available 
 ---
 
 *Need to monitor your Python applications that process XML data? [OneUptime](https://oneuptime.com) provides comprehensive monitoring to track performance and catch errors in your data processing pipelines.*
-
