@@ -69,9 +69,10 @@ class TraceContextFilter(logging.Filter):
         # Get the current span from the trace context
         span = trace.get_current_span()
 
-        if span.is_recording():
-            # Extract trace_id and span_id from the current span
-            ctx = span.get_span_context()
+        ctx = span.get_span_context()
+
+        if ctx.is_valid:
+            # Extract trace_id and span_id from the current span context
             # Convert to hex format for readability
             record.trace_id = format(ctx.trace_id, '032x')
             record.span_id = format(ctx.span_id, '016x')
@@ -182,6 +183,7 @@ import (
     "os"
 
     "go.opentelemetry.io/otel"
+    sdktrace "go.opentelemetry.io/otel/sdk/trace"
     "go.opentelemetry.io/otel/trace"
 )
 
@@ -225,6 +227,13 @@ func (h *TraceHandler) WithGroup(name string) slog.Handler {
 }
 
 func main() {
+    // Set up a tracer provider so spans have real trace and span IDs
+    tracerProvider := sdktrace.NewTracerProvider()
+    defer func() {
+        _ = tracerProvider.Shutdown(context.Background())
+    }()
+    otel.SetTracerProvider(tracerProvider)
+
     // Set up the base JSON handler
     baseHandler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
         Level: slog.LevelInfo,
@@ -316,7 +325,7 @@ processors:
       - key: service.name
         value: my-service
         action: upsert
-      - key: deployment.environment
+      - key: deployment.environment.name
         value: production
         action: upsert
 
@@ -325,20 +334,20 @@ exporters:
   otlp/backend:
     endpoint: https://your-backend.example.com:4317
     headers:
-      authorization: "Bearer ${BACKEND_TOKEN}"
+      authorization: "Bearer ${env:BACKEND_TOKEN}"
 
 service:
   pipelines:
     # Traces pipeline
     traces:
       receivers: [otlp]
-      processors: [batch, resource]
+      processors: [resource, batch]
       exporters: [otlp/backend]
 
     # Logs pipeline - uses same processors for consistent attributes
     logs:
       receivers: [otlp]
-      processors: [batch, resource]
+      processors: [resource, batch]
       exporters: [otlp/backend]
 ```
 
@@ -403,14 +412,14 @@ If your logs do not show trace IDs, verify that:
 
 1. The logging filter is properly attached to your logger
 2. There is an active span when logging occurs
-3. The span is recording (not a no-op span)
+3. The current span context is valid
 
 ```python
 # Debug helper to verify trace context
 def debug_trace_context():
     span = trace.get_current_span()
-    if span.is_recording():
-        ctx = span.get_span_context()
+    ctx = span.get_span_context()
+    if ctx.is_valid:
         print(f"Active trace: {format(ctx.trace_id, '032x')}")
         print(f"Active span: {format(ctx.span_id, '016x')}")
     else:
