@@ -39,7 +39,7 @@ Delays simulate network latency or slow upstream services. This is useful for te
 Here is how to add a 5-second delay to 100% of requests to the ratings service:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: ratings-delay
@@ -62,7 +62,7 @@ spec:
 You can also target specific users or requests using match conditions:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: ratings-delay-test-users
@@ -99,7 +99,7 @@ Abort faults return HTTP errors immediately without forwarding the request to th
 Return HTTP 503 for 50% of requests:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: ratings-abort
@@ -122,7 +122,7 @@ spec:
 You can inject different error codes to test various failure scenarios:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-error-injection
@@ -166,7 +166,7 @@ spec:
 For realistic chaos testing, combine both fault types:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: payment-chaos
@@ -193,7 +193,7 @@ spec:
 This configuration means:
 - 20% of requests will be delayed by 3 seconds
 - 10% of requests will return a 500 error immediately
-- The remaining requests proceed normally
+- Requests that are selected for neither fault proceed normally
 
 Note that delay and abort percentages are independent. Some requests could theoretically get both (delayed, then aborted), but in practice Istio evaluates them separately.
 
@@ -204,7 +204,7 @@ One of the most valuable uses of fault injection is verifying your timeout setti
 First, set up the timeout in your client-side VirtualService:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: productpage-timeout
@@ -220,17 +220,17 @@ spec:
             subset: v1
 ```
 
-Then inject a delay longer than your timeout:
+Then inject a delay longer than your timeout on an upstream service that `reviews` calls:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
-  name: reviews-slow
+  name: ratings-slow
   namespace: default
 spec:
   hosts:
-    - reviews
+    - ratings
   http:
     - fault:
         delay:
@@ -239,20 +239,18 @@ spec:
           fixedDelay: 5s
       route:
         - destination:
-            host: reviews
+            host: ratings
             subset: v1
 ```
 
-When you hit the productpage, it should timeout after 2 seconds even though the injected delay is 5 seconds.
+When you hit the productpage, the call from `productpage` to `reviews` should timeout after 2 seconds if `reviews` waits on the delayed `ratings` call.
 
 ## Testing Retry Logic
 
-Similarly, test your retry configuration by injecting failures:
+Be careful when testing retry configuration. Istio does not enable retries or timeouts on the same client-side route where a `fault` is configured, so a fault injected by the same outbound proxy is not a reliable way to prove that route's retry policy works.
 
 ```yaml
-# First, configure retries on the client side
-
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: reviews-with-retries
@@ -271,29 +269,7 @@ spec:
             subset: v1
 ```
 
-```yaml
-# Then inject failures to trigger retries
-apiVersion: networking.istio.io/v1beta1
-kind: VirtualService
-metadata:
-  name: reviews-failure
-  namespace: default
-spec:
-  hosts:
-    - reviews
-  http:
-    - fault:
-        abort:
-          percentage:
-            value: 50.0
-          httpStatus: 503
-      route:
-        - destination:
-            host: reviews
-            subset: v1
-```
-
-With 50% failure rate and 3 retry attempts, most requests should eventually succeed.
+To validate this retry policy, trigger failures from the upstream service itself or inject faults at the upstream proxy. Do not put `fault` and `retries` on the same `VirtualService` route and expect the retries to handle those injected faults.
 
 ## Scoped Fault Injection
 
@@ -302,7 +278,7 @@ In production, you don't want to affect all users. Scope faults to specific test
 ### By Header
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: reviews-chaos-test
@@ -335,7 +311,7 @@ spec:
 Target faults only when requests come from specific services:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: reviews-fault-from-productpage
@@ -374,7 +350,8 @@ Monitor the effects of your fault injection using Istio's observability features
 kubectl exec <pod-name> -c istio-proxy -- pilot-agent request GET stats | grep fault
 
 # Look for metrics like:
-# cluster.outbound|9080||reviews.default.svc.cluster.local.upstream_rq_pending_active
+# http.<stat_prefix>.fault.delays_injected
+# http.<stat_prefix>.fault.aborts_injected
 ```
 
 ### Kiali Visualization
@@ -386,7 +363,7 @@ If you have Kiali installed, it shows fault injection effects in the service gra
 Enable access logging and look for the response flags:
 
 ```bash
-kubectl logs <pod-name> -c istio-proxy | grep "response_flags"
+kubectl logs <pod-name> -c istio-proxy | grep -E ' (DI|FI)([, ]|$)'
 
 # DI = Delay Injected
 # FI = Fault Injected
@@ -425,12 +402,16 @@ The fault block needs to be alongside a route, not replace it:
 http:
   - fault:
       delay:
+        percentage:
+          value: 100.0
         fixedDelay: 5s
 
 # Correct - includes route
 http:
   - fault:
       delay:
+        percentage:
+          value: 100.0
         fixedDelay: 5s
     route:
       - destination:
