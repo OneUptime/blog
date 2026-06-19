@@ -41,10 +41,10 @@ State management is the most critical aspect of IaC. Corrupted or lost state can
 Never store state locally. Use remote backends with locking to prevent concurrent modifications:
 
 ```hcl
-# backend.tf - Remote state configuration with S3 and DynamoDB locking
+# backend.tf - Remote state configuration with S3 locking
 
 terraform {
-  required_version = ">= 1.5.0"
+  required_version = ">= 1.10.0"
 
   backend "s3" {
     bucket         = "mycompany-terraform-state"
@@ -54,27 +54,13 @@ terraform {
     # Enable encryption at rest
     encrypt        = true
 
-    # DynamoDB table for state locking - prevents concurrent modifications
-    dynamodb_table = "terraform-state-locks"
+    # S3 lockfile for state locking - prevents concurrent modifications
+    use_lockfile   = true
 
     # Use AWS SSO or IAM roles instead of hardcoded credentials
-    # The role must have s3:GetObject, s3:PutObject, dynamodb:GetItem, dynamodb:PutItem
-  }
-}
-
-# Create the locking table (run this once, separately)
-resource "aws_dynamodb_table" "terraform_locks" {
-  name         = "terraform-state-locks"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "LockID"
-
-  attribute {
-    name = "LockID"
-    type = "S"
-  }
-
-  tags = {
-    Purpose = "Terraform state locking"
+    # The role must have s3:ListBucket on the bucket, s3:GetObject and
+    # s3:PutObject on the state file, plus s3:GetObject, s3:PutObject,
+    # and s3:DeleteObject on the .tflock file
   }
 }
 ```
@@ -252,31 +238,23 @@ Security should be built into your IaC from the start, not added as an afterthou
 
 ### Secrets Management
 
-Never store secrets in Terraform code or state. Use secret management services:
+Never store secrets in Terraform code. Use secret management services, and protect Terraform state because resource arguments can still be stored there:
 
 ```hcl
-# Reference secrets from AWS Secrets Manager
-data "aws_secretsmanager_secret_version" "db_credentials" {
-  secret_id = "production/database/credentials"
-}
-
-locals {
-  db_credentials = jsondecode(data.aws_secretsmanager_secret_version.db_credentials.secret_string)
-}
-
+# Let RDS manage the master password in AWS Secrets Manager
 resource "aws_db_instance" "main" {
-  identifier     = "production-db"
-  engine         = "postgres"
-  engine_version = "15.4"
-  instance_class = "db.r5.large"
+  identifier                  = "production-db"
+  engine                      = "postgres"
+  engine_version              = "15.4"
+  instance_class              = "db.r5.large"
 
-  # Reference secrets - not stored in state as plaintext
-  username = local.db_credentials["username"]
-  password = local.db_credentials["password"]
+  # RDS generates and stores the password in Secrets Manager
+  username                    = "app_admin"
+  manage_master_user_password = true
 
   # Security configurations
-  storage_encrypted   = true
-  deletion_protection = true
+  storage_encrypted          = true
+  deletion_protection        = true
 
   vpc_security_group_ids = [aws_security_group.database.id]
   db_subnet_group_name   = aws_db_subnet_group.main.name
@@ -357,7 +335,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: 1.6.0
 
@@ -410,7 +388,7 @@ Automatically comment Terraform plans on pull requests:
       - uses: actions/checkout@v4
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
 
       - name: Terraform Init
         run: terraform init
