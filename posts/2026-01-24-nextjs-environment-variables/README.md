@@ -33,15 +33,15 @@ flowchart TB
 
 ## Environment File Priority
 
-Next.js loads environment files in a specific order, with later files taking precedence:
+Next.js looks up environment variables in a specific order and stops once a value is found:
 
 | File | Purpose | Loaded When |
 |------|---------|-------------|
-| `.env` | Default values | Always |
+| `process.env` | Already-defined environment variables | Always |
+| `.env.$(NODE_ENV).local` | Environment-specific local overrides | Matching `NODE_ENV` |
 | `.env.local` | Local overrides | Always (except test) |
-| `.env.development` | Development values | `next dev` |
-| `.env.production` | Production values | `next build` |
-| `.env.test` | Test values | `NODE_ENV=test` |
+| `.env.$(NODE_ENV)` | Environment-specific values | Matching `NODE_ENV` |
+| `.env` | Default values | Always |
 
 ## Basic Configuration
 
@@ -132,7 +132,7 @@ export function Analytics() {
     // This works - NEXT_PUBLIC_ prefix
     const analyticsId = process.env.NEXT_PUBLIC_ANALYTICS_ID;
 
-    // This would be undefined - no NEXT_PUBLIC_ prefix
+    // This is not available in client code - no NEXT_PUBLIC_ prefix
     // const secretKey = process.env.API_SECRET_KEY;
 
     if (analyticsId) {
@@ -150,10 +150,10 @@ function initializeAnalytics(id: string) {
 
 ## Type-Safe Environment Variables
 
-Create a configuration module with validation:
+Create separate configuration modules with validation:
 
 ```typescript
-// lib/env.ts
+// lib/env/server.ts
 import { z } from 'zod';
 
 // Define schema for server-side variables
@@ -162,13 +162,6 @@ const serverEnvSchema = z.object({
   API_SECRET_KEY: z.string().min(1),
   STRIPE_SECRET_KEY: z.string().startsWith('sk_'),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
-});
-
-// Define schema for client-side variables
-const clientEnvSchema = z.object({
-  NEXT_PUBLIC_API_URL: z.string().url(),
-  NEXT_PUBLIC_ANALYTICS_ID: z.string().optional(),
-  NEXT_PUBLIC_FEATURE_FLAG: z.string().transform(val => val === 'true').default('false'),
 });
 
 // Validate server environment
@@ -183,6 +176,21 @@ function validateServerEnv() {
 
   return parsed.data;
 }
+
+// Export validated environment
+export const serverEnv = validateServerEnv();
+```
+
+```typescript
+// lib/env/client.ts
+import { z } from 'zod';
+
+// Define schema for client-side variables
+const clientEnvSchema = z.object({
+  NEXT_PUBLIC_API_URL: z.string().url(),
+  NEXT_PUBLIC_ANALYTICS_ID: z.string().optional(),
+  NEXT_PUBLIC_FEATURE_FLAG: z.string().transform(val => val === 'true').default('false'),
+});
 
 // Validate client environment
 function validateClientEnv() {
@@ -204,7 +212,6 @@ function validateClientEnv() {
 }
 
 // Export validated environment
-export const serverEnv = validateServerEnv();
 export const clientEnv = validateClientEnv();
 ```
 
@@ -212,12 +219,12 @@ Usage:
 
 ```typescript
 // In server components or API routes
-import { serverEnv } from '@/lib/env';
+import { serverEnv } from '@/lib/env/server';
 
 const dbUrl = serverEnv.DATABASE_URL; // Type-safe string
 
 // In client components
-import { clientEnv } from '@/lib/env';
+import { clientEnv } from '@/lib/env/client';
 
 const apiUrl = clientEnv.NEXT_PUBLIC_API_URL; // Type-safe string
 ```
@@ -261,38 +268,23 @@ LOG_LEVEL=error
 
 ## Runtime Environment Variables
 
-For dynamic configuration that changes between deployments (not builds):
+For dynamic configuration that changes between deployments (not builds), read environment variables in server-side code at request time:
 
 ```typescript
-// next.config.js
-module.exports = {
-  // These are available at runtime
-  serverRuntimeConfig: {
-    // Will only be available on the server side
-    mySecret: process.env.MY_SECRET,
-    databaseUrl: process.env.DATABASE_URL,
-  },
-  publicRuntimeConfig: {
-    // Will be available on both server and client
+// app/api/config/route.ts
+import { NextResponse } from 'next/server';
+
+export async function GET() {
+  return NextResponse.json({
     apiUrl: process.env.NEXT_PUBLIC_API_URL,
-  },
-};
-```
-
-Access runtime config:
-
-```typescript
-// Using runtime config
-import getConfig from 'next/config';
-
-const { serverRuntimeConfig, publicRuntimeConfig } = getConfig();
+  });
+}
 
 // Server-side only
-console.log(serverRuntimeConfig.mySecret);
-
-// Both server and client
-console.log(publicRuntimeConfig.apiUrl);
+console.log(process.env.MY_SECRET);
 ```
+
+The older `serverRuntimeConfig` and `publicRuntimeConfig` options are deprecated and do not work with React Server Components or output file tracing.
 
 ## Docker and Container Deployments
 
@@ -306,6 +298,8 @@ COPY package*.json ./
 RUN npm ci
 COPY . .
 
+# next.config.js should include: module.exports = { output: 'standalone' }
+
 # Build-time variables (baked into the build)
 ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
@@ -314,15 +308,15 @@ RUN npm run build
 
 FROM node:20-alpine AS runner
 WORKDIR /app
-COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
-COPY --from=builder /app/package.json ./
 
 # Runtime variables
 ENV NODE_ENV=production
 
 EXPOSE 3000
-CMD ["npm", "start"]
+CMD ["node", "server.js"]
 ```
 
 Docker Compose example:
@@ -353,7 +347,7 @@ services:
 'use client';
 
 export function BadExample() {
-  // This will be undefined, but if it worked, it would be a security risk
+  // This is not available in client code
   const secret = process.env.API_SECRET_KEY;
   return <div>{secret}</div>;
 }
