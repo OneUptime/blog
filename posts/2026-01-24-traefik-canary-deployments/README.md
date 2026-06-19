@@ -163,54 +163,18 @@ spec:
 
 As you gain confidence in the canary version, update the weights:
 
-```yaml
-# progressive-weights.yaml
+```bash
 # Week 1: 10% canary
-apiVersion: traefik.io/v1alpha1
-kind: TraefikService
-metadata:
-  name: myapp-weighted
-  namespace: default
-spec:
-  weighted:
-    services:
-      - name: myapp-stable
-        port: 80
-        weight: 90
-      - name: myapp-canary
-        port: 80
-        weight: 10
----
+kubectl patch traefikservice myapp-weighted --type=merge -p '{"spec":{"weighted":{"services":[{"name":"myapp-stable","port":80,"weight":90},{"name":"myapp-canary","port":80,"weight":10}]}}}'
+
 # Week 2: 25% canary (after successful monitoring)
-# Update the TraefikService
-spec:
-  weighted:
-    services:
-      - name: myapp-stable
-        port: 80
-        weight: 75
-      - name: myapp-canary
-        port: 80
-        weight: 25
----
+kubectl patch traefikservice myapp-weighted --type=merge -p '{"spec":{"weighted":{"services":[{"name":"myapp-stable","port":80,"weight":75},{"name":"myapp-canary","port":80,"weight":25}]}}}'
+
 # Week 3: 50% canary
-spec:
-  weighted:
-    services:
-      - name: myapp-stable
-        port: 80
-        weight: 50
-      - name: myapp-canary
-        port: 80
-        weight: 50
----
+kubectl patch traefikservice myapp-weighted --type=merge -p '{"spec":{"weighted":{"services":[{"name":"myapp-stable","port":80,"weight":50},{"name":"myapp-canary","port":80,"weight":50}]}}}'
+
 # Final: 100% canary (now becomes stable)
-spec:
-  weighted:
-    services:
-      - name: myapp-canary
-        port: 80
-        weight: 100
+kubectl patch traefikservice myapp-weighted --type=merge -p '{"spec":{"weighted":{"services":[{"name":"myapp-stable","port":80,"weight":0},{"name":"myapp-canary","port":80,"weight":100}]}}}'
 ```
 
 ## Header-Based Canary Testing
@@ -229,7 +193,7 @@ spec:
     - websecure
   routes:
     # Route with canary header goes to canary version
-    - match: Host(`myapp.example.com`) && Headers(`X-Canary`, `true`)
+    - match: Host(`myapp.example.com`) && Header(`X-Canary`, `true`)
       kind: Rule
       priority: 100  # Higher priority matches first
       services:
@@ -293,7 +257,8 @@ Create separate monitoring for stable and canary versions:
 
 ```yaml
 # canary-monitoring.yaml
-# Add version labels to enable separate metrics
+# Route through a TraefikService so the stable and canary Kubernetes Services
+# appear as separate service label values in Traefik service metrics.
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
@@ -315,19 +280,19 @@ Query Prometheus for version-specific metrics:
 
 ```promql
 # Error rate for stable version
-sum(rate(traefik_service_requests_total{service="myapp-stable@kubernetes", code=~"5.."}[5m]))
+sum(rate(traefik_service_requests_total{service="default-myapp-stable-80@kubernetescrd", code=~"5.."}[5m]))
 /
-sum(rate(traefik_service_requests_total{service="myapp-stable@kubernetes"}[5m]))
+sum(rate(traefik_service_requests_total{service="default-myapp-stable-80@kubernetescrd"}[5m]))
 
 # Error rate for canary version
-sum(rate(traefik_service_requests_total{service="myapp-canary@kubernetes", code=~"5.."}[5m]))
+sum(rate(traefik_service_requests_total{service="default-myapp-canary-80@kubernetescrd", code=~"5.."}[5m]))
 /
-sum(rate(traefik_service_requests_total{service="myapp-canary@kubernetes"}[5m]))
+sum(rate(traefik_service_requests_total{service="default-myapp-canary-80@kubernetescrd"}[5m]))
 
 # Latency comparison
 histogram_quantile(0.95,
   sum by (le, service) (
-    rate(traefik_service_request_duration_seconds_bucket{service=~"myapp-.*"}[5m])
+    rate(traefik_service_request_duration_seconds_bucket{service=~"default-myapp-(stable|canary)-80@kubernetescrd"}[5m])
   )
 )
 ```
@@ -347,9 +312,9 @@ spec:
       rules:
         - alert: CanaryHighErrorRate
           expr: |
-            sum(rate(traefik_service_requests_total{service="myapp-canary@kubernetes", code=~"5.."}[5m]))
+            sum(rate(traefik_service_requests_total{service="default-myapp-canary-80@kubernetescrd", code=~"5.."}[5m]))
             /
-            sum(rate(traefik_service_requests_total{service="myapp-canary@kubernetes"}[5m]))
+            sum(rate(traefik_service_requests_total{service="default-myapp-canary-80@kubernetescrd"}[5m]))
             > 0.05
           for: 5m
           labels:
@@ -360,7 +325,7 @@ spec:
         - alert: CanaryHighLatency
           expr: |
             histogram_quantile(0.95,
-              sum(rate(traefik_service_request_duration_seconds_bucket{service="myapp-canary@kubernetes"}[5m])) by (le)
+              sum(rate(traefik_service_request_duration_seconds_bucket{service="default-myapp-canary-80@kubernetescrd"}[5m])) by (le)
             ) > 2
           for: 5m
           labels:
@@ -378,7 +343,8 @@ Create a rollback script that reverts traffic on errors:
 # rollback-canary.sh
 
 # Check canary error rate
-ERROR_RATE=$(curl -s "http://prometheus:9090/api/v1/query?query=..." | jq '.data.result[0].value[1]')
+QUERY='sum(rate(traefik_service_requests_total{service="default-myapp-canary-80@kubernetescrd", code=~"5.."}[5m])) / sum(rate(traefik_service_requests_total{service="default-myapp-canary-80@kubernetescrd"}[5m]))'
+ERROR_RATE=$(curl -sG "http://prometheus:9090/api/v1/query" --data-urlencode "query=$QUERY" | jq -r '.data.result[0].value[1] // "0"')
 
 if (( $(echo "$ERROR_RATE > 0.05" | bc -l) )); then
   echo "Canary error rate too high: $ERROR_RATE"
