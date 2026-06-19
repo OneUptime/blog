@@ -8,11 +8,11 @@ Description: Create API endpoints in Next.js App Router with route.ts files. Cov
 
 ---
 
-Route Handlers in Next.js App Router replace the traditional API routes from the Pages Router. They provide a clean way to create backend endpoints using Web API standards like Request and Response objects.
+Route Handlers in Next.js App Router are the equivalent of traditional API routes from the Pages Router. They provide a clean way to create backend endpoints using Web API standards like Request and Response objects.
 
 ## Understanding Route Handlers
 
-Route Handlers are defined in `route.ts` files and support standard HTTP methods.
+Route Handlers are defined in `route.ts` files and support common HTTP methods.
 
 ```mermaid
 flowchart LR
@@ -56,7 +56,7 @@ export async function GET() {
 
 ## HTTP Methods
 
-Route Handlers support all standard HTTP methods.
+Route Handlers support `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, and `OPTIONS`.
 
 ```typescript
 // app/api/items/route.ts
@@ -124,7 +124,7 @@ Handle dynamic segments in your API routes.
 import { NextRequest, NextResponse } from 'next/server';
 
 interface RouteParams {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
 // GET single item
@@ -132,7 +132,8 @@ export async function GET(
   request: NextRequest,
   { params }: RouteParams
 ) {
-  const item = await getItemById(params.id);
+  const { id } = await params;
+  const item = await getItemById(id);
 
   if (!item) {
     return NextResponse.json(
@@ -149,8 +150,9 @@ export async function PUT(
   request: NextRequest,
   { params }: RouteParams
 ) {
+  const { id } = await params;
   const body = await request.json();
-  const updatedItem = await updateItem(params.id, body);
+  const updatedItem = await updateItem(id, body);
 
   if (!updatedItem) {
     return NextResponse.json(
@@ -167,7 +169,8 @@ export async function DELETE(
   request: NextRequest,
   { params }: RouteParams
 ) {
-  const deleted = await deleteItem(params.id);
+  const { id } = await params;
+  const deleted = await deleteItem(id);
 
   if (!deleted) {
     return NextResponse.json(
@@ -393,11 +396,13 @@ class ApiError extends Error {
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
+
     // Validate ID format
-    if (!isValidId(params.id)) {
+    if (!isValidId(id)) {
       throw new ApiError(400, 'Invalid ID format');
     }
 
@@ -408,7 +413,7 @@ export async function GET(
     }
 
     // Fetch item
-    const item = await getItemById(params.id);
+    const item = await getItemById(id);
     if (!item) {
       throw new ApiError(404, 'Item not found');
     }
@@ -448,14 +453,14 @@ import { verifyJWT } from './jwt';
 
 type RouteHandler = (
   request: NextRequest,
-  context: { params: Record<string, string> },
+  context: { params: Promise<Record<string, string>> },
   user: User
 ) => Promise<Response>;
 
 export function withAuth(handler: RouteHandler) {
   return async (
     request: NextRequest,
-    context: { params: Record<string, string> }
+    context: { params: Promise<Record<string, string>> }
   ) => {
     const authHeader = request.headers.get('authorization');
 
@@ -587,16 +592,18 @@ export async function GET(request: NextRequest) {
 // app/api/static-data/route.ts
 import { NextResponse } from 'next/server';
 
-// This route handler is cached by default (when using GET with no dynamic features)
+// Opt into caching for GET route handlers
+export const dynamic = 'force-static';
+
 export async function GET() {
   const data = await fetchStaticData();
   return NextResponse.json(data);
 }
 
 // Force dynamic behavior
-export const dynamic = 'force-dynamic';
+// export const dynamic = 'force-dynamic';
 
-// Or set revalidation time
+// Or set revalidation time in projects not using Cache Components
 export const revalidate = 3600;  // Revalidate every hour
 ```
 
@@ -604,9 +611,9 @@ export const revalidate = 3600;  // Revalidate every hour
 // app/api/dynamic-data/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 
-// Using NextRequest makes the route dynamic
+// Accessing request data makes the route dynamic
 export async function GET(request: NextRequest) {
-  // Access to request makes this route dynamic
+  // Accessing request properties makes this route dynamic
   const searchParams = request.nextUrl.searchParams;
   const id = searchParams.get('id');
 
