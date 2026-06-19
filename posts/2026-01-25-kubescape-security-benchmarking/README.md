@@ -66,7 +66,7 @@ Scan your cluster against all supported frameworks:
 
 ```bash
 # Scan entire cluster against all frameworks
-kubescape scan --submit --enable-host-scan
+kubescape scan framework all --submit --scan-images
 
 # Scan against specific framework
 kubescape scan framework nsa
@@ -150,7 +150,9 @@ if [ "$SCORE_INT" -lt "$THRESHOLD" ]; then
     # Show failed controls
     echo ""
     echo "Failed controls:"
-    jq -r '.results[] | select(.resourcesResult.failedResources > 0) | "\(.controlID): \(.name) - \(.resourcesResult.failedResources) failures"' \
+    jq -r '.summaryDetails.controls[]
+      | select(.ResourceCounters.failedResources > 0)
+      | "\(.controlID): \(.name) - \(.ResourceCounters.failedResources) failures"' \
       /tmp/scan-results.json
 
     exit 1
@@ -174,66 +176,51 @@ Deploy Kubescape as an operator for continuous monitoring:
 account: "your-account-id"
 clusterName: "production-cluster"
 
-# Enable all capabilities
+# Enable selected capabilities
 capabilities:
   # Continuous posture scanning
-  continuousScan:
-    enabled: true
-    scheduleTime: "0 */4 * * *"  # Every 4 hours
+  continuousScan: enable
 
   # Vulnerability scanning
-  vulnerabilityScanning:
-    enabled: true
-    registry:
-      # Scan images from these registries
-      include:
-      - "docker.io"
-      - "gcr.io"
-      - "ghcr.io"
+  vulnerabilityScan: enable
 
   # Runtime detection
-  runtimeDetection:
-    enabled: true
+  runtimeDetection: enable
 
   # Network policy generation
-  networkPolicyService:
-    enabled: true
+  networkPolicyService: enable
 
   # Node scanning
-  nodeScan:
-    enabled: true
+  nodeScan: enable
 
-# Scanning configuration
-scanner:
-  # Frameworks to scan against
-  frameworks:
-  - nsa
-  - mitre
-  - cis-v1.23-t1.0.1
+  # Prometheus exporter for scan results
+  prometheusExporter: enable
 
-  # Exclude certain controls
-  excludedControls: []
-
-  # Resource limits
-  resources:
-    requests:
-      cpu: 100m
-      memory: 256Mi
-    limits:
-      cpu: 500m
-      memory: 512Mi
-
-# Storage for scan results
-storage:
-  enabled: true
-  storageClassName: standard
-  size: 10Gi
-
-# Prometheus metrics
-prometheus:
-  enabled: true
+# Kubescape scanner configuration
+kubescape:
   serviceMonitor:
     enabled: true
+  resources:
+    requests:
+      cpu: 250m
+      memory: 400Mi
+    limits:
+      cpu: 600m
+      memory: 1Gi
+
+# Storage for scan results
+persistence:
+  storageClass: standard
+  size:
+    backingStorage: 10Gi
+    kubevuln: 10Gi
+
+# Prometheus exporter metrics
+prometheusExporter:
+  serviceMonitor:
+    enabled: true
+configurations:
+  prometheusAnnotations: enable
 ```
 
 Deploy the operator:
@@ -253,8 +240,8 @@ helm install kubescape kubescape/kubescape-operator \
 kubectl get pods -n kubescape
 
 # Check scan status
-kubectl get vulnerabilitymanifests -n kubescape
-kubectl get configurationscansummaries -n kubescape
+kubectl get vulnerabilitymanifests -A
+kubectl get workloadconfigurationscansummaries -A
 ```
 
 ---
@@ -301,10 +288,11 @@ def analyze_results(results_file):
     medium = []
     low = []
 
-    for result in data.get('results', []):
+    controls = data.get('summaryDetails', {}).get('controls', {})
+    for result in controls.values():
         control_id = result.get('controlID', '')
         name = result.get('name', '')
-        failed = result.get('resourcesResult', {}).get('failedResources', 0)
+        failed = result.get('ResourceCounters', {}).get('failedResources', 0)
         score_factor = result.get('scoreFactor', 0)
 
         if failed > 0:
@@ -369,6 +357,10 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+  security-events: write
+
 jobs:
   kubescape-scan:
     runs-on: ubuntu-latest
@@ -422,7 +414,7 @@ jobs:
         done
 
     - name: Upload SARIF results
-      uses: github/codeql-action/upload-sarif@v2
+      uses: github/codeql-action/upload-sarif@v4
       with:
         sarif_file: helm/
 ```
@@ -433,62 +425,69 @@ jobs:
 
 Configure exceptions for known acceptable deviations:
 
-```yaml
-# kubescape-exceptions.yaml
-# Exception configuration for Kubescape
-
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: kubescape-exceptions
-  namespace: kubescape
-data:
-  exceptions.json: |
-    {
-      "exceptions": [
-        {
-          "name": "system-privileged-pods",
-          "description": "System pods that require privileged access",
-          "controls": ["C-0057", "C-0013"],
-          "resources": [
-            {
-              "namespace": "kube-system",
-              "kind": "DaemonSet",
-              "name": "kube-proxy"
-            },
-            {
-              "namespace": "kube-system",
-              "kind": "DaemonSet",
-              "name": "calico-node"
-            }
-          ]
-        },
-        {
-          "name": "monitoring-host-network",
-          "description": "Monitoring agents that need host network",
-          "controls": ["C-0041"],
-          "resources": [
-            {
-              "namespace": "monitoring",
-              "kind": "DaemonSet",
-              "name": "node-exporter"
-            }
-          ]
-        },
-        {
-          "name": "cert-manager-root",
-          "description": "cert-manager needs root for certificate management",
-          "controls": ["C-0013"],
-          "resources": [
-            {
-              "namespace": "cert-manager",
-              "kind": "Deployment",
-              "name": "*"
-            }
-          ]
+```json
+[
+  {
+    "name": "system-privileged-pods",
+    "policyType": "postureExceptionPolicy",
+    "actions": ["alertOnly"],
+    "resources": [
+      {
+        "designatorType": "Attributes",
+        "attributes": {
+          "namespace": "kube-system",
+          "kind": "DaemonSet",
+          "name": "kube-proxy|calico-node"
         }
-      ]
-    }
+      }
+    ],
+    "posturePolicies": [
+      {
+        "controlID": "C-0057|C-0013"
+      }
+    ]
+  },
+  {
+    "name": "monitoring-host-network",
+    "policyType": "postureExceptionPolicy",
+    "actions": ["alertOnly"],
+    "resources": [
+      {
+        "designatorType": "Attributes",
+        "attributes": {
+          "namespace": "monitoring",
+          "kind": "DaemonSet",
+          "name": "node-exporter"
+        }
+      }
+    ],
+    "posturePolicies": [
+      {
+        "controlID": "C-0041"
+      }
+    ]
+  },
+  {
+    "name": "cert-manager-root",
+    "policyType": "postureExceptionPolicy",
+    "actions": ["alertOnly"],
+    "resources": [
+      {
+        "designatorType": "Attributes",
+        "attributes": {
+          "namespace": "cert-manager",
+          "kind": "Deployment",
+          "name": ".*"
+        }
+      }
+    ],
+    "posturePolicies": [
+      {
+        "controlID": "C-0013"
+      }
+    ]
+  }
+]
 ```
 
 Apply exceptions in scans:
@@ -520,38 +519,38 @@ spec:
   groups:
   - name: kubescape
     rules:
-    # Alert on low compliance score
-    - alert: KubescapeComplianceLow
+    # Alert on high or critical control failures
+    - alert: KubescapeHighSeverityFailures
       expr: |
-        kubescape_compliance_score < 70
+        kubescape_controls_total_cluster_high + kubescape_controls_total_cluster_critical > 0
       for: 1h
       labels:
         severity: warning
       annotations:
-        summary: "Kubernetes compliance score below threshold"
-        description: "Compliance score {{ $value }}% is below 70%"
+        summary: "High-severity Kubernetes controls failing"
+        description: "{{ $value }} high or critical controls are failing"
 
     # Alert on critical control failures
     - alert: KubescapeCriticalFailure
       expr: |
-        kubescape_control_failed{severity="critical"} > 0
+        kubescape_controls_total_cluster_critical > 0
       for: 15m
       labels:
         severity: critical
       annotations:
-        summary: "Critical security control failing"
-        description: "Control {{ $labels.control_name }} has {{ $value }} failures"
+        summary: "Critical security controls failing"
+        description: "{{ $value }} critical controls are failing"
 
     # Alert on increasing failures
-    - alert: KubescapeFailuresIncreasing
+    - alert: KubescapeRiskIncreasing
       expr: |
-        increase(kubescape_control_failed[24h]) > 5
+        delta(kubescape_controls_total_cluster_high[24h]) > 5
       for: 1h
       labels:
         severity: warning
       annotations:
-        summary: "Security failures increasing"
-        description: "Security control failures increased by {{ $value }} in 24h"
+        summary: "High-severity security failures increasing"
+        description: "High-severity control failures increased by {{ $value }} in 24h"
 ```
 
 ---
