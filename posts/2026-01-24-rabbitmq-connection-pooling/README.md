@@ -57,8 +57,8 @@ from contextlib import contextmanager
 
 class RabbitMQConnectionPool:
     """
-    A thread-safe connection pool for RabbitMQ.
-    Manages a fixed number of connections that can be reused.
+    A connection pool for RabbitMQ.
+    Manages a fixed number of connections that can be reused by one thread.
     """
 
     def __init__(self, host='localhost', port=5672,
@@ -201,7 +201,7 @@ pool.close_all()
 
 ### Channel Pool (More Efficient)
 
-For even better performance, pool channels instead of connections. A single connection can support multiple channels.
+For even better performance in a single-threaded or serialized publisher, pool channels instead of connections. A single connection can support multiple channels. With Pika, do not share a connection or its channels across threads.
 
 ```python
 import pika
@@ -212,7 +212,7 @@ from contextlib import contextmanager
 class RabbitMQChannelPool:
     """
     A channel pool that uses a single connection with multiple channels.
-    More efficient than connection pooling for most use cases.
+    More efficient than connection pooling for single-threaded use cases.
     """
 
     def __init__(self, host='localhost', port=5672,
@@ -344,12 +344,15 @@ function createConnectionPool(config) {
             // Handle connection errors
             connection.on('error', (err) => {
                 console.error('Connection error:', err.message);
+                connection.isClosed = true;
             });
 
             connection.on('close', () => {
                 console.log('Connection closed');
+                connection.isClosed = true;
             });
 
+            connection.isClosed = false;
             return connection;
         },
 
@@ -364,7 +367,7 @@ function createConnectionPool(config) {
 
         // Validate connection before lending
         validate: async (connection) => {
-            return connection && !connection.closed;
+            return connection && !connection.isClosed;
         }
     };
 
@@ -381,13 +384,13 @@ function createConnectionPool(config) {
 }
 
 /**
- * Create a channel pool on top of connection pool.
- * Channels are lighter weight than connections.
+ * Borrow a connection and create a short-lived channel for each operation.
+ * Channels are lighter weight than connections, but are still closed after use here.
  */
 class RabbitMQChannelPool {
     constructor(config) {
         this.connectionPool = createConnectionPool(config);
-        this.channelPool = new Map();  // Track channels per connection
+        this.channelMap = new Map();  // Track channels per connection
     }
 
     async getChannel() {
@@ -395,13 +398,13 @@ class RabbitMQChannelPool {
         const channel = await connection.createChannel();
 
         // Store reference for cleanup
-        this.channelPool.set(channel, connection);
+        this.channelMap.set(channel, connection);
 
         return channel;
     }
 
     async releaseChannel(channel) {
-        const connection = this.channelPool.get(channel);
+        const connection = this.channelMap.get(channel);
 
         if (connection) {
             try {
@@ -410,7 +413,7 @@ class RabbitMQChannelPool {
                 // Channel may already be closed
             }
 
-            this.channelPool.delete(channel);
+            this.channelMap.delete(channel);
             await this.connectionPool.release(connection);
         }
     }
@@ -689,7 +692,6 @@ class MonitoredConnectionPool(RabbitMQConnectionPool):
     """
 
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
         self.metrics = {
             'connections_created': 0,
             'connections_acquired': 0,
@@ -697,6 +699,12 @@ class MonitoredConnectionPool(RabbitMQConnectionPool):
             'acquire_timeouts': 0,
             'dead_connections': 0
         }
+        super().__init__(*args, **kwargs)
+
+    def _create_connection(self):
+        conn = super()._create_connection()
+        self.metrics['connections_created'] += 1
+        return conn
 
     def get_connection(self, timeout=30):
         try:
@@ -740,15 +748,16 @@ while True:
 
 ```python
 import threading
+import pika
 
-class ThreadLocalConnectionPool:
+class ThreadLocalConnectionManager:
     """
-    Provides thread-local connections for multi-threaded applications.
-    Each thread gets its own connection from the pool.
+    Provides thread-local connections for multi-threaded applications with Pika.
+    Each thread creates and owns its own connection.
     """
 
-    def __init__(self, pool):
-        self.pool = pool
+    def __init__(self, parameters):
+        self.parameters = parameters
         self._local = threading.local()
 
     def get_connection(self):
@@ -756,33 +765,37 @@ class ThreadLocalConnectionPool:
         if not hasattr(self._local, 'connection') or \
            self._local.connection is None or \
            self._local.connection.is_closed:
-            self._local.connection = self.pool.get_connection()
+            self._local.connection = pika.BlockingConnection(self.parameters)
         return self._local.connection
 
-    def release(self):
-        """Release thread's connection back to pool."""
+    def close(self):
+        """Close this thread's connection."""
         if hasattr(self._local, 'connection') and self._local.connection:
-            self.pool.return_connection(self._local.connection)
+            if not self._local.connection.is_closed:
+                self._local.connection.close()
             self._local.connection = None
 
 
 # Usage
-pool = RabbitMQConnectionPool(host='localhost', pool_size=20)
-thread_pool = ThreadLocalConnectionPool(pool)
+parameters = pika.ConnectionParameters(host='localhost')
+connection_manager = ThreadLocalConnectionManager(parameters)
 
 def worker():
     """Worker function that uses thread-local connection."""
-    conn = thread_pool.get_connection()
+    conn = connection_manager.get_connection()
     channel = conn.channel()
 
-    for i in range(100):
-        channel.basic_publish(
-            exchange='',
-            routing_key='tasks',
-            body=f'Task from {threading.current_thread().name}'
-        )
+    try:
+        for i in range(100):
+            channel.basic_publish(
+                exchange='',
+                routing_key='tasks',
+                body=f'Task from {threading.current_thread().name}'
+            )
+    finally:
+        channel.close()
+        connection_manager.close()
 
-    thread_pool.release()
 
 # Spawn multiple threads
 threads = [threading.Thread(target=worker) for _ in range(10)]
@@ -794,4 +807,4 @@ for t in threads:
 
 ---
 
-Connection pooling is essential for any RabbitMQ application that handles more than a few messages per second. Start with a channel pool if you have a single-threaded application, or use a full connection pool for multi-threaded scenarios. Monitor your pool metrics to right-size the pool for your workload, and always implement retry logic to handle transient failures gracefully.
+Connection pooling is essential for any RabbitMQ application that handles more than a few messages per second. Start with a channel pool if you have a single-threaded application, or use one connection per thread for multi-threaded Pika scenarios. Monitor your pool metrics to right-size the pool for your workload, and always implement retry logic to handle transient failures gracefully.
