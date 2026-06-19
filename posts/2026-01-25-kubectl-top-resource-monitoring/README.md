@@ -8,7 +8,7 @@ Description: Learn how to use kubectl top to monitor CPU and memory usage in Kub
 
 ---
 
-The `kubectl top` command shows real-time CPU and memory usage for pods and nodes. It is the quickest way to spot resource hogs, verify your resource requests, and troubleshoot performance issues without setting up a full monitoring stack.
+The `kubectl top` command shows recent CPU and memory usage for pods and nodes. It is the quickest way to spot resource hogs, verify your resource requests, and troubleshoot performance issues without setting up a full monitoring stack.
 
 ## Prerequisites
 
@@ -158,7 +158,7 @@ echo "Pod Resource Usage vs Requests in $NAMESPACE"
 echo "=============================================="
 
 kubectl top pods -n $NAMESPACE --no-headers | while read pod cpu mem; do
-    # Get requests
+    # Get requests for the first container in the pod
     cpu_req=$(kubectl get pod $pod -n $NAMESPACE -o jsonpath='{.spec.containers[0].resources.requests.cpu}' 2>/dev/null)
     mem_req=$(kubectl get pod $pod -n $NAMESPACE -o jsonpath='{.spec.containers[0].resources.requests.memory}' 2>/dev/null)
 
@@ -204,10 +204,14 @@ echo "Pods using less than 50% of requested CPU:"
 echo "==========================================="
 
 kubectl top pods -A --no-headers | while read ns pod cpu mem; do
-    # Convert cpu to millicores
-    cpu_used=$(echo $cpu | sed 's/m//')
+    # Convert CPU usage to millicores
+    if [[ $cpu == *m ]]; then
+        cpu_used=$(echo $cpu | sed 's/m//')
+    else
+        cpu_used=$(awk -v cpu="$cpu" 'BEGIN { printf "%.0f", cpu * 1000 }')
+    fi
 
-    # Get CPU request
+    # Get CPU request for the first container in the pod
     cpu_req=$(kubectl get pod $pod -n $ns -o jsonpath='{.spec.containers[0].resources.requests.cpu}' 2>/dev/null)
 
     if [ -n "$cpu_req" ]; then
@@ -215,7 +219,7 @@ kubectl top pods -A --no-headers | while read ns pod cpu mem; do
         if [[ $cpu_req == *m ]]; then
             cpu_req_m=$(echo $cpu_req | sed 's/m//')
         else
-            cpu_req_m=$((cpu_req * 1000))
+            cpu_req_m=$(awk -v cpu="$cpu_req" 'BEGIN { printf "%.0f", cpu * 1000 }')
         fi
 
         # Calculate percentage
@@ -283,11 +287,13 @@ Fix for self-signed certificates:
 ```yaml
 # metrics-server deployment patch
 spec:
-  containers:
-    - name: metrics-server
-      args:
-        - --kubelet-insecure-tls
-        - --kubelet-preferred-address-types=InternalIP
+  template:
+    spec:
+      containers:
+        - name: metrics-server
+          args:
+            - --kubelet-insecure-tls
+            - --kubelet-preferred-address-types=InternalIP
 ```
 
 ### Partial Metrics
@@ -297,7 +303,7 @@ spec:
 # Check if pods are running
 kubectl get pods -n production
 
-# Metrics take ~60 seconds after pod starts
+# Metrics may be unavailable for a few minutes after a pod starts
 # Wait and retry
 ```
 
@@ -312,11 +318,28 @@ For historical data, export kubectl top data to Prometheus:
 # Run in a loop and write to node_exporter textfile directory
 TEXTFILE_DIR="/var/lib/node_exporter/textfile_collector"
 
+cpu_to_millicores() {
+    if [[ $1 == *m ]]; then
+        echo "${1%m}"
+    else
+        awk -v cpu="$1" 'BEGIN { printf "%.0f", cpu * 1000 }'
+    fi
+}
+
+memory_to_mebibytes() {
+    case "$1" in
+        *Ki) awk -v mem="${1%Ki}" 'BEGIN { printf "%.0f", mem / 1024 }' ;;
+        *Mi) echo "${1%Mi}" ;;
+        *Gi) awk -v mem="${1%Gi}" 'BEGIN { printf "%.0f", mem * 1024 }' ;;
+        *) echo "$1" ;;
+    esac
+}
+
 while true; do
     # Pod metrics
     kubectl top pods -A --no-headers | while read ns pod cpu mem; do
-        cpu_val=$(echo $cpu | sed 's/m//')
-        mem_val=$(echo $mem | sed 's/Mi//')
+        cpu_val=$(cpu_to_millicores "$cpu")
+        mem_val=$(memory_to_mebibytes "$mem")
         echo "kubectl_top_pod_cpu_millicores{namespace=\"$ns\",pod=\"$pod\"} $cpu_val"
         echo "kubectl_top_pod_memory_mebibytes{namespace=\"$ns\",pod=\"$pod\"} $mem_val"
     done > $TEXTFILE_DIR/kubectl_top.prom.$$
@@ -382,12 +405,12 @@ echo "=== Node Resources ==="
 kubectl top nodes
 
 echo -e "\n=== High CPU Pods (>500m) ==="
-kubectl top pods -A --no-headers | awk '$3 ~ /[0-9]+m/ {gsub("m","",$3); if($3>500) print $0}'
+kubectl top pods -A --no-headers | awk '{cpu=$3; if (cpu ~ /m$/) {sub(/m$/, "", cpu)} else {cpu=cpu*1000}; if (cpu>500) print $0}'
 
 echo -e "\n=== High Memory Pods (>1Gi) ==="
-kubectl top pods -A --no-headers | awk '$4 ~ /[0-9]+Mi/ {gsub("Mi","",$4); if($4>1024) print $0}'
+kubectl top pods -A --no-headers | awk '{mem=$4; if (mem ~ /Ki$/) {sub(/Ki$/, "", mem); mem=mem/1024} else if (mem ~ /Mi$/) {sub(/Mi$/, "", mem)} else if (mem ~ /Gi$/) {sub(/Gi$/, "", mem); mem=mem*1024}; if (mem>1024) print $0}'
 ```
 
 ---
 
-kubectl top is your first line of defense for resource troubleshooting. It shows what is happening right now without the overhead of a full monitoring stack. Use it to spot problems quickly, then dig deeper with Prometheus and Grafana for historical analysis.
+kubectl top is your first line of defense for resource troubleshooting. It shows recent resource usage without the overhead of a full monitoring stack. Use it to spot problems quickly, then dig deeper with Prometheus and Grafana for historical analysis.
