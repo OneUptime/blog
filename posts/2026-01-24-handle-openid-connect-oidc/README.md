@@ -35,10 +35,10 @@ sequenceDiagram
 | Feature | OAuth 2.0 | OIDC |
 |---------|-----------|------|
 | Purpose | Authorization | Authentication + Authorization |
-| Token | Access Token only | ID Token + Access Token |
-| User Info | Requires API call | Included in ID Token |
+| Token | Access Token (and sometimes Refresh Token) | ID Token + Access Token (and sometimes Refresh Token) |
+| User Info | Requires API call or provider-specific response | Available through ID Token claims and/or UserInfo endpoint |
 | Standard Claims | None | sub, name, email, etc. |
-| Discovery | Manual configuration | Well-known endpoint |
+| Discovery | Provider-specific or authorization server metadata | OpenID Provider configuration endpoint |
 
 ### OIDC Tokens
 
@@ -98,10 +98,10 @@ discoverProvider('https://accounts.google.com');
 
 ## Implementing OIDC Client
 
-### Node.js with openid-client
+### Node.js with openid-client v5
 
 ```javascript
-// Install: npm install openid-client express-session
+// Install: npm install openid-client@5 express-session
 
 const { Issuer, generators } = require('openid-client');
 const express = require('express');
@@ -169,11 +169,12 @@ app.get('/auth/callback', async (req, res) => {
         console.log('ID Token claims:', tokenSet.claims());
         console.log('Access Token:', tokenSet.access_token);
 
-        // Get user info (optional - ID token usually has enough)
+        // Get user info (optional - ID token may already have enough)
         const userinfo = await client.userinfo(tokenSet.access_token);
         console.log('UserInfo:', userinfo);
 
         // Create session
+        req.session.idToken = tokenSet.id_token;
         req.session.user = {
             id: tokenSet.claims().sub,
             email: tokenSet.claims().email,
@@ -315,11 +316,11 @@ const jwt = require('jsonwebtoken');
 const jwksClient = require('jwks-rsa');
 
 class IDTokenValidator {
-    constructor(issuer, clientId) {
+    constructor(issuer, clientId, jwksUri) {
         this.issuer = issuer;
         this.clientId = clientId;
         this.jwksClient = jwksClient({
-            jwksUri: `${issuer}/.well-known/jwks.json`,
+            jwksUri: jwksUri,
             cache: true,
             rateLimit: true
         });
@@ -338,7 +339,7 @@ class IDTokenValidator {
     }
 
     // Validate ID token
-    async validate(idToken, nonce = null) {
+    async validate(idToken, nonce = null, accessToken = null) {
         return new Promise((resolve, reject) => {
             const options = {
                 issuer: this.issuer,
@@ -368,6 +369,11 @@ class IDTokenValidator {
                     }
                 }
 
+                if (accessToken && !this.validateAtHash(idToken, accessToken)) {
+                    reject(new Error('at_hash mismatch'));
+                    return;
+                }
+
                 resolve(decoded);
             });
         });
@@ -395,6 +401,10 @@ class IDTokenValidator {
             hashAlg = 'sha512';
         }
 
+        if (!hashAlg) {
+            throw new Error(`Unsupported ID token signing algorithm: ${algorithm}`);
+        }
+
         const hash = crypto.createHash(hashAlg).update(accessToken).digest();
         const halfHash = hash.slice(0, hash.length / 2);
         const expectedAtHash = halfHash.toString('base64url');
@@ -406,12 +416,13 @@ class IDTokenValidator {
 // Usage
 const validator = new IDTokenValidator(
     'https://accounts.google.com',
-    'your-client-id.apps.google.com'
+    'your-client-id.apps.google.com',
+    'https://www.googleapis.com/oauth2/v3/certs'
 );
 
-async function handleCallback(idToken, nonce) {
+async function handleCallback(idToken, nonce, accessToken) {
     try {
-        const claims = await validator.validate(idToken, nonce);
+        const claims = await validator.validate(idToken, nonce, accessToken);
         console.log('User authenticated:', claims.sub);
         console.log('Email:', claims.email);
         return claims;
