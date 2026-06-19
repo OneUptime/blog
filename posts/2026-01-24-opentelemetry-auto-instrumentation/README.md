@@ -76,13 +76,13 @@ java -javaagent:opentelemetry-javaagent.jar \
 # Environment variables for Java auto-instrumentation
 # These can be set in your shell profile or container configuration
 
-# Required: Name your service for identification in traces
+# Recommended: Name your service for identification in traces
 export OTEL_SERVICE_NAME=my-java-service
 
-# Required: Point to your OpenTelemetry Collector
+# Recommended: Point to your OpenTelemetry Collector
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
 
-# Optional: Use gRPC or HTTP protocol
+# Optional: Use gRPC or OTLP/HTTP with protobuf
 export OTEL_EXPORTER_OTLP_PROTOCOL=grpc
 
 # Optional: Add resource attributes
@@ -94,7 +94,8 @@ export OTEL_TRACES_SAMPLER_ARG=0.1
 
 # Optional: Enable specific instrumentations only
 export OTEL_INSTRUMENTATION_COMMON_DEFAULT_ENABLED=false
-export OTEL_INSTRUMENTATION_HTTP_ENABLED=true
+export OTEL_INSTRUMENTATION_SERVLET_ENABLED=true
+export OTEL_INSTRUMENTATION_JAVA_HTTP_CLIENT_ENABLED=true
 export OTEL_INSTRUMENTATION_JDBC_ENABLED=true
 
 # Optional: Disable specific instrumentations
@@ -128,9 +129,9 @@ ENTRYPOINT ["java", "-javaagent:/app/opentelemetry-javaagent.jar", "-jar", "/app
 
 ```yaml
 # application.yaml
-# Spring Boot configuration for OpenTelemetry
+# Spring Boot configuration for the OpenTelemetry Spring Boot starter
 
-# These properties are read by the OpenTelemetry agent
+# These properties are read by the OpenTelemetry Spring Boot starter
 otel:
   service:
     name: my-spring-boot-service
@@ -298,6 +299,8 @@ Node.js auto-instrumentation uses require hooks to intercept module loading.
 npm install @opentelemetry/auto-instrumentations-node
 npm install @opentelemetry/sdk-node
 npm install @opentelemetry/exporter-trace-otlp-grpc
+npm install @opentelemetry/resources
+npm install @opentelemetry/semantic-conventions
 ```
 
 ### Creating the Instrumentation File
@@ -310,8 +313,12 @@ npm install @opentelemetry/exporter-trace-otlp-grpc
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const {
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+  ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
+} = require('@opentelemetry/semantic-conventions');
 
 // Create the OTLP exporter
 const traceExporter = new OTLPTraceExporter({
@@ -322,10 +329,10 @@ const traceExporter = new OTLPTraceExporter({
 // Initialize the SDK
 const sdk = new NodeSDK({
   // Define resource attributes
-  resource: new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: process.env.OTEL_SERVICE_NAME || 'my-nodejs-service',
-    [SemanticResourceAttributes.SERVICE_VERSION]: process.env.npm_package_version || '1.0.0',
-    [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV || 'development',
+  resource: resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: process.env.OTEL_SERVICE_NAME || 'my-nodejs-service',
+    [ATTR_SERVICE_VERSION]: process.env.npm_package_version || '1.0.0',
+    [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: process.env.NODE_ENV || 'development',
   }),
   // Configure the trace exporter
   traceExporter: traceExporter,
@@ -504,8 +511,13 @@ kind: Deployment
 metadata:
   name: my-python-app
 spec:
+  selector:
+    matchLabels:
+      app: my-python-app
   template:
     metadata:
+      labels:
+        app: my-python-app
       annotations:
         # This annotation triggers automatic Python instrumentation
         instrumentation.opentelemetry.io/inject-python: "true"
@@ -520,8 +532,13 @@ kind: Deployment
 metadata:
   name: my-nodejs-app
 spec:
+  selector:
+    matchLabels:
+      app: my-nodejs-app
   template:
     metadata:
+      labels:
+        app: my-nodejs-app
       annotations:
         # This annotation triggers automatic Node.js instrumentation
         instrumentation.opentelemetry.io/inject-nodejs: "true"
@@ -560,8 +577,8 @@ sequenceDiagram
 | Environment Variable | Description | Default |
 |---------------------|-------------|---------|
 | OTEL_SERVICE_NAME | Name of your service | unknown_service |
-| OTEL_EXPORTER_OTLP_ENDPOINT | Collector endpoint | http://localhost:4317 |
-| OTEL_EXPORTER_OTLP_PROTOCOL | Protocol (grpc/http) | grpc |
+| OTEL_EXPORTER_OTLP_ENDPOINT | Collector endpoint | http://localhost:4317 for gRPC, http://localhost:4318 for HTTP |
+| OTEL_EXPORTER_OTLP_PROTOCOL | Protocol (grpc, http/protobuf, or http/json) | SDK-dependent; commonly http/protobuf or grpc |
 | OTEL_TRACES_SAMPLER | Sampling strategy | parentbased_always_on |
 | OTEL_TRACES_SAMPLER_ARG | Sampler argument | 1.0 |
 | OTEL_PROPAGATORS | Context propagators | tracecontext,baggage |
