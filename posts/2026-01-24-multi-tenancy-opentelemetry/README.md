@@ -66,6 +66,7 @@ def create_tenant_tracer_provider(tenant_id, tenant_name):
         # Tenant-specific attributes
         "tenant.id": tenant_id,
         "tenant.name": tenant_name,
+        "tenant.tier": get_tenant_tier(tenant_id),
         "deployment.environment": "production"
     })
 
@@ -115,6 +116,12 @@ def with_tenant_context(func):
 def handle_request(request):
     """Handle a request with tenant context automatically added."""
     with tracer.start_as_current_span("process_request") as span:
+        tenant_id = get_current_tenant_id()
+        tenant_tier = get_tenant_tier(tenant_id)
+
+        span.set_attribute("tenant.id", tenant_id)
+        span.set_attribute("tenant.tier", tenant_tier)
+        span.set_attribute("tenant.region", get_tenant_region(tenant_id))
         # Additional processing attributes
         span.set_attribute("request.type", request.type)
         return process(request)
@@ -136,10 +143,10 @@ def set_tenant_baggage(tenant_id, tenant_tier):
     ctx = baggage.set_baggage("tenant.tier", tenant_tier, context=ctx)
     return ctx
 
-def get_tenant_from_baggage():
+def get_tenant_from_baggage(ctx=None):
     """Retrieve tenant information from baggage."""
-    tenant_id = baggage.get_baggage("tenant.id")
-    tenant_tier = baggage.get_baggage("tenant.tier")
+    tenant_id = baggage.get_baggage("tenant.id", context=ctx)
+    tenant_tier = baggage.get_baggage("tenant.tier", context=ctx)
     return tenant_id, tenant_tier
 
 # In your HTTP client middleware
@@ -165,7 +172,7 @@ def incoming_request_handler(request):
     ctx = extract(request.headers)
 
     # Get tenant information from baggage
-    tenant_id, tenant_tier = get_tenant_from_baggage()
+    tenant_id, tenant_tier = get_tenant_from_baggage(ctx)
 
     with tracer.start_as_current_span(
         "handle_request",
@@ -180,7 +187,7 @@ def incoming_request_handler(request):
 
 ### Routing Telemetry by Tenant
 
-Use the routing processor to send telemetry to different backends based on tenant.
+Use the routing connector to send telemetry to different backends based on tenant.
 
 ```yaml
 # otel-collector-config.yaml
@@ -189,13 +196,15 @@ receivers:
     protocols:
       grpc:
         endpoint: 0.0.0.0:4317
+        include_metadata: true
       http:
         endpoint: 0.0.0.0:4318
+        include_metadata: true
 
 processors:
-  # Add tenant attribute from headers if not present
-  attributes/extract_tenant:
-    actions:
+  # Add tenant resource attribute from headers if not present
+  resource/extract_tenant:
+    attributes:
       - key: tenant.id
         from_context: metadata.tenant-id
         action: upsert
@@ -205,18 +214,21 @@ processors:
     send_batch_size: 1000
     timeout: 10s
 
-  # Route based on tenant attributes
+connectors:
+  # Route based on tenant resource attributes
   routing:
-    from_attribute: tenant.id
-    default_exporters:
-      - otlp/default
+    default_pipelines: [traces/default]
+    error_mode: ignore
     table:
-      - value: tenant-premium-1
-        exporters: [otlp/premium]
-      - value: tenant-premium-2
-        exporters: [otlp/premium]
-      - value: tenant-standard-*
-        exporters: [otlp/standard]
+      - context: resource
+        condition: attributes["tenant.id"] == "tenant-premium-1"
+        pipelines: [traces/premium]
+      - context: resource
+        condition: attributes["tenant.id"] == "tenant-premium-2"
+        pipelines: [traces/premium]
+      - context: resource
+        condition: IsMatch(attributes["tenant.id"], "^tenant-standard-")
+        pipelines: [traces/standard]
 
 exporters:
   # Default backend for unmatched tenants
@@ -245,8 +257,23 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [attributes/extract_tenant, batch, routing]
-      exporters: [otlp/default, otlp/premium, otlp/standard]
+      processors: [resource/extract_tenant]
+      exporters: [routing]
+
+    traces/default:
+      receivers: [routing]
+      processors: [batch]
+      exporters: [otlp/default]
+
+    traces/premium:
+      receivers: [routing]
+      processors: [batch]
+      exporters: [otlp/premium]
+
+    traces/standard:
+      receivers: [routing]
+      processors: [batch]
+      exporters: [otlp/standard]
 ```
 
 ### Multi-Tenant Architecture with Dedicated Collectors
@@ -300,14 +327,6 @@ receivers:
       grpc:
         endpoint: 0.0.0.0:4317
 
-processors:
-  # Extract tenant tier from attributes
-  attributes/tenant:
-    actions:
-      - key: tenant.tier
-        from_attribute: resource.tenant.tier
-        action: upsert
-
 exporters:
   # Forward to tier-specific collectors
   otlp/premium:
@@ -330,16 +349,17 @@ connectors:
     default_pipelines: [traces/free]
     error_mode: ignore
     table:
-      - statement: route() where attributes["tenant.tier"] == "premium"
+      - context: resource
+        condition: attributes["tenant.tier"] == "premium"
         pipelines: [traces/premium]
-      - statement: route() where attributes["tenant.tier"] == "standard"
+      - context: resource
+        condition: attributes["tenant.tier"] == "standard"
         pipelines: [traces/standard]
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [attributes/tenant]
       exporters: [routing]
 
     traces/premium:
@@ -451,7 +471,7 @@ rate_limits = {
 rate_limited_exporter = TenantRateLimitedExporter(base_exporter, rate_limits)
 ```
 
-### Collector-Level Rate Limiting
+### Collector-Level Sampling by Tenant
 
 ```yaml
 # collector-config-with-limits.yaml
@@ -468,7 +488,7 @@ processors:
     limit_mib: 1000
     spike_limit_mib: 200
 
-  # Probabilistic sampling based on tenant tier
+  # Probabilistic sampling to reduce volume by tenant tier
   probabilistic_sampler/premium:
     sampling_percentage: 100
 
@@ -482,25 +502,42 @@ processors:
     send_batch_size: 1000
     timeout: 10s
 
+connectors:
+  routing:
+    default_pipelines: [traces/free]
+    error_mode: ignore
+    table:
+      - context: resource
+        condition: attributes["tenant.tier"] == "premium"
+        pipelines: [traces/premium]
+      - context: resource
+        condition: attributes["tenant.tier"] == "standard"
+        pipelines: [traces/standard]
+
 exporters:
   otlp:
     endpoint: "backend:4317"
 
 service:
   pipelines:
-    traces/premium:
+    traces:
       receivers: [otlp]
-      processors: [memory_limiter, probabilistic_sampler/premium, batch]
+      processors: [memory_limiter]
+      exporters: [routing]
+
+    traces/premium:
+      receivers: [routing]
+      processors: [probabilistic_sampler/premium, batch]
       exporters: [otlp]
 
     traces/standard:
-      receivers: [otlp]
-      processors: [memory_limiter, probabilistic_sampler/standard, batch]
+      receivers: [routing]
+      processors: [probabilistic_sampler/standard, batch]
       exporters: [otlp]
 
     traces/free:
-      receivers: [otlp]
-      processors: [memory_limiter, probabilistic_sampler/free, batch]
+      receivers: [routing]
+      processors: [probabilistic_sampler/free, batch]
       exporters: [otlp]
 ```
 
@@ -511,7 +548,7 @@ service:
 ```mermaid
 flowchart LR
     subgraph Collector["OTel Collector"]
-        R[Routing Processor]
+        R[Routing Connector]
     end
 
     subgraph Isolation["Isolated Storage"]
@@ -528,42 +565,29 @@ flowchart LR
 ### Namespace Isolation with Shared Storage
 
 ```python
-from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
+from opentelemetry import baggage
+from opentelemetry.sdk.trace import SpanProcessor
 
-class NamespacedExporter(SpanExporter):
-    """Exporter that adds tenant namespace to all spans."""
+class TenantNamespaceSpanProcessor(SpanProcessor):
+    """Span processor that adds tenant namespace attributes to all spans."""
 
-    def __init__(self, wrapped_exporter):
-        self.wrapped_exporter = wrapped_exporter
+    def on_start(self, span, parent_context=None):
+        """Add namespace attributes when a span starts."""
+        tenant_id = baggage.get_baggage("tenant.id", context=parent_context) or "unknown"
 
-    def export(self, spans):
-        """Export spans with tenant namespacing."""
-        namespaced_spans = []
+        # Keep the span name stable and add explicit namespace attributes
+        # that the backend can use for indexing, querying, or access control.
+        span.set_attribute("tenant.id", tenant_id)
+        span.set_attribute("tenant.namespace", f"tenant:{tenant_id}")
 
-        for span in spans:
-            tenant_id = self._get_tenant_id(span)
-
-            # Create namespaced span name
-            # Original: "GET /api/users"
-            # Namespaced: "tenant-123:GET /api/users"
-            namespaced_name = f"{tenant_id}:{span.name}"
-
-            # Note: In practice, you would create a modified span
-            # This is a simplified example
-            span._name = namespaced_name
-            namespaced_spans.append(span)
-
-        return self.wrapped_exporter.export(namespaced_spans)
-
-    def _get_tenant_id(self, span):
-        """Extract tenant ID from span attributes."""
-        return span.attributes.get("tenant.id", "unknown")
+    def on_end(self, span):
+        pass
 
     def shutdown(self):
-        return self.wrapped_exporter.shutdown()
+        pass
 
     def force_flush(self, timeout_millis=30000):
-        return self.wrapped_exporter.force_flush(timeout_millis)
+        return True
 ```
 
 ## Monitoring Multi-Tenant Systems
@@ -621,11 +645,11 @@ def record_span_dropped(tenant_id, tenant_tier, reason):
 
 ## Best Practices for Multi-Tenant OpenTelemetry
 
-1. **Always include tenant context** in resource attributes for consistent identification.
+1. **Include tenant context in resource attributes** for tenant-dedicated services or deployments, and use span attributes for request-level tenant context in shared services.
 
 2. **Use baggage for cross-service propagation** to ensure tenant context flows through your entire system.
 
-3. **Implement rate limiting** at multiple levels (SDK, collector, backend) to prevent noisy neighbors.
+3. **Implement rate limiting or sampling** at multiple levels (SDK, collector, backend) to prevent noisy neighbors.
 
 4. **Design for tenant isolation** from the start, whether through separate backends or namespace isolation.
 
