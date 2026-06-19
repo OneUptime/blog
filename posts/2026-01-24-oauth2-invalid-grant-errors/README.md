@@ -41,14 +41,14 @@ flowchart TD
     B --> E[Expired Refresh Token]
     B --> F[Clock Skew]
     B --> G[Redirect URI Mismatch]
-    B --> H[Invalid Credentials]
+    B --> H[Client/Grant Mismatch]
 
     C --> C1[Request new code]
     D --> D1[Request new code]
     E --> E1[Re-authenticate user]
     F --> F1[Sync server time]
     G --> G1[Match exact URI]
-    H --> H1[Verify client credentials]
+    H --> H1[Verify client and grant]
 ```
 
 ## Cause 1: Expired Authorization Code
@@ -123,6 +123,7 @@ class OAuth2Error(Exception):
 ```python
 from flask import Flask, request, redirect, session
 import secrets
+import time
 
 app = Flask(__name__)
 app.secret_key = secrets.token_hex(32)
@@ -197,7 +198,6 @@ Track code usage and handle race conditions:
 
 ```python
 import threading
-from functools import wraps
 
 class OAuth2TokenManager:
     def __init__(self, oauth_client):
@@ -386,7 +386,7 @@ class OAuth2Error(Exception):
 
 ## Cause 4: Clock Skew
 
-If your server's clock is significantly different from the authorization server, tokens may be rejected.
+If your server's clock is significantly different from the authorization server, tokens may be rejected. In the standard authorization-code and refresh-token flows this is usually enforced by the authorization server's grant lifetime, but clock skew is a common cause of `invalid_grant` when signed assertions such as JWT bearer grants or client assertions are involved.
 
 ### Diagnosis
 
@@ -398,7 +398,7 @@ date
 timedatectl status
 
 # Compare with external time source
-curl -s http://worldtimeapi.org/api/ip | jq '.datetime'
+curl -s https://worldtimeapi.org/api/ip | jq '.datetime'
 ```
 
 ### Solution
@@ -406,10 +406,10 @@ curl -s http://worldtimeapi.org/api/ip | jq '.datetime'
 Ensure NTP synchronization:
 
 ```bash
-# Install and configure NTP on Ubuntu/Debian
-sudo apt-get install ntp
-sudo systemctl enable ntp
-sudo systemctl start ntp
+# Install and configure chrony on Ubuntu/Debian
+sudo apt-get install chrony
+sudo systemctl enable chrony
+sudo systemctl start chrony
 
 # On CentOS/RHEL
 sudo yum install chrony
@@ -417,7 +417,9 @@ sudo systemctl enable chronyd
 sudo systemctl start chronyd
 
 # Verify synchronization
-ntpq -p
+timedatectl status
+chronyc tracking
+chronyc sources
 ```
 
 Handle clock skew in your application:
@@ -425,7 +427,6 @@ Handle clock skew in your application:
 ```python
 import time
 import ntplib
-from datetime import datetime, timezone
 
 class ClockSkewHandler:
     def __init__(self, ntp_server="pool.ntp.org"):
@@ -477,7 +478,7 @@ def is_token_expired(token_expiry):
 
 ## Cause 5: Redirect URI Mismatch
 
-The redirect URI in the token request must exactly match the one used in the authorization request.
+The redirect URI in the token request must exactly match the one used in the authorization request and, for most providers, one of the redirect URIs registered for the client.
 
 ### Common Mismatches
 
@@ -511,36 +512,27 @@ class OAuth2Config:
         self.client_secret = client_secret
         self.authorization_url = authorization_url
         self.token_url = token_url
-        # Normalize and store the redirect URI
-        self.redirect_uri = self._normalize_uri(redirect_uri)
+        # Store the registered redirect URI exactly as configured
+        self.redirect_uri = self._validate_uri(redirect_uri)
 
-    def _normalize_uri(self, uri):
+    def _validate_uri(self, uri):
         """
-        Normalize URI to prevent mismatches.
+        Validate the redirect URI without rewriting it.
         """
-        from urllib.parse import urlparse, urlunparse
+        from urllib.parse import urlparse
 
         parsed = urlparse(uri)
 
-        # Ensure HTTPS in production
-        scheme = parsed.scheme.lower()
+        if parsed.fragment:
+            raise ValueError("Redirect URI must not include a fragment")
 
-        # Lowercase the host
-        netloc = parsed.netloc.lower()
+        if parsed.scheme != "https":
+            raise ValueError("Use an HTTPS redirect URI in production")
 
-        # Remove trailing slash from path
-        path = parsed.path.rstrip("/")
-        if not path:
-            path = "/"
+        if not parsed.netloc:
+            raise ValueError("Redirect URI must include a host")
 
-        return urlunparse((
-            scheme,
-            netloc,
-            path,
-            parsed.params,
-            parsed.query,
-            ""  # Remove fragment
-        ))
+        return uri
 
     def get_authorization_url(self, state, scope=None):
         """
@@ -594,9 +586,9 @@ auth_url = config.get_authorization_url(state="random_state", scope="openid prof
 tokens = config.exchange_code(code="received_code")
 ```
 
-## Cause 6: Invalid Client Credentials
+## Cause 6: Invalid Client Credentials or Client Mismatch
 
-Using wrong client_id or client_secret can also result in invalid_grant errors on some authorization servers.
+Invalid client authentication is normally returned as `invalid_client`. However, some authorization servers return `invalid_grant` when the grant does not belong to the `client_id` used in the token request, or when provider-specific credential checks fail.
 
 ### Solution
 
@@ -604,7 +596,6 @@ Verify credentials and use secure storage:
 
 ```python
 import os
-from cryptography.fernet import Fernet
 
 class SecureOAuth2Config:
     """
@@ -653,7 +644,7 @@ Create a diagnostic function to identify the root cause:
 
 ```python
 import requests
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 
 def diagnose_invalid_grant(
@@ -675,7 +666,7 @@ def diagnose_invalid_grant(
     # 1. Check system time
     print(f"\n1. System Time Check")
     print(f"   Local time: {datetime.now()}")
-    print(f"   UTC time: {datetime.utcnow()}")
+    print(f"   UTC time: {datetime.now(timezone.utc)}")
 
     # 2. Validate inputs
     print(f"\n2. Input Validation")
@@ -781,8 +772,8 @@ Invalid grant errors can be resolved by addressing these common causes:
 | Code already used | Implement single-use protection with locks |
 | Expired refresh token | Trigger re-authentication flow |
 | Clock skew | Ensure NTP synchronization |
-| Redirect URI mismatch | Use consistent, normalized URIs |
-| Invalid credentials | Verify and securely store client credentials |
+| Redirect URI mismatch | Use the exact registered URI consistently |
+| Invalid client credentials or client mismatch | Verify the client credentials and ensure the grant belongs to the same client |
 
 Key best practices:
 - Exchange authorization codes immediately upon receipt
