@@ -45,9 +45,9 @@ Nginx added HTTP/3 support in version 1.25. Here's how to configure it.
 ### Install Nginx with HTTP/3 Support
 
 ```bash
-# Ubuntu/Debian - Install mainline with QUIC
+# Ubuntu/Debian - after configuring the official nginx.org mainline repository
 
-apt install nginx-mainline
+apt install nginx
 
 # Or compile from source with quic support
 ./configure \
@@ -68,7 +68,8 @@ http {
     # Enable QUIC and HTTP/3
     server {
         # Listen on 443 for HTTP/2 over TCP
-        listen 443 ssl http2;
+        listen 443 ssl;
+        http2 on;
 
         # Listen on 443 for HTTP/3 over QUIC (UDP)
         listen 443 quic reuseport;
@@ -101,8 +102,9 @@ http {
 
 ```nginx
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
     listen 443 quic reuseport;
+    http2 on;
 
     server_name example.com;
 
@@ -112,13 +114,14 @@ server {
 
     # HTTP/3 specific settings
     http3 on;
-    http3_hq on;  # Enable HTTP/3 over raw QUIC
+    # http3_hq on;  # HTTP/0.9 over QUIC for interoperability tests only
 
     # QUIC settings
     quic_active_connection_id_limit 5;
     quic_retry on;
 
-    # 0-RTT (early data) - be careful with non-idempotent requests
+    # 0-RTT (early data) - requires OpenSSL 3.5.1+, BoringSSL, LibreSSL, or QuicTLS
+    # Be careful with non-idempotent requests.
     ssl_early_data on;
     proxy_set_header Early-Data $ssl_early_data;
 
@@ -128,13 +131,13 @@ server {
     # Advertise HTTP/3 with extended max-age
     add_header Alt-Svc 'h3=":443"; ma=2592000; persist=1';
 
-    # Add QUIC transport header for debugging
-    add_header X-Quic-Status $quic;
+    # Add HTTP/3 transport header for debugging
+    add_header X-Http3-Status $http3;
 
     location / {
         root /var/www/html;
 
-        # Reject early data for state-changing requests
+        # Reject early data in this location unless it is explicitly safe
         if ($ssl_early_data = 1) {
             return 425;  # Too Early
         }
@@ -156,11 +159,15 @@ Caddy has built-in HTTP/3 support enabled by default.
 
 ```text
 # Caddyfile
+# To explicitly configure protocols, use a global options block:
+{
+    servers {
+        protocols h1 h2 h3
+    }
+}
+
 example.com {
     # HTTP/3 is enabled automatically with HTTPS
-
-    # Explicitly configure protocols
-    protocols h1 h2 h3
 
     root * /var/www/html
     file_server
@@ -174,60 +181,40 @@ example.com {
 
 ## Node.js HTTP/3 Server
 
-Using the experimental quic module or third-party libraries.
+Node.js does not currently provide a stable built-in HTTP/3 server API. The old experimental `net.createQuicSocket()` API appeared only in early experimental builds and is not available in current Node.js releases. In production, terminate HTTP/3 at a proxy such as Nginx or Caddy and forward to Node.js over HTTP/1.1 or HTTP/2.
 
-```javascript
-// Using the node-quic library
-const { createQuicSocket } = require('net');
-const fs = require('fs');
+```nginx
+server {
+    listen 443 ssl;
+    listen 443 quic reuseport;
+    http2 on;
+    http3 on;
 
-const options = {
-    key: fs.readFileSync('server.key'),
-    cert: fs.readFileSync('server.crt'),
-    alpn: 'h3'  // HTTP/3 over QUIC
-};
+    server_name example.com;
+    ssl_certificate /etc/ssl/certs/example.com.crt;
+    ssl_certificate_key /etc/ssl/private/example.com.key;
+    add_header Alt-Svc 'h3=":443"; ma=86400';
 
-const socket = createQuicSocket({
-    endpoint: { port: 443 },
-    server: options
-});
-
-socket.on('session', (session) => {
-    console.log('New QUIC session established');
-
-    session.on('stream', (stream, headers) => {
-        const path = headers[':path'];
-        console.log(`Request: ${path}`);
-
-        // Respond with HTTP/3
-        stream.respond({
-            ':status': 200,
-            'content-type': 'text/html'
-        });
-
-        stream.end('<html><body>Hello HTTP/3!</body></html>');
-    });
-
-    session.on('close', () => {
-        console.log('Session closed');
-    });
-});
-
-socket.listen();
-console.log('HTTP/3 server listening on port 443');
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
 ```
 
 ### Using aioquic with Python
 
 ```python
 import asyncio
-from aioquic.asyncio import serve
+from aioquic.asyncio import QuicConnectionProtocol, serve
 from aioquic.quic.configuration import QuicConfiguration
-from aioquic.h3.connection import H3Connection
-from aioquic.h3.events import HeadersReceived, DataReceived
+from aioquic.h3.connection import H3_ALPN, H3Connection
+from aioquic.h3.events import HeadersReceived
 
-class HttpServerProtocol:
+class HttpServerProtocol(QuicConnectionProtocol):
     def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self._http = None
 
     def quic_event_received(self, event):
@@ -260,14 +247,14 @@ class HttpServerProtocol:
                 data=b'<html><body>Hello HTTP/3!</body></html>',
                 end_stream=True,
             )
+            self.transmit()
 
 async def main():
     configuration = QuicConfiguration(
         is_client=False,
-        certificate_chain='server.crt',
-        private_key='server.key',
-        alpn_protocols=['h3'],
+        alpn_protocols=H3_ALPN,
     )
+    configuration.load_cert_chain('server.crt', 'server.key')
 
     await serve(
         host='0.0.0.0',
@@ -361,15 +348,17 @@ import (
     "log"
     "net/http"
 
+    "github.com/quic-go/quic-go"
     "github.com/quic-go/quic-go/http3"
 )
 
 func main() {
     // Create HTTP/3 transport
-    transport := &http3.RoundTripper{
+    transport := &http3.Transport{
         TLSClientConfig: &tls.Config{
-            InsecureSkipVerify: false,
+            NextProtos: []string{http3.NextProtoH3},
         },
+        QUICConfig: &quic.Config{},
     }
     defer transport.Close()
 
@@ -387,7 +376,10 @@ func main() {
     fmt.Printf("Status: %s\n", resp.Status)
 
     body, _ := io.ReadAll(resp.Body)
-    fmt.Printf("Body: %s\n", body[:100])
+    if len(body) > 100 {
+        body = body[:100]
+    }
+    fmt.Printf("Body: %s\n", body)
 }
 ```
 
@@ -532,8 +524,9 @@ map $request_uri $enable_h3 {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
     listen 443 quic reuseport;
+    http2 on;
 
     # Conditionally advertise HTTP/3
     set $alt_svc "";
