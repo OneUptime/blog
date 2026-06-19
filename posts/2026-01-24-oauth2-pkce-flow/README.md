@@ -67,7 +67,7 @@ sequenceDiagram
     Note over App,Auth: Step 4: Token Exchange
     App->>Auth: POST /token (code + code_verifier)
     Auth->>Auth: Verify SHA256(code_verifier) == code_challenge
-    Auth-->>App: Access Token + Refresh Token
+    Auth-->>App: Access Token (+ Refresh Token, if issued)
 
     Note over App,API: Step 5: API Access
     App->>API: Request with Access Token
@@ -245,8 +245,8 @@ print(f"Store state: {client.get_state()}")
 ### Step 3: Handle Callback and Exchange Code for Tokens
 
 ```python
+import secrets
 import requests
-from typing import Optional
 
 class OAuth2PKCETokenExchange:
     """
@@ -338,9 +338,40 @@ class OAuth2Error(Exception):
 ### Complete Flask Implementation
 
 ```python
+from dataclasses import dataclass
 from flask import Flask, redirect, request, session, url_for
+import base64
+import hashlib
 import secrets
 import os
+import urllib.parse
+import requests
+
+
+@dataclass
+class PKCEParameters:
+    """PKCE code verifier and challenge pair."""
+    code_verifier: str
+    code_challenge: str
+    code_challenge_method: str = "S256"
+
+
+def generate_pkce_parameters() -> PKCEParameters:
+    """
+    Generate PKCE code verifier and challenge.
+    """
+    random_bytes = secrets.token_bytes(64)
+    code_verifier = base64.urlsafe_b64encode(random_bytes).decode("utf-8").rstrip("=")
+
+    verifier_bytes = code_verifier.encode("utf-8")
+    sha256_hash = hashlib.sha256(verifier_bytes).digest()
+    code_challenge = base64.urlsafe_b64encode(sha256_hash).decode("utf-8").rstrip("=")
+
+    return PKCEParameters(
+        code_verifier=code_verifier,
+        code_challenge=code_challenge,
+        code_challenge_method="S256"
+    )
 
 app = Flask(__name__)
 app.secret_key = secrets.token_hex(32)
@@ -366,7 +397,8 @@ def login():
     # Generate state for CSRF protection
     state = secrets.token_urlsafe(32)
 
-    # Store in session (secure, server-side storage)
+    # Store in session for the redirect round trip.
+    # Use a server-side session extension in production if storing sensitive values.
     session["pkce_verifier"] = pkce.code_verifier
     session["oauth_state"] = state
 
@@ -438,7 +470,7 @@ def callback():
         session.pop("pkce_verifier", None)
         session.pop("oauth_state", None)
 
-        # Store tokens securely
+        # For production, store tokens in server-side session storage or another backend store.
         session["access_token"] = tokens["access_token"]
         session["refresh_token"] = tokens.get("refresh_token")
         session["id_token"] = tokens.get("id_token")
@@ -670,9 +702,12 @@ if (window.location.pathname === '/callback') {
     oauth.handleCallback()
         .then(tokens => {
             console.log('Logged in!', tokens);
-            // Store tokens and redirect
-            localStorage.setItem('access_token', tokens.access_token);
-            localStorage.setItem('refresh_token', tokens.refresh_token);
+            // Prefer in-memory tokens or a backend-held session for production.
+            // sessionStorage is tab-scoped but still exposed to same-origin JavaScript.
+            sessionStorage.setItem('access_token', tokens.access_token);
+            if (tokens.refresh_token) {
+                sessionStorage.setItem('refresh_token', tokens.refresh_token);
+            }
             window.location.href = '/dashboard';
         })
         .catch(error => {
@@ -961,7 +996,7 @@ def handle_pkce_error(error: str, description: str) -> str:
 | Practice | Description |
 |----------|-------------|
 | Use S256 method | Always use SHA256 for code challenge, not plain |
-| Secure storage | Store code_verifier in secure, server-side session or secure storage |
+| Secure storage | Store code_verifier in storage appropriate for your client; use server-side session storage for web backends when values are sensitive |
 | State validation | Always validate state parameter to prevent CSRF |
 | Single use | Ensure authorization codes are used only once |
 | HTTPS only | Use HTTPS for all OAuth2 endpoints |
@@ -978,4 +1013,4 @@ PKCE is essential for securing OAuth2 in public clients. Key implementation poin
 - Store code_verifier securely until token exchange
 - Send code_verifier with token request for verification
 - Always validate state parameter to prevent CSRF attacks
-- Use secure storage appropriate for your platform (session, SecureStore, etc.)
+- Use secure storage appropriate for your platform (server-side session storage, SecureStore, etc.)
