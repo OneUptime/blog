@@ -88,7 +88,7 @@ const resolvers = {
 import DataLoader from 'dataloader';
 
 // Create a batch loading function
-async function batchLoadUsers(userIds: readonly string[]): Promise<User[]> {
+async function batchLoadUsers(userIds: readonly string[]): Promise<Array<User | null>> {
   // Single query fetches all users at once
   const users = await db.query(
     'SELECT * FROM users WHERE id IN (?)',
@@ -139,7 +139,7 @@ Real applications need multiple loaders for different entity types and relations
 ```typescript
 // loaders/index.ts
 import DataLoader from 'dataloader';
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
@@ -201,7 +201,7 @@ export function createLoaders(): DataLoaders {
       const counts = await prisma.$queryRaw<Array<{ postId: string; count: bigint }>>`
         SELECT "postId", COUNT(*) as count
         FROM likes
-        WHERE "postId" IN (${postIds.join(',')})
+        WHERE "postId" IN (${Prisma.join(postIds)})
         GROUP BY "postId"
       `;
 
@@ -234,57 +234,39 @@ Prevent expensive queries by analyzing and limiting complexity.
 ```typescript
 // complexity/analyzer.ts
 import {
-  getComplexity,
+  createComplexityRule as createQueryComplexityRule,
   simpleEstimator,
-  fieldExtensionsEstimator
+  directiveEstimator
 } from 'graphql-query-complexity';
-import { GraphQLSchema } from 'graphql';
+import { GraphQLError } from 'graphql';
 
 interface ComplexityConfig {
   maxComplexity: number;
-  maxDepth: number;
   defaultFieldComplexity: number;
 }
 
 const defaultConfig: ComplexityConfig = {
   maxComplexity: 1000,
-  maxDepth: 10,
   defaultFieldComplexity: 1
 };
 
 // Create a validation rule for complexity checking
 export function createComplexityRule(
-  schema: GraphQLSchema,
   config: ComplexityConfig = defaultConfig
 ) {
-  return (context) => {
-    return {
-      // Check complexity after document is fully parsed
-      Document: {
-        leave: () => {
-          const complexity = getComplexity({
-            schema,
-            query: context.getDocument(),
-            variables: context.variableValues || {},
-            estimators: [
-              // Use field-level complexity from schema extensions
-              fieldExtensionsEstimator(),
-              // Fallback to simple estimation
-              simpleEstimator({ defaultComplexity: config.defaultFieldComplexity })
-            ]
-          });
-
-          if (complexity > config.maxComplexity) {
-            context.reportError(
-              new GraphQLError(
-                `Query complexity ${complexity} exceeds maximum allowed ${config.maxComplexity}`
-              )
-            );
-          }
-        }
-      }
-    };
-  };
+  return createQueryComplexityRule({
+    maximumComplexity: config.maxComplexity,
+    estimators: [
+      // Use field-level complexity from @complexity directives in SDL
+      directiveEstimator({ name: 'complexity' }),
+      // Fallback to simple estimation
+      simpleEstimator({ defaultComplexity: config.defaultFieldComplexity })
+    ],
+    createError: (max, actual) =>
+      new GraphQLError(
+        `Query complexity ${actual} exceeds maximum allowed ${max}`
+      )
+  });
 }
 ```
 
@@ -339,20 +321,20 @@ const typeDefs = `
 
 // Calculate complexity for a sample query
 // query {
-//   users(first: 20) {           # 1 * 20 = 20
-//     id
-//     name
-//     posts(first: 5) {          # 5 * 5 * 20 = 500
-//       id
-//       title
-//       author {                  # 2 * 5 * 20 = 200
-//         id
-//         name
+//   users(first: 20) {           # (1 + child complexity) * 20
+//     id                         # 1
+//     name                       # 1
+//     posts(first: 5) {          # (5 + child complexity) * 5 = 55
+//       id                       # 1
+//       title                    # 1
+//       author {                 # 2 + child complexity = 4
+//         id                     # 1
+//         name                   # 1
 //       }
 //     }
 //   }
 // }
-// Total complexity: 20 + 500 + 200 = 720
+// Total complexity: (1 + 1 + 1 + 55) * 20 = 1160
 ```
 
 ## Implementing Response Caching
@@ -385,7 +367,7 @@ import { createHash } from 'crypto';
 
 const redis = new Redis(process.env.REDIS_URL);
 
-// Generate cache key from query and variables
+// Generate cache key from query, operation name, and variables
 function generateCacheKey(query: string, variables: Record<string, any>): string {
   const content = JSON.stringify({ query, variables });
   return `graphql:${createHash('sha256').update(content).digest('hex')}`;
@@ -394,9 +376,6 @@ function generateCacheKey(query: string, variables: Record<string, any>): string
 // Caching plugin for Apollo Server
 const cachingPlugin = {
   async requestDidStart(requestContext) {
-    // Skip mutations and subscriptions
-    const operation = requestContext.request.operationName;
-
     return {
       async responseForOperation(context) {
         // Only cache queries
@@ -405,8 +384,11 @@ const cachingPlugin = {
         }
 
         const cacheKey = generateCacheKey(
-          context.request.query,
-          context.request.variables || {}
+          context.request.query || '',
+          {
+            operationName: context.request.operationName,
+            variables: context.request.variables || {}
+          }
         );
 
         // Check cache
@@ -424,14 +406,18 @@ const cachingPlugin = {
         // Only cache successful query responses
         if (
           context.operation?.operation !== 'query' ||
-          context.errors?.length > 0
+          context.response.body.kind !== 'single' ||
+          context.response.body.singleResult.errors?.length
         ) {
           return;
         }
 
         const cacheKey = generateCacheKey(
-          context.request.query,
-          context.request.variables || {}
+          context.request.query || '',
+          {
+            operationName: context.request.operationName,
+            variables: context.request.variables || {}
+          }
         );
 
         // Cache for 5 minutes by default
@@ -570,15 +556,15 @@ interface Connection<T> {
 
 // Encode cursor from ID and timestamp
 function encodeCursor(id: string, createdAt: Date): string {
-  const data = `${id}:${createdAt.toISOString()}`;
+  const data = JSON.stringify({ id, createdAt: createdAt.toISOString() });
   return Buffer.from(data).toString('base64');
 }
 
 // Decode cursor back to ID and timestamp
 function decodeCursor(cursor: string): { id: string; createdAt: Date } {
   const data = Buffer.from(cursor, 'base64').toString('utf-8');
-  const [id, timestamp] = data.split(':');
-  return { id, createdAt: new Date(timestamp) };
+  const { id, createdAt } = JSON.parse(data);
+  return { id, createdAt: new Date(createdAt) };
 }
 
 // Paginated resolver
@@ -589,16 +575,32 @@ const resolvers = {
       args: PaginationArgs,
       context
     ): Promise<Connection<Post>> => {
-      const { first = 10, after, last, before } = args;
+      const { first, after, last, before } = args;
+
+      if (first !== undefined && last !== undefined) {
+        throw new Error('Use either first or last, not both');
+      }
 
       // Limit maximum page size
-      const limit = Math.min(first || last || 10, 100);
+      const isBackward = last !== undefined;
+      const limit = Math.min(isBackward ? last || 10 : first || 10, 100);
+
+      if ((isBackward && after) || (!isBackward && before)) {
+        throw new Error('Use after with first pagination and before with last pagination');
+      }
 
       // Build query based on cursor
-      let query = context.db
-        .select('posts')
-        .orderBy('created_at', 'DESC')
-        .orderBy('id', 'DESC');
+      let query = context.db.select('posts');
+
+      if (isBackward) {
+        query = query
+          .orderBy('created_at', 'ASC')
+          .orderBy('id', 'ASC');
+      } else {
+        query = query
+          .orderBy('created_at', 'DESC')
+          .orderBy('id', 'DESC');
+      }
 
       if (after) {
         const { createdAt, id } = decodeCursor(after);
@@ -626,6 +628,10 @@ const resolvers = {
         posts.pop(); // Remove the extra item
       }
 
+      if (isBackward) {
+        posts.reverse();
+      }
+
       // Build edges with cursors
       const edges: Edge<Post>[] = posts.map(post => ({
         cursor: encodeCursor(post.id, post.createdAt),
@@ -640,8 +646,8 @@ const resolvers = {
       return {
         edges,
         pageInfo: {
-          hasNextPage: after ? hasMore : hasMore,
-          hasPreviousPage: after ? true : false,
+          hasNextPage: isBackward ? before !== undefined : hasMore,
+          hasPreviousPage: isBackward ? hasMore : after !== undefined,
           startCursor: edges[0]?.cursor || null,
           endCursor: edges[edges.length - 1]?.cursor || null
         },
@@ -662,23 +668,25 @@ import { GraphQLError, ValidationContext, ASTVisitor } from 'graphql';
 
 export function depthLimitRule(maxDepth: number) {
   return (context: ValidationContext): ASTVisitor => {
+    let currentDepth = 0;
+
     return {
       // Track depth as we traverse the query
       Field: {
-        enter(node, _key, _parent, path) {
-          // Calculate current depth from path
-          const depth = path.filter(
-            (p): p is number => typeof p === 'number'
-          ).length;
+        enter(node) {
+          currentDepth += 1;
 
-          if (depth > maxDepth) {
+          if (currentDepth > maxDepth) {
             context.reportError(
               new GraphQLError(
-                `Query depth ${depth} exceeds maximum allowed depth of ${maxDepth}`,
+                `Query depth ${currentDepth} exceeds maximum allowed depth of ${maxDepth}`,
                 { nodes: [node] }
               )
             );
           }
+        },
+        leave() {
+          currentDepth -= 1;
         }
       }
     };
@@ -700,6 +708,7 @@ Track key metrics to identify optimization opportunities.
 ```typescript
 // monitoring/metrics.ts
 import { Histogram, Counter, Gauge } from 'prom-client';
+import DataLoader from 'dataloader';
 
 // Resolver execution time
 const resolverDuration = new Histogram({
