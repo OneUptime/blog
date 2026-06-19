@@ -100,6 +100,7 @@ pip install grpcio grpcio-tools grpcio-reflection
 package main
 
 import (
+    "context"
     "log"
     "net"
 
@@ -150,6 +151,7 @@ func main() {
 ```javascript
 const grpc = require('@grpc/grpc-js');
 const protoLoader = require('@grpc/proto-loader');
+const { ReflectionService } = require('@grpc/reflection');
 
 // Load proto file
 const packageDefinition = protoLoader.loadSync('my_service.proto', {
@@ -177,7 +179,7 @@ function main() {
     server.addService(myService.MyService.service, serviceImpl);
 
     // Enable reflection using grpc-js reflection package
-    const reflection = require('@grpc/reflection');
+    const reflection = new ReflectionService(packageDefinition);
     reflection.addToServer(server);
 
     // Start server
@@ -385,6 +387,10 @@ import (
     pb "myservice/proto"
 )
 
+type server struct {
+    pb.UnimplementedMyServiceServer
+}
+
 func main() {
     lis, err := net.Listen("tcp", ":50051")
     if err != nil {
@@ -448,7 +454,14 @@ kind: Deployment
 metadata:
   name: grpc-service-production
 spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: grpc-service-production
   template:
+    metadata:
+      labels:
+        app: grpc-service-production
     spec:
       containers:
         - name: grpc-service
@@ -468,7 +481,7 @@ spec:
 
 ```python
 import grpc
-from grpc_reflection.v1alpha import reflection
+from concurrent import futures
 
 class ReflectionAuthInterceptor(grpc.ServerInterceptor):
     """Require authentication for reflection API"""
@@ -485,12 +498,14 @@ class ReflectionAuthInterceptor(grpc.ServerInterceptor):
             token = metadata.get('authorization', '').replace('Bearer ', '')
 
             if token not in self.allowed_tokens:
-                def abort(request, context):
+                def abort(request_iterator, context):
                     context.abort(
                         grpc.StatusCode.PERMISSION_DENIED,
                         'Reflection access requires valid token'
                     )
-                return grpc.unary_unary_rpc_method_handler(abort)
+                    yield
+
+                return grpc.stream_stream_rpc_method_handler(abort)
 
         return continuation(handler_call_details)
 
