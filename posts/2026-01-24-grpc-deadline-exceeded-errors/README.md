@@ -12,7 +12,7 @@ The gRPC DEADLINE_EXCEEDED status code (code 4) indicates that an operation did 
 
 ## Understanding Deadlines in gRPC
 
-A deadline is an absolute point in time by which an operation must complete. Unlike timeouts (relative duration), deadlines propagate across service boundaries, ensuring that the entire request chain respects the original time constraint.
+A deadline is an absolute point in time by which an operation must complete. Some APIs use timeouts (relative durations) instead, which gRPC can convert to deadlines. In Go, deadlines are propagated across service boundaries when downstream calls use the incoming context, ensuring that the entire request chain respects the original time constraint.
 
 ```mermaid
 sequenceDiagram
@@ -67,7 +67,6 @@ import (
     "log"
     "time"
 
-    "google.golang.org/grpc"
     "google.golang.org/grpc/codes"
     "google.golang.org/grpc/status"
     pb "myservice/pb"
@@ -149,6 +148,7 @@ import (
     "time"
 
     "google.golang.org/grpc"
+    "google.golang.org/grpc/credentials/insecure"
 )
 
 // MethodTimeouts maps method names to their timeouts
@@ -193,9 +193,9 @@ func TimeoutInterceptor(defaultTimeout time.Duration) grpc.UnaryClientIntercepto
 
 // Usage
 func createClientWithTimeouts() (*grpc.ClientConn, error) {
-    return grpc.Dial(
+    return grpc.NewClient(
         "localhost:50051",
-        grpc.WithInsecure(),
+        grpc.WithTransportCredentials(insecure.NewCredentials()),
         grpc.WithUnaryInterceptor(TimeoutInterceptor(5*time.Second)),
     )
 }
@@ -441,8 +441,8 @@ func (t *TimeoutGuidelines) Recommendations() map[string]time.Duration {
     }
 }
 
-// CalculateTimeout computes timeout based on expected latency percentiles
-func CalculateTimeout(p50, p99 time.Duration) time.Duration {
+// CalculateTimeout computes timeout based on expected p99 latency
+func CalculateTimeout(p99 time.Duration) time.Duration {
     // Use 2-3x the p99 latency as timeout
     // This allows for some variance while catching truly hung requests
     return p99 * 3
@@ -457,6 +457,7 @@ package main
 
 import (
     "context"
+    "sort"
     "sync"
     "time"
 
@@ -660,7 +661,7 @@ import (
     "go.opentelemetry.io/otel/trace"
 )
 
-func traceDeadlineInfo(ctx context.Context, operationName string) {
+func traceDeadlineInfo(ctx context.Context) {
     span := trace.SpanFromContext(ctx)
 
     if deadline, ok := ctx.Deadline(); ok {
@@ -683,7 +684,7 @@ func WrapWithDeadlineTracing(ctx context.Context, operationName string, fn func(
     ctx, span := tracer.Start(ctx, operationName)
     defer span.End()
 
-    traceDeadlineInfo(ctx, operationName)
+    traceDeadlineInfo(ctx)
 
     err := fn(ctx)
     if err != nil {
