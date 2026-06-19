@@ -27,15 +27,15 @@ flowchart TD
 
 ## Identifying Insufficient Scope Errors
 
-```json
-// Standard OAuth2 format
-{
-    "error": "insufficient_scope",
-    "error_description": "The token does not have the required scope",
-    "scope": "write:users"
-}
+```http
+HTTP/1.1 403 Forbidden
+WWW-Authenticate: Bearer realm="example",
+                  error="insufficient_scope",
+                  error_description="The token does not have the required scope",
+                  scope="write:users"
+```
 
-// GitHub format
+```json
 {
     "message": "Resource not accessible by integration"
 }
@@ -44,7 +44,8 @@ flowchart TD
 ### Detection Function
 
 ```python
-from typing import Optional, List
+import re
+from typing import Dict, List, Optional
 
 class InsufficientScopeError(Exception):
     def __init__(self, message: str, required_scopes: List[str] = None):
@@ -52,9 +53,24 @@ class InsufficientScopeError(Exception):
         self.required_scopes = required_scopes or []
         super().__init__(self.message)
 
-def detect_insufficient_scope(response: dict, status_code: int) -> Optional[List[str]]:
+def _scope_from_www_authenticate(value: str) -> List[str]:
+    match = re.search(r'\bscope="([^"]*)"', value)
+    return match.group(1).split() if match and match.group(1) else []
+
+def detect_insufficient_scope(
+    response: dict,
+    status_code: int,
+    headers: Optional[Dict[str, str]] = None
+) -> Optional[List[str]]:
     if status_code != 403:
         return None
+
+    www_authenticate = next(
+        (value for key, value in (headers or {}).items() if key.lower() == "www-authenticate"),
+        ""
+    )
+    if "insufficient_scope" in www_authenticate:
+        return _scope_from_www_authenticate(www_authenticate)
 
     if response.get("error") == "insufficient_scope":
         required = response.get("scope", "")
@@ -74,9 +90,10 @@ def detect_insufficient_scope(response: dict, status_code: int) -> Optional[List
 
 FEATURE_SCOPES = {
     "view_profile": ["read:user"],
-    "edit_profile": ["read:user", "write:user"],
-    "view_repos": ["read:repos"],
-    "create_repos": ["read:repos", "write:repos"]
+    "edit_profile": ["user"],
+    "view_emails": ["user:email"],
+    "view_repos": ["repo"],
+    "create_repos": ["repo"]
 }
 
 def get_required_scopes(features: list) -> list:
@@ -114,9 +131,25 @@ sequenceDiagram
 ### Implementation
 
 ```python
+from urllib.parse import urlencode
+
 class IncrementalAuthManager:
-    def __init__(self, user_id: str):
+    def __init__(
+        self,
+        user_id: str,
+        current_scopes: list,
+        client_id: str,
+        redirect_uri: str,
+        authorize_url: str
+    ):
         self.user_id = user_id
+        self.current_scopes = set(current_scopes)
+        self.client_id = client_id
+        self.redirect_uri = redirect_uri
+        self.authorize_url = authorize_url
+
+    def get_current_scopes(self) -> set:
+        return self.current_scopes
 
     def has_required_scopes(self, required: list) -> bool:
         current = self.get_current_scopes()
@@ -131,11 +164,13 @@ class IncrementalAuthManager:
         all_scopes = current.union(set(additional_scopes))
         
         params = {
-            "client_id": OAUTH_CLIENT_ID,
+            "client_id": self.client_id,
+            "redirect_uri": self.redirect_uri,
+            "response_type": "code",
             "scope": " ".join(all_scopes),
             "include_granted_scopes": "true"  # Google
         }
-        return f"{OAUTH_AUTHORIZE_URL}?{urlencode(params)}"
+        return f"{self.authorize_url}?{urlencode(params)}"
 ```
 
 ## Best Practices
@@ -156,7 +191,8 @@ if user.wants_repo_access:
 ```python
 SCOPE_DESCRIPTIONS = {
     "read:user": "view your profile information",
-    "write:user": "update your profile",
+    "user": "update your profile",
+    "user:email": "view your email addresses",
     "repo": "access your repositories"
 }
 
