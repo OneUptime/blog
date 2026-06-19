@@ -36,7 +36,7 @@ Let's start with a simple VirtualService that routes traffic to a single backend
 ```yaml
 # Basic VirtualService for internal service routing
 
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: reviews-route
@@ -60,7 +60,7 @@ When handling traffic from outside the mesh, you need to bind the VirtualService
 
 ```yaml
 # Gateway for external traffic
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: bookinfo-gateway
@@ -76,7 +76,7 @@ spec:
     - "bookinfo.example.com"
 ---
 # VirtualService bound to the Gateway
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: bookinfo-vs
@@ -110,7 +110,7 @@ Route requests to different backends based on the URL path:
 
 ```yaml
 # Route different paths to different services
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-routes
@@ -167,7 +167,7 @@ Route based on HTTP headers for A/B testing or feature flags:
 
 ```yaml
 # Route based on custom headers
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: feature-routing
@@ -223,7 +223,7 @@ Distribute traffic between multiple versions for canary deployments:
 
 ```yaml
 # Split traffic between versions
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: canary-release
@@ -246,7 +246,7 @@ Remember to create a DestinationRule that defines the subsets:
 
 ```yaml
 # DestinationRule defining version subsets
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service-versions
@@ -267,7 +267,7 @@ Inject faults to test resilience and chaos engineering:
 
 ```yaml
 # Inject delays and aborts for testing
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: fault-injection
@@ -313,7 +313,7 @@ Configure timeouts and automatic retries:
 
 ```yaml
 # Configure resilience settings
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: resilient-service
@@ -345,7 +345,7 @@ Mirror traffic to a shadow service for testing:
 
 ```yaml
 # Mirror production traffic to staging
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: traffic-mirror
@@ -370,7 +370,7 @@ Match multiple conditions with AND/OR logic:
 
 ```yaml
 # Complex routing with multiple conditions
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: complex-routing
