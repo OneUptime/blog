@@ -45,7 +45,7 @@ DESCRIBE your_table;
 -- Or get more detail
 SHOW COLUMNS FROM your_table;
 
--- Check the exact column names (case sensitivity matters on some systems)
+-- Check the exact column names
 SELECT COLUMN_NAME
 FROM INFORMATION_SCHEMA.COLUMNS
 WHERE TABLE_SCHEMA = DATABASE()
@@ -189,9 +189,9 @@ SELECT id, `order`, status FROM transactions;
 ```
 
 **Common reserved words used as column names:**
-- order, key, index, table, column
+- order, key, index, table, interval
 - group, select, where, from, join
-- status, type, name, value, date
+- rank, window, rows, row_number, system
 
 **Solution:** Always use backticks for reserved words or rename the column.
 
@@ -202,19 +202,19 @@ ALTER TABLE transactions CHANGE COLUMN `order` order_number VARCHAR(50);
 
 ### Cause 7: Case Sensitivity Issues
 
-On Linux, table and column names can be case-sensitive:
+On Linux, database and table names can be case-sensitive, and table aliases are case-sensitive by default. Column names are not case-sensitive in MySQL, but you should still use the exact names from the schema:
 
 ```sql
 -- On case-sensitive systems
-SELECT UserName FROM Users;  -- Might fail
+SELECT username FROM Users;  -- Might fail if the table is actually named 'users'
 SELECT username FROM users;  -- Correct
 ```
 
-**Solution:** Check the actual case in the table definition.
+**Solution:** Check the actual table and column names.
 
 ```sql
--- Check exact column names
-SELECT COLUMN_NAME
+-- Check exact table and column names
+SELECT TABLE_NAME, COLUMN_NAME
 FROM INFORMATION_SCHEMA.COLUMNS
 WHERE TABLE_SCHEMA = DATABASE()
 AND LOWER(TABLE_NAME) = 'users';
@@ -367,7 +367,7 @@ When you see "Unknown column":
 - [ ] Check if using correct table alias in JOINs
 - [ ] Verify you are not using a SELECT alias in WHERE
 - [ ] Check for reserved words needing backticks
-- [ ] Verify case sensitivity if on Linux
+- [ ] Verify table-name and alias case sensitivity if on Linux
 - [ ] Compare schema between environments
 - [ ] Check ORM model matches database schema
 
