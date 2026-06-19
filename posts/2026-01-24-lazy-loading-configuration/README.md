@@ -8,7 +8,7 @@ Description: Learn how to configure lazy loading for images, components, and mod
 
 ---
 
-Lazy loading defers the loading of non-critical resources until they are needed. A page that loads 50 images upfront takes seconds to become interactive. The same page with lazy loading can be interactive in milliseconds, loading images only as users scroll to them. This guide covers lazy loading configuration for images, JavaScript modules, and UI components.
+Lazy loading defers the loading of non-critical resources until they are needed. A page that loads 50 images upfront can take seconds to become interactive. The same page with lazy loading can become interactive sooner, loading images only as users scroll to them. This guide covers lazy loading configuration for images, JavaScript modules, and UI components.
 
 ## Why Lazy Loading Matters
 
@@ -30,7 +30,7 @@ graph LR
 | Metric | Without Lazy Loading | With Lazy Loading |
 |--------|---------------------|-------------------|
 | Initial Bundle Size | 2.5 MB | 500 KB |
-| Time to Interactive | 4.2s | 1.1s |
+| Total Blocking Time | 650ms | 120ms |
 | Initial Network Requests | 85 | 12 |
 | Largest Contentful Paint | 3.8s | 1.5s |
 
@@ -118,6 +118,13 @@ class LazyImageLoader {
   }
 
   setupObserver() {
+    if (!('IntersectionObserver' in window)) {
+      document.querySelectorAll('img[data-src]').forEach(img => {
+        this.loadImage(img);
+      });
+      return;
+    }
+
     this.observer = new IntersectionObserver(
       (entries) => this.handleIntersection(entries),
       {
@@ -190,11 +197,12 @@ img[data-src] {
 
 ## React Component Lazy Loading
 
-React's `lazy()` and `Suspense` enable code splitting at the component level:
+React's `lazy()` and `Suspense` enable code splitting at the component level. Components imported with `lazy()` need to be default exports:
 
 ```jsx
 // App.jsx - Basic lazy loading setup
 import React, { Suspense, lazy } from 'react';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 
 // Lazy load heavy components
 const Dashboard = lazy(() => import('./pages/Dashboard'));
@@ -516,7 +524,7 @@ function useLazyQuery(queryFn) {
 // Usage
 function SearchResults() {
   const { data, loading, error, execute } = useLazyQuery(
-    (query, options) => fetch(`/api/search?q=${query}`, options).then(r => r.json())
+    (query, options) => fetch(`/api/search?q=${encodeURIComponent(query)}`, options).then(r => r.json())
   );
 
   const handleSearch = (query) => {
@@ -540,7 +548,7 @@ function SearchResults() {
 
 ```jsx
 // useInfiniteScroll.jsx - Lazy loading list items
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 
 function useInfiniteScroll(loadMore, hasMore, loading) {
   const observerRef = useRef(null);
@@ -613,16 +621,16 @@ function ProductList() {
 |--------|--------|-------------|
 | First Contentful Paint | < 1.8s | Lighthouse |
 | Largest Contentful Paint | < 2.5s | Lighthouse |
-| Time to Interactive | < 3.8s | Lighthouse |
+| Interaction to Next Paint | < 200ms | CrUX / web-vitals |
 | Total Blocking Time | < 200ms | Lighthouse |
 | Cumulative Layout Shift | < 0.1 | Lighthouse |
 
 ```javascript
-// Monitor lazy loading performance
+// Monitor resource loading performance
 const observer = new PerformanceObserver((list) => {
   for (const entry of list.getEntries()) {
     if (entry.entryType === 'resource') {
-      console.log('Lazy loaded:', {
+      console.log('Resource loaded:', {
         name: entry.name,
         duration: entry.duration,
         transferSize: entry.transferSize
