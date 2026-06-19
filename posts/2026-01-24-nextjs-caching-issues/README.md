@@ -23,6 +23,7 @@ flowchart TD
     subgraph "Caching Layers"
         RC[Router Cache - Client]
         FDC[Full Route Cache - Server]
+        RENDER[Server Render]
         DC[Data Cache - Server]
         MM[Request Memoization]
     end
@@ -34,23 +35,26 @@ flowchart TD
 
     REQ --> RC
     RC -->|Miss| FDC
-    FDC -->|Miss| DC
-    DC -->|Miss| MM
-    MM --> DB
-    MM --> API
+    FDC -->|Miss| RENDER
+    RENDER --> MM
+    MM -->|Miss| DC
+    DC -->|Miss| DB
+    DC -->|Miss| API
 ```
 
 ## The Data Cache
 
-The Data Cache stores the results of fetch requests on the server. By default, fetch requests in Next.js are cached indefinitely.
+The Data Cache stores the results of cached fetch requests on the server. In current Next.js versions, fetch requests are not cached by default, but static prerendering and explicit caching with `cache: 'force-cache'` or `next.revalidate` can still make data appear stale.
 
 ### Problem: Stale data after updates
 
 ```typescript
 // app/posts/page.tsx
-// This fetch is cached forever by default
+// This fetch opts into the Data Cache
 async function PostsPage() {
-  const response = await fetch('https://api.example.com/posts');
+  const response = await fetch('https://api.example.com/posts', {
+    cache: 'force-cache',
+  });
   const posts = await response.json();
 
   // Data might be stale if the API has been updated
@@ -98,10 +102,10 @@ You can configure caching behavior at the route segment level using special expo
 export const dynamic = 'force-dynamic';
 
 // Or set revalidation time for the entire route
-export const revalidate = 60;  // Revalidate every 60 seconds
+// export const revalidate = 60;  // Revalidate every 60 seconds
 
 // Or prevent caching
-export const revalidate = 0;  // Equivalent to no caching
+// export const revalidate = 0;  // Equivalent to no caching
 
 async function DashboardPage() {
   const data = await fetchDashboardData();
@@ -143,8 +147,9 @@ Static pages are cached at build time. If you update content in your CMS or data
 ```typescript
 // app/blog/[slug]/page.tsx
 // This page is statically generated at build time
-async function BlogPost({ params }: { params: { slug: string } }) {
-  const post = await getPostBySlug(params.slug);
+async function BlogPost({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params;
+  const post = await getPostBySlug(slug);
   return <Article post={post} />;
 }
 
@@ -165,8 +170,9 @@ export default BlogPost;
 // Time-based revalidation
 export const revalidate = 3600;  // Revalidate every hour
 
-async function BlogPost({ params }: { params: { slug: string } }) {
-  const post = await getPostBySlug(params.slug);
+async function BlogPost({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params;
+  const post = await getPostBySlug(slug);
   return <Article post={post} />;
 }
 
@@ -190,7 +196,7 @@ export async function revalidateBlogPost(slug: string) {
 
 // Revalidate all pages using a tag
 export async function revalidateAllPosts() {
-  revalidateTag('posts');
+  revalidateTag('posts', 'max');
 }
 
 // Revalidate an entire route tree
@@ -340,8 +346,8 @@ export async function GET() {
 
 rm -rf .next/cache
 
-# Or use the dev server with cache disabled
-next dev --turbo
+# Then restart the dev server
+next dev
 ```
 
 ## Common Caching Scenarios and Solutions
@@ -356,7 +362,7 @@ import { cookies } from 'next/headers';
 export const dynamic = 'force-dynamic';
 
 async function ProfilePage() {
-  const cookieStore = cookies();
+  const cookieStore = await cookies();
   const sessionToken = cookieStore.get('session');
 
   const user = await fetchUserBySession(sessionToken?.value);
@@ -405,12 +411,14 @@ async function StockStatus({ id }: { id: string }) {
   return <StockBadge stock={await stock.json()} />;
 }
 
-async function ProductPage({ params }: { params: { id: string } }) {
+async function ProductPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+
   return (
     <div>
-      <ProductInfo id={params.id} />
+      <ProductInfo id={id} />
       <Suspense fallback={<p>Loading stock status...</p>}>
-        <StockStatus id={params.id} />
+        <StockStatus id={id} />
       </Suspense>
     </div>
   );
@@ -423,22 +431,20 @@ export default ProductPage;
 
 ```typescript
 // Fetch cache options
-fetch(url, {
-  cache: 'force-cache',     // Default: cache indefinitely
-  cache: 'no-store',        // Never cache
-  next: { revalidate: 60 }, // Cache for 60 seconds
-  next: { tags: ['posts'] }, // Tag for on-demand revalidation
-});
+fetch(url, { cache: 'force-cache' });     // Opt into persistent caching
+fetch(url, { cache: 'no-store' });        // Never cache
+fetch(url, { next: { revalidate: 60 } }); // Cache for 60 seconds
+fetch(url, { next: { tags: ['posts'] } }); // Tag for on-demand revalidation
 
-// Route segment config
+// Route segment config for apps not using Cache Components
 export const dynamic = 'auto';          // Default behavior
-export const dynamic = 'force-dynamic'; // No caching
-export const dynamic = 'force-static';  // Force static generation
-export const dynamic = 'error';         // Error if dynamic features used
+// export const dynamic = 'force-dynamic'; // No caching
+// export const dynamic = 'force-static';  // Force static generation
+// export const dynamic = 'error';         // Error if dynamic features used
 
 export const revalidate = false;  // Cache forever (default)
-export const revalidate = 0;      // Always revalidate
-export const revalidate = 60;     // Revalidate every 60 seconds
+// export const revalidate = 0;      // Always revalidate
+// export const revalidate = 60;     // Revalidate every 60 seconds
 ```
 
 ## Summary
