@@ -356,9 +356,12 @@ export const URLScalar = new GraphQLScalarType({
     try {
       const url = new URL(value);
 
-      // Security: Block potentially dangerous URLs
-      if (url.protocol === 'javascript:') {
-        throw new GraphQLError('JavaScript URLs are not allowed');
+      // Restrict protocols consistently with serialize
+      const allowedProtocols = ['http:', 'https:', 'data:'];
+      if (!allowedProtocols.includes(url.protocol)) {
+        throw new GraphQLError(
+          `URL protocol "${url.protocol}" not allowed. Allowed: ${allowedProtocols.join(', ')}`
+        );
       }
 
       return url.toString();
@@ -553,6 +556,7 @@ Write comprehensive tests to catch serialization issues early.
 
 ```typescript
 import { DateTimeScalar, EmailScalar, URLScalar } from './scalars';
+import { GraphQLError, Kind } from 'graphql';
 
 describe('DateTimeScalar', () => {
   describe('serialize', () => {
@@ -567,7 +571,7 @@ describe('DateTimeScalar', () => {
     });
 
     it('should serialize timestamps', () => {
-      const timestamp = 1705315800000; // 2024-01-15T10:30:00Z
+      const timestamp = 1705314600000; // 2024-01-15T10:30:00Z
       expect(DateTimeScalar.serialize(timestamp)).toBe('2024-01-15T10:30:00.000Z');
     });
 
@@ -672,7 +676,7 @@ const schema = makeExecutableSchema({
 
 Custom scalar serialization errors typically stem from incomplete handling of edge cases. Follow these principles for robust implementations:
 
-1. **Handle null and undefined** explicitly in all three methods
+1. **Handle null and undefined** consistently where they can reach your scalar methods
 2. **Validate input types** before processing
 3. **Provide clear error messages** that help developers understand what went wrong
 4. **Implement all three methods** consistently for bidirectional operations
