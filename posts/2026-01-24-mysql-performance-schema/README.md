@@ -31,13 +31,13 @@ flowchart LR
         C1[events_statements_current]
         C2[events_statements_history]
         C3[events_waits_current]
-        C4[memory_summary_by_thread]
+        C4[memory_summary_by_thread_by_event_name]
     end
 ```
 
 ## Enabling Performance Schema
 
-Performance Schema is enabled by default in MySQL 5.6+, but many instruments are disabled to minimize overhead. Check your current configuration.
+Performance Schema is enabled by default in MySQL 5.6+, but many instruments are disabled to minimize overhead. The lock queries using `performance_schema.data_locks` and `performance_schema.data_lock_waits` require MySQL 8.0+. Check your current configuration.
 
 ```sql
 -- Check if Performance Schema is enabled
@@ -49,7 +49,7 @@ WHERE EVENT_NAME LIKE 'memory/performance_schema/%'
 ORDER BY CURRENT_NUMBER_OF_BYTES_USED DESC
 LIMIT 10;
 
--- Check what percentage of the server memory PS uses
+-- Check how much memory PS uses
 SELECT
     FORMAT(SUM(CURRENT_NUMBER_OF_BYTES_USED)/1024/1024, 2) AS MB_used
 FROM performance_schema.memory_summary_global_by_event_name
@@ -170,10 +170,10 @@ SELECT
     SQL_TEXT,
     ROUND(TIMER_WAIT/1000000000000, 3) AS duration_sec,
     ROWS_EXAMINED,
-    ROWS_SENT,
-    STATE
+    ROWS_SENT
 FROM performance_schema.events_statements_current
 WHERE SQL_TEXT IS NOT NULL
+AND END_EVENT_ID IS NULL
 ORDER BY TIMER_WAIT DESC;
 
 -- Match threads to connection IDs
@@ -189,7 +189,8 @@ FROM performance_schema.threads t
 JOIN performance_schema.events_statements_current s
     ON t.THREAD_ID = s.THREAD_ID
 WHERE t.PROCESSLIST_ID IS NOT NULL
-AND s.SQL_TEXT IS NOT NULL;
+AND s.SQL_TEXT IS NOT NULL
+AND s.END_EVENT_ID IS NULL;
 ```
 
 ## Identifying Lock Contention
@@ -205,9 +206,9 @@ SELECT
     b.trx_id AS blocking_trx_id,
     b.trx_mysql_thread_id AS blocking_thread,
     b.trx_query AS blocking_query
-FROM information_schema.innodb_lock_waits w
-JOIN information_schema.innodb_trx b ON b.trx_id = w.blocking_trx_id
-JOIN information_schema.innodb_trx r ON r.trx_id = w.requesting_trx_id;
+FROM performance_schema.data_lock_waits w
+JOIN information_schema.innodb_trx b ON b.trx_id = w.BLOCKING_ENGINE_TRANSACTION_ID
+JOIN information_schema.innodb_trx r ON r.trx_id = w.REQUESTING_ENGINE_TRANSACTION_ID;
 
 -- Aggregate lock wait statistics
 SELECT
@@ -220,16 +221,19 @@ WHERE COUNT_STAR > 0
 ORDER BY SUM_TIMER_WAIT DESC
 LIMIT 10;
 
--- Find the most contended row locks
+-- View current row locks by table and index
 SELECT
     OBJECT_SCHEMA,
     OBJECT_NAME,
     INDEX_NAME,
-    COUNT_STAR,
-    ROUND(SUM_TIMER_WAIT/1000000000000, 3) AS total_wait_sec
-FROM performance_schema.table_io_waits_summary_by_index_usage
-WHERE INDEX_NAME IS NOT NULL
-ORDER BY SUM_TIMER_WAIT DESC
+    LOCK_TYPE,
+    LOCK_MODE,
+    LOCK_STATUS,
+    COUNT(*) AS lock_count
+FROM performance_schema.data_locks
+WHERE LOCK_TYPE = 'RECORD'
+GROUP BY OBJECT_SCHEMA, OBJECT_NAME, INDEX_NAME, LOCK_TYPE, LOCK_MODE, LOCK_STATUS
+ORDER BY lock_count DESC
 LIMIT 10;
 ```
 
@@ -276,13 +280,13 @@ LIMIT 10;
 ## Connection and Thread Analysis
 
 ```sql
--- Connection statistics by user
+-- Connection statistics by user and host
 SELECT
     USER,
     HOST,
     CURRENT_CONNECTIONS,
     TOTAL_CONNECTIONS
-FROM performance_schema.hosts
+FROM performance_schema.accounts
 ORDER BY TOTAL_CONNECTIONS DESC;
 
 -- Thread statistics
@@ -360,9 +364,9 @@ TRUNCATE performance_schema.events_statements_summary_by_digest;
 TRUNCATE performance_schema.table_io_waits_summary_by_table;
 
 -- Reset connection statistics
-TRUNCATE performance_schema.hosts;
+TRUNCATE performance_schema.accounts;
 
--- Reset all Performance Schema tables (use with caution)
+-- Reset all Performance Schema summary tables (use with caution)
 CALL sys.ps_truncate_all_tables(FALSE);
 ```
 
