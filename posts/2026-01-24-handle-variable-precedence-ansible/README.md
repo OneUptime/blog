@@ -22,33 +22,43 @@ flowchart TB
         A["--extra-vars / -e"]
     end
 
-    subgraph "High Precedence (19-21)"
-        B["set_facts / registered vars"]
-        C["include_vars"]
-        D["role/include params"]
+    subgraph "High Precedence (18-21)"
+        B["include params"]
+        C["role/include_role params"]
+        D["set_facts / registered vars"]
+        E["include_vars"]
     end
 
-    subgraph "Medium Precedence (14-18)"
-        E["task vars"]
-        F["block vars"]
-        G["play vars_files"]
-        H["play vars"]
-        I["host_vars (playbook)"]
+    subgraph "Medium Precedence (14-17)"
+        F["task vars"]
+        G["block vars"]
+        H["role vars"]
+        I["play vars_files"]
     end
 
-    subgraph "Low Precedence (8-13)"
-        J["group_vars (playbook)"]
-        K["host_vars (inventory)"]
-        L["group_vars (inventory)"]
-        M["inventory file vars"]
+    subgraph "Play and Host Precedence (10-13)"
+        J["play vars_prompt"]
+        K["play vars"]
+        L["host facts / cached set_facts"]
+        M["host_vars (playbook)"]
     end
 
-    subgraph "Lowest Precedence (1-7)"
-        N["role defaults"]
-        O["command line values"]
+    subgraph "Inventory and Group Precedence (3-9)"
+        N["host_vars (inventory)"]
+        O["inventory file host vars"]
+        P["group_vars (playbook)"]
+        Q["group_vars (inventory)"]
+        R["playbook group_vars/all"]
+        S["inventory group_vars/all"]
+        T["inventory file group vars"]
     end
 
-    A --> B --> C --> D --> E --> F --> G --> H --> I --> J --> K --> L --> M --> N --> O
+    subgraph "Lowest Precedence (1-2)"
+        U["role defaults"]
+        V["command line values"]
+    end
+
+    A --> B --> C --> D --> E --> F --> G --> H --> I --> J --> K --> L --> M --> N --> O --> P --> Q --> R --> S --> T --> U --> V
 ```
 
 ## Complete Precedence List (Lowest to Highest)
@@ -122,11 +132,10 @@ _supported_os_families:
   roles:
     # Override role defaults using role parameters
     - role: webserver
-      vars:
-        # These override defaults/main.yml values
-        http_port: 8080
-        max_connections: 500
-        enable_ssl: true
+      # These override defaults/main.yml values
+      http_port: 8080
+      max_connections: 500
+      enable_ssl: true
 ```
 
 ### Example 2: Group and Host Variables
@@ -311,7 +320,7 @@ Variables defined at block and task level have high precedence.
           ansible.builtin.template:
             src: "{{ service_type }}.conf.j2"
             dest: "{{ config_dir }}/{{ service_type }}.conf"
-          # Task vars - precedence 17 (highest in playbook)
+          # Task vars - precedence 17 (higher than block and play vars)
           vars:
             template_mode: "0644"
 
@@ -499,12 +508,13 @@ important_setting: "default_value"  # Users can override
 
 ## Variable Merging Behavior
 
-Ansible can merge dictionaries and lists using special settings.
+Ansible can merge dictionaries using a special setting.
 
 ```yaml
 # ansible.cfg
 [defaults]
-# Enable hash (dictionary) merging instead of replacement
+# Enable hash (dictionary) merging instead of replacement.
+# Ansible recommends avoiding this setting for new projects.
 hash_behaviour = merge  # Default is 'replace'
 ```
 
