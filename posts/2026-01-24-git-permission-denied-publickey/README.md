@@ -18,13 +18,14 @@ sequenceDiagram
     participant S as Git Server
 
     C->>S: Connection request
-    S->>C: Server's public key + challenge
-    C->>C: Sign challenge with private key
-    C->>S: Signed response
-    S->>S: Verify with your public key
-    alt Keys match
+    S->>C: Establish encrypted session
+    C->>S: Offer public key
+    C->>C: Sign authentication request with private key
+    C->>S: Signed authentication request
+    S->>S: Verify signature with your public key
+    alt Signature valid
         S->>C: Access granted
-    else Keys don't match
+    else Signature invalid
         S->>C: Permission denied (publickey)
     end
 ```
@@ -142,10 +143,11 @@ Add the key to your Git hosting service:
 4. Click "Add SSH key"
 
 **GitLab:**
-1. Go to Preferences > SSH Keys
-2. Paste your public key
-3. Set an optional expiry date
-4. Click "Add key"
+1. Go to Edit profile > Access > SSH keys
+2. Click "Add new key"
+3. Paste your public key
+4. Set an optional expiry date
+5. Click "Add key"
 
 **Bitbucket:**
 1. Go to Personal settings > SSH keys
