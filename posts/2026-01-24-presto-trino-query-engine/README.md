@@ -10,7 +10,7 @@ Description: Learn how to configure Presto and Trino query engines for optimal p
 
 > Presto and Trino power analytics at companies processing petabytes of data daily. Getting the configuration right is the difference between queries that finish in seconds and those that never complete.
 
-Trino (formerly PrestoSQL) and Presto are distributed SQL query engines designed for interactive analytics across diverse data sources. This guide covers essential configuration for running these engines reliably in production.
+Trino (formerly PrestoSQL) and Presto are distributed SQL query engines designed for interactive analytics across diverse data sources. The examples below use current Trino property names; PrestoDB has similar concepts, but some property names differ by version and distribution. This guide covers essential configuration for running these engines reliably in production.
 
 ---
 
@@ -74,7 +74,6 @@ node.data-dir=/var/trino/data
 -Xms48G
 
 # Use G1 garbage collector for large heaps
--XX:+UseG1GC
 -XX:G1HeapRegionSize=32M
 
 # GC tuning for low latency
@@ -84,6 +83,7 @@ node.data-dir=/var/trino/data
 -XX:HeapDumpPath=/var/trino/logs
 
 # Performance optimizations
+-XX:-OmitStackTraceInFastThrow
 -XX:ReservedCodeCacheSize=512M
 -XX:PerMethodRecompilationCutoff=10000
 -XX:PerBytecodeRecompilationCutoff=10000
@@ -91,6 +91,7 @@ node.data-dir=/var/trino/data
 # Disable some costly JVM features
 -Djdk.attach.allowAttachSelf=true
 -Djdk.nio.maxCachedBufferSize=2000000
+--add-modules=jdk.incubator.vector
 ```
 
 ### Coordinator Configuration
@@ -113,8 +114,8 @@ discovery.uri=http://coordinator.internal:8080
 
 # Query limits - prevent runaway queries
 query.max-memory=100GB
+query.max-total-memory=200GB
 query.max-memory-per-node=10GB
-query.max-total-memory-per-node=12GB
 
 # Query execution settings
 query.max-execution-time=30m
@@ -141,14 +142,13 @@ discovery.uri=http://coordinator.internal:8080
 # HTTP server for worker communication
 http-server.http.port=8080
 
-# Memory settings - should match coordinator
+# Memory settings - should match the cluster policy
 query.max-memory-per-node=10GB
-query.max-total-memory-per-node=12GB
 
 # Task settings for parallel execution
 task.max-worker-threads=16
 task.min-drivers=32
-task.max-drivers=64
+task.max-drivers-per-task=64
 ```
 
 ---
@@ -169,10 +169,11 @@ connector.name=hive
 hive.metastore.uri=thrift://metastore.internal:9083
 
 # S3 storage configuration
-hive.s3.path-style-access=true
-hive.s3.endpoint=https://s3.amazonaws.com
-hive.s3.aws-access-key=${ENV:AWS_ACCESS_KEY_ID}
-hive.s3.aws-secret-key=${ENV:AWS_SECRET_ACCESS_KEY}
+fs.s3.enabled=true
+s3.path-style-access=true
+s3.endpoint=https://s3.amazonaws.com
+s3.aws-access-key=${ENV:AWS_ACCESS_KEY_ID}
+s3.aws-secret-key=${ENV:AWS_SECRET_ACCESS_KEY}
 
 # Performance settings
 hive.max-split-size=128MB
@@ -185,7 +186,7 @@ hive.orc.use-column-names=true
 
 # Caching for repeated queries
 hive.file-status-cache-tables=*
-hive.file-status-cache-size=100000
+hive.file-status-cache.max-retained-size=1GB
 hive.file-status-cache-expire-time=1h
 ```
 
@@ -202,14 +203,15 @@ iceberg.catalog.type=hive_metastore
 hive.metastore.uri=thrift://metastore.internal:9083
 
 # S3 configuration
-hive.s3.path-style-access=true
-hive.s3.endpoint=https://s3.amazonaws.com
+fs.s3.enabled=true
+s3.path-style-access=true
+s3.endpoint=https://s3.amazonaws.com
 
 # Iceberg-specific optimizations
 iceberg.max-partitions-per-writer=1000
 iceberg.target-max-file-size=512MB
 
-# Enable merge-on-read for efficient updates
+# Delete schema directories when Trino cannot determine whether they contain external files
 iceberg.delete-schema-locations-fallback=true
 ```
 
@@ -224,9 +226,6 @@ connector.name=postgresql
 connection-url=jdbc:postgresql://postgres.internal:5432/production
 connection-user=${ENV:PG_USER}
 connection-password=${ENV:PG_PASSWORD}
-
-# Connection pool settings
-postgresql.connection-pool.max-size=20
 
 # Push predicates down to PostgreSQL
 postgresql.experimental.enable-string-pushdown-with-collate=true
@@ -305,9 +304,9 @@ Memory is the most critical resource to configure correctly.
 ```mermaid
 graph LR
     subgraph "JVM Heap (48GB)"
-        A[Query Memory Pool<br/>40GB]
-        B[Reserved Pool<br/>4GB]
-        C[System Memory<br/>4GB]
+        A[Tracked Query Memory<br/>up to configured limits]
+        B[Heap Headroom<br/>4GB]
+        C[JVM and System Overhead]
     end
 
     subgraph "Query Memory"
@@ -327,11 +326,11 @@ graph LR
 # Total memory available for queries across the cluster
 query.max-memory=100GB
 
+# Total memory per query across the cluster, including revocable memory
+query.max-total-memory=200GB
+
 # Memory limit per node for a single query
 query.max-memory-per-node=10GB
-
-# Total memory per node including system overhead
-query.max-total-memory-per-node=12GB
 
 # Memory pool configuration
 memory.heap-headroom-per-node=4GB
@@ -355,18 +354,14 @@ Tune the query optimizer for better performance.
 
 # Cost-based optimizer settings
 optimizer.join-reordering-strategy=AUTOMATIC
-optimizer.join-distribution-type=AUTOMATIC
-
-# Predicate pushdown
-optimizer.predicate-pushdown-use-table-properties=true
+join-distribution-type=AUTOMATIC
 
 # Enable optimizations for common patterns
-optimizer.optimize-hash-generation=true
-optimizer.optimize-mixed-distinct-aggregations=true
+optimizer.distinct-aggregations-strategy=AUTOMATIC
 optimizer.push-aggregation-through-outer-join=true
 
 # Statistics for better planning
-optimizer.use-mark-distinct=true
+optimizer.use-table-scan-node-partitioning=true
 
 # Exchange settings for distributed joins
 exchange.client-threads=25
@@ -391,26 +386,26 @@ SELECT
     query,
     created,
     NOW() - created AS elapsed,
-    total_cpu_time,
-    peak_memory_bytes / 1024 / 1024 / 1024 AS peak_memory_gb
+    queued_time_ms,
+    planning_time_ms
 FROM system.runtime.queries
 WHERE state = 'RUNNING'
 ORDER BY created;
 
--- Find slow queries from history
+-- Find recently finished queries with long planning or queue time
 SELECT
     query_id,
     user,
     source,
     LEFT(query, 100) AS query_preview,
-    execution_time,
-    queued_time,
-    planning_time,
-    peak_memory_bytes / 1024 / 1024 / 1024 AS peak_memory_gb,
-    total_cpu_time
+    queued_time_ms,
+    analysis_time_ms,
+    planning_time_ms,
+    created,
+    "end"
 FROM system.runtime.queries
 WHERE state = 'FINISHED'
-AND execution_time > INTERVAL '1' MINUTE
+AND (queued_time_ms > 60000 OR planning_time_ms > 60000)
 ORDER BY created DESC
 LIMIT 50;
 
@@ -420,18 +415,20 @@ SELECT
     http_uri,
     node_version,
     coordinator,
-    state,
-    age(NOW(), last_response_time) AS time_since_response
+    state
 FROM system.runtime.nodes;
 
--- Memory usage by query
+-- Queries with recent failures
 SELECT
     query_id,
     user,
-    peak_user_memory_reservation / 1024 / 1024 / 1024 AS peak_user_memory_gb,
-    peak_total_memory_reservation / 1024 / 1024 / 1024 AS peak_total_memory_gb
+    state,
+    error_type,
+    error_code,
+    LEFT(query, 100) AS query_preview
 FROM system.runtime.queries
-WHERE state = 'RUNNING';
+WHERE state = 'FAILED'
+ORDER BY "end" DESC;
 ```
 
 ---
