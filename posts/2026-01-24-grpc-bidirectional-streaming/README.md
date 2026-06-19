@@ -135,7 +135,7 @@ message GameEvent {
 package server
 
 import (
-    "context"
+    "fmt"
     "io"
     "log"
     "sync"
@@ -156,6 +156,10 @@ type ChatServer struct {
     // Message history
     history   map[string][]*pb.ChatMessage
     historyMu sync.RWMutex
+
+    // Collaborative documents
+    documents   map[string]*Document
+    documentsMu sync.RWMutex
 }
 
 type ChatRoom struct {
@@ -175,8 +179,9 @@ type ClientStream struct {
 
 func NewChatServer() *ChatServer {
     return &ChatServer{
-        rooms:   make(map[string]*ChatRoom),
-        history: make(map[string][]*pb.ChatMessage),
+        rooms:     make(map[string]*ChatRoom),
+        history:   make(map[string][]*pb.ChatMessage),
+        documents: make(map[string]*Document),
     }
 }
 
@@ -193,8 +198,25 @@ func (s *ChatServer) Chat(stream pb.ChatService_ChatServer) error {
     }
 
     var currentRoom *ChatRoom
+    var currentRoomMu sync.Mutex
     var wg sync.WaitGroup
     errChan := make(chan error, 2)
+    var clientDoneOnce sync.Once
+    closeClientDone := func() {
+        clientDoneOnce.Do(func() {
+            close(client.done)
+        })
+    }
+    leaveCurrentRoom := func() {
+        currentRoomMu.Lock()
+        room := currentRoom
+        currentRoom = nil
+        currentRoomMu.Unlock()
+
+        if room != nil {
+            s.leaveRoom(room, client)
+        }
+    }
 
     // Sender goroutine - sends messages to client
     wg.Add(1)
@@ -219,6 +241,7 @@ func (s *ChatServer) Chat(stream pb.ChatService_ChatServer) error {
     wg.Add(1)
     go func() {
         defer wg.Done()
+        defer closeClientDone()
         for {
             msg, err := stream.Recv()
             if err == io.EOF {
@@ -235,27 +258,40 @@ func (s *ChatServer) Chat(stream pb.ChatService_ChatServer) error {
             // Handle different message types
             switch msg.Type {
             case pb.ChatMessage_JOIN:
-                currentRoom = s.joinRoom(msg.RoomId, client)
+                room := s.joinRoom(msg.RoomId, client)
+                currentRoomMu.Lock()
+                previousRoom := currentRoom
+                currentRoom = room
+                currentRoomMu.Unlock()
+                if previousRoom != nil && previousRoom != room {
+                    s.leaveRoom(previousRoom, client)
+                }
                 // Send room history
                 s.sendHistory(client, msg.RoomId)
                 // Broadcast join message
-                s.broadcastToRoom(currentRoom, msg)
+                s.broadcastToRoom(room, msg)
 
             case pb.ChatMessage_LEAVE:
-                if currentRoom != nil {
-                    s.leaveRoom(currentRoom, client)
-                    s.broadcastToRoom(currentRoom, msg)
-                    currentRoom = nil
+                currentRoomMu.Lock()
+                room := currentRoom
+                currentRoom = nil
+                currentRoomMu.Unlock()
+                if room != nil {
+                    s.leaveRoom(room, client)
+                    s.broadcastToRoom(room, msg)
                 }
 
             case pb.ChatMessage_TEXT, pb.ChatMessage_TYPING:
-                if currentRoom != nil {
+                currentRoomMu.Lock()
+                room := currentRoom
+                currentRoomMu.Unlock()
+                if room != nil {
                     // Store message (except typing indicators)
                     if msg.Type == pb.ChatMessage_TEXT {
                         s.storeMessage(msg.RoomId, msg)
                     }
                     // Broadcast to room
-                    s.broadcastToRoom(currentRoom, msg)
+                    s.broadcastToRoom(room, msg)
                 }
             }
         }
@@ -270,22 +306,16 @@ func (s *ChatServer) Chat(stream pb.ChatService_ChatServer) error {
 
     select {
     case <-ctx.Done():
-        close(client.done)
-        if currentRoom != nil {
-            s.leaveRoom(currentRoom, client)
-        }
+        closeClientDone()
+        leaveCurrentRoom()
         return ctx.Err()
     case err := <-errChan:
-        close(client.done)
-        if currentRoom != nil {
-            s.leaveRoom(currentRoom, client)
-        }
+        closeClientDone()
+        leaveCurrentRoom()
         return err
     case <-done:
-        close(client.done)
-        if currentRoom != nil {
-            s.leaveRoom(currentRoom, client)
-        }
+        closeClientDone()
+        leaveCurrentRoom()
         return nil
     }
 }
@@ -428,18 +458,47 @@ type EditorStream struct {
 func (s *ChatServer) CollaborativeEdit(stream pb.ChatService_CollaborativeEditServer) error {
     ctx := stream.Context()
 
-    var doc *Document
-    var editor *EditorStream
+    firstOp, err := stream.Recv()
+    if err == io.EOF {
+        return nil
+    }
+    if err != nil {
+        if status.Code(err) != codes.Canceled {
+            return err
+        }
+        return nil
+    }
+
+    doc := s.getOrCreateDocument(firstOp.DocumentId)
+    editor := &EditorStream{
+        userID: firstOp.UserId,
+        stream: stream,
+        send:   make(chan *pb.EditOperation, 100),
+    }
+    s.addEditor(doc, editor)
+    defer s.removeEditor(doc, editor)
+
     var wg sync.WaitGroup
     errChan := make(chan error, 2)
+    var closeSendOnce sync.Once
+    closeEditorSend := func() {
+        closeSendOnce.Do(func() {
+            close(editor.send)
+        })
+    }
+
+    processOperation := func(op *pb.EditOperation) {
+        transformedOp := s.transformOperation(doc, op)
+        s.applyOperation(doc, transformedOp)
+        s.broadcastOperation(doc, editor.userID, transformedOp)
+    }
+
+    processOperation(firstOp)
 
     // Sender goroutine
     wg.Add(1)
     go func() {
         defer wg.Done()
-        if editor == nil {
-            return
-        }
         for {
             select {
             case <-ctx.Done():
@@ -460,6 +519,7 @@ func (s *ChatServer) CollaborativeEdit(stream pb.ChatService_CollaborativeEditSe
     wg.Add(1)
     go func() {
         defer wg.Done()
+        defer closeEditorSend()
         for {
             op, err := stream.Recv()
             if err == io.EOF {
@@ -472,25 +532,7 @@ func (s *ChatServer) CollaborativeEdit(stream pb.ChatService_CollaborativeEditSe
                 return
             }
 
-            // Initialize document and editor on first message
-            if doc == nil {
-                doc = s.getOrCreateDocument(op.DocumentId)
-                editor = &EditorStream{
-                    userID: op.UserId,
-                    stream: stream,
-                    send:   make(chan *pb.EditOperation, 100),
-                }
-                s.addEditor(doc, editor)
-            }
-
-            // Apply operational transformation
-            transformedOp := s.transformOperation(doc, op)
-
-            // Apply operation to document
-            s.applyOperation(doc, transformedOp)
-
-            // Broadcast to other editors
-            s.broadcastOperation(doc, editor.userID, transformedOp)
+            processOperation(op)
         }
     }()
 
@@ -503,21 +545,44 @@ func (s *ChatServer) CollaborativeEdit(stream pb.ChatService_CollaborativeEditSe
 
     select {
     case <-ctx.Done():
-        if doc != nil && editor != nil {
-            s.removeEditor(doc, editor)
-        }
+        closeEditorSend()
         return ctx.Err()
     case err := <-errChan:
-        if doc != nil && editor != nil {
-            s.removeEditor(doc, editor)
-        }
+        closeEditorSend()
         return err
     case <-done:
-        if doc != nil && editor != nil {
-            s.removeEditor(doc, editor)
-        }
+        closeEditorSend()
         return nil
     }
+}
+
+func (s *ChatServer) getOrCreateDocument(documentID string) *Document {
+    s.documentsMu.Lock()
+    defer s.documentsMu.Unlock()
+
+    doc, exists := s.documents[documentID]
+    if !exists {
+        doc = &Document{
+            id:      documentID,
+            content: []rune{},
+            editors: make(map[string]*EditorStream),
+            updates: make(chan *pb.EditOperation, 100),
+        }
+        s.documents[documentID] = doc
+    }
+    return doc
+}
+
+func (s *ChatServer) addEditor(doc *Document, editor *EditorStream) {
+    doc.editorsMu.Lock()
+    defer doc.editorsMu.Unlock()
+    doc.editors[editor.userID] = editor
+}
+
+func (s *ChatServer) removeEditor(doc *Document, editor *EditorStream) {
+    doc.editorsMu.Lock()
+    delete(doc.editors, editor.userID)
+    doc.editorsMu.Unlock()
 }
 
 func (s *ChatServer) transformOperation(doc *Document, op *pb.EditOperation) *pb.EditOperation {
@@ -552,37 +617,44 @@ func (s *ChatServer) applyOperation(doc *Document, op *pb.EditOperation) {
     doc.mu.Lock()
     defer doc.mu.Unlock()
 
+    position := int(op.Position)
+    if position < 0 {
+        return
+    }
+
     switch op.Operation {
     case "insert":
-        if int(op.Position) <= len(doc.content) {
-            newContent := make([]rune, 0, len(doc.content)+len(op.Content))
-            newContent = append(newContent, doc.content[:op.Position]...)
+        content := []rune(op.Content)
+        if position <= len(doc.content) {
+            newContent := make([]rune, 0, len(doc.content)+len(content))
+            newContent = append(newContent, doc.content[:position]...)
             newContent = append(newContent, []rune(op.Content)...)
-            newContent = append(newContent, doc.content[op.Position:]...)
+            newContent = append(newContent, doc.content[position:]...)
             doc.content = newContent
         }
 
     case "delete":
-        if int(op.Position) < len(doc.content) {
-            deleteLen := len(op.Content)
-            if int(op.Position)+deleteLen > len(doc.content) {
-                deleteLen = len(doc.content) - int(op.Position)
+        if position < len(doc.content) {
+            deleteLen := len([]rune(op.Content))
+            if position+deleteLen > len(doc.content) {
+                deleteLen = len(doc.content) - position
             }
-            doc.content = append(doc.content[:op.Position], doc.content[op.Position+int32(deleteLen):]...)
+            doc.content = append(doc.content[:position], doc.content[position+deleteLen:]...)
         }
 
     case "replace":
-        // Delete then insert
-        s.applyOperation(doc, &pb.EditOperation{
-            Operation: "delete",
-            Position:  op.Position,
-            Content:   op.Content,
-        })
-        s.applyOperation(doc, &pb.EditOperation{
-            Operation: "insert",
-            Position:  op.Position,
-            Content:   op.Content,
-        })
+        replacement := []rune(op.Content)
+        if position < len(doc.content) {
+            end := position + len(replacement)
+            if end > len(doc.content) {
+                end = len(doc.content)
+            }
+            newContent := make([]rune, 0, len(doc.content)-end+position+len(replacement))
+            newContent = append(newContent, doc.content[:position]...)
+            newContent = append(newContent, replacement...)
+            newContent = append(newContent, doc.content[end:]...)
+            doc.content = newContent
+        }
     }
 }
 
@@ -612,13 +684,14 @@ package client
 
 import (
     "context"
+    "fmt"
     "io"
-    "log"
     "sync"
     "time"
 
     "google.golang.org/grpc"
     "google.golang.org/grpc/codes"
+    "google.golang.org/grpc/credentials/insecure"
     "google.golang.org/grpc/status"
     pb "github.com/example/chat"
 )
@@ -640,10 +713,8 @@ type ChatClient struct {
 }
 
 func NewChatClient(addr, userID string) (*ChatClient, error) {
-    conn, err := grpc.Dial(addr,
-        grpc.WithInsecure(),
-        grpc.WithBlock(),
-        grpc.WithTimeout(10*time.Second),
+    conn, err := grpc.NewClient(addr,
+        grpc.WithTransportCredentials(insecure.NewCredentials()),
     )
     if err != nil {
         return nil, err
@@ -863,6 +934,7 @@ type ReconnectingChatClient struct {
     *ChatClient
 
     serverAddr     string
+    initialDelay   time.Duration
     reconnectDelay time.Duration
     maxDelay       time.Duration
 
@@ -892,6 +964,7 @@ func NewReconnectingClient(addr, userID string, config ReconnectConfig) (*Reconn
     rc := &ReconnectingChatClient{
         ChatClient:     client,
         serverAddr:     addr,
+        initialDelay:   config.InitialDelay,
         reconnectDelay: config.InitialDelay,
         maxDelay:       config.MaxDelay,
         ctx:            ctx,
@@ -979,12 +1052,13 @@ func (rc *ReconnectingChatClient) reconnect() {
 
         // Replace old client
         oldClient := rc.ChatClient
+        previousRoomID := oldClient.roomID
         rc.ChatClient = newClient
         oldClient.Close()
 
         // Rejoin room if needed
-        if rc.roomID != "" {
-            rc.JoinRoom(rc.roomID)
+        if previousRoomID != "" {
+            rc.JoinRoom(previousRoomID)
         }
 
         log.Printf("Reconnected successfully")
@@ -994,7 +1068,7 @@ func (rc *ReconnectingChatClient) reconnect() {
         }
 
         // Reset delay
-        rc.reconnectDelay = delay
+        rc.reconnectDelay = rc.initialDelay
         return
     }
 }
@@ -1040,6 +1114,9 @@ import (
     "context"
     "sync"
     "time"
+
+    "google.golang.org/grpc/codes"
+    "google.golang.org/grpc/status"
 )
 
 type BackpressureConfig struct {
@@ -1240,10 +1317,12 @@ package test
 
 import (
     "context"
+    "net"
     "testing"
     "time"
 
     "google.golang.org/grpc"
+    "google.golang.org/grpc/credentials/insecure"
     "google.golang.org/grpc/test/bufconn"
     pb "github.com/example/chat"
     "github.com/example/chat/server"
@@ -1263,13 +1342,12 @@ func setupTest(t *testing.T) (pb.ChatServiceClient, func()) {
         }
     }()
 
-    conn, err := grpc.DialContext(
-        context.Background(),
-        "bufnet",
+    conn, err := grpc.NewClient(
+        "passthrough:///bufnet",
         grpc.WithContextDialer(func(ctx context.Context, s string) (net.Conn, error) {
             return lis.Dial()
         }),
-        grpc.WithInsecure(),
+        grpc.WithTransportCredentials(insecure.NewCredentials()),
     )
     if err != nil {
         t.Fatalf("Failed to dial: %v", err)
