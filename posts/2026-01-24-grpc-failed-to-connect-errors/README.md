@@ -23,11 +23,11 @@ stateDiagram-v2
     TRANSIENT_FAILURE --> CONNECTING: Retry
     READY --> IDLE: Connection closed
     READY --> TRANSIENT_FAILURE: Connection lost
-    TRANSIENT_FAILURE --> SHUTDOWN: Give up
+    TRANSIENT_FAILURE --> SHUTDOWN: Shutdown requested
     SHUTDOWN --> [*]
 ```
 
-When you see "failed to connect" errors, the connection is stuck in CONNECTING or TRANSIENT_FAILURE states.
+When you see "failed to connect" errors, the connection is usually in CONNECTING or TRANSIENT_FAILURE states.
 
 ## Common Causes of Connection Failures
 
@@ -77,11 +77,13 @@ grpcurl -cacert ca.crt localhost:50051 list
 grpcurl -insecure localhost:50051 list
 ```
 
+The `list` command requires server reflection or supplied proto/protoset descriptors. If reflection is disabled, use `grpcurl` with `-proto` or `-protoset` and call a known method instead.
+
 If grpcurl works but your client does not, the problem is in your client configuration.
 
 ### Step 3: Enable Verbose Logging
 
-Enable gRPC debug logging to see detailed connection information:
+Set the Go gRPC logging environment variables before starting the process, or configure the logger programmatically to see detailed connection information:
 
 ```go
 // client/debug.go
@@ -94,11 +96,7 @@ import (
 )
 
 func init() {
-    // Enable verbose gRPC logging
-    os.Setenv("GRPC_GO_LOG_VERBOSITY_LEVEL", "99")
-    os.Setenv("GRPC_GO_LOG_SEVERITY_LEVEL", "info")
-
-    // Or programmatically
+    // Programmatically enable verbose gRPC logging
     grpclog.SetLoggerV2(grpclog.NewLoggerV2WithVerbosity(
         os.Stderr, os.Stderr, os.Stderr, 99))
 }
@@ -154,9 +152,6 @@ For environments with non-standard DNS, configure a custom resolver:
 package main
 
 import (
-    "context"
-    "time"
-
     "google.golang.org/grpc"
     "google.golang.org/grpc/credentials/insecure"
     "google.golang.org/grpc/resolver"
@@ -212,13 +207,9 @@ func connectWithCustomResolver() (*grpc.ClientConn, error) {
         },
     })
 
-    // Connect using custom scheme
-    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-    defer cancel()
-
-    return grpc.DialContext(ctx, "custom:///grpc-service",
+    // Create a channel using the custom scheme
+    return grpc.NewClient("custom:///grpc-service",
         grpc.WithTransportCredentials(insecure.NewCredentials()),
-        grpc.WithBlock(),
     )
 }
 ```
@@ -250,13 +241,12 @@ import (
     "crypto/x509"
     "fmt"
     "os"
-    "time"
 
     "google.golang.org/grpc"
     "google.golang.org/grpc/credentials"
 )
 
-// SecureConnection creates a gRPC connection with proper TLS
+// SecureConnection creates a gRPC channel with proper TLS
 func SecureConnection(address string, caCertPath string) (*grpc.ClientConn, error) {
     // Load CA certificate
     caCert, err := os.ReadFile(caCertPath)
@@ -277,14 +267,12 @@ func SecureConnection(address string, caCertPath string) (*grpc.ClientConn, erro
 
     creds := credentials.NewTLS(tlsConfig)
 
-    return grpc.Dial(address,
+    return grpc.NewClient(address,
         grpc.WithTransportCredentials(creds),
-        grpc.WithBlock(),
-        grpc.WithTimeout(10*time.Second),
     )
 }
 
-// SecureConnectionWithClientCert creates a connection with mTLS
+// SecureConnectionWithClientCert creates a channel with mTLS
 func SecureConnectionWithClientCert(
     address string,
     caCertPath string,
@@ -317,10 +305,8 @@ func SecureConnectionWithClientCert(
 
     creds := credentials.NewTLS(tlsConfig)
 
-    return grpc.Dial(address,
+    return grpc.NewClient(address,
         grpc.WithTransportCredentials(creds),
-        grpc.WithBlock(),
-        grpc.WithTimeout(10*time.Second),
     )
 }
 ```
@@ -351,10 +337,12 @@ package main
 
 import (
     "context"
+    "fmt"
     "time"
 
     "google.golang.org/grpc"
     "google.golang.org/grpc/backoff"
+    "google.golang.org/grpc/connectivity"
     "google.golang.org/grpc/credentials/insecure"
     "google.golang.org/grpc/keepalive"
 )
@@ -372,9 +360,8 @@ func CreateConnectionWithTimeouts(address string) (*grpc.ClientConn, error) {
         PermitWithoutStream: true,             // Send pings even without active streams
     }
 
-    return grpc.DialContext(ctx, address,
+    conn, err := grpc.NewClient(address,
         grpc.WithTransportCredentials(insecure.NewCredentials()),
-        grpc.WithBlock(),
         grpc.WithKeepaliveParams(kaParams),
         grpc.WithConnectParams(grpc.ConnectParams{
             Backoff: backoff.Config{
@@ -385,6 +372,35 @@ func CreateConnectionWithTimeouts(address string) (*grpc.ClientConn, error) {
             MinConnectTimeout: 5 * time.Second,
         }),
     )
+    if err != nil {
+        return nil, err
+    }
+
+    conn.Connect()
+    if !waitForReady(ctx, conn) {
+        conn.Close()
+        if ctx.Err() != nil {
+            return nil, ctx.Err()
+        }
+        return nil, fmt.Errorf("connection shut down before becoming ready")
+    }
+
+    return conn, nil
+}
+
+func waitForReady(ctx context.Context, conn *grpc.ClientConn) bool {
+    for {
+        state := conn.GetState()
+        if state == connectivity.Ready {
+            return true
+        }
+        if state == connectivity.Shutdown {
+            return false
+        }
+        if !conn.WaitForStateChange(ctx, state) {
+            return false
+        }
+    }
 }
 ```
 
@@ -445,7 +461,7 @@ spec:
   selector:
     app: grpc-server
 ---
-# For headless service (required for proper gRPC load balancing)
+# For headless service (useful for DNS-based client-side gRPC load balancing)
 apiVersion: v1
 kind: Service
 metadata:
@@ -467,27 +483,21 @@ spec:
 package main
 
 import (
-    "context"
     "fmt"
-    "time"
 
     "google.golang.org/grpc"
     "google.golang.org/grpc/credentials/insecure"
 )
 
-// ConnectToKubernetesService connects to a gRPC service in Kubernetes
+// ConnectToKubernetesService creates a gRPC channel for a Kubernetes service
 func ConnectToKubernetesService(serviceName, namespace string) (*grpc.ClientConn, error) {
     // Use dns:/// scheme for DNS-based load balancing
     // This works with headless services
     target := fmt.Sprintf("dns:///%s.%s.svc.cluster.local:50051", serviceName, namespace)
 
-    ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-    defer cancel()
-
-    return grpc.DialContext(ctx, target,
+    return grpc.NewClient(target,
         grpc.WithTransportCredentials(insecure.NewCredentials()),
         grpc.WithDefaultServiceConfig(`{"loadBalancingConfig": [{"round_robin":{}}]}`),
-        grpc.WithBlock(),
     )
 }
 ```
@@ -527,6 +537,7 @@ import (
 
     "google.golang.org/grpc"
     "google.golang.org/grpc/codes"
+    "google.golang.org/grpc/connectivity"
     "google.golang.org/grpc/credentials/insecure"
     "google.golang.org/grpc/status"
 )
@@ -569,16 +580,24 @@ func ConnectWithRetry(address string, config RetryConfig) (*grpc.ClientConn, err
         }
 
         ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-        conn, err = grpc.DialContext(ctx, address,
+        conn, err = grpc.NewClient(address,
             grpc.WithTransportCredentials(insecure.NewCredentials()),
-            grpc.WithBlock(),
         )
-        cancel()
-
         if err == nil {
-            log.Printf("Successfully connected on attempt %d", attempt+1)
-            return conn, nil
+            conn.Connect()
+            if waitForReady(ctx, conn) {
+                cancel()
+                log.Printf("Successfully connected on attempt %d", attempt+1)
+                return conn, nil
+            }
+            if ctx.Err() != nil {
+                err = ctx.Err()
+            } else {
+                err = fmt.Errorf("connection shut down before becoming ready")
+            }
+            conn.Close()
         }
+        cancel()
 
         log.Printf("Connection attempt %d failed: %v", attempt+1, err)
     }
@@ -631,6 +650,21 @@ func isRetryable(code codes.Code) bool {
         return false
     }
 }
+
+func waitForReady(ctx context.Context, conn *grpc.ClientConn) bool {
+    for {
+        state := conn.GetState()
+        if state == connectivity.Ready {
+            return true
+        }
+        if state == connectivity.Shutdown {
+            return false
+        }
+        if !conn.WaitForStateChange(ctx, state) {
+            return false
+        }
+    }
+}
 ```
 
 ## Connection Debugging Checklist
@@ -657,7 +691,7 @@ flowchart TD
     K -->|Yes| M[Check TLS config match]
 
     J -->|No| N{Using plaintext?}
-    N -->|No| O[Add WithInsecure or TLS creds]
+    N -->|No| O[Add insecure.NewCredentials or TLS creds]
     N -->|Yes| P[Check server expects plaintext]
 ```
 
