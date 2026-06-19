@@ -40,7 +40,7 @@ Content-Length: 0
 
 HTTP/1.1 200 OK
 Content-Type: text/html
-Content-Length: 47
+Content-Length: 42
 
 <html><script>alert('XSS')</script></html>
 ```
@@ -58,7 +58,8 @@ The most common vulnerability occurs when user input flows directly into respons
 // Attacker can send: /redirect?url=http://evil.com%0d%0aSet-Cookie:%20admin=true
 app.get('/redirect', (req, res) => {
     const destination = req.query.url;
-    // This allows CRLF injection!
+    // Modern Node.js rejects CRLF in header values, but older runtimes
+    // or lower-level header construction may allow CRLF injection.
     res.setHeader('Location', destination);
     res.status(302).end();
 });
@@ -67,6 +68,7 @@ app.get('/redirect', (req, res) => {
 app.get('/set-preference', (req, res) => {
     const theme = req.query.theme;
     // Attacker can inject: theme=dark%0d%0aSet-Cookie:%20session=hijacked
+    // Modern Node.js rejects invalid header characters instead of sending them.
     res.setHeader('Set-Cookie', `theme=${theme}`);
     res.send('Preference saved');
 });
@@ -87,7 +89,8 @@ def get_data():
     client_id = request.args.get('client_id', '')
 
     response = make_response({'data': 'example'})
-    # CRLF can be injected through client_id
+    # Modern Werkzeug rejects newline characters in header values, but
+    # applications should still validate input before using it in headers.
     response.headers['X-Client-ID'] = client_id
     return response
 ```
@@ -96,6 +99,11 @@ def get_data():
 
 ```java
 // VULNERABLE: Java Servlet example
+import jakarta.servlet.*;
+import jakarta.servlet.annotation.WebServlet;
+import jakarta.servlet.http.*;
+import java.io.IOException;
+
 @WebServlet("/download")
 public class DownloadServlet extends HttpServlet {
     protected void doGet(HttpServletRequest request, HttpServletResponse response)
@@ -164,8 +172,8 @@ app.get('/redirect', (req, res) => {
             return res.status(400).json({ error: 'Domain not allowed' });
         }
 
-        // URL constructor automatically encodes special characters
-        // This prevents CRLF injection
+        // Serializing the parsed URL avoids raw control characters in the
+        // Location value; the allowlist prevents unsafe redirects.
         res.redirect(url.toString());
     } catch (e) {
         res.status(400).json({ error: 'Invalid URL format' });
@@ -248,8 +256,9 @@ def get_data():
 ### Solution 5: Java Servlet Protection
 
 ```java
-import javax.servlet.*;
-import javax.servlet.http.*;
+import jakarta.servlet.*;
+import jakarta.servlet.annotation.WebServlet;
+import jakarta.servlet.http.*;
 import java.io.IOException;
 import java.util.regex.Pattern;
 
@@ -289,7 +298,7 @@ public class SecureDownloadServlet extends HttpServlet {
         String filename = request.getParameter("filename");
         String safeFilename = sanitizeFilename(filename);
 
-        // Use RFC 5987 encoding for non-ASCII filenames
+        // Restrict to a simple ASCII filename for the quoted filename parameter
         response.setHeader("Content-Disposition",
             "attachment; filename=\"" + safeFilename + "\"");
 
@@ -371,9 +380,6 @@ app.use((req, res, next) => {
 
     // Prevent clickjacking
     res.setHeader('X-Frame-Options', 'DENY');
-
-    // Enable XSS filter
-    res.setHeader('X-XSS-Protection', '1; mode=block');
 
     // Strict Content Security Policy
     res.setHeader('Content-Security-Policy',
