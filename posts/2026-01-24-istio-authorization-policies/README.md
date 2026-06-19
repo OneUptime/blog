@@ -8,7 +8,7 @@ Description: Learn how to implement fine-grained access control in Istio using A
 
 ---
 
-Authorization Policies in Istio let you control who can access what within your service mesh. They work at Layer 7, meaning you can make decisions based on HTTP methods, paths, headers, and even JWT claims. This is essential for implementing zero-trust security.
+Authorization Policies in Istio let you control who can access what within your service mesh. They can enforce Layer 4 rules and, for HTTP traffic, Layer 7 rules based on methods, paths, headers, and even JWT claims. This is essential for implementing zero-trust security.
 
 ## How Authorization Works in Istio
 
@@ -33,7 +33,8 @@ The evaluation order matters:
 1. CUSTOM policies (external authorization)
 2. DENY policies
 3. ALLOW policies
-4. If no policy matches, default action applies
+4. If no ALLOW policy applies to the workload, the request is allowed
+5. If ALLOW policies apply but none match, the request is denied
 
 ## Basic Authorization Patterns
 
@@ -42,7 +43,7 @@ The evaluation order matters:
 Start with denying everything, then explicitly allow what you need.
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: deny-all
@@ -58,7 +59,7 @@ This blocks all traffic to the namespace. Now add explicit allows.
 Allow only the frontend service to call the API.
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: allow-frontend-to-api
@@ -82,7 +83,7 @@ The principal is the service account identity in the format `cluster.local/ns/<n
 Allow all services from a specific namespace to access your service.
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: allow-monitoring-namespace
@@ -109,7 +110,7 @@ Control access based on the specific operation being performed.
 Some services should only allow GET requests.
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: read-only-access
@@ -138,7 +139,7 @@ spec:
 Deny access to admin endpoints except from specific services.
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: protect-admin-endpoints
@@ -151,6 +152,8 @@ spec:
   rules:
     - to:
         - operation:
+            ports:
+              - "8080"
             paths:
               - /admin/*
               - /internal/*
@@ -169,7 +172,7 @@ Integrate with identity providers by validating JWT tokens and making authorizat
 First, set up RequestAuthentication to validate JWTs.
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: RequestAuthentication
 metadata:
   name: jwt-auth
@@ -188,10 +191,10 @@ spec:
 
 ### Authorize Based on JWT Claims
 
-Allow access only if the JWT contains specific claims.
+Allow access only if the JWT contains specific string claims.
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: require-valid-jwt
@@ -207,9 +210,9 @@ spec:
             requestPrincipals:
               - "https://auth.example.com/*"  # Any user from this issuer
       when:
-        - key: request.auth.claims[email_verified]
+        - key: request.auth.claims[email]
           values:
-            - "true"
+            - "*@example.com"
 ```
 
 ### Role-Based Access with JWT
@@ -217,7 +220,7 @@ spec:
 Restrict endpoints based on user roles from JWT claims.
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: admin-only-endpoints
@@ -238,7 +241,7 @@ spec:
             - "admin"
             - "super-admin"
 ---
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: user-endpoints
@@ -266,7 +269,7 @@ spec:
 Use complex rules with multiple conditions. All conditions in a rule must match (AND logic). Multiple rules provide OR logic.
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: complex-policy
@@ -314,7 +317,7 @@ spec:
 For complex authorization logic, use an external service.
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: external-authz
@@ -329,6 +332,8 @@ spec:
   rules:
     - to:
         - operation:
+            ports:
+              - "8080"
             paths:
               - /api/*
 ```
@@ -370,7 +375,7 @@ kubectl describe authorizationpolicy <policy-name> -n <namespace>
 When requests are denied, check Envoy logs.
 
 ```bash
-# Enable access logging
+# Enable RBAC debug logging
 kubectl exec -it <pod-name> -c istio-proxy -- \
   curl -X POST "localhost:15000/logging?rbac=debug"
 
@@ -379,9 +384,9 @@ kubectl logs <pod-name> -c istio-proxy -f | grep -i rbac
 ```
 
 Look for these log patterns:
-- `enforced_denied` - Policy explicitly denied
-- `shadow_denied` - Would be denied in dry-run mode
-- `allowed` - Request permitted
+- `enforced denied` - Policy explicitly denied
+- `shadow denied` - Would be denied in dry-run mode
+- `enforced allowed` - Request permitted
 
 ### Common Issues
 
@@ -407,7 +412,7 @@ Look for these log patterns:
 Apply policies at namespace level when possible for easier management.
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: namespace-default-deny
@@ -415,7 +420,7 @@ metadata:
 spec:
   {}
 ---
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: allow-internal
@@ -434,7 +439,7 @@ spec:
 Add annotations explaining the policy purpose.
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: payment-service-policy
@@ -449,15 +454,17 @@ spec:
 
 ### Test with Dry-Run Mode
 
-Use AUDIT action to test policies without enforcing them.
+Use the dry-run annotation to test ALLOW or DENY policies without enforcing them.
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: test-policy
+  annotations:
+    "istio.io/dry-run": "true"
 spec:
-  action: AUDIT  # Logs decisions but allows all traffic
+  action: DENY
   rules:
     - from:
         - source:
