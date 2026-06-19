@@ -59,7 +59,7 @@ class JWTValidator {
         // Configuration for JWT validation
         this.issuer = options.issuer;
         this.audience = options.audience;
-        this.algorithms = options.algorithms || ['RS256', 'HS256'];
+        this.algorithms = options.algorithms || (options.jwksUri ? ['RS256'] : ['HS256']);
         this.clockTolerance = options.clockTolerance || 30; // seconds
 
         // Initialize JWKS client for RS256 tokens
@@ -82,10 +82,10 @@ class JWTValidator {
     async validate(token) {
         try {
             // Step 1: Check token format
-            this.validateFormat(token);
+            const normalizedToken = this.validateFormat(token);
 
             // Step 2: Decode header without verification
-            const decoded = jwt.decode(token, { complete: true });
+            const decoded = jwt.decode(normalizedToken, { complete: true });
             if (!decoded) {
                 throw new ValidationError('INVALID_TOKEN', 'Unable to decode token');
             }
@@ -94,7 +94,7 @@ class JWTValidator {
             const signingKey = await this.getSigningKey(decoded.header);
 
             // Step 4: Verify token with all options
-            const payload = jwt.verify(token, signingKey, {
+            const payload = jwt.verify(normalizedToken, signingKey, {
                 algorithms: this.algorithms,
                 issuer: this.issuer,
                 audience: this.audience,
@@ -145,7 +145,7 @@ class JWTValidator {
             }
         });
 
-        return true;
+        return token;
     }
 
     // Check if string is valid base64url
@@ -158,6 +158,13 @@ class JWTValidator {
     // Get signing key based on algorithm
     async getSigningKey(header) {
         const { alg, kid } = header;
+
+        if (!alg || !this.algorithms.includes(alg)) {
+            throw new ValidationError(
+                'UNSUPPORTED_ALGORITHM',
+                `Algorithm ${alg || 'missing'} is not supported`
+            );
+        }
 
         // Handle symmetric algorithms (HS256, HS384, HS512)
         if (alg.startsWith('HS')) {
@@ -205,7 +212,7 @@ class JWTValidator {
         // Check for required claims
         const requiredClaims = ['sub', 'iat', 'exp'];
         for (const claim of requiredClaims) {
-            if (!payload[claim]) {
+            if (!Object.prototype.hasOwnProperty.call(payload, claim)) {
                 throw new ValidationError(
                     'MISSING_CLAIM',
                     `Required claim '${claim}' is missing`
@@ -231,7 +238,8 @@ class JWTValidator {
         }
 
         // Validate nbf (not before) if present
-        if (payload.nbf && payload.nbf > now + this.clockTolerance) {
+        if (Object.prototype.hasOwnProperty.call(payload, 'nbf') &&
+            payload.nbf > now + this.clockTolerance) {
             throw new ValidationError(
                 'TOKEN_NOT_ACTIVE',
                 'Token is not yet valid'
@@ -360,7 +368,9 @@ class JWTValidator:
         self.issuer = issuer
         self.audience = audience
         self.secret = secret
-        self.algorithms = algorithms or ["RS256", "HS256"]
+        self.algorithms = algorithms if algorithms is not None else (
+            ["RS256"] if jwks_uri else ["HS256"]
+        )
         self.clock_skew = clock_skew_seconds
 
         # Initialize JWKS client if URI provided
@@ -379,9 +389,8 @@ class JWTValidator:
             ValidationResult with validation status and payload/error
         """
         try:
-            # Remove Bearer prefix if present
-            if token.startswith("Bearer "):
-                token = token[7:]
+            # Normalize and validate token format
+            token = self._normalize_token(token)
 
             # Basic format validation
             self._validate_format(token)
@@ -451,6 +460,12 @@ class JWTValidator:
                 error_code=ValidationErrorCode.INVALID_SIGNATURE,
                 error_message="Token signature verification failed"
             )
+        except jwt.MissingRequiredClaimError as e:
+            return ValidationResult(
+                valid=False,
+                error_code=ValidationErrorCode.MISSING_CLAIM,
+                error_message=f"Missing required claim: {e.claim}"
+            )
         except jwt.DecodeError as e:
             return ValidationResult(
                 valid=False,
@@ -472,12 +487,6 @@ class JWTValidator:
 
     def _validate_format(self, token: str) -> None:
         """Validate basic JWT format."""
-        if not token:
-            raise ValidationError(
-                ValidationErrorCode.MISSING_TOKEN,
-                "Token is required"
-            )
-
         parts = token.split(".")
         if len(parts) != 3:
             raise ValidationError(
@@ -485,8 +494,27 @@ class JWTValidator:
                 "Token must have three parts"
             )
 
+    def _normalize_token(self, token: str) -> str:
+        """Validate token type and remove Bearer prefix if present."""
+        if not token or not isinstance(token, str):
+            raise ValidationError(
+                ValidationErrorCode.MISSING_TOKEN,
+                "Token is required"
+            )
+
+        if token.startswith("Bearer "):
+            token = token[7:]
+
+        return token
+
     def _get_signing_key(self, token: str, algorithm: str) -> Any:
         """Get the appropriate signing key based on algorithm."""
+        if not algorithm or algorithm not in self.algorithms:
+            raise ValidationError(
+                ValidationErrorCode.INVALID_CLAIM,
+                f"Unsupported algorithm: {algorithm or 'missing'}"
+            )
+
         # Symmetric algorithms use the secret
         if algorithm.startswith("HS"):
             if not self.secret:
@@ -832,17 +860,27 @@ class TokenManager {
             throw new Error('No refresh token available');
         }
 
+        const headers = {
+            'Content-Type': 'application/x-www-form-urlencoded'
+        };
+        const body = new URLSearchParams({
+            grant_type: 'refresh_token',
+            refresh_token: this.refreshToken
+        });
+
+        if (this.clientSecret) {
+            const credentials = Buffer.from(
+                `${this.encodeClientCredential(this.clientId)}:${this.encodeClientCredential(this.clientSecret)}`
+            ).toString('base64');
+            headers.Authorization = `Basic ${credentials}`;
+        } else {
+            body.set('client_id', this.clientId);
+        }
+
         const response = await fetch(this.tokenEndpoint, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded'
-            },
-            body: new URLSearchParams({
-                grant_type: 'refresh_token',
-                refresh_token: this.refreshToken,
-                client_id: this.clientId,
-                client_secret: this.clientSecret
-            })
+            headers,
+            body
         });
 
         if (!response.ok) {
@@ -863,6 +901,10 @@ class TokenManager {
         }
 
         return tokens;
+    }
+
+    encodeClientCredential(value) {
+        return new URLSearchParams({ value }).toString().slice('value='.length);
     }
 
     // Get valid access token, refreshing if needed
@@ -889,7 +931,7 @@ module.exports = { TokenManager, TokenRefreshError };
 
 1. **Always validate the signature**: Never trust the payload without verifying the signature
 2. **Check all standard claims**: Validate `iss`, `aud`, `exp`, `iat`, and `nbf`
-3. **Use appropriate algorithms**: Prefer RS256 over HS256 for distributed systems
+3. **Use appropriate algorithms**: Prefer RS256 over HS256 for distributed systems, and use a fixed algorithm family per validator
 4. **Implement clock tolerance**: Allow small time differences between servers
 5. **Validate token source**: Ensure tokens come from expected locations
 6. **Handle errors gracefully**: Never expose internal errors to clients
