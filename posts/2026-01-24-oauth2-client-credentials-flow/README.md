@@ -32,7 +32,7 @@ sequenceDiagram
     participant Auth as Authorization Server
     participant API as Resource API
 
-    Client->>Auth: POST /token (client_id, client_secret, grant_type)
+    Client->>Auth: POST /token (client authentication, grant_type)
     Auth-->>Client: Access token
     Client->>API: Request with Bearer token
     API-->>Client: Protected resource
@@ -41,6 +41,7 @@ sequenceDiagram
 ## Implementation
 
 ```python
+import os
 import requests
 from dataclasses import dataclass
 from typing import Optional
@@ -51,7 +52,7 @@ class TokenResponse:
     access_token: str
     token_type: str
     expires_in: int
-    expires_at: float = None
+    expires_at: Optional[float] = None
 
     def __post_init__(self):
         if self.expires_at is None:
@@ -81,14 +82,16 @@ class ClientCredentialsAuth:
 
     def _request_token(self) -> TokenResponse:
         data = {
-            "grant_type": "client_credentials",
-            "client_id": self.client_id,
-            "client_secret": self.client_secret
+            "grant_type": "client_credentials"
         }
         if self.scopes:
             data["scope"] = " ".join(self.scopes)
 
-        response = requests.post(self.token_url, data=data)
+        response = requests.post(
+            self.token_url,
+            data=data,
+            auth=(self.client_id, self.client_secret)
+        )
 
         if response.status_code != 200:
             raise Exception(f"Token request failed: {response.text}")
@@ -135,7 +138,12 @@ Request only the scopes your service actually needs.
 
 ```python
 # Good: Request minimal permissions
-auth = ClientCredentialsAuth(scopes=["read:users"])
+auth = ClientCredentialsAuth(
+    token_url="https://auth.example.com/oauth/token",
+    client_id=os.environ["CLIENT_ID"],
+    client_secret=os.environ["CLIENT_SECRET"],
+    scopes=["read:users"]
+)
 ```
 
 The client credentials flow is straightforward but requires careful attention to caching, error handling, and security for reliable machine-to-machine authentication.
