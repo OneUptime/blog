@@ -57,9 +57,9 @@ connection = pika.BlockingConnection(
 )
 channel = connection.channel()
 
-# Declare a priority queue with max priority of 10
+# Declare a classic priority queue with max priority of 10
 # The x-max-priority argument enables priority ordering
-# Higher values mean higher priority (1-10 is typical)
+# Higher values mean higher priority. Keep the range small in production.
 channel.queue_declare(
     queue='priority_tasks',
     durable=True,
@@ -82,12 +82,12 @@ async function declareQueue() {
     const connection = await amqp.connect('amqp://localhost');
     const channel = await connection.createChannel();
 
-    // Declare a priority queue
-    // maxPriority sets the upper bound for message priorities
+    // Declare a classic priority queue
+    // x-max-priority sets the upper bound for message priorities
     await channel.assertQueue('priority_tasks', {
         durable: true,
         arguments: {
-            'x-max-priority': 10  // Enable 10 priority levels
+            'x-max-priority': 10  // Support priority levels 0-10
         }
     });
 
@@ -193,7 +193,7 @@ publishWithPriority().catch(console.error);
 
 ## Consuming Priority Messages
 
-Consumers do not need special configuration. RabbitMQ automatically delivers higher priority messages first when they are available.
+Consumers do not need priority-specific configuration. RabbitMQ delivers higher priority messages first when they are waiting in the queue, but consumer prefetch still affects how much opportunity the queue has to prioritize.
 
 ### Python Consumer
 
@@ -309,9 +309,9 @@ For priority to work effectively, consumers should only prefetch one message at 
 channel.basic_qos(prefetch_count=1)
 ```
 
-### 3. Monitor Queue Depth by Priority
+### 3. Monitor Queue Depth
 
-Track how many messages are waiting at each priority level to detect bottlenecks.
+Track how many messages are waiting and how many have already been delivered but not yet acknowledged to detect bottlenecks.
 
 ```bash
 # Use rabbitmqctl to check queue status
@@ -358,7 +358,7 @@ Priority queues have overhead compared to standard queues:
 
 1. **Memory Usage**: RabbitMQ maintains separate internal queues for each priority level
 2. **CPU Overhead**: Sorting and bucket management requires additional processing
-3. **Disk I/O**: Persistent priority messages require more disk operations
+3. **Storage Overhead**: Each priority level adds in-memory and on-disk cost for the queue
 
 ```python
 # For high-throughput scenarios, consider batching
@@ -369,6 +369,9 @@ def publish_batch(messages, priority):
     Publish multiple messages with the same priority.
     Reduces connection overhead for bulk operations.
     """
+    # Enable publisher confirms before publishing messages
+    channel.confirm_delivery()
+
     for msg in messages:
         channel.basic_publish(
             exchange='',
@@ -379,8 +382,6 @@ def publish_batch(messages, priority):
                 priority=priority
             )
         )
-    # Confirm all messages were received
-    channel.confirm_delivery()
 ```
 
 ## Complete Working Example
