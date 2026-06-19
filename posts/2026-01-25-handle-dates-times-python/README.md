@@ -168,7 +168,9 @@ print(now.strftime("%B %d, %Y"))            # March 15, 2024
 print(now.strftime("%A, %B %d, %Y"))        # Friday, March 15, 2024
 print(now.strftime("%H:%M:%S"))             # 14:30:45
 print(now.strftime("%I:%M %p"))             # 02:30 PM
-print(now.strftime("%Y-%m-%dT%H:%M:%SZ"))   # ISO format: 2024-03-15T14:30:45Z
+from datetime import timezone
+utc_now = datetime.now(timezone.utc)
+print(utc_now.strftime("%Y-%m-%dT%H:%M:%SZ"))  # UTC ISO format: 2024-03-15T14:30:45Z
 
 # For ISO format, you can also use isoformat()
 print(now.isoformat())  # 2024-03-15T14:30:45.123456
@@ -269,7 +271,7 @@ naive = datetime(2024, 3, 15, 14, 30)
 print(f"Naive: {naive}, tzinfo: {naive.tzinfo}")  # tzinfo: None
 
 # Make it timezone-aware
-# Option 1: Use replace() when you know the timezone
+# Option 1: Use replace() when the naive datetime already represents that local time
 aware = naive.replace(tzinfo=ZoneInfo("America/New_York"))
 print(f"Aware: {aware}")
 
@@ -316,7 +318,7 @@ print(f"Displayed (Tokyo): {displayed}")
 Unix timestamps are seconds since January 1, 1970 UTC:
 
 ```python
-from datetime import datetime
+from datetime import datetime, timezone
 import time
 
 # Current timestamp
@@ -324,7 +326,7 @@ current_timestamp = time.time()
 print(f"Current timestamp: {current_timestamp}")
 
 # datetime to timestamp
-dt = datetime(2024, 3, 15, 14, 30, 0)
+dt = datetime(2024, 3, 15, 14, 30, 0, tzinfo=timezone.utc)
 timestamp = dt.timestamp()
 print(f"Timestamp: {timestamp}")
 
@@ -333,7 +335,7 @@ dt_from_timestamp = datetime.fromtimestamp(timestamp)
 print(f"From timestamp: {dt_from_timestamp}")
 
 # UTC timestamp
-utc_dt = datetime.utcfromtimestamp(timestamp)
+utc_dt = datetime.fromtimestamp(timestamp, timezone.utc)
 print(f"UTC from timestamp: {utc_dt}")
 ```
 
