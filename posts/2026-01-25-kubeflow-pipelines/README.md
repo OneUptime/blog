@@ -27,12 +27,12 @@ You can install Kubeflow Pipelines as a standalone component or as part of the f
 ```bash
 # Install the standalone Kubeflow Pipelines on an existing cluster
 
-export PIPELINE_VERSION=2.0.5
+export PIPELINE_VERSION=2.16.1
 
 kubectl apply -k "github.com/kubeflow/pipelines/manifests/kustomize/cluster-scoped-resources?ref=$PIPELINE_VERSION"
 kubectl wait --for condition=established --timeout=60s crd/applications.app.k8s.io
 
-kubectl apply -k "github.com/kubeflow/pipelines/manifests/kustomize/env/platform-agnostic?ref=$PIPELINE_VERSION"
+kubectl apply -k "github.com/kubeflow/pipelines/manifests/kustomize/env/dev?ref=$PIPELINE_VERSION"
 
 # Wait for all pods to be ready
 kubectl wait --for=condition=ready pod -l app=ml-pipeline -n kubeflow --timeout=300s
@@ -44,7 +44,7 @@ kubectl port-forward -n kubeflow svc/ml-pipeline-ui 8080:80
 Install the Python SDK on your development machine:
 
 ```bash
-pip install kfp==2.5.0
+pip install kfp==2.16.1
 ```
 
 ## Creating Your First Pipeline
@@ -139,8 +139,8 @@ def ml_pipeline(n_estimators: int = 100):
         data_path=load_task.outputs["output_path"]
     )
 
-# Compile the pipeline to a YAML file
-compiler.Compiler().compile(ml_pipeline, "pipeline.yaml")
+# Compile the pipeline to a JSON file
+compiler.Compiler().compile(ml_pipeline, "pipeline.json")
 ```
 
 ## Running the Pipeline
@@ -161,7 +161,7 @@ experiment = client.create_experiment(
 
 # Submit a run with custom parameters
 run = client.create_run_from_pipeline_package(
-    pipeline_file="pipeline.yaml",
+    pipeline_file="pipeline.json",
     experiment_name="ml-experiments",
     run_name="first-run",
     arguments={"n_estimators": 200}
@@ -287,13 +287,12 @@ def control_flow_pipeline():
         train_variant(variant=variant)
 ```
 
-Resource Management
+## Resource Management
 
 Specify resource requirements for each component:
 
 ```python
 from kfp import dsl
-from kubernetes.client.models import V1ResourceRequirements
 
 @dsl.component(base_image="python:3.11-slim")
 def gpu_training(epochs: int) -> float:
@@ -312,16 +311,9 @@ def resource_pipeline():
     training_task.set_memory_request("4Gi")
     training_task.set_memory_limit("8Gi")
 
-    # Request GPU resources
-    training_task.set_gpu_limit("1")
-
-    # Add node selector for GPU nodes
-    training_task.add_node_selector_constraint(
-        "cloud.google.com/gke-accelerator", "nvidia-tesla-t4"
-    )
-
-    # Set a timeout for long-running tasks
-    training_task.set_timeout(3600)  # 1 hour in seconds
+    # Request accelerator resources
+    training_task.set_accelerator_type("nvidia.com/gpu")
+    training_task.set_accelerator_limit(1)
 ```
 
 ## Caching and Reuse
@@ -360,11 +352,11 @@ client = Client(host="http://localhost:8080")
 recurring_run = client.create_recurring_run(
     experiment_id="your-experiment-id",
     job_name="weekly-retraining",
-    pipeline_package_path="pipeline.yaml",
-    cron_expression="0 0 * * 0",  # Every Sunday at midnight
+    pipeline_package_path="pipeline.json",
+    cron_expression="0 0 0 ? * 1",  # Every Sunday at midnight
     max_concurrency=1,  # Only one run at a time
     enabled=True,
-    parameters={"n_estimators": 100}
+    params={"n_estimators": 100}
 )
 
 print(f"Recurring run created: {recurring_run.id}")
