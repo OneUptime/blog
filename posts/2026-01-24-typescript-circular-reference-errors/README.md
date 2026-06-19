@@ -70,31 +70,29 @@ type JsonValue =
 
 ### Invalid Circular Type Aliases
 
-Type aliases cannot immediately reference themselves in their definition:
+Type aliases can be recursive when TypeScript can defer expanding the reference, such as through object, array, tuple, or generic positions. They still cannot alias themselves with no useful indirection:
 
 ```typescript
-// Error: Type alias 'BadType' circularly references itself
-type BadType = {
-  value: BadType;  // Direct circular reference without indirection
-};
-
-// Also invalid: Immediate self-reference in union
+// Error: Type alias 'Invalid' circularly references itself
 type Invalid = Invalid | string;
+
+// Error: Type alias 'Alias' circularly references itself
+type Alias = Alias;
 ```
 
 ### Fixing Type Alias Circles
 
-Use interfaces instead of type aliases for recursive structures:
+Use an object, interface, array, tuple, or another named type to give the compiler a shape it can expand lazily:
 
 ```typescript
-// Error with type alias
-type Node = {
-  children: Node[];
+// Valid: recursive object type alias
+type NodeAlias = {
+  children: NodeAlias[];
 };
 
-// Solution: Use interface
-interface Node {
-  children: Node[];
+// Also valid: interface
+interface RecursiveNode {
+  children: RecursiveNode[];
 }
 
 // Or use lazy evaluation with a function type
@@ -110,7 +108,7 @@ type LazyNode = {
 When two types reference each other:
 
 ```typescript
-// These might cause issues depending on usage
+// Valid: mutually recursive object type aliases
 type User = {
   posts: Post[];  // References Post
 };
@@ -122,7 +120,7 @@ type Post = {
 
 ### Solution: Interfaces
 
-Interfaces handle mutual recursion better than type aliases:
+Interfaces are also a good fit for mutually recursive object models, especially when you want declaration merging or an extendable public contract:
 
 ```typescript
 // Solution: Use interfaces for mutual recursion
@@ -194,31 +192,42 @@ Module cycles often manifest as runtime errors:
 
 ```typescript
 // user.ts
-import { Post } from "./post";  // Imports Post
+import { createPost } from "./post";  // Runtime import
+import type { Post } from "./post";   // Type-only import
 
 export interface User {
   id: string;
+  name: string;
   posts: Post[];
 }
 
 export function createUser(name: string): User {
-  return { id: crypto.randomUUID(), posts: [] };
+  return { id: crypto.randomUUID(), name, posts: [] };
+}
+
+export function createUserWithWelcomePost(name: string): User {
+  const user = createUser(name);
+  user.posts.push(createPost("Welcome", user));
+  return user;
 }
 ```
 
 ```typescript
 // post.ts
-import { User, createUser } from "./user";  // Imports User and createUser
+import { createUser } from "./user";  // Runtime import
+import type { User } from "./user";   // Type-only import
 
 export interface Post {
   id: string;
+  title: string;
   author: User;
 }
 
-// This might fail at runtime due to circular import
-export function createPost(title: string): Post {
-  const author = createUser("Anonymous");  // Error: createUser might be undefined
-  return { id: crypto.randomUUID(), author };
+// The runtime imports now form a cycle: user.ts -> post.ts -> user.ts.
+// Depending on the module system and top-level execution order, cycles can
+// produce partially initialized exports or "before initialization" errors.
+export function createPost(title: string, author = createUser("Anonymous")): Post {
+  return { id: crypto.randomUUID(), title, author };
 }
 ```
 
@@ -243,7 +252,7 @@ export interface Post {
 
 ```typescript
 // user.ts
-import { User, Post } from "./types";
+import type { User } from "./types";
 
 export function createUser(name: string): User {
   return { id: crypto.randomUUID(), name, posts: [] };
@@ -252,7 +261,7 @@ export function createUser(name: string): User {
 
 ```typescript
 // post.ts
-import { User, Post } from "./types";
+import type { User, Post } from "./types";
 
 export function createPost(title: string, author: User): Post {
   return { id: crypto.randomUUID(), title, author };
@@ -274,7 +283,7 @@ Instead of importing directly, inject dependencies:
 
 ```typescript
 // user-service.ts
-import { User } from "./types";
+import type { User } from "./types";
 
 export class UserService {
   createUser(name: string): User {
@@ -285,7 +294,7 @@ export class UserService {
 
 ```typescript
 // post-service.ts
-import { Post, User } from "./types";
+import type { Post, User } from "./types";
 
 export class PostService {
   // Inject the dependency instead of importing it
@@ -333,10 +342,9 @@ Complex generic types can cause "excessively deep" errors:
 
 ```typescript
 // Error: Type instantiation is excessively deep and possibly infinite
-type DeepNested<T> = {
-  value: T;
-  nested: DeepNested<DeepNested<T>>;
-};
+type InfiniteUnwrap<T> = T extends unknown ? InfiniteUnwrap<T> : never;
+
+type Result = InfiniteUnwrap<string>;
 ```
 
 ### Solution: Add Base Cases
@@ -428,7 +436,11 @@ For runtime circular dependencies, use dynamic imports:
 
 ```typescript
 // user.ts
+import type { Post } from "./post";
+
 export class User {
+  constructor(public id: string) {}
+
   async getPosts(): Promise<Post[]> {
     // Lazy load to break the cycle
     const { Post } = await import("./post");
@@ -487,21 +499,23 @@ Enable strict checks that help catch issues early:
 
 ```typescript
 // models/user.ts
-import { Order } from "./order";
+import type { Order } from "./order";
 
 export class User {
   orders: Order[] = [];
 
+  constructor(public id: string, public name: string) {}
+
   addOrder(order: Order) {
     this.orders.push(order);
-    order.setUser(this);  // Circular runtime dependency
+    order.setUser(this);  // Bidirectional object relationship
   }
 }
 ```
 
 ```typescript
 // models/order.ts
-import { User } from "./user";
+import type { User } from "./user";
 
 export class Order {
   user?: User;
@@ -511,7 +525,7 @@ export class Order {
   }
 
   getOrderSummary() {
-    return `Order for ${this.user?.name}`;  // Needs User
+    return `Order for ${this.user?.name}`;  // Needs User-shaped data
   }
 }
 ```
