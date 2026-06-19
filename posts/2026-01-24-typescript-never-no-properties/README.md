@@ -77,18 +77,20 @@ interface Dog {
 type Pet = Cat | Dog;
 
 // Incorrect type guard
-function isCat(pet: Pet): pet is Cat {
-  // This guard incorrectly checks for a property that both might have
+function isPet(pet: Pet): pet is Pet {
+  // This guard claims to identify the entire union,
+  // but checks for a property neither type defines
   return 'name' in pet;  // Wrong property check
 }
 
 function handlePet(pet: Pet) {
-  if (isCat(pet)) {
-    pet.meow();
-  } else if (!isCat(pet)) {
-    // If type guard is always true or always false,
-    // this branch might become 'never'
-    pet.bark();  // Could error if type inference fails
+  if (isPet(pet)) {
+    // pet is still Cat | Dog here
+    console.log(pet);
+  } else {
+    // pet is never here because the guard's false branch
+    // excludes the whole Pet union
+    pet.bark();  // Error!
   }
 }
 ```
@@ -129,8 +131,8 @@ flowchart TD
     D --> F[Can access bark, fetch]
 
     subgraph Incorrect["Incorrect Guard Flow"]
-        G[Pet] --> H{Always true?}
-        H -->|Yes| I[Type: Cat]
+        G[Pet] --> H{Guard asserts Pet?}
+        H -->|Yes| I[Type: Pet]
         H -->|No| J[Type: never]
         J --> K[ERROR: no properties]
     end
@@ -138,16 +140,19 @@ flowchart TD
 
 ## Common Cause 3: Empty Array Access
 
-Accessing elements of an empty array type results in `never`.
+Looking up the element type of an empty tuple results in `never`.
 
 ```typescript
 // Empty array type
 const emptyArray: [] = [];
 
 // ERROR: Type 'never' has no properties
-// Because emptyArray[0] is type 'never'
-const first = emptyArray[0];
-console.log(first.toString());  // Error!
+// Because the element type of [] is 'never'
+type EmptyElement = (typeof emptyArray)[number];
+
+function logElement(first: EmptyElement) {
+  console.log(first.toString());  // Error!
+}
 ```
 
 ```typescript
