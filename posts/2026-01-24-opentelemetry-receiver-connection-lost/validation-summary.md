@@ -4,32 +4,45 @@
 validated
 
 ## Post Type
-Troubleshooting guide / tutorial
+Technical troubleshooting guide
 
 ## Technologies Covered
-- OpenTelemetry Collector (contrib distribution)
-- OTLP receiver/exporter (gRPC + HTTP)
-- OpenTelemetry JavaScript/Node.js SDK (`@opentelemetry/exporter-trace-otlp-grpc`, `@opentelemetry/sdk-trace-base`, `@opentelemetry/api`)
-- gRPC (`@grpc/grpc-js`, keepalive, health check)
-- Kubernetes (Deployment, Service, headless Service, PodDisruptionBudget)
-- AWS ALB / GKE BackendConfig for gRPC load balancing
-- CLI tooling: `nc`, `grpcurl`, `curl`, `nslookup`, `docker logs`, `kubectl logs`
+- OpenTelemetry Collector
+- OpenTelemetry Protocol (OTLP)
+- OpenTelemetry JavaScript SDK and OTLP gRPC exporter
+- gRPC and HTTP telemetry transport
+- Kubernetes Services, Deployments, probes, and PodDisruptionBudgets
+- GKE BackendConfig
+- Collector health check, pprof, zPages, memory limiter, batch processor, and exporter retry/queue settings
 
 ## Sources Consulted
-- OpenTelemetry Collector Resiliency docs — https://opentelemetry.io/docs/collector/resiliency/
-- OpenTelemetry Collector Troubleshooting docs — https://opentelemetry.io/docs/collector/troubleshooting/
-- zPages extension README — https://github.com/open-telemetry/opentelemetry-collector/blob/main/extension/zpagesextension/README.md
-- OpenTelemetry Collector configuration references (SigNoz) — https://signoz.io/docs/opentelemetry-collection-agents/opentelemetry-collector/configuration/
+- OpenTelemetry Collector OTLP receiver reference: https://github.com/open-telemetry/opentelemetry-collector/blob/main/receiver/otlpreceiver/config.md
+- OpenTelemetry Collector OTLP exporter reference: https://github.com/open-telemetry/opentelemetry-collector/blob/main/exporter/otlpexporter/README.md
+- OpenTelemetry Collector exporter helper retry and queue reference: https://github.com/open-telemetry/opentelemetry-collector/blob/main/exporter/exporterhelper/README.md
+- OpenTelemetry Collector health check extension reference: https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/extension/healthcheckextension/README.md
+- OpenTelemetry Collector memory limiter processor reference: https://github.com/open-telemetry/opentelemetry-collector/blob/main/processor/memorylimiterprocessor/README.md
+- OpenTelemetry Collector batch processor reference: https://github.com/open-telemetry/opentelemetry-collector/blob/main/processor/batchprocessor/README.md
+- OpenTelemetry Collector internal telemetry docs: https://opentelemetry.io/docs/collector/internal-telemetry/
+- OpenTelemetry OTLP exporter configuration docs: https://opentelemetry.io/docs/languages/sdk-configuration/otlp-exporter/
+- OpenTelemetry JavaScript OTLP gRPC trace exporter package README: https://www.npmjs.com/package/@opentelemetry/exporter-trace-otlp-grpc
+- OpenTelemetry JavaScript SDK trace base package types: https://www.npmjs.com/package/@opentelemetry/sdk-trace-base
+- Kubernetes Service documentation: https://kubernetes.io/docs/concepts/services-networking/service/
+- Kubernetes probe documentation: https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/
+- Kubernetes PodDisruptionBudget documentation: https://kubernetes.io/docs/tasks/run-application/configure-pdb/
+- GKE Ingress BackendConfig documentation: https://docs.cloud.google.com/kubernetes-engine/docs/how-to/ingress-configuration
 
 ## Issues Found
-1. **Invalid `retry_on_failure` processor (collector config).** The post defined `retry_on_failure` as a top-level entry under `processors:`. There is no `retry_on_failure` processor in the OpenTelemetry Collector — retry is an exporter-level setting (`retry_on_failure` on the exporter, which the post already configures correctly on the `otlp` exporter). As written, the block was both invalid (would fail component validation on startup) and unused (it was never referenced in any pipeline). **Fix:** removed the bogus processor block. Retry remains correctly configured on the exporter.
-
-2. **Incorrect comment on the `zpages` extension.** The comment labeled `zpages` as "Prometheus metrics," which is wrong. zPages is an in-process HTTP debugging interface (tracez, pipelinez, extensionz, etc.); collector Prometheus metrics are exposed separately on port 8888. **Fix:** corrected the comment to describe zPages as a live in-process debugging interface.
+- The connectivity check used `grpc.health.v1.Health/Check` against the OTLP gRPC receiver. The OTLP receiver does not generally expose that standard gRPC health service on port 4317, so the command could fail even when OTLP is working. Replaced it with a check against the Collector health check extension endpoint.
+- The OTLP/HTTP curl command implied that a plain GET to `/v1/traces` was a valid endpoint test. OTLP/HTTP exports use POST, so the text now clarifies that GET may return 405 while still confirming reachability.
+- The JavaScript OTLP gRPC exporter example used `grpc://otel-collector:4317`, a string compression value, and function metadata. The current exporter README documents `http://host:4317` for insecure gRPC, `CompressionAlgorithm.GZIP`, and a `grpc.Metadata` object when metadata is needed. Updated the example accordingly and removed the invalid metadata function.
+- The SDK section claimed to configure retry settings through `BatchSpanProcessor`, but the shown settings are queue and timeout settings, not retry configuration. Updated the heading and wording.
+- The memory limiter comments described `spike_limit_mib` as the soft limit. Official docs define the soft limit as `limit_mib - spike_limit_mib`; updated the comments.
+- The health check extension example used `check_collector_pipeline`, which official docs warn is not working as expected and recommend not using. Removed that option.
+- The Collector metrics endpoint was referenced through port 8888, but current Collector docs show the default Prometheus listener is loopback unless configured. Added `service.telemetry.metrics.readers` with a Prometheus pull exporter on `0.0.0.0:8888`.
+- The Kubernetes Service example included an AWS load balancer annotation on a `ClusterIP` Service, where it would not apply. Removed the misleading annotation.
+- The custom JavaScript exporter wrapper awaited `export()`, but the `SpanExporter` interface is callback-based and returns `void`. Updated the wrapper to return `void` and use `ExportResultCode` instead of magic numeric result codes.
+- The conclusion implied SDK retry configuration was the main fix. Updated it to distinguish SDK timeout/buffering settings from Collector exporter retry policies.
 
 ## Review Notes
-- The exporter `retry_on_failure`, `sending_queue`, `memory_limiter`, `batch`, OTLP receiver keepalive/`enforcement_policy`, and `health_check` extension settings are all valid current configuration fields.
-- The Node.js SDK code (`OTLPTraceExporter`, `BatchSpanProcessor` options, `diag` logging) uses current, non-deprecated APIs.
-- The gRPC exporter `url: 'grpc://otel-collector:4317'` uses a non-standard scheme; the OTLP/gRPC exporter typically expects `http://`/`https://` or a bare `host:port`. In practice the host:port is parsed and TLS is governed by the `credentials` option (here `createInsecure()`), so the example still works. Left as-is since it is functional.
-- The CLI commands (`nc -zv`, `grpcurl -plaintext`, `curl`, `nslookup`) and listed collector metric names (`otelcol_receiver_accepted_spans`, `otelcol_receiver_refused_spans`, `otelcol_exporter_queue_size`, `otelcol_process_memory_rss`) are accurate.
-- The `health_check` extension's `check_collector_pipeline` is a legacy sub-feature still accepted by the contrib collector; it functions but may be deprecated in future releases.
-- Kubernetes manifests (Deployment, headless Service, BackendConfig, PDB, `appProtocol: grpc`) are valid; using `image: ...:latest` is discouraged for production but is a stylistic choice, not an error.
+- The updated Collector configuration was validated with `otel/opentelemetry-collector-contrib:latest validate --config=/etc/otelcol/config.yaml`.
+- The JavaScript OTLP gRPC exporter package is still marked experimental by its package README, so future minor releases may introduce breaking changes.

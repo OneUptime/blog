@@ -102,10 +102,11 @@ Test connectivity from your application to the collector:
 # Test TCP connectivity
 nc -zv otel-collector.observability.svc.cluster.local 4317
 
-# Test gRPC health (using grpcurl)
-grpcurl -plaintext otel-collector:4317 grpc.health.v1.Health/Check
+# Test the collector health extension, if enabled
+curl -v http://otel-collector:13133/health
 
-# Test HTTP endpoint
+# Check that the OTLP/HTTP listener is reachable
+# A GET request may return 405 because OTLP/HTTP exports use POST.
 curl -v http://otel-collector:4318/v1/traces
 
 # DNS resolution check
@@ -146,29 +147,26 @@ diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.DEBUG);
 
 ## Solutions
 
-### Solution 1: Configure Retry and Timeout Settings
+### Solution 1: Configure Timeout and Buffer Settings
 
-Configure robust retry settings in your SDK exporter:
+Configure robust timeout and buffering settings in your SDK exporter:
 
 ```javascript
-// Node.js - Configure OTLP exporter with retry settings
+// Node.js - Configure OTLP exporter with timeout and buffering settings
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
 const { credentials } = require('@grpc/grpc-js');
+const { CompressionAlgorithm } = require('@opentelemetry/otlp-exporter-base');
 
 const exporter = new OTLPTraceExporter({
-  url: 'grpc://otel-collector:4317',
+  url: 'http://otel-collector:4317',
   credentials: credentials.createInsecure(),
   // Timeout for each export attempt (in milliseconds)
   timeoutMillis: 30000,
   // Compression to reduce bandwidth
-  compression: 'gzip',
-  // Additional gRPC options for connection resilience
-  metadata: () => ({
-    // Add any required metadata
-  }),
+  compression: CompressionAlgorithm.GZIP,
 });
 
-// Configure the batch processor with retry logic
+// Configure the batch processor with buffering and export timeouts
 const { BatchSpanProcessor } = require('@opentelemetry/sdk-trace-base');
 
 const spanProcessor = new BatchSpanProcessor(exporter, {
@@ -226,9 +224,9 @@ processors:
   memory_limiter:
     # Check memory usage at this interval
     check_interval: 1s
-    # Hard limit - will drop data above this
+    # Hard limit
     limit_mib: 1800
-    # Soft limit - will start dropping data
+    # Expected spike size; soft limit is limit_mib - spike_limit_mib
     spike_limit_mib: 500
 
   # Batch processor for efficient export
@@ -266,10 +264,6 @@ extensions:
   health_check:
     endpoint: 0.0.0.0:13133
     path: "/health"
-    check_collector_pipeline:
-      enabled: true
-      interval: 5s
-      exporter_failure_threshold: 5
 
   # Performance profiling
   pprof:
@@ -281,6 +275,14 @@ extensions:
 
 service:
   extensions: [health_check, pprof, zpages]
+  telemetry:
+    metrics:
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
   pipelines:
     traces:
       receivers: [otlp]
@@ -304,8 +306,6 @@ metadata:
   name: otel-collector
   namespace: observability
   annotations:
-    # For AWS ALB
-    service.beta.kubernetes.io/aws-load-balancer-backend-protocol: "http2"
     # For GKE
     cloud.google.com/backend-config: '{"default": "otel-collector-backendconfig"}'
 spec:
@@ -368,7 +368,8 @@ Add connection management logic in your application:
 ```javascript
 // connection-manager.js - Robust connection handling
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
-const { diag, DiagLogLevel } = require('@opentelemetry/api');
+const { diag } = require('@opentelemetry/api');
+const { ExportResultCode } = require('@opentelemetry/core');
 
 class ResilientExporter {
   constructor(config) {
@@ -394,15 +395,18 @@ class ResilientExporter {
     });
   }
 
-  async export(spans, resultCallback) {
+  export(spans, resultCallback) {
     if (this.isShuttingDown) {
-      resultCallback({ code: 1, error: new Error('Exporter is shutting down') });
+      resultCallback({
+        code: ExportResultCode.FAILED,
+        error: new Error('Exporter is shutting down'),
+      });
       return;
     }
 
     try {
-      await this.exporter.export(spans, (result) => {
-        if (result.code === 0) {
+      this.exporter.export(spans, (result) => {
+        if (result.code === ExportResultCode.SUCCESS) {
           // Success - reset reconnect counter
           this.reconnectAttempts = 0;
           this.reconnectDelay = 1000;
@@ -414,12 +418,13 @@ class ResilientExporter {
       });
     } catch (error) {
       this.handleExportFailure(error);
-      resultCallback({ code: 1, error });
+      resultCallback({ code: ExportResultCode.FAILED, error });
     }
   }
 
   handleExportFailure(error) {
-    diag.warn('Export failed', { error: error.message });
+    const message = error && error.message ? error.message : String(error);
+    diag.warn('Export failed', { error: message });
 
     if (this.reconnectAttempts < this.maxReconnectAttempts) {
       this.reconnectAttempts++;
@@ -666,4 +671,4 @@ When you encounter "Receiver Connection Lost" errors, follow this checklist:
 
 ## Conclusion
 
-"Receiver Connection Lost" errors typically stem from network issues, resource exhaustion, or timeout misconfigurations. The key to reliable telemetry is implementing robust retry logic in your SDK, properly configuring the collector for your workload, and monitoring the health of your telemetry pipeline. With proper configuration of keepalive settings, retry policies, and resource limits, you can maintain reliable connectivity even in demanding production environments.
+"Receiver Connection Lost" errors typically stem from network issues, resource exhaustion, or timeout misconfigurations. The key to reliable telemetry is configuring timeouts and buffering in your SDK, enabling retry policies in the collector exporters, properly configuring the collector for your workload, and monitoring the health of your telemetry pipeline. With proper configuration of keepalive settings, retry policies, and resource limits, you can maintain reliable connectivity even in demanding production environments.
