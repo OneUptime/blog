@@ -29,7 +29,7 @@ sequenceDiagram
     Note over C: Process messages
 ```
 
-Key insight: Brokers store compressed data and forward it compressed. Decompression only happens at the consumer, minimizing broker CPU usage.
+Key insight: With the default topic setting of `compression.type=producer`, brokers retain the producer's compression and forward compressed batches to consumers. If a topic forces a different compression type, the broker may need to recompress batches, which adds broker CPU usage.
 
 ## Configuring Producer Compression
 
@@ -113,7 +113,7 @@ zstd        | 520,000           | 78           | 6.1x
 
 ## Topic-Level Compression Configuration
 
-Override producer compression at the topic level:
+Set the final compression type at the topic level:
 
 ```bash
 # Create topic with compression preference
@@ -135,11 +135,11 @@ kafka-configs.sh --bootstrap-server kafka:9092 \
 Compression type options at topic level:
 
 - `producer` - Use whatever the producer sends (default)
-- `none`, `gzip`, `snappy`, `lz4`, `zstd` - Force specific compression
+- `uncompressed`, `gzip`, `snappy`, `lz4`, `zstd` - Force a specific final compression type
 
 ## Broker-Level Compression
 
-Set default compression for all topics:
+Set the default final compression type for all topics:
 
 ```properties
 # server.properties
@@ -153,14 +153,14 @@ compression.type=producer
 
 ## Zstd Compression Levels
 
-Zstd supports compression levels 1-22. Higher levels = better compression but more CPU.
+Kafka's Zstd setting defaults to level 3 and supports levels up to 22. Higher levels = better compression but more CPU.
 
 ```java
 // Java producer with zstd level
 Properties props = new Properties();
 props.put(ProducerConfig.COMPRESSION_TYPE_CONFIG, "zstd");
 
-// Zstd compression level (1-22, default is 3)
+// Zstd compression level (default is 3; current Kafka accepts values up to 22)
 // Level 1: Fastest, less compression
 // Level 3: Good balance (default)
 // Level 9+: Maximum compression, slow
@@ -279,14 +279,13 @@ private boolean isCompressedFormat(byte[] data) {
 
 ## Compression with Kafka Connect
 
-Configure compression for Connect sink/source connectors:
+Configure compression for Kafka Connect source connectors that produce records to Kafka. The Connect worker must allow connector client overrides, for example with `connector.client.config.override.policy=All`.
 
 ```json
 {
-  "name": "jdbc-sink",
+  "name": "jdbc-source",
   "config": {
-    "connector.class": "io.confluent.connect.jdbc.JdbcSinkConnector",
-    "topics": "orders",
+    "connector.class": "io.confluent.connect.jdbc.JdbcSourceConnector",
 
     "producer.override.compression.type": "lz4",
     "producer.override.batch.size": "131072",
