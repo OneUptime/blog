@@ -32,6 +32,8 @@ sequenceDiagram
 
 ## Nginx HTTP/2 Push Configuration
 
+The `http2_push` and `http2_push_preload` directives are legacy Nginx directives. They work in Nginx 1.13.9 through 1.25.0, but are obsolete in Nginx 1.25.1 and newer. For new Nginx deployments, prefer `Link` preload headers and 103 Early Hints.
+
 ### Basic Push Setup
 
 ```nginx
@@ -73,28 +75,38 @@ server {
 Avoid pushing resources that are already cached in the browser.
 
 ```nginx
-server {
-    listen 443 ssl http2;
-    server_name example.com;
-
-    # Map to check if resources were already pushed
-    map $http_cookie $push_resources {
+http {
+    # Map must be declared in the http context, not inside server or location
+    map $http_cookie $push_critical_css {
         "~*resources_loaded=1"  "";
-        default                 "yes";
+        default                 "/css/critical.css";
     }
 
-    location = / {
-        # Only push if cookie indicates first visit
-        if ($push_resources = "yes") {
-            http2_push /css/critical.css;
-            http2_push /js/vendor.js;
-            http2_push /js/app.js;
+    map $http_cookie $push_vendor_js {
+        "~*resources_loaded=1"  "";
+        default                 "/js/vendor.js";
+    }
+
+    map $http_cookie $push_app_js {
+        "~*resources_loaded=1"  "";
+        default                 "/js/app.js";
+    }
+
+    server {
+        listen 443 ssl http2;
+        server_name example.com;
+
+        location = / {
+            # Only push if the cookie indicates a first visit
+            http2_push $push_critical_css;
+            http2_push $push_vendor_js;
+            http2_push $push_app_js;
+
+            # Set cookie after first load
+            add_header Set-Cookie "resources_loaded=1; Path=/; Max-Age=86400";
+
+            try_files /index.html =404;
         }
-
-        # Set cookie after first load
-        add_header Set-Cookie "resources_loaded=1; Path=/; Max-Age=86400";
-
-        try_files /index.html =404;
     }
 }
 ```
@@ -218,20 +230,25 @@ server.listen(443, () => {
 ```javascript
 const express = require('express');
 const spdy = require('spdy');  // HTTP/2 support for Express
+const cookieParser = require('cookie-parser');
 const fs = require('fs');
 const path = require('path');
 
 const app = express();
+app.use(cookieParser());
 
 // Middleware to handle server push
 app.use((req, res, next) => {
-    // Store push function on response object
-    res.push = (filePath, options = {}) => {
-        if (!res.push || typeof res.push !== 'function') {
+    const push = res.push?.bind(res);
+
+    // Store push helper on response object
+    res.pushResource = (filePath, options = {}) => {
+        if (!push) {
             return;  // Push not supported
         }
 
-        const stream = res.push(filePath, {
+        const stream = push(filePath, {
+            status: 200,
             request: { accept: '*/*' },
             response: {
                 'content-type': options.contentType || 'text/plain',
@@ -255,10 +272,10 @@ app.get('/', (req, res) => {
     // Check for push support and avoid re-pushing
     const acceptPush = !req.cookies?.resourcesPushed;
 
-    if (acceptPush && res.push) {
-        res.push('/css/styles.css', { contentType: 'text/css' });
-        res.push('/js/main.js', { contentType: 'application/javascript' });
-        res.push('/images/hero.webp', { contentType: 'image/webp' });
+    if (acceptPush && res.pushResource) {
+        res.pushResource('/css/styles.css', { contentType: 'text/css' });
+        res.pushResource('/js/main.js', { contentType: 'application/javascript' });
+        res.pushResource('/images/hero.webp', { contentType: 'image/webp' });
 
         res.cookie('resourcesPushed', '1', { maxAge: 86400000 });
     }
@@ -331,7 +348,7 @@ func main() {
     // Main page with push
     http.HandleFunc("/", indexHandler)
 
-    // Start HTTPS server (HTTP/2 requires TLS)
+    // Start HTTPS server (Go enables browser-compatible HTTP/2 automatically with TLS)
     log.Println("Server starting on https://localhost:443")
     err := http.ListenAndServeTLS(":443", "server.crt", "server.key", nil)
     if err != nil {
@@ -402,8 +419,8 @@ function selectResourcesToPush(resources, budgetKb) {
 }
 
 const toPush = selectResourcesToPush(resources, PUSH_BUDGET_KB);
-// Output: Pushing 3 resources (41KB)
-// ['/css/critical.css', '/js/runtime.js', '/fonts/main.woff2']
+// Output: Pushing 3 resources (48KB)
+// ['/css/critical.css', '/js/runtime.js', '/js/app.js']
 ```
 
 ## Using Link Headers for Push
@@ -415,7 +432,7 @@ Instead of hardcoding push resources, use Link headers for flexibility.
 ```python
 # Flask example
 
-from flask import Flask, make_response
+from flask import Flask, make_response, render_template
 
 app = Flask(__name__)
 
@@ -452,22 +469,23 @@ server {
 ## Monitoring Push Effectiveness
 
 ```javascript
-// Browser-side monitoring of pushed resources
+// Browser-side monitoring of cache/reuse effects.
+// Resource Timing does not expose a portable "was pushed" flag;
+// use server logs, nghttp, or browser DevTools to confirm push streams.
 if ('performance' in window) {
     window.addEventListener('load', () => {
         const entries = performance.getEntriesByType('resource');
 
         entries.forEach(entry => {
-            // Check if resource was pushed
-            const wasPushed = entry.transferSize === 0 &&
-                              entry.encodedBodySize > 0 &&
-                              entry.deliveryType === 'cache';
+            const fromCache = entry.transferSize === 0 &&
+                              entry.encodedBodySize > 0;
 
             console.log({
                 name: entry.name,
                 initiatorType: entry.initiatorType,
                 transferSize: entry.transferSize,
-                wasPushed: wasPushed,
+                deliveryType: entry.deliveryType || 'unknown',
+                fromCache: fromCache,
                 startTime: entry.startTime
             });
         });
@@ -480,7 +498,7 @@ if ('performance' in window) {
 ### When Push Can Hurt Performance
 
 1. **Already cached resources**: Wasted bandwidth
-2. **Resources on different origins**: Cannot push cross-origin
+2. **Resources outside the server's authority**: Cross-authority pushes are rejected
 3. **Large resources**: Blocks more important content
 4. **Slow connections**: May delay critical content
 
