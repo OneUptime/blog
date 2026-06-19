@@ -140,9 +140,9 @@ When the repository is severely corrupted, cloning fresh is often fastest:
 ```bash
 # Save your local changes first
 cd corrupted-repo
-git stash  # If this works
 git diff > ~/my-changes.patch  # Backup unstaged changes
 git diff --staged > ~/my-staged-changes.patch  # Backup staged changes
+git stash push --include-untracked  # Optional extra backup if this works
 
 # Clone fresh copy
 cd ..
@@ -152,7 +152,7 @@ git clone git@github.com:user/repo.git
 # Apply your changes to the fresh clone
 cd repo
 git apply ~/my-changes.patch
-git apply ~/my-staged-changes.patch
+git apply --index ~/my-staged-changes.patch
 ```
 
 If you can't even create patches:
@@ -204,7 +204,7 @@ git stash show -p stash@{0}
 
 # List all references that might have the object
 git for-each-ref --format='%(refname)' | while read ref; do
-    if git rev-list "$ref" 2>/dev/null | grep -q "abc123"; then
+    if git rev-list --objects "$ref" 2>/dev/null | grep -q "abc123"; then
         echo "Found in: $ref"
     fi
 done
@@ -226,16 +226,17 @@ git verify-pack -v .git/objects/pack/pack-*.idx
 # If pack is good but index is bad, rebuild the index
 cd .git/objects/pack
 rm pack-*.idx
-git index-pack pack-*.pack
+for pack in pack-*.pack; do
+    git index-pack "$pack"
+done
 ```
 
 For severely corrupted packs:
 
 ```bash
-# Extract objects from pack file
-mkdir recovered-objects
-cd .git/objects/pack
-git unpack-objects < pack-*.pack
+# Extract objects from one pack file into a separate object directory
+mkdir -p /tmp/recovered-objects
+GIT_OBJECT_DIRECTORY=/tmp/recovered-objects git unpack-objects < .git/objects/pack/pack-xxx.pack
 
 # Move recovered objects to proper location
 # Objects are extracted as loose objects
@@ -275,10 +276,10 @@ echo "file content here" | git hash-object -w --stdin
 
 # If you know what a tree should look like
 # Create a tree object manually
-git mktree <<EOF
-100644 blob abc123def456789012345678901234567890abcd    filename.txt
-040000 tree def456789012345678901234567890abcdef12    subdirectory
-EOF
+{
+    printf "100644 blob abc123def456789012345678901234567890abcd\tfilename.txt\n"
+    printf "040000 tree def456789012345678901234567890abcdef12\tsubdirectory\n"
+} | git mktree
 
 # Verify the recreated object
 git cat-file -p <new-hash>
@@ -322,7 +323,7 @@ git config --global receive.fsckObjects true
 
 # Run periodic maintenance
 git maintenance start
-# This schedules regular gc and integrity checks
+# This schedules regular repository optimization tasks
 ```
 
 Set up a pre-push hook to verify integrity:
@@ -408,7 +409,7 @@ git rev-list --objects --all
 # Count objects by type
 git count-objects -v
 
-# Check remote for object
+# Check remote refs for a commit hash
 git ls-remote origin | grep <hash>
 ```
 
@@ -452,4 +453,4 @@ flowchart TD
 4. For submodule problems: Reinitialize with `git submodule update --init`
 5. For LFS issues: Run `git lfs fetch --all`
 
-Always run `git fsck --full` first to understand what's missing. When in doubt, clone fresh and preserve your local work. Enable `transfer.fsckObjects` to prevent future issues by catching problems during fetch operations.
+Always run `git fsck --full` first to understand what's missing. When in doubt, clone fresh and preserve your local work. Enable `transfer.fsckObjects` or `fetch.fsckObjects` to catch malformed objects and links to nonexistent objects during fetch operations.
