@@ -51,7 +51,6 @@ import (
     "log"
     "time"
 
-    "google.golang.org/grpc"
     "google.golang.org/grpc/codes"
     "google.golang.org/grpc/status"
     pb "myservice/proto"
@@ -129,10 +128,11 @@ def make_request_with_explicit_deadline(stub, request):
     # Calculate absolute deadline
     deadline = time.time() + 5.0  # 5 seconds from now
 
-    # Use deadline parameter for absolute time
+    # gRPC Python accepts a relative timeout in seconds
+    timeout = max(0, deadline - time.time())
     response = stub.ProcessRequest(
         request,
-        deadline=deadline
+        timeout=timeout
     )
     return response
 ```
@@ -150,7 +150,6 @@ import (
     "context"
     "database/sql"
     "log"
-    "time"
 
     "google.golang.org/grpc/codes"
     "google.golang.org/grpc/status"
@@ -250,8 +249,9 @@ func (s *server) processItem(ctx context.Context, item string) (string, error) {
 
 ```python
 import grpc
-from concurrent import futures
 import threading
+import service_pb2
+import service_pb2_grpc
 
 class MyServiceServicer(service_pb2_grpc.MyServiceServicer):
 
@@ -366,7 +366,6 @@ import (
     "context"
     "log"
 
-    "google.golang.org/grpc"
     "google.golang.org/grpc/metadata"
     pb "myservice/proto"
     downstream "downstream/proto"
@@ -418,7 +417,7 @@ func (s *orchestratorServer) ProcessOrchestrated(ctx context.Context, req *pb.Re
     }()
 
     // Collect results with cancellation awareness
-    var responses []*downstream.Response
+    var dataB, dataC []byte
     for i := 0; i < 2; i++ {
         select {
         case <-ctx.Done():
@@ -433,14 +432,18 @@ func (s *orchestratorServer) ProcessOrchestrated(ctx context.Context, req *pb.Re
                 // Here we fail fast
                 return nil, r.err
             }
-            responses = append(responses, &downstream.Response{Data: r.data})
+            if r.service == "B" {
+                dataB = r.data
+            } else {
+                dataC = r.data
+            }
         }
     }
 
     // Combine results
     return &pb.Response{
-        DataB: responses[0].Data,
-        DataC: responses[1].Data,
+        DataB: dataB,
+        DataC: dataC,
     }, nil
 }
 ```
@@ -455,8 +458,6 @@ func (s *orchestratorServer) ProcessOrchestrated(ctx context.Context, req *pb.Re
 package main
 
 import (
-    "context"
-
     "google.golang.org/grpc/codes"
     "google.golang.org/grpc/status"
     pb "myservice/proto"
@@ -521,11 +522,13 @@ func (s *server) StreamData(req *pb.StreamRequest, stream pb.MyService_StreamDat
 ```python
 import grpc
 import threading
+import service_pb2
 
 class StreamingClient:
     def __init__(self, stub):
         self.stub = stub
         self.cancel_event = threading.Event()
+        self.current_call = None
 
     def upload_data_with_cancellation(self, items):
         """Upload data with ability to cancel mid-stream."""
@@ -540,27 +543,33 @@ class StreamingClient:
 
         try:
             # Create call object for cancellation
-            call = self.stub.UploadData.future(request_iterator())
+            self.current_call = self.stub.UploadData.future(request_iterator())
 
             # Wait for completion or cancellation
-            response = call.result(timeout=30)
+            response = self.current_call.result(timeout=30)
             return response
 
         except grpc.RpcError as e:
             if e.code() == grpc.StatusCode.CANCELLED:
                 print("Upload was cancelled")
             raise
+        finally:
+            self.current_call = None
 
     def cancel_upload(self):
         """Cancel the ongoing upload."""
         self.cancel_event.set()
+        if self.current_call is not None:
+            self.current_call.cancel()
 
 
 def cancel_streaming_call_example(stub, items):
     """Example of cancelling a streaming call."""
 
     # Create call object
-    call = stub.UploadData.future(iter(items))
+    call = stub.UploadData.future(
+        service_pb2.UploadRequest(data=item) for item in items
+    )
 
     # Set up timer to cancel after 5 seconds
     cancel_timer = threading.Timer(5.0, call.cancel)
@@ -615,7 +624,7 @@ func configureClientTimeouts() []grpc.DialOption {
         // Default service config with timeouts
         grpc.WithDefaultServiceConfig(`{
             "methodConfig": [{
-                "name": [{"service": ""}],
+                "name": [{}],
                 "timeout": "30s",
                 "retryPolicy": {
                     "maxAttempts": 3,
@@ -683,6 +692,9 @@ class MetricsInterceptor(grpc.ServerInterceptor):
 
     def intercept_service(self, continuation, handler_call_details):
         method = handler_call_details.method
+        handler = continuation(handler_call_details)
+        if handler is None or handler.unary_unary is None:
+            return handler
 
         def wrapper(request_or_iterator, context):
             import time
@@ -690,9 +702,7 @@ class MetricsInterceptor(grpc.ServerInterceptor):
             status = 'OK'
 
             try:
-                return continuation(handler_call_details).unary_unary(
-                    request_or_iterator, context
-                )
+                return handler.unary_unary(request_or_iterator, context)
             except Exception as e:
                 if isinstance(e, grpc.RpcError):
                     status = e.code().name
@@ -705,13 +715,19 @@ class MetricsInterceptor(grpc.ServerInterceptor):
                         grpc_deadline_exceeded.labels(method=method).inc()
                 raise
             finally:
+                if context.code() is not None:
+                    status = context.code().name
                 duration = time.time() - start
                 grpc_request_duration.labels(
                     method=method,
                     status=status
                 ).observe(duration)
 
-        return grpc.unary_unary_rpc_method_handler(wrapper)
+        return grpc.unary_unary_rpc_method_handler(
+            wrapper,
+            request_deserializer=handler.request_deserializer,
+            response_serializer=handler.response_serializer,
+        )
 ```
 
 ---
