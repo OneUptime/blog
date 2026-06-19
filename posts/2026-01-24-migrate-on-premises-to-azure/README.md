@@ -64,18 +64,18 @@ Start by understanding your current environment.
 
 ### Deploy Azure Migrate
 
-```bash
+```powershell
 # Create a resource group for migration resources
 
-az group create \
-    --name rg-migration \
-    --location eastus
+New-AzResourceGroup `
+    -Name "rg-migration" `
+    -Location "eastus"
 
 # Create an Azure Migrate project
-az migrate project create \
-    --name "OnPremMigrationProject" \
-    --resource-group rg-migration \
-    --location eastus
+New-AzMigrateProject `
+    -Name "OnPremMigrationProject" `
+    -ResourceGroupName "rg-migration" `
+    -Location "eastus"
 ```
 
 ### Install the Azure Migrate Appliance
@@ -89,40 +89,31 @@ For VMware environments:
 # After deployment, configure the appliance
 # Access the appliance configuration manager at https://appliance-ip:44368
 
-# Register with Azure Migrate
-$projectId = "your-project-id"
-$applianceKey = "your-appliance-key"
+# Register with Azure Migrate using the project key generated in the Azure portal
 
-# Run discovery
-Start-AzMigrateDiscovery -ProjectId $projectId
+# Verify discovered servers after the appliance has collected inventory
+Get-AzMigrateDiscoveredServer `
+    -ProjectName "OnPremMigrationProject" `
+    -ResourceGroupName "rg-migration"
 ```
 
 ### Generate Assessment Report
 
-```bash
-# Create an assessment
-az migrate assessment create \
-    --project-name "OnPremMigrationProject" \
-    --resource-group rg-migration \
-    --name "InitialAssessment" \
-    --azure-location eastus \
-    --azure-offer-code PAYG \
-    --currency USD \
-    --sizing-criterion PerformanceBased \
-    --percentile Percentile95
+```text
+# Create the assessment in the Azure portal:
+# Azure Migrate project > Infrastructure > Servers > Create assessment
+# Select Performance-based sizing, target region, pricing options, and the servers to assess.
 
-# View assessment results
-az migrate assessment show \
-    --project-name "OnPremMigrationProject" \
-    --resource-group rg-migration \
-    --name "InitialAssessment"
+# View assessment results in:
+# Azure Migrate project > Decide and plan > Assessments > Workloads
 ```
 
 ### Document Dependencies
 
 ```bash
-# Enable dependency visualization
-# This requires Log Analytics workspace
+# Enable dependency visualization.
+# For supported VMware servers, use Azure Migrate agentless dependency analysis.
+# For agent-based dependency visualization, associate a Log Analytics workspace.
 
 # Create workspace
 az monitor log-analytics workspace create \
@@ -130,12 +121,8 @@ az monitor log-analytics workspace create \
     --workspace-name "migration-workspace" \
     --location eastus
 
-# Install dependency agent on discovered machines
-# For Windows:
-# MicrosoftDependencyAgent.msi /quiet
-
-# For Linux:
-# ./InstallDependencyAgent-Linux64.bin -s
+# For agent-based dependency visualization, use Azure Monitor Agent with the Dependency Agent
+# and review Microsoft's VM Insights Map and Dependency Agent retirement guidance.
 ```
 
 ## Phase 2: Planning
@@ -193,6 +180,12 @@ az network vnet subnet create \
     --name subnet-data \
     --address-prefix 10.0.3.0/24
 
+az network vnet subnet create \
+    --resource-group rg-production \
+    --vnet-name vnet-production \
+    --name GatewaySubnet \
+    --address-prefix 10.0.255.0/27
+
 # Create Network Security Groups
 az network nsg create \
     --resource-group rg-production \
@@ -239,28 +232,50 @@ az network express-route create \
 
 Using Azure Migrate for server migration:
 
-```bash
-# Start replication for a VM
-az migrate replication-policy create \
-    --fabric-name "fabric-name" \
-    --resource-group rg-migration \
-    --vault-name "migration-vault" \
-    --name "ReplicationPolicy" \
-    --recovery-point-retention-in-minutes 1440 \
-    --app-consistent-snapshot-frequency-in-minutes 240
+```powershell
+# Initialize replication infrastructure for agentless VMware migration
+$ResourceGroup = Get-AzResourceGroup -Name "rg-migration"
+$MigrateProject = Get-AzMigrateProject `
+    -Name "OnPremMigrationProject" `
+    -ResourceGroupName $ResourceGroup.ResourceGroupName
+
+Initialize-AzMigrateReplicationInfrastructure `
+    -ResourceGroupName $ResourceGroup.ResourceGroupName `
+    -ProjectName $MigrateProject.Name `
+    -Scenario agentlessVMware `
+    -TargetRegion "EastUS"
+
+# Start replication for a discovered VM
+$DiscoveredServer = Get-AzMigrateDiscoveredServer `
+    -ProjectName $MigrateProject.Name `
+    -ResourceGroupName $ResourceGroup.ResourceGroupName `
+    -DisplayName "vm-name"
+
+$TargetResourceGroup = Get-AzResourceGroup -Name "rg-production"
+$TargetVNet = Get-AzVirtualNetwork -Name "vnet-production" -ResourceGroupName "rg-production"
+$OSDiskId = "<source-os-disk-uuid>"
+
+New-AzMigrateServerReplication `
+    -InputObject $DiscoveredServer `
+    -TargetResourceGroupId $TargetResourceGroup.ResourceId `
+    -TargetNetworkId $TargetVNet.Id `
+    -TargetSubnetName "subnet-app" `
+    -TargetVMName "vm-name" `
+    -TargetVMSize "Standard_D2s_v3" `
+    -DiskType "Standard_LRS" `
+    -OSDiskID $OSDiskId `
+    -LicenseType "NoLicenseType"
 
 # Monitor replication status
-az migrate replicated-item show \
-    --fabric-name "fabric-name" \
-    --protection-container "container-name" \
-    --resource-group rg-migration \
-    --vault-name "migration-vault" \
-    --name "vm-name"
+Get-AzMigrateServerReplication `
+    -ProjectName $MigrateProject.Name `
+    -ResourceGroupName $ResourceGroup.ResourceGroupName `
+    -MachineName "vm-name"
 ```
 
 ### Migrate Databases
 
-For SQL Server databases, use Azure Database Migration Service:
+For SQL Server databases, use Azure Database Migration Service (classic) CLI commands:
 
 ```bash
 # Create DMS instance
@@ -324,27 +339,27 @@ azcopy sync "/path/to/files" \
 
 ### Run Test Migrations
 
-```bash
-# Perform test failover
-az migrate replicated-item test-migrate \
-    --fabric-name "fabric-name" \
-    --protection-container "container-name" \
-    --resource-group rg-migration \
-    --vault-name "migration-vault" \
-    --name "vm-name" \
-    --test-network "/subscriptions/.../virtualNetworks/test-vnet"
+```powershell
+# Perform test migration
+$ReplicatingServer = Get-AzMigrateServerReplication `
+    -ProjectName "OnPremMigrationProject" `
+    -ResourceGroupName "rg-migration" `
+    -MachineName "vm-name"
+
+$TestVirtualNetwork = Get-AzVirtualNetwork `
+    -Name "test-vnet" `
+    -ResourceGroupName "rg-production"
+
+Start-AzMigrateTestMigration `
+    -InputObject $ReplicatingServer `
+    -TestNetworkID $TestVirtualNetwork.Id
 
 # Validate the test migration
 # Run your application tests against the migrated VM
 
 # Clean up test migration
-az migrate replicated-item test-migrate-cleanup \
-    --fabric-name "fabric-name" \
-    --protection-container "container-name" \
-    --resource-group rg-migration \
-    --vault-name "migration-vault" \
-    --name "vm-name" \
-    --comments "Test completed successfully"
+Start-AzMigrateTestMigrationCleanup `
+    -InputObject $ReplicatingServer
 ```
 
 ### Validation Checklist
@@ -474,7 +489,7 @@ az vm extension set \
     --vm-name vm-app-01 \
     --name AzureMonitorLinuxAgent \
     --publisher Microsoft.Azure.Monitor \
-    --version 1.0
+    --enable-auto-upgrade true
 
 # Create alerts
 az monitor metrics alert create \
