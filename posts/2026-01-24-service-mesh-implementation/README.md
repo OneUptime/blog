@@ -67,7 +67,7 @@ cd istio-*
 # Add istioctl to PATH
 export PATH=$PWD/bin:$PATH
 
-# Install Istio with demo profile (includes all features)
+# Install Istio with demo profile (good defaults for testing)
 istioctl install --set profile=demo -y
 
 # For production, use a minimal profile
@@ -104,7 +104,7 @@ flowchart LR
 ```yaml
 # gateway.yaml
 # Exposes services to external traffic
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: app-gateway
@@ -135,7 +135,7 @@ spec:
 ```yaml
 # virtual-service.yaml
 # Defines routing rules for traffic
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: user-service
@@ -187,7 +187,7 @@ spec:
 ```yaml
 # destination-rule.yaml
 # Defines policies applied after routing
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: user-service
@@ -247,7 +247,7 @@ flowchart LR
 ```yaml
 # peer-authentication.yaml
 # Require mTLS for all services in namespace
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -258,7 +258,7 @@ spec:
 
 ---
 # Mesh-wide mTLS policy
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -273,7 +273,7 @@ spec:
 ```yaml
 # authorization-policy.yaml
 # Control which services can communicate
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: user-service-policy
@@ -300,7 +300,7 @@ spec:
 
 ---
 # Deny all other traffic by default
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: deny-all
@@ -372,6 +372,9 @@ export PATH=$PATH:$HOME/.linkerd2/bin
 # Validate cluster
 linkerd check --pre
 
+# Install Gateway API CRDs if your cluster does not already have a supported version
+kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.1/standard-install.yaml
+
 # Install Linkerd CRDs
 linkerd install --crds | kubectl apply -f -
 
@@ -395,64 +398,66 @@ kubectl get deploy user-service -o yaml | linkerd inject - | kubectl apply -f -
 kubectl annotate namespace default linkerd.io/inject=enabled
 ```
 
-### Traffic Split for Canary
+### HTTPRoute for Canary
 
 ```yaml
-# traffic-split.yaml
-# Linkerd TrafficSplit for canary deployments
-apiVersion: split.smi-spec.io/v1alpha1
-kind: TrafficSplit
+# http-route.yaml
+# Linkerd HTTPRoute for canary deployments
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
 metadata:
-  name: user-service-split
+  name: user-service-route
   namespace: default
 spec:
-  service: user-service
-  backends:
-  - service: user-service-v1
-    weight: 900m  # 90%
-  - service: user-service-v2
-    weight: 100m  # 10%
+  parentRefs:
+  - name: user-service
+    kind: Service
+    group: core
+    port: 8080
+  rules:
+  - backendRefs:
+    - name: user-service-v1
+      port: 8080
+      weight: 90
+    - name: user-service-v2
+      port: 8080
+      weight: 10
 ```
 
-### Service Profile for Retries and Timeouts
+### HTTPRoute for Retries and Timeouts
 
 ```yaml
-# service-profile.yaml
-# Linkerd ServiceProfile for route configuration
-apiVersion: linkerd.io/v1alpha2
-kind: ServiceProfile
+# http-route-retries.yaml
+# Linkerd HTTPRoute for route configuration
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
 metadata:
-  name: user-service.default.svc.cluster.local
+  name: user-service-retries
   namespace: default
+  annotations:
+    retry.linkerd.io/http: 5xx
+    retry.linkerd.io/limit: "2"
+    retry.linkerd.io/timeout: 2s
+    timeout.linkerd.io/request: 5s
 spec:
-  routes:
-  - name: GET /api/users/{id}
-    condition:
-      method: GET
-      pathRegex: /api/users/[^/]+
-    responseClasses:
-    - condition:
-        status:
-          min: 500
-          max: 599
-      isFailure: true
-    # Retry configuration
-    isRetryable: true
-  - name: POST /api/users
-    condition:
-      method: POST
-      pathRegex: /api/users
-    # Non-idempotent, don't retry
-    isRetryable: false
-    # Custom timeout
-    timeout: 5s
+  parentRefs:
+  - name: user-service
+    kind: Service
+    group: core
+    port: 8080
+  rules:
+  - matches:
+    - method: GET
+      path:
+        type: PathPrefix
+        value: /api/users/
 ```
 
 ### Authorization Policy
 
 ```yaml
-# server-authorization.yaml
-# Linkerd ServerAuthorization for access control
+# authorization-policy.yaml
+# Linkerd AuthorizationPolicy for access control
 apiVersion: policy.linkerd.io/v1beta1
 kind: Server
 metadata:
@@ -466,22 +471,33 @@ spec:
   proxyProtocol: HTTP/2
 
 ---
-apiVersion: policy.linkerd.io/v1beta1
-kind: ServerAuthorization
+apiVersion: policy.linkerd.io/v1alpha1
+kind: AuthorizationPolicy
 metadata:
   name: user-service-authz
   namespace: default
 spec:
-  server:
+  targetRef:
+    group: policy.linkerd.io
+    kind: Server
     name: user-service
-  client:
-    # Only allow requests from these service accounts
-    meshTLS:
-      serviceAccounts:
-      - name: api-gateway
-        namespace: default
-      - name: order-service
-        namespace: default
+  requiredAuthenticationRefs:
+  - name: user-service-clients
+    kind: MeshTLSAuthentication
+    group: policy.linkerd.io
+
+---
+apiVersion: policy.linkerd.io/v1alpha1
+kind: MeshTLSAuthentication
+metadata:
+  name: user-service-clients
+  namespace: default
+spec:
+  identityRefs:
+  - kind: ServiceAccount
+    name: api-gateway
+  - kind: ServiceAccount
+    name: order-service
 ```
 
 ---
@@ -510,6 +526,14 @@ REQUEST_LATENCY = Histogram(
     'HTTP request latency',
     ['method', 'endpoint']
 )
+
+async def check_database() -> bool:
+    """Replace with a real database health check."""
+    return True
+
+async def check_cache() -> bool:
+    """Replace with a real cache health check."""
+    return True
 
 @app.get("/health")
 async def health():
@@ -558,7 +582,7 @@ import httpx
 
 async def wait_for_sidecar(max_retries: int = 30, delay: float = 1.0):
     """
-    Wait for Envoy/Linkerd sidecar to be ready.
+    Wait for the Istio Envoy sidecar to be ready.
     The sidecar needs to be ready before making outbound requests.
     """
     for i in range(max_retries):
@@ -593,6 +617,7 @@ async def startup():
 # Propagate tracing headers through the mesh
 from fastapi import Request
 from contextvars import ContextVar
+import httpx
 
 # Headers that should be propagated for distributed tracing
 PROPAGATION_HEADERS = [
@@ -643,21 +668,37 @@ async def call_service(url: str, method: str = "GET", **kwargs):
 
 ```yaml
 # jaeger.yaml
-# Deploy Jaeger for tracing (included in Istio demo profile)
+# Configure Istio to send traces to Jaeger
+# Deploy the Jaeger sample addon before applying this configuration:
+# kubectl apply -f samples/addons/jaeger.yaml
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
   meshConfig:
     enableTracing: true
     defaultConfig:
-      tracing:
-        sampling: 100.0  # Sample all traces (reduce in production)
-        zipkin:
-          address: jaeger-collector.istio-system:9411
+      tracing: {}
+    extensionProviders:
+    - name: jaeger
+      opentelemetry:
+        service: jaeger-collector.istio-system.svc.cluster.local
+        port: 4317
+
+---
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
+metadata:
+  name: mesh-default
+  namespace: istio-system
+spec:
+  tracing:
+  - providers:
+    - name: jaeger
+    randomSamplingPercentage: 100.00  # Sample all traces (reduce in production)
 
 ---
 # Access Jaeger UI
-# kubectl port-forward -n istio-system svc/tracing 16686:80
+# istioctl dashboard jaeger
 ```
 
 ### Prometheus Metrics
@@ -682,7 +723,8 @@ spec:
 ### Grafana Dashboards
 
 ```bash
-# Port forward to Grafana (included in Istio demo)
+# Install the sample Grafana addon, then port forward to Grafana
+kubectl apply -f samples/addons/grafana.yaml
 kubectl port-forward -n istio-system svc/grafana 3000:3000
 
 # Access at http://localhost:3000
@@ -697,7 +739,7 @@ kubectl port-forward -n istio-system svc/grafana 3000:3000
 ```yaml
 # telemetry.yaml
 # Istio Telemetry for custom metrics
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: mesh-metrics
@@ -779,7 +821,7 @@ spec:
 ```yaml
 # blue-green.yaml
 # VirtualService for blue-green deployment
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: user-service
@@ -799,7 +841,7 @@ spec:
       weight: 0
 
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: user-service
@@ -856,7 +898,7 @@ spec:
 ---
 # Fix: mTLS connection failures
 # Check PeerAuthentication mode matches across services
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: user-service
@@ -879,7 +921,7 @@ spec:
 # This helps debug issues during rollout
 
 # Install Kiali for visualization
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/kiali.yaml
+kubectl apply -f samples/addons/kiali.yaml
 
 # Access Kiali
 istioctl dashboard kiali
@@ -889,7 +931,7 @@ istioctl dashboard kiali
 
 ```yaml
 # Phase 1: Permissive mode (allow both)
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
