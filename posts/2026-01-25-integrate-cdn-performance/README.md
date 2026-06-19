@@ -65,31 +65,40 @@ curl -I https://yourdomain.com
 # Look for: cf-ray header (indicates CloudFlare is active)
 ```
 
-### Page Rules for Caching
+### Cache Rules for Caching
 
 ```yaml
-# CloudFlare Page Rules (via dashboard or API)
+# CloudFlare Cache Rules (via dashboard, API, or Terraform)
 
 # Cache everything for static assets
 rule_1:
-  url: "*yourdomain.com/static/*"
-  actions:
-    cache_level: "cache_everything"
-    edge_cache_ttl: 2592000  # 30 days
-    browser_cache_ttl: 604800  # 7 days
+  expression: '(http.host eq "yourdomain.com" and starts_with(http.request.uri.path, "/static/"))'
+  action: "set_cache_settings"
+  action_parameters:
+    cache: true
+    edge_ttl:
+      mode: "override_origin"
+      default: 2592000  # 30 days
+    browser_ttl:
+      mode: "override_origin"
+      default: 604800  # 7 days
 
 # Cache API responses for public data
 rule_2:
-  url: "*yourdomain.com/api/public/*"
-  actions:
-    cache_level: "cache_everything"
-    edge_cache_ttl: 300  # 5 minutes
+  expression: '(http.host eq "yourdomain.com" and starts_with(http.request.uri.path, "/api/public/"))'
+  action: "set_cache_settings"
+  action_parameters:
+    cache: true
+    edge_ttl:
+      mode: "override_origin"
+      default: 300  # 5 minutes
 
 # Bypass cache for authenticated routes
 rule_3:
-  url: "*yourdomain.com/api/user/*"
-  actions:
-    cache_level: "bypass"
+  expression: '(http.host eq "yourdomain.com" and starts_with(http.request.uri.path, "/api/user/"))'
+  action: "set_cache_settings"
+  action_parameters:
+    cache: false
 ```
 
 ### CloudFlare API for Cache Invalidation
@@ -121,7 +130,7 @@ class CloudFlareCache:
         return response.json()
 
     def purge_by_prefix(self, prefixes: List[str]) -> dict:
-        """Purge URLs matching prefixes (Enterprise only)"""
+        """Purge URLs matching prefixes"""
         response = requests.post(
             f"{self.base_url}/purge_cache",
             headers=self.headers,
@@ -130,7 +139,7 @@ class CloudFlareCache:
         return response.json()
 
     def purge_by_tags(self, tags: List[str]) -> dict:
-        """Purge by cache tags (Enterprise only)"""
+        """Purge by Cache-Tag response headers"""
         response = requests.post(
             f"{self.base_url}/purge_cache",
             headers=self.headers,
@@ -200,9 +209,8 @@ resource "aws_cloudfront_distribution" "main" {
     cached_methods   = ["GET", "HEAD"]
     target_origin_id = "main-origin"
 
-    # Use origin cache headers
-    cache_policy_id          = aws_cloudfront_cache_policy.default.id
-    origin_request_policy_id = aws_cloudfront_origin_request_policy.default.id
+    # Use origin cache headers within this policy's TTL bounds
+    cache_policy_id = aws_cloudfront_cache_policy.default.id
 
     viewer_protocol_policy = "redirect-to-https"
     compress               = true
@@ -228,8 +236,7 @@ resource "aws_cloudfront_distribution" "main" {
     cached_methods   = ["GET", "HEAD"]
     target_origin_id = "main-origin"
 
-    cache_policy_id          = aws_cloudfront_cache_policy.api.id
-    origin_request_policy_id = aws_cloudfront_origin_request_policy.api.id
+    cache_policy_id = aws_cloudfront_cache_policy.api.id
 
     viewer_protocol_policy = "redirect-to-https"
     compress               = true
@@ -245,6 +252,26 @@ resource "aws_cloudfront_distribution" "main" {
     acm_certificate_arn      = aws_acm_certificate.main.arn
     ssl_support_method       = "sni-only"
     minimum_protocol_version = "TLSv1.2_2021"
+  }
+}
+
+# Default cache policy
+resource "aws_cloudfront_cache_policy" "default" {
+  name        = "default-cache"
+  min_ttl     = 0
+  default_ttl = 3600
+  max_ttl     = 86400
+
+  parameters_in_cache_key_and_forwarded_to_origin {
+    cookies_config {
+      cookie_behavior = "none"
+    }
+    headers_config {
+      header_behavior = "none"
+    }
+    query_strings_config {
+      query_string_behavior = "all"
+    }
   }
 }
 
@@ -368,12 +395,11 @@ cf.wait_for_invalidation(inv_id)
 
 ## Setting Cache Headers on Your Origin
 
-The CDN respects cache headers from your origin server. Set them correctly:
+Many CDN configurations use cache headers from your origin server to determine TTLs. Set them correctly:
 
 ```python
 # cache_headers.py
-from flask import Flask, send_from_directory, make_response
-from datetime import datetime, timedelta
+from flask import Flask, jsonify, send_from_directory, make_response
 
 app = Flask(__name__)
 
@@ -479,6 +505,8 @@ app.get('/api/user/profile',
 
 ```javascript
 // webpack.config.js
+const MiniCssExtractPlugin = require('mini-css-extract-plugin');
+
 module.exports = {
   output: {
     // Include content hash in filename
@@ -552,8 +580,8 @@ def cdn_cacheable(max_age: int = 300, vary_on: list = None):
             if vary_on:
                 response.headers['Vary'] = ', '.join(vary_on)
 
-            # Surrogate key for targeted invalidation
-            response.headers['Surrogate-Key'] = f.cache_tags if hasattr(f, 'cache_tags') else f.__name__
+            # Cache-Tag header for targeted Cloudflare invalidation
+            response.headers['Cache-Tag'] = getattr(wrapper, 'cache_tags', f.__name__)
 
             return response
         return wrapper
