@@ -27,7 +27,7 @@ flowchart TD
 
 ### Common Error Messages
 
-```typescript
+```tsx
 // Error: Cannot find namespace 'React'
 const element: React.ReactElement = <div />;
 
@@ -55,13 +55,14 @@ npm search @types/your-package
 
 ### Verify Installation
 
+package.json should include:
+
 ```json
-// package.json should include
 {
     "devDependencies": {
-        "@types/node": "^20.0.0",
-        "@types/react": "^18.0.0",
-        "@types/express": "^4.17.0"
+        "@types/node": "^26.0.0",
+        "@types/react": "^19.0.0",
+        "@types/express": "^5.0.0"
     }
 }
 ```
@@ -72,28 +73,32 @@ Your TypeScript configuration might not be finding the type definitions.
 
 ### Check typeRoots and types
 
-```json
+```jsonc
 // tsconfig.json
 {
     "compilerOptions": {
         // Specify where TypeScript looks for type definitions
-        // Default is node_modules/@types
+        // By default, TypeScript includes visible node_modules/@types packages
+        // Use typeRoots only for directories that contain type packages
         "typeRoots": [
             "./node_modules/@types",
-            "./src/types"
+            "./src/type-packages"
         ],
 
         // Specify which type packages to include
         // If omitted, all packages in typeRoots are included
         // If specified, ONLY these packages are included
         "types": ["node", "react", "jest"]
-    }
+    },
+
+    // Include direct .d.ts files, such as src/types/global.d.ts
+    "include": ["src", "src/types/**/*.d.ts"]
 }
 ```
 
 ### Common Configuration Mistake
 
-```json
+```jsonc
 // WRONG: This limits types to only "jest"
 {
     "compilerOptions": {
@@ -113,16 +118,16 @@ Your TypeScript configuration might not be finding the type definitions.
 
 ## Solution 3: Add Triple-Slash Directives
 
-For some type definitions, you need explicit references.
+For declaration files, you sometimes need explicit references.
 
 ```typescript
-// At the top of your file
+// At the top of a declaration file
 /// <reference types="node" />
 /// <reference types="react" />
 
-// Now these work
-const buffer: NodeJS.ArrayBufferView = new Uint8Array();
-const element: React.ReactNode = null;
+// Now these types are available
+type BufferView = NodeJS.ArrayBufferView;
+type OptionalReactNode = React.ReactNode | null;
 ```
 
 ### When to Use Triple-Slash Directives
@@ -231,27 +236,33 @@ const env: MyApp.Environment = 'production';
 
 React projects often encounter JSX namespace errors.
 
-```typescript
+```tsx
 // Error: Cannot find namespace 'JSX'
 const element: JSX.Element = <div />;
 ```
 
 ### Fix for React 17+
 
-```json
+```jsonc
 // tsconfig.json
 {
     "compilerOptions": {
-        "jsx": "react-jsx",
-        // or for development with fast refresh
-        "jsx": "react-jsxdev"
+        "jsx": "react-jsx"
+        // Use "react-jsxdev" instead for development builds
     }
 }
 ```
 
+```tsx
+// With React 19 types, use the React-scoped JSX namespace
+import type * as React from 'react';
+
+const element: React.JSX.Element = <div />;
+```
+
 ### Fix for Older React Versions
 
-```json
+```jsonc
 // tsconfig.json
 {
     "compilerOptions": {
@@ -260,26 +271,25 @@ const element: JSX.Element = <div />;
 }
 ```
 
-```typescript
+```tsx
 // Must import React in every file using JSX
 import React from 'react';
 
-const element: JSX.Element = <div />;
+const element: React.ReactElement = <div />;
 ```
 
 ## Solution 7: Module Resolution Issues
 
 Namespace errors can stem from incorrect module resolution.
 
-```json
+```jsonc
 // tsconfig.json
 {
     "compilerOptions": {
-        // For Node.js projects
-        "moduleResolution": "node",
+        // For modern Node.js projects
+        "moduleResolution": "node16",
 
-        // For modern bundlers (Vite, esbuild)
-        "moduleResolution": "bundler",
+        // Use "bundler" instead for modern bundlers (Vite, esbuild)
 
         // Base URL for non-relative imports
         "baseUrl": ".",
@@ -321,9 +331,9 @@ declare global {
 export {};
 
 // Step 3: Use in your code
-import { Request, Response } from 'express';
+import { Request, Response, NextFunction } from 'express';
 
-function authMiddleware(req: Request, res: Response, next: Function) {
+function authMiddleware(req: Request, res: Response, next: NextFunction) {
     req.user = { id: '123', role: 'admin' };
     next();
 }
@@ -338,17 +348,24 @@ function authMiddleware(req: Request, res: Response, next: Function) {
 // npm install --save-dev @types/node
 
 // Solution 2: Add to tsconfig
+```
+
+```jsonc
+// tsconfig.json
 {
     "compilerOptions": {
         "types": ["node"]
     }
 }
+```
 
+```typescript
 // Now these work
 const timeout: NodeJS.Timeout = setTimeout(() => {}, 1000);
 const processEnv: NodeJS.ProcessEnv = process.env;
 
 // If you need specific Node.js globals
+// src/types/node-env.d.ts
 declare global {
     namespace NodeJS {
         interface ProcessEnv {
@@ -358,6 +375,8 @@ declare global {
         }
     }
 }
+
+export {};
 ```
 
 ### Scenario 3: Third-Party Library Without Types
