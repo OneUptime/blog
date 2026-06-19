@@ -70,8 +70,6 @@ class GrpcClient:
         self.channel = grpc.insecure_channel(
             address,
             options=[
-                # Max number of concurrent streams per connection
-                ('grpc.max_concurrent_streams', 100),
                 # Enable keepalive pings to detect dead connections
                 ('grpc.keepalive_time_ms', 30000),
                 # Timeout for keepalive ping response
@@ -101,11 +99,11 @@ for data in items:
 package main
 
 import (
-    "context"
     "sync"
     "time"
 
     "google.golang.org/grpc"
+    "google.golang.org/grpc/credentials/insecure"
     "google.golang.org/grpc/keepalive"
 )
 
@@ -126,6 +124,7 @@ func NewConnectionPool() *ConnectionPool {
     }
 
     opts := []grpc.DialOption{
+        grpc.WithTransportCredentials(insecure.NewCredentials()),
         grpc.WithKeepaliveParams(kaParams),
         grpc.WithDefaultCallOptions(
             // Set maximum message sizes
@@ -154,7 +153,7 @@ func NewConnectionPool() *ConnectionPool {
 }
 
 // GetConnection returns an existing connection or creates a new one
-func (p *ConnectionPool) GetConnection(ctx context.Context, addr string) (*grpc.ClientConn, error) {
+func (p *ConnectionPool) GetConnection(addr string) (*grpc.ClientConn, error) {
     // Check for existing connection
     p.mu.RLock()
     if conn, ok := p.conns[addr]; ok {
@@ -172,7 +171,7 @@ func (p *ConnectionPool) GetConnection(ctx context.Context, addr string) (*grpc.
         return conn, nil
     }
 
-    conn, err := grpc.DialContext(ctx, addr, p.opts...)
+    conn, err := grpc.NewClient(addr, p.opts...)
     if err != nil {
         return nil, err
     }
@@ -202,15 +201,14 @@ Load balancers and proxies often close idle connections. Configure keepalive to 
 
 ```python
 import grpc
+from concurrent import futures
 
 # Server-side keepalive configuration
 server_options = [
-    # Minimum time between keepalive pings from client
+    # Send server keepalive pings after this much idle time
     ('grpc.keepalive_time_ms', 30000),
     # Time to wait for keepalive response
     ('grpc.keepalive_timeout_ms', 10000),
-    # Allow keepalive without active RPCs
-    ('grpc.keepalive_permit_without_calls', True),
     # Minimum time between pings from client (enforce rate limiting)
     ('grpc.http2.min_ping_interval_without_data_ms', 30000),
     # Maximum connection idle time before closing
@@ -269,25 +267,22 @@ package main
 
 import (
     "google.golang.org/grpc"
-    "google.golang.org/grpc/resolver"
+    "google.golang.org/grpc/credentials/insecure"
 )
 
 // Configure client-side load balancing
-func createLoadBalancedChannel(addresses []string) (*grpc.ClientConn, error) {
-    // Register a static resolver for the addresses
-    resolver.SetDefaultScheme("dns")
-
+func createLoadBalancedChannel() (*grpc.ClientConn, error) {
     // Use round-robin load balancing policy
-    conn, err := grpc.Dial(
+    conn, err := grpc.NewClient(
         // Use DNS resolver for service discovery
         "dns:///my-grpc-service.example.com:50051",
         grpc.WithDefaultServiceConfig(`{
-            "loadBalancingPolicy": "round_robin",
+            "loadBalancingConfig": [{"round_robin": {}}],
             "healthCheckConfig": {
-                "serviceName": "my.service.Health"
+                "serviceName": "my.service.MyService"
             }
         }`),
-        grpc.WithInsecure(),
+        grpc.WithTransportCredentials(insecure.NewCredentials()),
     )
 
     return conn, err
@@ -317,16 +312,13 @@ channel = grpc.insecure_channel(
     # Use DNS resolver with multiple addresses
     'dns:///my-service.example.com:50051',
     options=[
-        # Enable round-robin load balancing
-        ('grpc.lb_policy_name', 'round_robin'),
-        # Enable health checking
+        # Enable retries and use a default service config
         ('grpc.enable_retries', True),
-        # Service config with retry policy
         ('grpc.service_config', '''
         {
-            "loadBalancingPolicy": "round_robin",
+            "loadBalancingConfig": [{"round_robin": {}}],
             "healthCheckConfig": {
-                "serviceName": "grpc.health.v1.Health"
+                "serviceName": "my.service.MyService"
             }
         }
         '''),
@@ -483,7 +475,6 @@ package main
 
 import (
     "context"
-    "io"
 
     pb "myservice/proto"
 )
@@ -552,7 +543,7 @@ func (c *client) SendDataStream(ctx context.Context, items []*pb.DataItem) error
     }
 
     // Close send side and get response
-    response, err := stream.CloseAndRecv()
+    _, err = stream.CloseAndRecv()
     if err != nil {
         return err
     }
@@ -586,26 +577,28 @@ grpc_latency = Histogram(
     buckets=[.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10]
 )
 
-def metrics_interceptor(continuation, call_details, request):
-    """Client interceptor for collecting metrics"""
-    method = call_details.method
-    start_time = time.time()
+class MetricsInterceptor(grpc.UnaryUnaryClientInterceptor):
+    """Client interceptor for collecting unary-unary metrics"""
 
-    try:
-        response = continuation(call_details, request)
-        grpc_requests.labels(method=method, status='OK').inc()
-        return response
-    except grpc.RpcError as e:
-        grpc_requests.labels(method=method, status=e.code().name).inc()
-        raise
-    finally:
-        duration = time.time() - start_time
-        grpc_latency.labels(method=method).observe(duration)
+    def intercept_unary_unary(self, continuation, call_details, request):
+        method = call_details.method
+        start_time = time.time()
+
+        try:
+            response = continuation(call_details, request)
+            grpc_requests.labels(method=method, status='OK').inc()
+            return response
+        except grpc.RpcError as e:
+            grpc_requests.labels(method=method, status=e.code().name).inc()
+            raise
+        finally:
+            duration = time.time() - start_time
+            grpc_latency.labels(method=method).observe(duration)
 
 # Apply interceptor to channel
 channel = grpc.intercept_channel(
     grpc.insecure_channel('localhost:50051'),
-    grpc.unary_unary_rpc_method_handler(metrics_interceptor)
+    MetricsInterceptor()
 )
 ```
 
