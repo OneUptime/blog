@@ -8,11 +8,11 @@ Description: Learn how to diagnose and fix common Envoy proxy issues in Istio, f
 
 ---
 
-Envoy is the data plane of Istio. Every request in your mesh flows through Envoy sidecars, which makes proxy issues particularly frustrating when they occur. This guide covers the most common Envoy problems in Istio and how to fix them.
+Envoy is the data plane of Istio sidecar mode. Every request in a sidecar-based mesh flows through Envoy sidecars, which makes proxy issues particularly frustrating when they occur. This guide covers the most common Envoy problems in Istio and how to fix them.
 
 ## How Envoy Works in Istio
 
-Before diving into fixes, understand the architecture. Istio injects an Envoy sidecar into each pod, intercepting all inbound and outbound traffic.
+Before diving into fixes, understand the architecture. In sidecar mode, Istio injects an Envoy sidecar into each pod, intercepting inbound and outbound traffic.
 
 ```mermaid
 flowchart TB
@@ -31,7 +31,7 @@ flowchart TB
     Istiod[Istiod Control Plane] -.->|xDS Config| Envoy
 ```
 
-The istio-init container sets up iptables rules to redirect traffic through Envoy. Istiod pushes configuration to Envoy via the xDS protocol.
+By default, the istio-init container sets up traffic redirection rules for Envoy. If Istio CNI is enabled, the CNI node agent performs this redirection setup instead of using the privileged init container. Istiod pushes configuration to Envoy via the xDS protocol.
 
 ## Sidecar Injection Issues
 
@@ -53,13 +53,13 @@ kubectl label namespace default istio-injection=enabled
 kubectl rollout restart deployment -n default
 ```
 
-For individual pods, check the annotations.
+For individual pods, check the labels.
 
 ```yaml
 apiVersion: v1
 kind: Pod
 metadata:
-  annotations:
+  labels:
     # Disable injection for this pod
     sidecar.istio.io/inject: "false"
 ```
@@ -98,7 +98,7 @@ istioctl proxy-status | grep -v SYNCED
 If proxies show as NOT SENT or STALE, check Istiod connectivity.
 
 ```bash
-# From inside a pod, test connection to Istiod
+# From inside a pod, inspect the local Envoy config dump
 kubectl exec -it <pod-name> -c istio-proxy -- \
   curl -s localhost:15000/config_dump | head -20
 
@@ -127,8 +127,8 @@ Common conflict scenarios include multiple VirtualServices for the same host.
 # Bad: Two VirtualServices for same host in different namespaces
 # They will merge unpredictably
 
-# Good: Single VirtualService per host, or use explicit ordering
-apiVersion: networking.istio.io/v1beta1
+# Good: Single VirtualService per mesh host, or gateway-bound fragments with non-overlapping matches
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-routes
@@ -162,13 +162,13 @@ This is one of the most common Envoy issues. It typically means Envoy cannot con
 kubectl logs <pod-name> -c istio-proxy | grep -i "503"
 
 # Common response flags:
-# UC = Upstream connection failure
-# UF = Upstream connection failure (TLS)
+# UF = Upstream connection failure
+# UC = Upstream connection termination
 # NR = No route configured
 # UH = No healthy upstream
 ```
 
-For UC (Upstream Connection) errors, check the destination service.
+For UF (Upstream Connection Failure) errors, check the destination service.
 
 ```bash
 # Verify service endpoints
@@ -199,7 +199,7 @@ Requests time out even when the destination service responds quickly.
 Check timeout configuration in the VirtualService.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-vs
@@ -219,7 +219,7 @@ spec:
 Also check DestinationRule for connection pool settings.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: api-dr
@@ -243,8 +243,8 @@ spec:
 Services cannot communicate due to mTLS misconfiguration.
 
 ```bash
-# Check mTLS status between services
-istioctl authn tls-check <pod-name> <service-name>
+# Describe the pod and detect mTLS conflicts
+istioctl x describe pod <pod-name>
 
 # View the TLS mode for a namespace
 kubectl get peerauthentication -A
@@ -253,7 +253,7 @@ kubectl get peerauthentication -A
 If you see "CONFLICT" or handshake errors, align the PeerAuthentication policy.
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -266,7 +266,7 @@ spec:
 For services that cannot use mTLS (external databases, legacy services), exclude them.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: external-db
@@ -312,7 +312,7 @@ kubectl exec -it <pod-name> -c istio-proxy -- \
 Tune the connection pool settings.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: high-traffic-service
@@ -359,7 +359,7 @@ spec:
 Reduce config size by limiting the scope of sidecar configuration.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: limit-egress
