@@ -69,7 +69,7 @@ class QueryCache {
   }
 
   async set(key, value, ttl = this.defaultTTL) {
-    await redis.setex(key, ttl, JSON.stringify(value));
+    await redis.set(key, JSON.stringify(value), 'EX', ttl);
   }
 
   async delete(key) {
@@ -77,9 +77,15 @@ class QueryCache {
   }
 
   async deletePattern(pattern) {
-    const keys = await redis.keys(`${this.prefix}${pattern}`);
-    if (keys.length > 0) {
-      await redis.del(...keys);
+    const stream = redis.scanStream({
+      match: `${this.prefix}${pattern}`,
+      count: 100
+    });
+
+    for await (const keys of stream) {
+      if (keys.length > 0) {
+        await redis.del(...keys);
+      }
     }
   }
 }
@@ -172,7 +178,7 @@ class QueryCache:
     def set(self, key: str, value: Any, ttl: int = None) -> None:
         """Cache result with TTL."""
         ttl = ttl or self.default_ttl
-        redis_client.setex(key, ttl, json.dumps(value))
+        redis_client.set(key, json.dumps(value), ex=ttl)
 
     def delete(self, key: str) -> None:
         """Delete cached result."""
@@ -180,7 +186,7 @@ class QueryCache:
 
     def delete_pattern(self, pattern: str) -> int:
         """Delete all keys matching pattern."""
-        keys = redis_client.keys(f'{self.prefix}{pattern}')
+        keys = list(redis_client.scan_iter(match=f'{self.prefix}{pattern}', count=100))
         if keys:
             return redis_client.delete(*keys)
         return 0
@@ -261,7 +267,7 @@ class TaggedQueryCache {
     const pipeline = redis.pipeline();
 
     // Store the value
-    pipeline.setex(key, ttl, JSON.stringify(value));
+    pipeline.set(key, JSON.stringify(value), 'EX', ttl);
 
     // Associate key with tags
     for (const tag of tags) {
@@ -326,6 +332,10 @@ async function updateProduct(productId, data) {
     [data.name, data.price, productId]
   );
 
+  if (product.rows.length === 0) {
+    return null;
+  }
+
   // Invalidate related caches
   await taggedCache.invalidateByTags([
     'products',
@@ -376,7 +386,7 @@ def get_products_versioned(category: str):
     products = fetch_products_from_db(category)
 
     # Cache with versioned key
-    redis_client.setex(cache_key, 600, json.dumps(products))
+    redis_client.set(cache_key, json.dumps(products), ex=600)
 
     return products
 
@@ -411,7 +421,7 @@ class WriteThroughCache {
 
     if (result.rows.length > 0) {
       // Populate cache
-      await redis.setex(cacheKey, 3600, JSON.stringify(result.rows[0]));
+      await redis.set(cacheKey, JSON.stringify(result.rows[0]), 'EX', 3600);
       return result.rows[0];
     }
 
@@ -428,7 +438,7 @@ class WriteThroughCache {
     if (result.rows.length > 0) {
       // Update cache immediately (write-through)
       const cacheKey = `product:${productId}`;
-      await redis.setex(cacheKey, 3600, JSON.stringify(result.rows[0]));
+      await redis.set(cacheKey, JSON.stringify(result.rows[0]), 'EX', 3600);
 
       // Invalidate related caches
       await this.invalidateRelatedCaches(result.rows[0]);
@@ -508,7 +518,7 @@ class MultiLevelCache {
     this.setL1(key, value, l1TTL);
 
     // Set in L2
-    await this.l2.setex(key, l2TTL, JSON.stringify(value));
+    await this.l2.set(key, JSON.stringify(value), 'EX', l2TTL);
   }
 
   setL1(key, value, ttl = this.l1TTL) {
