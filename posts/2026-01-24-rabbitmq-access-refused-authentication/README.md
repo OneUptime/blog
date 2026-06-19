@@ -195,7 +195,8 @@ flowchart LR
         O1[Declare Queue] --> C
         O2[Delete Exchange] --> C
         O3[Publish Message] --> W
-        O4[Bind Queue] --> R
+        O4[Bind Queue] --> W
+        O4 --> R
         O5[Consume Messages] --> R
     end
 ```
@@ -245,13 +246,11 @@ RabbitMQ supports multiple authentication mechanisms. Ensure client and server m
 **Check enabled auth mechanisms:**
 
 ```bash
-# List authentication backends
-sudo rabbitmqctl list_auth_mechanism_schemes
+# Inspect the effective RabbitMQ configuration
+sudo rabbitmq-diagnostics environment | grep auth_mechanisms
 
 # Example output:
-# PLAIN
-# AMQPLAIN
-# EXTERNAL
+#       {auth_mechanisms,['PLAIN','AMQPLAIN']}
 ```
 
 **Configure authentication in RabbitMQ:**
@@ -276,13 +275,11 @@ auth_backends.1 = internal
 ```python
 import pika
 
-# Explicitly specify PLAIN authentication
+# PlainCredentials uses the PLAIN mechanism when the broker offers it
 credentials = pika.PlainCredentials('myapp', 'mypassword')
 parameters = pika.ConnectionParameters(
     host='localhost',
-    credentials=credentials,
-    # Force PLAIN mechanism
-    authentication_mechanism_class=pika.spec.PLAIN
+    credentials=credentials
 )
 
 connection = pika.BlockingConnection(parameters)
@@ -474,7 +471,8 @@ sudo rabbitmqctl set_user_tags $USERNAME monitoring
 # Grant permissions on the vhost
 # Configure: can declare/delete queues and exchanges
 # Write: can publish messages
-# Read: can consume messages and bind queues
+# Read: can consume messages; queue bindings also need write on the queue
+# and read on the exchange
 sudo rabbitmqctl set_permissions -p $VHOST $USERNAME ".*" ".*" ".*"
 
 # Verify setup
