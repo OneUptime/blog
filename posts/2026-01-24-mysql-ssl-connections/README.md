@@ -43,14 +43,14 @@ SHOW VARIABLES LIKE '%ssl%';
 -- Check SSL status
 SHOW STATUS LIKE 'Ssl%';
 
--- Check current connection encryption
+-- Check SSL requirements for the authenticated account
 SELECT
     user,
     host,
     ssl_type,
     ssl_cipher
 FROM mysql.user
-WHERE user = CURRENT_USER();
+WHERE CONCAT(user, '@', host) = CURRENT_USER();
 
 -- Verify current connection is using SSL
 SHOW STATUS LIKE 'Ssl_cipher';
@@ -58,9 +58,9 @@ SHOW STATUS LIKE 'Ssl_cipher';
 
 ## Generate SSL Certificates
 
-### Option 1: Use mysql_ssl_rsa_setup (Recommended)
+### Option 1: Use mysql_ssl_rsa_setup (MySQL 5.7 and older MySQL 8.0 releases)
 
-MySQL 5.7+ includes a utility to generate certificates automatically:
+MySQL 5.7 and MySQL 8.0 releases before 8.0.34 include a utility to generate certificates automatically. In MySQL 8.0.34 this utility is deprecated, and in MySQL 8.4 it is removed; use MySQL's automatic certificate generation or OpenSSL instead on those versions.
 
 ```bash
 # Generate SSL certificates
@@ -77,8 +77,8 @@ mysql_ssl_rsa_setup --datadir=/var/lib/mysql
 
 # Set proper permissions
 chown mysql:mysql /var/lib/mysql/*.pem
+chmod 644 /var/lib/mysql/ca.pem /var/lib/mysql/*-cert.pem
 chmod 600 /var/lib/mysql/*-key.pem
-chmod 644 /var/lib/mysql/*.pem
 ```
 
 ### Option 2: Generate Certificates with OpenSSL
@@ -116,11 +116,17 @@ openssl req -newkey rsa:4096 -nodes \
     -out server-req.pem \
     -subj "/C=$COUNTRY/ST=$STATE/L=$CITY/O=$ORG/CN=$CN_SERVER"
 
+cat > server-ext.cnf <<EOF
+subjectAltName=DNS:$CN_SERVER,DNS:db.example.com
+extendedKeyUsage=serverAuth
+EOF
+
 openssl x509 -req -days $DAYS_VALID \
     -in server-req.pem \
     -CA ca.pem \
     -CAkey ca-key.pem \
     -CAcreateserial \
+    -extfile server-ext.cnf \
     -out server-cert.pem
 
 # Generate client certificate
@@ -129,20 +135,25 @@ openssl req -newkey rsa:4096 -nodes \
     -out client-req.pem \
     -subj "/C=$COUNTRY/ST=$STATE/L=$CITY/O=$ORG/CN=$CN_CLIENT"
 
+cat > client-ext.cnf <<EOF
+extendedKeyUsage=clientAuth
+EOF
+
 openssl x509 -req -days $DAYS_VALID \
     -in client-req.pem \
     -CA ca.pem \
     -CAkey ca-key.pem \
     -CAcreateserial \
+    -extfile client-ext.cnf \
     -out client-cert.pem
 
 # Clean up request files
-rm -f server-req.pem client-req.pem
+rm -f server-req.pem client-req.pem server-ext.cnf client-ext.cnf
 
 # Set permissions
 chown mysql:mysql *.pem
+chmod 644 ca.pem *-cert.pem
 chmod 600 *-key.pem
-chmod 644 *.pem ca.pem *-cert.pem
 
 # Verify certificates
 echo "Verifying server certificate..."
@@ -174,11 +185,14 @@ require_secure_transport=ON
 # TLS version settings (MySQL 8.0+)
 tls_version=TLSv1.2,TLSv1.3
 
-# Cipher suite configuration (MySQL 8.0+)
+# Cipher configuration for TLSv1.2 and earlier
 ssl_cipher=ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES128-GCM-SHA256
 
-# For MySQL 5.7, use:
-# tls_version=TLSv1.1,TLSv1.2
+# Cipher suite configuration for TLSv1.3 (MySQL 8.0.16+)
+tls_ciphersuites=TLS_AES_256_GCM_SHA384:TLS_AES_128_GCM_SHA256
+
+# For MySQL 5.7, use TLSv1.2 where supported:
+# tls_version=TLSv1.2
 ```
 
 ### Restart MySQL and Verify
@@ -188,13 +202,16 @@ ssl_cipher=ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES128-GCM-SHA256
 systemctl restart mysql
 
 # Check SSL is enabled
-mysql -e "SHOW VARIABLES LIKE '%ssl%';"
+mysql -e "SHOW VARIABLES WHERE Variable_name IN ('ssl_ca', 'ssl_cert', 'ssl_key', 'tls_version');"
 
 # Expected output should show:
-# have_ssl: YES
 # ssl_ca: /etc/mysql/ssl/ca.pem
 # ssl_cert: /etc/mysql/ssl/server-cert.pem
 # ssl_key: /etc/mysql/ssl/server-key.pem
+# tls_version: TLSv1.2,TLSv1.3
+#
+# MySQL 8.0 and earlier may also show have_ssl=YES.
+# MySQL 8.4 removes the deprecated have_ssl variable.
 ```
 
 ## Configure SSL Requirements per User
@@ -314,6 +331,9 @@ config = {
     'ssl_verify_identity': True
 }
 
+connection = None
+cursor = None
+
 try:
     connection = mysql.connector.connect(**config)
 
@@ -326,8 +346,9 @@ try:
 except Error as e:
     print(f"Error connecting to MySQL: {e}")
 finally:
-    if connection.is_connected():
+    if cursor:
         cursor.close()
+    if connection and connection.is_connected():
         connection.close()
 ```
 
@@ -374,9 +395,7 @@ public class MySQLSSLConnection {
         Properties props = new Properties();
         props.setProperty("user", "app_user");
         props.setProperty("password", "secure_password");
-        props.setProperty("useSSL", "true");
-        props.setProperty("requireSSL", "true");
-        props.setProperty("verifyServerCertificate", "true");
+        props.setProperty("sslMode", "VERIFY_IDENTITY");
         props.setProperty("trustCertificateKeyStoreUrl",
             "file:/path/to/truststore.jks");
         props.setProperty("trustCertificateKeyStorePassword", "changeit");
