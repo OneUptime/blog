@@ -159,6 +159,13 @@ resource "kubernetes_stateful_set" "postgres" {
     }
 
     template {
+      metadata {
+        labels = {
+          "app.kubernetes.io/name"     = "postgres"
+          "app.kubernetes.io/instance" = var.service_name
+        }
+      }
+
       spec {
         container {
           name  = "postgres"
@@ -215,8 +222,8 @@ This script scaffolds a new service with all the basics in place.
 
 set -euo pipefail
 
-SERVICE_NAME=$1
-TEAM_NAME=$2
+SERVICE_NAME=${1:-}
+TEAM_NAME=${2:-}
 SERVICE_TYPE=${3:-"api"}  # api, worker, or frontend
 
 if [[ -z "$SERVICE_NAME" || -z "$TEAM_NAME" ]]; then
@@ -317,12 +324,17 @@ jobs:
         id: changes
         run: |
           # Find which services have changes
-          CHANGED=$(git diff --name-only HEAD~1 HEAD | \
+          BASE_SHA="${{ github.event.before }}"
+          if [[ "${BASE_SHA}" =~ ^0+$ ]]; then
+            BASE_SHA="$(git rev-list --max-parents=0 HEAD)"
+          fi
+
+          CHANGED=$(git diff --name-only "${BASE_SHA}" "${{ github.sha }}" | \
             grep '^services/' | \
             cut -d'/' -f2 | \
             sort -u | \
             jq -R -s -c 'split("\n") | map(select(. != ""))')
-          echo "services=${CHANGED}" >> $GITHUB_OUTPUT
+          echo "services=${CHANGED}" >> "$GITHUB_OUTPUT"
 
   deploy:
     needs: detect-changes
@@ -365,6 +377,9 @@ kind: GrafanaDashboard
 metadata:
   name: platform-metrics
 spec:
+  instanceSelector:
+    matchLabels:
+      dashboards: platform
   json: |
     {
       "title": "Platform Engineering Metrics",
@@ -374,7 +389,7 @@ spec:
           "type": "stat",
           "targets": [
             {
-              "expr": "histogram_quantile(0.50, rate(deployment_lead_time_seconds_bucket[7d]))"
+              "expr": "histogram_quantile(0.50, sum(rate(deployment_lead_time_seconds_bucket[7d])) by (le))"
             }
           ]
         },
