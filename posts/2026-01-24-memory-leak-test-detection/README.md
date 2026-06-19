@@ -86,8 +86,8 @@ class MemoryTracker {
     return {
       heapGrowth: last.heapUsed - first.heapUsed,
       heapGrowthMB: ((last.heapUsed - first.heapUsed) / 1024 / 1024).toFixed(2),
-      totalTests: this.snapshots.length,
-      averageGrowthPerTest: (last.heapUsed - first.heapUsed) / this.snapshots.length
+      totalSnapshots: this.snapshots.length,
+      averageGrowthPerSnapshot: (last.heapUsed - first.heapUsed) / (this.snapshots.length - 1)
     };
   }
 
@@ -107,7 +107,14 @@ module.exports = { MemoryTracker };
 
 ### Integrating with Jest
 
-Configure Jest to track memory across your test suite.
+Configure Jest to track memory across your test suite by loading the setup file after Jest installs its test globals.
+
+```javascript
+// jest.config.js
+module.exports = {
+  setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
+};
+```
 
 ```javascript
 // jest.setup.js
@@ -355,7 +362,7 @@ To analyze the snapshots, open Chrome DevTools, go to the Memory tab, and load t
 
 ### Using Jest's Memory Leak Detection
 
-Jest has a built-in flag to help detect memory leaks.
+Jest has an experimental built-in flag to help detect leaked test globals.
 
 ```bash
 # Run Jest with leak detection
