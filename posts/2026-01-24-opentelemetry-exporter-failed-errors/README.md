@@ -160,6 +160,7 @@ const exporter = new OTLPTraceExporter({
 
 ```python
 # Python: Add authentication headers
+import os
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 
 exporter = OTLPSpanExporter(
@@ -286,16 +287,18 @@ Error: parse error: invalid URL
 
 ```javascript
 // Correct endpoint formats for different exporters
+const { OTLPTraceExporter: OTLPGrpcTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
+const { OTLPTraceExporter: OTLPHttpTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
 
-// gRPC exporter - no protocol prefix needed
-const grpcExporter = new OTLPTraceExporter({
-  url: 'localhost:4317',  // Correct
-  // url: 'http://localhost:4317',  // Also works
+// gRPC exporter - use the host and port, or http:// for an insecure local connection
+const grpcExporter = new OTLPGrpcTraceExporter({
+  url: 'http://localhost:4317',  // Correct for a local Collector without TLS
+  // url: 'localhost:4317',  // Also valid, but defaults to a secure connection
   // url: 'grpc://localhost:4317',  // WRONG
 });
 
 // HTTP exporter - requires full URL
-const httpExporter = new OTLPTraceExporter({
+const httpExporter = new OTLPHttpTraceExporter({
   url: 'http://localhost:4318/v1/traces',  // Correct for HTTP
 });
 ```
@@ -308,7 +311,7 @@ exporters:
     endpoint: "collector.example.com:4317"  # No protocol prefix
 
   # HTTP exporter
-  otlp/http:
+  otlp_http:
     endpoint: "http://collector.example.com:4318"  # Full URL required
 ```
 
@@ -355,12 +358,12 @@ brew install grpcurl  # macOS
 go install github.com/fullstorydev/grpcurl/cmd/grpcurl@latest
 
 # Test gRPC connectivity
-grpcurl -plaintext localhost:4317 list
+grpcurl -plaintext localhost:4317 list  # Requires server reflection
 
 # Test with reflection
-grpcurl -plaintext localhost:4317 describe
+grpcurl -plaintext localhost:4317 describe opentelemetry.proto.collector.trace.v1.TraceService
 
-# Send a health check
+# Send a health check if the server exposes the gRPC health service
 grpcurl -plaintext localhost:4317 grpc.health.v1.Health/Check
 ```
 
@@ -371,9 +374,9 @@ grpcurl -plaintext localhost:4317 grpc.health.v1.Health/Check
 curl http://localhost:8888/metrics | grep otelcol
 
 # Look for these key metrics:
-# otelcol_exporter_sent_spans - successfully exported spans
-# otelcol_exporter_send_failed_spans - failed span exports
-# otelcol_exporter_queue_size - current queue size
+# otelcol_exporter_sent_spans or otelcol_exporter_sent_spans_total - successfully exported spans
+# otelcol_exporter_send_failed_spans or otelcol_exporter_send_failed_spans_total - failed span exports
+# otelcol_exporter_queue_size - current queue size, when exporter queue metrics are enabled
 ```
 
 ## Error Recovery Architecture
