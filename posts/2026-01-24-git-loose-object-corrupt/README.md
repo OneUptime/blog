@@ -68,7 +68,7 @@ Common causes:
 First, find exactly what's corrupted:
 
 ```bash
-# Run full filesystem check
+# Run full repository integrity check
 git fsck --full 2>&1 | tee fsck-output.txt
 
 # Look for corruption messages
@@ -88,7 +88,12 @@ List all corrupt objects for systematic repair:
 
 ```bash
 # Find all corrupt loose objects
-find .git/objects -type f | while read obj; do
+find .git/objects -mindepth 2 -maxdepth 2 -type f | while read obj; do
+    case "$obj" in
+        .git/objects/[0-9a-f][0-9a-f]/*) ;;
+        *) continue ;;
+    esac
+
     # Extract hash from path
     hash=$(echo "$obj" | sed 's|.git/objects/||' | tr -d '/')
     if ! git cat-file -t "$hash" >/dev/null 2>&1; then
@@ -138,14 +143,14 @@ git fetch --all
 git cat-file -t "$CORRUPT_HASH"
 ```
 
-If the object is a blob (file content), Git might regenerate it:
+If the object is a blob (file content), Git can recreate it from a good copy of the file:
 
 ```bash
-# Re-add files to regenerate blobs
-git checkout HEAD -- .
+# Re-add files from the working tree to regenerate blobs
+git add path/to/file.txt
 
-# For specific files
-git checkout HEAD -- path/to/file.txt
+# Or write a known-good file directly into the object database
+git hash-object -w path/to/file.txt
 ```
 
 ---
@@ -161,15 +166,13 @@ ls -la .git/objects/pack/
 # Search for the object in pack files
 git verify-pack -v .git/objects/pack/pack-*.idx | grep "$CORRUPT_HASH"
 
-# If found in a pack, unpack all objects
-cd .git/objects/pack
-for pack in *.pack; do
-    git unpack-objects < "$pack"
-done
+# Move corrupted loose object aside first
+mkdir -p .git/objects/corrupt-backup
+mv "$OBJECT_PATH" .git/objects/corrupt-backup/
 
-# Move corrupted loose object aside
-mkdir -p ../corrupt-backup
-mv "$OBJECT_PATH" ../corrupt-backup/
+# If found in a pack outside this repository, unpack it
+# Note: git unpack-objects will not unpack objects that already exist
+git unpack-objects < /path/to/good-copy/objects/pack/pack-xxx.pack
 
 # Git will now use the unpacked version
 ```
@@ -228,8 +231,8 @@ git cherry-pick def5678  # Test each commit
 For severe corruption, clone fresh and transplant local work:
 
 ```bash
-# Save local-only branches
-git branch --list | grep -v "^*" > local-branches.txt
+# Save local branch names
+git for-each-ref --format='%(refname:short)' refs/heads > local-branches.txt
 
 # Clone fresh
 cd ..
@@ -262,9 +265,9 @@ Different object types require different approaches:
 echo "file content here" | git hash-object -w --stdin
 # This creates a new blob with same hash if content matches
 
-# Or recreate from working directory
+# Or recreate from working directory if the file content matches
 git add path/to/file.txt
-# Git will create a new blob for the file
+# Git will create the same blob hash only when the content matches
 
 # Verify the blob exists now
 git cat-file -p abc123def456
@@ -293,15 +296,12 @@ git commit-tree <new-tree-hash> -p <parent-commit> -m "Repaired tree"
 ### Corrupt Commit
 
 ```bash
-# Create a new commit with same content
-# Find parent commit
-git rev-parse abc123^
-
-# Get tree from commit (if tree is intact)
-git rev-parse abc123^{tree}
+# Create a replacement commit if you know the original tree and parent
+TREE_HASH="<known-tree-hash>"
+PARENT_HASH="<known-parent-hash>"
 
 # Create new commit
-git commit-tree <tree-hash> -p <parent-hash> -m "Commit message"
+git commit-tree "$TREE_HASH" -p "$PARENT_HASH" -m "Commit message"
 
 # Update branch to point to new commit
 git update-ref refs/heads/branch-name <new-commit-hash>
@@ -314,12 +314,13 @@ git update-ref refs/heads/branch-name <new-commit-hash>
 Configure Git and your system to minimize corruption risk:
 
 ```bash
-# Enable filesystem checks during operations
+# Enable object checks during transfer operations
 git config --global transfer.fsckObjects true
 git config --global fetch.fsckObjects true
 git config --global receive.fsckObjects true
 
-# Use more robust compression
+# Optional: choose compression level for speed/size tradeoffs
+# (this does not prevent corruption)
 git config --global core.compression 9
 
 # Disable auto gc during critical operations
@@ -330,14 +331,14 @@ git config --global gc.auto 0
 Add filesystem protection:
 
 ```bash
-# Sync writes immediately (slower but safer)
-git config --global core.fsyncObjectFiles true
+# Harden newly written repository data against unclean shutdowns
+git config --global core.fsync committed
 
 # For important repos, add a pre-commit hook
 cat > .git/hooks/pre-commit << 'EOF'
 #!/bin/bash
 # Verify repository integrity before committing
-if ! git fsck --connectivity-only --quiet; then
+if ! git fsck --quiet; then
     echo "Repository integrity check failed!"
     exit 1
 fi
@@ -364,7 +365,7 @@ cp -r .git "$BACKUP_DIR"
 # Find corrupt objects
 echo ""
 echo "Scanning for corrupt objects..."
-CORRUPT_OBJECTS=$(git fsck --full 2>&1 | grep -oP '(?<=corrupt loose object ).+' | sort -u)
+CORRUPT_OBJECTS=$(git fsck --full 2>&1 | sed -nE "s/.*corrupt loose object '?([0-9a-f]{40,64})'?.*/\1/p" | sort -u)
 
 if [ -z "$CORRUPT_OBJECTS" ]; then
     echo "No corrupt loose objects found."
@@ -407,8 +408,8 @@ done
 # Final check
 echo ""
 echo "Running final integrity check..."
-if git fsck --full 2>&1 | grep -q "corrupt"; then
-    echo "WARNING: Some corruption remains. See above for details."
+if ! git fsck --full; then
+    echo "WARNING: Repository integrity check still fails. See above for details."
     exit 1
 else
     echo "SUCCESS: Repository integrity verified"
