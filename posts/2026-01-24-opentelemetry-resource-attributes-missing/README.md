@@ -24,7 +24,7 @@ graph TD
     end
 
     A --> A1["service.name<br/>service.version<br/>service.namespace"]
-    B --> B1["deployment.environment<br/>deployment.region"]
+    B --> B1["deployment.environment.name<br/>cloud.region"]
     C --> C1["host.name<br/>container.id<br/>k8s.pod.name"]
     D --> D1["team.name<br/>cost.center"]
 
@@ -37,13 +37,14 @@ graph TD
 
 ### 1. SDK Not Configured with Resource
 
-The most common issue is simply not configuring a resource when initializing the SDK.
+The most common issue is simply not configuring service-specific resource attributes when initializing the SDK.
 
 ```javascript
 // WRONG: No resource configuration
 const { NodeSDK } = require('@opentelemetry/sdk-node');
+const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
 
-// SDK initialized without resource - uses default empty resource
+// SDK initialized without service-specific resource attributes
 const sdk = new NodeSDK({
   traceExporter: new OTLPTraceExporter(),
 });
@@ -54,19 +55,19 @@ sdk.start();
 ```javascript
 // CORRECT: Properly configured resource
 const { NodeSDK } = require('@opentelemetry/sdk-node');
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 const {
-  SEMRESATTRS_SERVICE_NAME,
-  SEMRESATTRS_SERVICE_VERSION,
-  SEMRESATTRS_DEPLOYMENT_ENVIRONMENT
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+  ATTR_DEPLOYMENT_ENVIRONMENT_NAME
 } = require('@opentelemetry/semantic-conventions');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
 
 // Create a resource with all necessary attributes
-const resource = new Resource({
-  [SEMRESATTRS_SERVICE_NAME]: 'my-service',
-  [SEMRESATTRS_SERVICE_VERSION]: '1.2.3',
-  [SEMRESATTRS_DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV || 'development',
+const resource = resourceFromAttributes({
+  [ATTR_SERVICE_NAME]: 'my-service',
+  [ATTR_SERVICE_VERSION]: '1.2.3',
+  [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: process.env.NODE_ENV || 'development',
 });
 
 const sdk = new NodeSDK({
@@ -84,33 +85,34 @@ Auto-detection might fail silently if detectors are not properly configured.
 ```javascript
 // Resource detectors may fail silently
 const { NodeSDK } = require('@opentelemetry/sdk-node');
-const { Resource, detectResourcesSync } = require('@opentelemetry/resources');
 const {
-  envDetectorSync,
-  hostDetectorSync,
-  osDetectorSync,
-  processDetectorSync,
+  resourceFromAttributes,
+  detectResources,
+  envDetector,
+  hostDetector,
+  osDetector,
+  processDetector,
 } = require('@opentelemetry/resources');
 
 // Detect resources from environment and system
 // Some detectors may fail in certain environments
-const detectedResource = detectResourcesSync({
+const detectedResource = detectResources({
   detectors: [
-    envDetectorSync,      // Reads OTEL_RESOURCE_ATTRIBUTES env var
-    hostDetectorSync,     // Detects host.name, host.arch
-    osDetectorSync,       // Detects os.type, os.version
-    processDetectorSync,  // Detects process.pid, process.runtime.*
+    envDetector,      // Reads OTEL_RESOURCE_ATTRIBUTES env var
+    hostDetector,     // Detects host.name, host.arch
+    osDetector,       // Detects os.type, os.version
+    processDetector,  // Detects process.pid, process.runtime.*
   ],
 });
 
 // Merge detected resources with manual configuration
 // Manual config takes precedence over detected
-const manualResource = new Resource({
+const manualResource = resourceFromAttributes({
   'service.name': 'my-service',
   'service.version': '1.0.0',
 });
 
-const finalResource = manualResource.merge(detectedResource);
+const finalResource = detectedResource.merge(manualResource);
 
 console.log('Final resource attributes:', finalResource.attributes);
 
@@ -132,7 +134,7 @@ echo $OTEL_RESOURCE_ATTRIBUTES
 
 # Properly set environment variables
 export OTEL_SERVICE_NAME="my-service"
-export OTEL_RESOURCE_ATTRIBUTES="service.version=1.0.0,deployment.environment=production,team.name=platform"
+export OTEL_RESOURCE_ATTRIBUTES="service.version=1.0.0,deployment.environment.name=production,team.name=platform"
 ```
 
 ```yaml
@@ -154,7 +156,7 @@ spec:
 
             # Resource attributes as comma-separated key=value pairs
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: "service.version=1.0.0,deployment.environment=production"
+              value: "service.version=1.0.0,deployment.environment.name=production"
 
             # Kubernetes-specific attributes from downward API
             - name: K8S_POD_NAME
@@ -178,6 +180,7 @@ spec:
 ```javascript
 // Enable OpenTelemetry debug logging
 const { diag, DiagConsoleLogger, DiagLogLevel } = require('@opentelemetry/api');
+const { NodeSDK } = require('@opentelemetry/sdk-node');
 
 // Set up diagnostic logging before SDK initialization
 diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.DEBUG);
@@ -192,34 +195,26 @@ const sdk = new NodeSDK({
 
 ```javascript
 // JavaScript - Debug resource attributes
-const { trace } = require('@opentelemetry/api');
-const { NodeTracerProvider } = require('@opentelemetry/sdk-trace-node');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 
-// After SDK is initialized, inspect the resource
-let provider = trace.getTracerProvider();
+// Keep a reference to the resource you pass to the SDK
+const resource = resourceFromAttributes({
+  'service.name': 'my-service',
+  'service.version': '1.0.0',
+  'deployment.environment.name': process.env.NODE_ENV || 'development',
+});
 
-// trace.getTracerProvider() returns a ProxyTracerProvider - unwrap it to
-// reach the real provider registered by the SDK.
-if (typeof provider.getDelegate === 'function') {
-  provider = provider.getDelegate();
-}
+console.log('=== Resource Attributes ===');
+Object.entries(resource.attributes).forEach(([key, value]) => {
+  console.log(`  ${key}: ${value}`);
+});
 
-// Access the resource from the provider
-if (provider instanceof NodeTracerProvider) {
-  const resource = provider.resource;
+// Check for required attributes
+const requiredAttrs = ['service.name', 'service.version', 'deployment.environment.name'];
+const missingAttrs = requiredAttrs.filter(attr => !resource.attributes[attr]);
 
-  console.log('=== Resource Attributes ===');
-  Object.entries(resource.attributes).forEach(([key, value]) => {
-    console.log(`  ${key}: ${value}`);
-  });
-
-  // Check for required attributes
-  const requiredAttrs = ['service.name', 'service.version', 'deployment.environment'];
-  const missingAttrs = requiredAttrs.filter(attr => !resource.attributes[attr]);
-
-  if (missingAttrs.length > 0) {
-    console.warn('Missing required attributes:', missingAttrs);
-  }
+if (missingAttrs.length > 0) {
+  console.warn('Missing required attributes:', missingAttrs);
 }
 ```
 
@@ -302,20 +297,20 @@ service:
 ```javascript
 // JavaScript - Complete resource setup
 const { NodeSDK } = require('@opentelemetry/sdk-node');
-const { Resource, detectResourcesSync } = require('@opentelemetry/resources');
 const {
-  SEMRESATTRS_SERVICE_NAME,
-  SEMRESATTRS_SERVICE_VERSION,
-  SEMRESATTRS_SERVICE_NAMESPACE,
-  SEMRESATTRS_DEPLOYMENT_ENVIRONMENT,
-  SEMRESATTRS_HOST_NAME,
-  SEMRESATTRS_PROCESS_PID,
-} = require('@opentelemetry/semantic-conventions');
-const {
-  envDetectorSync,
-  hostDetectorSync,
-  processDetectorSync,
+  resourceFromAttributes,
+  detectResources,
+  emptyResource,
+  envDetector,
+  hostDetector,
+  processDetector,
 } = require('@opentelemetry/resources');
+const {
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+  ATTR_SERVICE_NAMESPACE,
+  ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
+} = require('@opentelemetry/semantic-conventions');
 const os = require('os');
 
 // Read version from package.json
@@ -324,20 +319,20 @@ const packageJson = require('./package.json');
 // Create comprehensive resource
 function createResource() {
   // 1. Start with required manual attributes
-  const baseResource = new Resource({
+  const baseResource = resourceFromAttributes({
     // Required: Service identification
-    [SEMRESATTRS_SERVICE_NAME]: process.env.OTEL_SERVICE_NAME || 'my-service',
-    [SEMRESATTRS_SERVICE_VERSION]: packageJson.version,
-    [SEMRESATTRS_SERVICE_NAMESPACE]: process.env.SERVICE_NAMESPACE || 'default',
+    [ATTR_SERVICE_NAME]: process.env.OTEL_SERVICE_NAME || 'my-service',
+    [ATTR_SERVICE_VERSION]: packageJson.version,
+    [ATTR_SERVICE_NAMESPACE]: process.env.SERVICE_NAMESPACE || 'default',
 
     // Deployment context
-    [SEMRESATTRS_DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV || 'development',
+    [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: process.env.NODE_ENV || 'development',
 
     // Host information (fallback if detector fails)
-    [SEMRESATTRS_HOST_NAME]: os.hostname(),
+    'host.name': os.hostname(),
 
     // Process information
-    [SEMRESATTRS_PROCESS_PID]: process.pid,
+    'process.pid': process.pid,
 
     // Custom business attributes
     'team.name': process.env.TEAM_NAME || 'unknown',
@@ -347,16 +342,16 @@ function createResource() {
   // 2. Detect additional resources from environment
   let detectedResource;
   try {
-    detectedResource = detectResourcesSync({
-      detectors: [envDetectorSync, hostDetectorSync, processDetectorSync],
+    detectedResource = detectResources({
+      detectors: [envDetector, hostDetector, processDetector],
     });
   } catch (error) {
     console.warn('Resource detection failed:', error.message);
-    detectedResource = Resource.empty();
+    detectedResource = emptyResource();
   }
 
   // 3. Merge resources - base takes precedence over detected
-  return baseResource.merge(detectedResource);
+  return detectedResource.merge(baseResource);
 }
 
 const sdk = new NodeSDK({
@@ -373,21 +368,17 @@ console.log('OpenTelemetry initialized with resource attributes');
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.resources import Resource, SERVICE_NAME, SERVICE_VERSION
-from opentelemetry.sdk.resources import (
-    OTELResourceDetector,
-    ProcessResourceDetector,
-)
+from importlib.metadata import PackageNotFoundError, version as package_version
 import os
 import socket
-import pkg_resources
 
 def create_resource() -> Resource:
     """Create a comprehensive resource with all required attributes."""
 
     # Get version from installed package
     try:
-        version = pkg_resources.get_distribution("my-package").version
-    except pkg_resources.DistributionNotFound:
+        version = package_version("my-package")
+    except PackageNotFoundError:
         version = "unknown"
 
     # Base required attributes
@@ -398,8 +389,8 @@ def create_resource() -> Resource:
         "service.namespace": os.environ.get("SERVICE_NAMESPACE", "default"),
 
         # Deployment context
-        "deployment.environment": os.environ.get("DEPLOYMENT_ENV", "development"),
-        "deployment.region": os.environ.get("AWS_REGION", "unknown"),
+        "deployment.environment.name": os.environ.get("DEPLOYMENT_ENV", "development"),
+        "cloud.region": os.environ.get("AWS_REGION", "unknown"),
 
         # Host information
         "host.name": socket.gethostname(),
@@ -447,7 +438,7 @@ for key, value in resource.attributes.items():
 
 ```javascript
 // Kubernetes-aware resource detection
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes, emptyResource } = require('@opentelemetry/resources');
 const fs = require('fs');
 
 function detectKubernetesResource() {
@@ -459,7 +450,7 @@ function detectKubernetesResource() {
 
   if (!isK8s) {
     console.log('Not running in Kubernetes, skipping K8s resource detection');
-    return Resource.empty();
+    return emptyResource();
   }
 
   // Read namespace from mounted secret
@@ -497,17 +488,17 @@ function detectKubernetesResource() {
     // Not a critical error
   }
 
-  return new Resource(attributes);
+  return resourceFromAttributes(attributes);
 }
 
 // Merge with other resources
 const k8sResource = detectKubernetesResource();
-const baseResource = new Resource({
+const baseResource = resourceFromAttributes({
   'service.name': 'my-service',
   'service.version': '1.0.0',
 });
 
-const finalResource = baseResource.merge(k8sResource);
+const finalResource = k8sResource.merge(baseResource);
 ```
 
 Resource Attribute Flow
@@ -543,12 +534,12 @@ Create a validation script to check resource attributes at startup.
 
 ```javascript
 // validate-resources.js
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 
 const REQUIRED_ATTRIBUTES = [
   'service.name',
   'service.version',
-  'deployment.environment',
+  'deployment.environment.name',
 ];
 
 const RECOMMENDED_ATTRIBUTES = [
@@ -617,10 +608,10 @@ module.exports = { validateResource };
 // Run validation if executed directly
 if (require.main === module) {
   // Example resource for testing
-  const testResource = new Resource({
+  const testResource = resourceFromAttributes({
     'service.name': process.env.OTEL_SERVICE_NAME || 'unknown_service',
     'service.version': process.env.SERVICE_VERSION || '',
-    'deployment.environment': process.env.NODE_ENV || '',
+    'deployment.environment.name': process.env.NODE_ENV || '',
   });
 
   const result = validateResource(testResource);

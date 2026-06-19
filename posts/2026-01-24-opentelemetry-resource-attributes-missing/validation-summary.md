@@ -4,33 +4,35 @@
 validated
 
 ## Post Type
-Technical troubleshooting guide
+Troubleshooting guide
 
 ## Technologies Covered
-- OpenTelemetry JavaScript/Node.js SDK (`@opentelemetry/sdk-node`, `@opentelemetry/resources`, `@opentelemetry/semantic-conventions`, `@opentelemetry/api`)
-- OpenTelemetry Python SDK (`opentelemetry-sdk` resources and trace APIs)
-- OpenTelemetry resource semantic conventions (`service.*`, `deployment.*`, `host.*`, `process.*`, `k8s.*`)
-- OpenTelemetry Collector configuration (OTLP receiver, debug exporter)
-- Kubernetes Downward API and container/pod metadata
-- Environment-variable configuration (`OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES`)
+- OpenTelemetry resources and resource attributes
+- OpenTelemetry JavaScript SDK for Node.js
+- OpenTelemetry Python SDK
+- OpenTelemetry Collector debug exporter
+- Kubernetes environment variables and Downward API
 
 ## Sources Consulted
+- OpenTelemetry JavaScript resources documentation: https://opentelemetry.io/docs/languages/js/resources/
+- OpenTelemetry general SDK environment variable configuration: https://opentelemetry.io/docs/languages/sdk-configuration/general/
 - OpenTelemetry resource semantic conventions: https://opentelemetry.io/docs/specs/semconv/resource/
-- OpenTelemetry SDK environment variables (`OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES`): https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/
-- OpenTelemetry JS resources package (`Resource`, `detectResourcesSync`, `*DetectorSync`): https://github.com/open-telemetry/opentelemetry-js/tree/main/packages/opentelemetry-resources
-- OpenTelemetry JS semantic-conventions (`SEMRESATTRS_*` constants): https://github.com/open-telemetry/opentelemetry-js/tree/main/packages/semantic-conventions
-- OpenTelemetry JS API `ProxyTracerProvider` / `getDelegate()`: https://open-telemetry.github.io/opentelemetry-js/classes/_opentelemetry_api.ProxyTracerProvider.html
-- OpenTelemetry Python resources docs (`Resource.create`, `SERVICE_NAME`, detectors): https://opentelemetry-python.readthedocs.io/en/latest/sdk/resources.html
-- OpenTelemetry Collector debug exporter: https://github.com/open-telemetry/opentelemetry-collector/blob/main/exporter/debugexporter/README.md
-- Kubernetes Downward API: https://kubernetes.io/docs/concepts/workloads/pods/downward-api/
+- OpenTelemetry deployment resource semantic conventions: https://opentelemetry.io/docs/specs/semconv/resource/deployment-environment/
+- OpenTelemetry service resource semantic conventions: https://opentelemetry.io/docs/specs/semconv/resource/service/
+- OpenTelemetry Resource SDK specification: https://opentelemetry.io/docs/specs/otel/resource/sdk/
+- OpenTelemetry Collector troubleshooting documentation: https://opentelemetry.io/docs/collector/troubleshooting/
+- OpenTelemetry Collector debug exporter README: https://github.com/open-telemetry/opentelemetry-collector/blob/main/exporter/debugexporter/README.md
+- OpenTelemetry Python SDK resources documentation: https://opentelemetry-python.readthedocs.io/en/latest/sdk/resources.html
 
 ## Issues Found
-- **Runtime resource inspection snippet never executed (Step 2, JavaScript).** The example called `const provider = trace.getTracerProvider()` and then checked `if (provider instanceof NodeTracerProvider)`. `trace.getTracerProvider()` returns a `ProxyTracerProvider`, never a `NodeTracerProvider` directly, so the `instanceof` check is always false and the entire debug block would silently do nothing. Fixed by unwrapping the proxy with `provider.getDelegate()` (a public method on `ProxyTracerProvider`) before the `instanceof` check, so the snippet actually reaches the SDK-registered provider.
+- The JavaScript examples used `new Resource(...)`, `Resource.empty()`, and `detectResourcesSync`, which are not exported by current `@opentelemetry/resources`. Updated examples to use `resourceFromAttributes`, `emptyResource`, and `detectResources`.
+- The JavaScript examples used older synchronous detector names such as `envDetectorSync` and `hostDetectorSync`. Updated them to the current detector exports.
+- The JavaScript merge examples claimed manual attributes took precedence while using the wrong merge order. Updated the examples to call `detectedResource.merge(manualResource)` or `k8sResource.merge(baseResource)`.
+- The JavaScript semantic convention constants used older `SEMRESATTRS_*` names. Updated service and deployment examples to current `ATTR_*` constants where available and string literals where no current stable constant is exported.
+- The post used the older `deployment.environment` semantic attribute and a non-standard `deployment.region` attribute. Updated examples to `deployment.environment.name` and `cloud.region`.
+- The JavaScript runtime inspection example attempted to read `provider.resource`, which is not a public property on the current Node tracer provider. Replaced it with a reliable pattern that keeps and inspects the resource object before passing it to the SDK.
+- The first JavaScript snippet referenced `OTLPTraceExporter` without importing it. Added the missing import.
+- The Python complete setup example used deprecated `pkg_resources`. Replaced it with `importlib.metadata`.
 
 ## Review Notes
-- The post is written against the OpenTelemetry JS **1.x** API surface. The `new Resource(...)` constructor, the `SEMRESATTRS_*` semantic-convention constants, and the synchronous detection exports (`detectResourcesSync`, `envDetectorSync`, `hostDetectorSync`, `osDetectorSync`, `processDetectorSync`) are all valid for that line. In OpenTelemetry JS **2.0+** these were removed/replaced: resources are now built with `resourceFromAttributes(...)`, the constants moved to the `ATTR_*` naming (e.g. `ATTR_SERVICE_NAME`), and detection moved to `detectResources(...)` with `ResourceDetector` types. The examples remain correct for 1.x but would need updating for 2.x.
-- The Python example uses `pkg_resources.get_distribution(...)`, which still works but is deprecated by setuptools; `importlib.metadata.version(...)` is the modern replacement. Left as-is since it is functional and not incorrect.
-- The Python debug example imports `get_aggregated_resources`, `OTELResourceDetector`, and `ProcessResourceDetector` without using them. Harmless unused imports, not a correctness error, so left unchanged.
-- The Collector `debug` exporter config (`verbosity`, `sampling_initial`, `sampling_thereafter`) is correct for the current debug exporter (the successor to the deprecated `logging` exporter).
-- The cgroup container-ID regex `[a-f0-9]{64}` matches the typical cgroup v1 layout; on some cgroup v2 / containerd hosts the path format differs, so detection is best-effort. The example already wraps it in a try/catch and treats failure as non-critical, which is appropriate.
-- Hostnames, image tags (`my-service:latest`), and paths are intentionally illustrative placeholders; image tags should be pinned in production.
+The post is technically valid after the fixes. The examples were checked against current OpenTelemetry package exports and official documentation; future updates may be needed if JavaScript semantic convention exports change again.
