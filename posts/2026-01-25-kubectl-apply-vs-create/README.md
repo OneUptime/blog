@@ -104,7 +104,7 @@ kubectl apply -R -f ./k8s/
 
 ## How kubectl apply Tracks Changes
 
-When you run `kubectl apply`, Kubernetes stores the last applied configuration in an annotation called `kubectl.kubernetes.io/last-applied-configuration`. This enables three-way merge behavior:
+When you run client-side `kubectl apply`, Kubernetes stores the last applied configuration in an annotation called `kubectl.kubernetes.io/last-applied-configuration`. This enables three-way merge behavior:
 
 1. Compare the new manifest with the last applied configuration
 2. Compare both with the current live state
@@ -115,7 +115,7 @@ When you run `kubectl apply`, Kubernetes stores the last applied configuration i
 kubectl get deployment web -o jsonpath='{.metadata.annotations.kubectl\.kubernetes\.io/last-applied-configuration}' | jq .
 ```
 
-This tracking mechanism is why you should not mix `create` and `apply` on the same resource. If you create a resource with `kubectl create` and later try to `apply` changes, the merge behavior may not work as expected because the annotation is missing.
+This tracking mechanism is why Kubernetes recommends creating resources initially with either `kubectl apply` or `kubectl create --save-config` if you plan to manage them later with `apply`. If you create a resource with `kubectl create` and later try to `apply` changes, the merge behavior may not work as expected because the annotation is missing.
 
 ## Practical Comparison
 
@@ -129,8 +129,11 @@ kubectl create deployment test --image=nginx:1.24
 kubectl create deployment test --image=nginx:1.24
 # Error: deployments.apps "test" already exists
 
-# Now export and apply the same deployment
+# Now export the same deployment
 kubectl get deployment test -o yaml > test-deployment.yaml
+
+# Remove the status field, then save the configuration annotation
+kubectl replace --save-config -f test-deployment.yaml
 
 # Apply works even though the resource exists
 # It will update the resource to match the manifest
@@ -144,7 +147,7 @@ kubectl apply -f test-deployment.yaml
 
 ## Server-Side Apply
 
-Kubernetes 1.18 introduced server-side apply, which moves the merge logic to the API server. This provides better conflict detection and field ownership tracking.
+Server-side apply moves the merge logic to the API server. It became stable in Kubernetes 1.22 and provides better conflict detection and field ownership tracking.
 
 ```bash
 # Use server-side apply for better conflict handling
@@ -175,7 +178,7 @@ kubectl apply -f ./manifests/ -l environment=staging
 kubectl apply -f ./manifests/ --prune -l app=myapp
 ```
 
-The `--prune` flag is powerful for GitOps workflows where you want your cluster state to exactly match your repository.
+The `--prune` flag can be powerful for GitOps workflows where you want your cluster state to exactly match your repository, but kubectl still documents this functionality as incomplete. Use it only when you understand exactly which resources the selector can delete.
 
 ## Best Practices
 
@@ -200,7 +203,7 @@ Follow these guidelines:
 
 2. **Use create for bootstrapping**: Generating initial manifests or creating one-time resources.
 
-3. **Never mix approaches**: If you start with `apply`, stick with `apply` for that resource.
+3. **Avoid mixing approaches**: If you plan to use `apply`, create the resource with `apply` or `create --save-config`, then stick with `apply` for that resource.
 
 4. **Enable server-side apply in teams**: Better conflict detection when multiple tools modify resources.
 
@@ -215,8 +218,11 @@ Avoid these mistakes when working with both commands:
 kubectl create -f deployment.yaml
 kubectl apply -f deployment.yaml  # May have unexpected merge behavior
 
-# RIGHT: Use apply from the start
+# RIGHT option 1: Use apply from the start
 kubectl apply -f deployment.yaml
+
+# RIGHT option 2: If you must create first, save the config for future apply
+kubectl create --save-config -f deployment.yaml
 
 # WRONG: Using create in CI/CD pipelines
 kubectl create -f deployment.yaml  # Fails on re-run
@@ -233,11 +239,11 @@ If you have resources created with `kubectl create` that you want to manage with
 # Export the current resource state
 kubectl get deployment web -o yaml > web-deployment.yaml
 
-# Remove status and other runtime fields
-# Keep only spec and necessary metadata
+# Remove the status field
+# Keep the manifest fields you want to manage declaratively
 
-# Apply to add the last-applied-configuration annotation
-kubectl apply -f web-deployment.yaml
+# Save the last-applied-configuration annotation
+kubectl replace --save-config -f web-deployment.yaml
 ```
 
 After this migration, future applies will work correctly with three-way merge.
