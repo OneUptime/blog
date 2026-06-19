@@ -39,7 +39,7 @@ The architecture involves two resources working together:
 Start with a simple HTTP gateway that listens on port 80.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: my-gateway
@@ -61,7 +61,7 @@ spec:
 Next, bind a VirtualService to the gateway to route traffic.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-routes
@@ -105,7 +105,7 @@ kubectl create secret tls api-tls-secret \
 Then configure the gateway to use the secret.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: secure-gateway
@@ -153,7 +153,7 @@ spec:
     - api.example.com
     - web.example.com
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: secure-gateway
@@ -179,7 +179,7 @@ spec:
 For APIs that require client certificate authentication, configure mTLS mode.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: mtls-gateway
@@ -195,20 +195,18 @@ spec:
       tls:
         mode: MUTUAL
         credentialName: server-tls-secret
-        # CA certificate for validating client certs
-        caCertificates: /etc/istio/client-ca-certs/ca.crt
       hosts:
         - "secure-api.example.com"
 ```
 
-Mount the CA certificate as a secret and configure the ingress gateway deployment to include it.
+Create the Kubernetes secret referenced by `credentialName` with the server certificate, private key, and a `ca.crt` entry for validating client certificates.
 
 ## Multi-Host Gateway Configuration
 
 When serving multiple applications through a single gateway, organize your configuration cleanly.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: multi-app-gateway
@@ -252,7 +250,7 @@ spec:
 Each application gets its own VirtualService that binds to the gateway.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-vs
@@ -269,7 +267,7 @@ spec:
             port:
               number: 8080
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: web-vs
@@ -294,7 +292,7 @@ spec:
 Route different URL paths to different services.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: path-routing
@@ -324,9 +322,10 @@ spec:
 ### Header-Based Routing
 
 Route based on request headers, useful for canary deployments or A/B testing.
+When you use `subset` values, define matching subsets in a DestinationRule for the service.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: header-routing
