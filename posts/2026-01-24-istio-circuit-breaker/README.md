@@ -44,7 +44,7 @@ kubectl get destinationrules -A | grep <service-name>
 Create a basic circuit breaker configuration.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service-cb
@@ -68,7 +68,7 @@ spec:
 
 ## Common Issue 2: Wrong Host Name
 
-The `host` field must match exactly how the service is called. This is a frequent source of confusion.
+The `host` field must match a service in Istio's service registry. Short names are resolved relative to the DestinationRule namespace, which is a frequent source of confusion.
 
 ```yaml
 # If your service is called as:
@@ -78,7 +78,7 @@ The `host` field must match exactly how the service is called. This is a frequen
 spec:
   host: my-service.production.svc.cluster.local
 
-# Or for same-namespace services:
+# Or, when the DestinationRule is in the service namespace:
 spec:
   host: my-service
 ```
@@ -92,11 +92,11 @@ istioctl proxy-config clusters <pod-name> -n <namespace> | grep my-service
 
 ## Common Issue 3: VirtualService Overriding Settings
 
-If you have a VirtualService with its own timeout or retry settings, they may conflict with your DestinationRule.
+If you have a VirtualService with its own timeout or retry settings, they may change how failures are observed.
 
 ```yaml
-# VirtualService might override circuit breaker behavior
-apiVersion: networking.istio.io/v1beta1
+# VirtualService retries can mask circuit breaker ejections
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service-vs
@@ -115,7 +115,7 @@ spec:
 Reduce retry attempts when using circuit breakers to let failures propagate.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service-vs
@@ -134,7 +134,7 @@ spec:
 
 ## Common Issue 4: Outlier Detection Not Triggering
 
-Outlier detection requires multiple instances to work effectively. If you have a single replica, there is nothing to eject.
+Outlier detection works best with multiple instances. If you have a single replica, ejection can only remove the one available endpoint and may result in no healthy upstream.
 
 ```bash
 # Check how many endpoints exist
@@ -144,7 +144,7 @@ kubectl get endpoints my-service -n production
 Outlier detection also needs enough traffic and failures to trigger. Check the settings.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service-cb
@@ -164,11 +164,11 @@ spec:
       # Maximum percentage of hosts that can be ejected
       maxEjectionPercent: 100  # Allow ejecting all hosts
 
-      # Minimum number of requests to consider
-      minHealthPercent: 0  # Consider even with few requests
+      # Healthy-host percentage threshold below which outlier detection is disabled
+      minHealthPercent: 0  # Disable the healthy-host percentage threshold
 ```
 
-For gateway errors (502, 503, 504), use `consecutiveGatewayErrors` instead.
+For gateway errors (502, 503, 504), use `consecutiveGatewayErrors` with a lower threshold than `consecutive5xxErrors`.
 
 ```yaml
 outlierDetection:
@@ -195,7 +195,7 @@ Look for `circuitBreakers` and `outlierDetection` in the output.
 Set more aggressive limits for testing.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service-cb-test
@@ -219,7 +219,7 @@ Use a tool like fortio to generate load and observe circuit breaking.
 
 ```bash
 # Install fortio
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/httpbin/sample-client/fortio-deploy.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/httpbin/sample-client/fortio-deploy.yaml
 
 # Generate load to trigger circuit breaker
 FORTIO_POD=$(kubectl get pods -l app=fortio -o jsonpath='{.items[0].metadata.name}')
@@ -237,7 +237,7 @@ Look for responses with status code 503. These indicate the circuit breaker trip
 Create a failing endpoint and observe ejection.
 
 ```bash
-# Deploy a test service that fails 50% of the time
+# Deploy a test service that can return 500s
 kubectl apply -f - <<EOF
 apiVersion: apps/v1
 kind: Deployment
@@ -255,9 +255,9 @@ spec:
     spec:
       containers:
         - name: httpbin
-          image: kennethreitz/httpbin
+          image: docker.io/mccutchen/go-httpbin:v2.15.0
           ports:
-            - containerPort: 80
+            - containerPort: 8080
 ---
 apiVersion: v1
 kind: Service
@@ -268,21 +268,21 @@ spec:
     app: flaky-service
   ports:
     - port: 8080
-      targetPort: 80
+      targetPort: 8080
 EOF
 ```
 
-Apply outlier detection and monitor ejections.
+Apply outlier detection, send requests to a failing path such as `http://flaky-service:8080/status/500`, and monitor ejections.
 
 ```bash
 # Watch Envoy stats for ejections
 kubectl exec <client-pod> -c istio-proxy -- \
-  curl -s localhost:15000/stats | grep outlier
+  pilot-agent request GET stats | grep outlier
 
 # Key metrics:
 # outlier_detection.ejections_active - Currently ejected hosts
-# outlier_detection.ejections_total - Total ejection count
-# outlier_detection.ejections_consecutive_5xx - 5xx triggered ejections
+# outlier_detection.ejections_enforced_total - Total enforced ejection count
+# outlier_detection.ejections_enforced_consecutive_5xx - 5xx triggered ejections
 ```
 
 ## Monitoring Circuit Breaker Status
@@ -298,7 +298,7 @@ sum(rate(istio_requests_total{
 }[5m])) by (destination_service)
 
 # Outlier detection ejections
-sum(rate(envoy_cluster_outlier_detection_ejections_total[5m])) by (cluster_name)
+sum(rate(envoy_cluster_outlier_detection_ejections_enforced_total[5m])) by (envoy_cluster_name)
 
 # Active ejections
 envoy_cluster_outlier_detection_ejections_active
@@ -328,7 +328,7 @@ groups:
 Here is a complete configuration that combines connection pool limits and outlier detection.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: production-circuit-breaker
@@ -355,7 +355,7 @@ spec:
     loadBalancer:
       simple: LEAST_REQUEST
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-service-vs
