@@ -20,7 +20,7 @@ Before diving into troubleshooting, it helps to understand how Kafka leadership 
 
 ### Partition Leadership Model
 
-In Kafka, each partition has exactly one leader broker that handles all read and write requests. Other brokers maintain replicas of the partition data for fault tolerance.
+In Kafka, each partition has exactly one leader broker that handles all read and write requests. The other assigned replicas maintain copies of the partition data for fault tolerance.
 
 ```mermaid
 flowchart TB
@@ -48,22 +48,21 @@ flowchart TB
 
 ### Leader Election Process
 
-When a leader becomes unavailable, Kafka must elect a new leader from the in-sync replicas (ISR). During this process, the partition is temporarily unavailable.
+When a leader becomes unavailable, Kafka normally elects a new leader from the in-sync replicas (ISR). During this process, the partition is temporarily unavailable.
 
 ```mermaid
 sequenceDiagram
     participant C as Controller
     participant B1 as Broker 1 (Old Leader)
     participant B2 as Broker 2 (Follower)
-    participant ZK as ZooKeeper/KRaft
+    participant M as Metadata store
 
     Note over B1: Broker fails or disconnects
     B1-xC: Connection lost
-    C->>ZK: Detect leader failure
-    ZK->>C: Confirm failure
+    C->>M: Detect or confirm broker state
     C->>B2: Elect as new leader
     B2->>C: Accept leadership
-    C->>ZK: Update metadata
+    C->>M: Update metadata
     Note over B2: B2 is now the leader
 ```
 
@@ -76,7 +75,7 @@ The most straightforward cause is when the leader broker is down or unreachable.
 ```bash
 # Check broker status using Kafka tools
 
-# This command lists all brokers in the cluster
+# This command shows API versions for brokers reachable through cluster metadata
 kafka-broker-api-versions.sh --bootstrap-server localhost:9092
 
 # Check if specific broker is responding
@@ -122,8 +121,8 @@ The Kafka controller is responsible for leader elections. If the controller is o
 
 ```bash
 # Find the current controller
-kafka-metadata.sh --snapshot /var/kafka-logs/__cluster_metadata-0/00000000000000000000.log \
-    --command controller
+kafka-metadata-quorum.sh --bootstrap-server localhost:9092 \
+    describe --status
 
 # For ZooKeeper-based clusters
 zookeeper-shell.sh localhost:2181 get /controller
@@ -143,6 +142,10 @@ kafka-topics.sh --bootstrap-server localhost:9092 \
 
 # Example output showing a problem:
 # Topic: orders   Partition: 0    Leader: none    Replicas: 1,2,3    Isr: 2,3
+
+# Or list only partitions that currently have no leader
+kafka-topics.sh --bootstrap-server localhost:9092 \
+    --describe --unavailable-partitions
 ```
 
 ### Step 2: Check Broker Health
@@ -150,9 +153,8 @@ kafka-topics.sh --bootstrap-server localhost:9092 \
 Verify that all brokers are running and accessible.
 
 ```bash
-# List all broker IDs in the cluster
-kafka-broker-api-versions.sh --bootstrap-server localhost:9092 2>/dev/null | \
-    grep -E "^[a-zA-Z0-9.-]+:[0-9]+" | cut -d: -f1 | sort -u
+# List brokers reachable through cluster metadata
+kafka-broker-api-versions.sh --bootstrap-server localhost:9092
 
 # Check broker logs for errors
 # Look for connection issues, OOM errors, or disk problems
@@ -165,9 +167,9 @@ The controller logs contain information about leader elections.
 
 ```bash
 # Find which broker is the controller
-kafka-metadata.sh --snapshot /var/kafka-logs/__cluster_metadata-0/00000000000000000000.log \
-    --command controller 2>/dev/null || \
-    echo "Check ZooKeeper for controller info"
+kafka-metadata-quorum.sh --bootstrap-server localhost:9092 \
+    describe --status 2>/dev/null || \
+    zookeeper-shell.sh localhost:2181 get /controller
 
 # Check controller logs for election activity
 grep -i "leader\|election\|partition" /var/log/kafka/controller.log | tail -50
@@ -181,12 +183,19 @@ Check if partitions have sufficient in-sync replicas for leader election.
 # Get detailed ISR information for a topic
 kafka-topics.sh --bootstrap-server localhost:9092 \
     --describe --topic orders | \
-    awk '{print "Partition:", $4, "Leader:", $6, "ISR:", $10}'
+    awk '/Partition:/ {
+        for (i = 1; i <= NF; i++) {
+            if ($i == "Partition:") partition = $(i + 1)
+            if ($i == "Leader:") leader = $(i + 1)
+            if ($i == "Isr:") isr = $(i + 1)
+        }
+        print "Partition:", partition, "Leader:", leader, "ISR:", isr
+    }'
 ```
 
 ### Step 5: Check ZooKeeper/KRaft State
 
-For ZooKeeper-based clusters, verify ZooKeeper health.
+For ZooKeeper-based clusters, verify ZooKeeper health. For KRaft clusters, inspect the metadata quorum and, when needed, the metadata snapshot.
 
 ```bash
 # Check ZooKeeper status
@@ -197,6 +206,13 @@ zookeeper-shell.sh localhost:2181 <<EOF
 ls /brokers/ids
 get /brokers/topics/orders/partitions/0/state
 EOF
+
+# Check KRaft metadata quorum status
+kafka-metadata-quorum.sh --bootstrap-server localhost:9092 \
+    describe --status
+
+# Inspect a local KRaft metadata snapshot interactively
+kafka-metadata-shell.sh --snapshot /var/kafka-logs/__cluster_metadata-0/00000000000000000000.log
 ```
 
 ## Resolution Strategies
@@ -224,7 +240,7 @@ tail -f /var/log/kafka/server.log | grep -i "started\|leader"
 Force a leader election for affected partitions.
 
 ```bash
-# Create a JSON file specifying partitions to reassign leadership
+# Create a JSON file specifying partitions for leader election
 cat > /tmp/election.json << 'EOF'
 {
   "partitions": [
@@ -264,7 +280,7 @@ kafka-reassign-partitions.sh --bootstrap-server localhost:9092 \
 
 ### Strategy 4: Enable Unclean Leader Election (Use with Caution)
 
-As a last resort, enable unclean leader election to allow out-of-sync replicas to become leaders. This may result in data loss.
+As a last resort, enable unclean leader election to allow out-of-sync replicas to become leaders. This may result in data loss. In KRaft clusters, dynamically enabling the setting may not trigger an election immediately; run an unclean leader election for the affected partitions if you need immediate recovery.
 
 ```bash
 # Enable unclean leader election for a specific topic
@@ -273,6 +289,11 @@ kafka-configs.sh --bootstrap-server localhost:9092 \
     --entity-name orders \
     --alter \
     --add-config unclean.leader.election.enable=true
+
+# Trigger an unclean election for the affected partitions if needed
+kafka-leader-election.sh --bootstrap-server localhost:9092 \
+    --election-type unclean \
+    --path-to-json-file /tmp/election.json
 
 # WARNING: This can cause data loss
 # Disable after recovery
@@ -378,7 +399,7 @@ def create_resilient_producer():
         # Timeout configuration
         request_timeout_ms=30000,
 
-        # Acknowledgment - wait for all replicas
+        # Acknowledgment - wait for all in-sync replicas
         acks='all',
 
         # Serialization
@@ -546,8 +567,8 @@ def check_kafka_health(bootstrap_servers):
         # Check cluster metadata
         cluster_metadata = admin.describe_cluster()
         health['checks']['cluster'] = {
-            'controller_id': cluster_metadata.controller_id,
-            'broker_count': len(cluster_metadata.brokers)
+            'controller_id': cluster_metadata.get('controller_id'),
+            'broker_count': len(cluster_metadata.get('brokers', []))
         }
 
         # Check for offline partitions
@@ -558,18 +579,18 @@ def check_kafka_health(bootstrap_servers):
         under_replicated = []
 
         for topic_desc in topic_descriptions:
-            for partition in topic_desc.partitions:
-                if partition.leader == -1:
+            for partition in topic_desc.get('partitions', []):
+                if partition.get('leader') == -1:
                     offline_partitions.append({
-                        'topic': topic_desc.topic,
-                        'partition': partition.id
+                        'topic': topic_desc.get('topic'),
+                        'partition': partition.get('partition')
                     })
-                if len(partition.isr) < len(partition.replicas):
+                if len(partition.get('isr', [])) < len(partition.get('replicas', [])):
                     under_replicated.append({
-                        'topic': topic_desc.topic,
-                        'partition': partition.id,
-                        'isr_count': len(partition.isr),
-                        'replica_count': len(partition.replicas)
+                        'topic': topic_desc.get('topic'),
+                        'partition': partition.get('partition'),
+                        'isr_count': len(partition.get('isr', [])),
+                        'replica_count': len(partition.get('replicas', []))
                     })
 
         health['checks']['partitions'] = {
