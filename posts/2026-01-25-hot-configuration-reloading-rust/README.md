@@ -40,10 +40,10 @@ Add the dependencies to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-arc-swap = "1.6"
+arc-swap = "1.9"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-notify = "6.1"
+notify = "8.2"
 tokio = { version = "1", features = ["full"] }
 ```
 
@@ -105,7 +105,7 @@ impl ConfigManager {
 }
 ```
 
-The key insight here is that `load()` returns a guard that holds a reference to the current configuration. This is essentially free - no locks, no atomic increments beyond the initial load. Multiple threads can call `get()` simultaneously without any coordination.
+The key insight here is that `load()` returns a guard that holds a reference to the current configuration. It avoids taking a lock and is usually cheaper than cloning the `Arc`. Multiple threads can call `get()` simultaneously without any coordination.
 
 ## Adding File Watching
 
@@ -143,8 +143,8 @@ impl ConfigManager {
             let _watcher = watcher;
 
             for event in rx {
-                // Filter for modify events only
-                if event.kind.is_modify() {
+                // Filter for events that can change the config contents
+                if event.kind.is_modify() || event.kind.is_create() {
                     println!("Config file changed, reloading...");
 
                     // Small delay to ensure file write is complete
@@ -258,6 +258,12 @@ pub struct ConfigManagerWithCallbacks {
 }
 
 impl ConfigManagerWithCallbacks {
+    fn load_from_file(path: &str) -> Result<Config, Box<dyn std::error::Error>> {
+        let contents = std::fs::read_to_string(path)?;
+        let config: Config = serde_json::from_str(&contents)?;
+        Ok(config)
+    }
+
     pub fn on_change<F>(&self, callback: F)
     where
         F: Fn(&Config, &Config) + Send + Sync + 'static,
@@ -341,7 +347,7 @@ Test that reloads actually work and that invalid configurations get rejected:
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write;
+    use std::io::{Seek, SeekFrom, Write};
     use tempfile::NamedTempFile;
 
     #[test]
@@ -362,7 +368,8 @@ mod tests {
         assert_eq!(manager.get().timeout_ms, 1000);
 
         // Update file
-        file.reopen().unwrap();
+        file.as_file_mut().set_len(0).unwrap();
+        file.as_file_mut().seek(SeekFrom::Start(0)).unwrap();
         writeln!(file, r#"{{
             "server_port": 8080,
             "timeout_ms": 2000,
@@ -395,7 +402,8 @@ mod tests {
         let manager = ConfigManager::new(file.path().to_str().unwrap()).unwrap();
 
         // Write invalid config
-        file.reopen().unwrap();
+        file.as_file_mut().set_len(0).unwrap();
+        file.as_file_mut().seek(SeekFrom::Start(0)).unwrap();
         writeln!(file, r#"{{
             "server_port": 0,
             "timeout_ms": 1000,
