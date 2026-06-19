@@ -35,12 +35,15 @@ flowchart TD
 
 ## Method 1: Server Actions (Recommended for App Router)
 
+Server Actions are convenient for small uploads. For production deployments on serverless platforms, prefer cloud storage because files written to the local filesystem may not persist between deployments or instances.
+
 ```tsx
 // app/upload/actions.ts
 'use server';
 
 import { writeFile, mkdir } from 'fs/promises';
 import path from 'path';
+import crypto from 'crypto';
 
 export async function uploadFile(formData: FormData) {
   const file = formData.get('file') as File;
@@ -67,7 +70,8 @@ export async function uploadFile(formData: FormData) {
     const buffer = Buffer.from(bytes);
 
     // Create unique filename
-    const uniqueName = `${Date.now()}-${file.name.replace(/\s/g, '-')}`;
+    const ext = path.extname(file.name);
+    const uniqueName = `${crypto.randomUUID()}${ext}`;
 
     // Ensure upload directory exists
     const uploadDir = path.join(process.cwd(), 'public', 'uploads');
@@ -141,19 +145,14 @@ export default function UploadPage() {
 }
 ```
 
-## Method 2: Route Handler with Streaming
+## Method 2: Route Handler with Upload Progress
 
 ```typescript
 // app/api/upload/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { writeFile, mkdir } from 'fs/promises';
 import path from 'path';
-
-export const config = {
-  api: {
-    bodyParser: false, // Disable built-in parser for large files
-  },
-};
+import crypto from 'crypto';
 
 export async function POST(request: NextRequest) {
   try {
@@ -176,6 +175,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // request.formData() parses the upload before this handler writes it to disk.
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
@@ -215,7 +215,7 @@ export default function ClientUpload() {
   const [progress, setProgress] = useState(0);
   const [uploading, setUploading] = useState(false);
   const [result, setResult] = useState<any>(null);
-  const abortController = useRef<AbortController | null>(null);
+  const xhrRef = useRef<XMLHttpRequest | null>(null);
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -223,7 +223,6 @@ export default function ClientUpload() {
 
     setUploading(true);
     setProgress(0);
-    abortController.current = new AbortController();
 
     const formData = new FormData();
     formData.append('file', file);
@@ -231,6 +230,7 @@ export default function ClientUpload() {
     try {
       // Use XMLHttpRequest for progress tracking
       const xhr = new XMLHttpRequest();
+      xhrRef.current = xhr;
 
       xhr.upload.addEventListener('progress', (e) => {
         if (e.lengthComputable) {
@@ -251,20 +251,24 @@ export default function ClientUpload() {
         };
 
         xhr.onerror = () => reject(new Error('Upload failed'));
+        xhr.onabort = () => reject(new Error('Upload canceled'));
         xhr.send(formData);
       });
 
       setResult(response);
     } catch (error) {
       console.error('Upload error:', error);
-      setResult({ error: error.message });
+      setResult({
+        error: error instanceof Error ? error.message : 'Upload failed',
+      });
     } finally {
+      xhrRef.current = null;
       setUploading(false);
     }
   }
 
   function cancelUpload() {
-    abortController.current?.abort();
+    xhrRef.current?.abort();
     setUploading(false);
     setProgress(0);
   }
@@ -301,6 +305,7 @@ export default function ClientUpload() {
 
 import { writeFile, mkdir } from 'fs/promises';
 import path from 'path';
+import crypto from 'crypto';
 
 interface UploadResult {
   filename: string;
@@ -334,7 +339,8 @@ export async function uploadMultipleFiles(formData: FormData): Promise<UploadRes
       const bytes = await file.arrayBuffer();
       const buffer = Buffer.from(bytes);
 
-      const uniqueName = `${Date.now()}-${Math.random().toString(36).slice(2)}-${file.name}`;
+      const ext = path.extname(file.name);
+      const uniqueName = `${crypto.randomUUID()}${ext}`;
       const filePath = path.join(uploadDir, uniqueName);
 
       await writeFile(filePath, buffer);
@@ -439,7 +445,7 @@ export default function MultiUpload() {
 
 ```typescript
 // lib/s3.ts
-import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 const s3Client = new S3Client({
@@ -567,7 +573,7 @@ export default function DirectS3Upload() {
         file.type
       );
 
-      if (!success) {
+      if (!success || !url) {
         throw new Error(error);
       }
 
@@ -794,13 +800,13 @@ async function handleImageUpload(file: File) {
 }
 ```
 
-## Configuration for Large Files
+## Configuration for Larger Server Action Uploads
 
 ```typescript
 // next.config.js
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Increase body size limit for API routes
+  // Increase body size limit for Server Actions
   experimental: {
     serverActions: {
       bodySizeLimit: '10mb',
@@ -820,4 +826,4 @@ module.exports = nextConfig;
 | Presigned URL | Large files | Scales well | Complex setup |
 | Direct to CDN | Production | Best performance | External dependency |
 
-For most applications, Server Actions provide the simplest approach. Use presigned URLs for files over 5MB or when you need upload progress tracking. Always validate files on the server side regardless of client-side validation.
+For most applications, Server Actions provide the simplest approach. Use Route Handlers or presigned URLs when you need upload progress tracking, and prefer presigned URLs for larger files. Always validate files on the server side regardless of client-side validation.
