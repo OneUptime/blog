@@ -196,7 +196,13 @@ const { trace } = require('@opentelemetry/api');
 const { NodeTracerProvider } = require('@opentelemetry/sdk-trace-node');
 
 // After SDK is initialized, inspect the resource
-const provider = trace.getTracerProvider();
+let provider = trace.getTracerProvider();
+
+// trace.getTracerProvider() returns a ProxyTracerProvider - unwrap it to
+// reach the real provider registered by the SDK.
+if (typeof provider.getDelegate === 'function') {
+  provider = provider.getDelegate();
+}
 
 // Access the resource from the provider
 if (provider instanceof NodeTracerProvider) {
