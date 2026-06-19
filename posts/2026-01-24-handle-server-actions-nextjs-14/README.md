@@ -108,9 +108,11 @@ export default function UsersPage() {
 }
 ```
 
-## Form Handling with useFormState
+## Form Handling with useActionState
 
-The useFormState hook provides access to the form's state including errors and return values:
+The useActionState hook provides access to the form's state including errors and return values:
+
+In early Next.js 14 examples this hook appeared as `useFormState`, but current React versions use `useActionState`.
 
 ```javascript
 // app/actions.js
@@ -171,7 +173,8 @@ export async function signUp(prevState, formData) {
 // app/signup/page.js
 'use client';
 
-import { useFormState, useFormStatus } from 'react-dom';
+import { useActionState } from 'react';
+import { useFormStatus } from 'react-dom';
 import { signUp } from '../actions';
 
 // Initial state for the form
@@ -193,7 +196,7 @@ function SubmitButton() {
 }
 
 export default function SignUpPage() {
-  const [state, formAction] = useFormState(signUp, initialState);
+  const [state, formAction] = useActionState(signUp, initialState);
 
   return (
     <div>
@@ -255,7 +258,7 @@ flowchart LR
 import { useFormStatus } from 'react-dom';
 
 export default function SubmitButton({ children, loadingText = 'Processing...' }) {
-  const { pending, data, method, action } = useFormStatus();
+  const { pending } = useFormStatus();
 
   return (
     <button
@@ -399,7 +402,7 @@ export async function togglePublished(postId, currentStatus) {
 import { updateProduct } from '../../../actions';
 
 export default async function EditProductPage({ params }) {
-  const { id } = await params;
+  const { id } = params;
   const product = await getProduct(id);
 
   // Bind the product ID to the action
@@ -471,7 +474,6 @@ export function validateUserInput(formData) {
 
 import { validateUserInput } from '../lib/validation';
 import { revalidatePath } from 'next/cache';
-import { redirect } from 'next/navigation';
 
 export async function createProfile(prevState, formData) {
   // Validate input
@@ -523,7 +525,7 @@ export async function createProfile(prevState, formData) {
 // app/profiles/new/page.js
 'use client';
 
-import { useFormState } from 'react-dom';
+import { useActionState } from 'react';
 import { createProfile } from '../../actions';
 import SubmitButton from '../../components/SubmitButton';
 
@@ -533,7 +535,7 @@ const initialState = {
 };
 
 export default function NewProfilePage() {
-  const [state, formAction] = useFormState(createProfile, initialState);
+  const [state, formAction] = useActionState(createProfile, initialState);
 
   return (
     <form action={formAction}>
@@ -613,8 +615,9 @@ export async function createPost(formData) {
   revalidatePath(`/categories/${categoryId}`);
 
   // Option 3: Revalidate by tag (requires tagged fetch)
-  revalidateTag('posts');
-  revalidateTag(`category-${categoryId}`);
+  // The current API uses a cache profile such as 'max'.
+  revalidateTag('posts', 'max');
+  revalidateTag(`category-${categoryId}`, 'max');
 
   // Option 4: Redirect to new post
   redirect(`/posts/${post.id}`);
@@ -652,6 +655,7 @@ export default function LikeButton({ postId, initialLiked, initialCount }) {
   async function handleClick() {
     // Optimistic update
     const wasLiked = liked;
+    const previousCount = count;
     setLiked(!liked);
     setCount(liked ? count - 1 : count + 1);
 
@@ -665,7 +669,7 @@ export default function LikeButton({ postId, initialLiked, initialCount }) {
       } catch (error) {
         // Revert on error
         setLiked(wasLiked);
-        setCount(wasLiked ? count : count - 1);
+        setCount(previousCount);
         console.error('Failed to update like:', error);
       }
     });
@@ -692,7 +696,7 @@ export default function LikeButton({ postId, initialLiked, initialCount }) {
 import { writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 
-export async function uploadFile(formData) {
+export async function uploadFile(prevState, formData) {
   const file = formData.get('file');
 
   if (!file || file.size === 0) {
@@ -712,6 +716,7 @@ export async function uploadFile(formData) {
   }
 
   try {
+    // For production or serverless deployments, use durable object storage instead.
     // Create upload directory if it does not exist
     const uploadDir = join(process.cwd(), 'public', 'uploads');
     await mkdir(uploadDir, { recursive: true });
@@ -743,8 +748,8 @@ export async function uploadFile(formData) {
 // components/FileUpload.jsx
 'use client';
 
-import { useState, useRef } from 'react';
-import { useFormState, useFormStatus } from 'react-dom';
+import { useActionState, useState, useRef } from 'react';
+import { useFormStatus } from 'react-dom';
 import { uploadFile } from '../app/actions';
 
 function UploadButton() {
@@ -757,7 +762,7 @@ function UploadButton() {
 }
 
 export default function FileUpload() {
-  const [state, formAction] = useFormState(uploadFile, {});
+  const [state, formAction] = useActionState(uploadFile, {});
   const [preview, setPreview] = useState(null);
   const inputRef = useRef(null);
 
@@ -871,7 +876,7 @@ export async function sensitiveAction(formData) {
     where: { id: resourceId },
   });
 
-  if (resource.userId !== session.user.id) {
+  if (!resource || resource.userId !== session.user.id) {
     return { success: false, error: 'Forbidden' };
   }
 
@@ -879,7 +884,8 @@ export async function sensitiveAction(formData) {
   // ...
 }
 
-// Rate limiting example
+// Simple in-memory rate limiting example.
+// Use a shared store such as Redis in production or serverless deployments.
 const rateLimitMap = new Map();
 
 export async function rateLimitedAction(formData) {
@@ -910,7 +916,7 @@ export async function rateLimitedAction(formData) {
 Server Actions in Next.js 14 provide a powerful way to handle server-side mutations:
 
 1. **Simple syntax** - Use 'use server' directive to mark functions as server actions
-2. **Form handling** - Native form integration with useFormState and useFormStatus
+2. **Form handling** - Native form integration with useActionState and useFormStatus
 3. **Optimistic updates** - Use useOptimistic for instant UI feedback
 4. **Argument binding** - Bind arguments to actions for dynamic data
 5. **Validation** - Implement proper validation and error handling
@@ -919,4 +925,4 @@ Server Actions in Next.js 14 provide a powerful way to handle server-side mutati
 8. **Progressive enhancement** - Forms work without JavaScript
 9. **Security** - Always verify authentication and authorization
 
-Server Actions simplify full-stack development in Next.js by eliminating the need for separate API routes in many cases while providing a secure, type-safe way to mutate data.
+Server Actions simplify full-stack development in Next.js by eliminating the need for separate API routes in many cases while providing a secure, type-safe way to mutate data when you use TypeScript.
