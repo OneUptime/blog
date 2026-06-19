@@ -112,28 +112,14 @@ kafka-configs.sh --bootstrap-server localhost:9092 \
   --describe | grep listener
 
 # Check what addresses are being advertised
-kafka-metadata.sh --snapshot /var/kafka-logs/__cluster_metadata-0/00000000000000000000.log \
-  --command "broker" 2>/dev/null || \
+kafka-dump-log.sh --cluster-metadata-decoder \
+  --files /var/kafka-logs/__cluster_metadata-0/00000000000000000000.log 2>/dev/null | grep advertised || \
   zookeeper-shell.sh localhost:2181 <<< "get /brokers/ids/0" 2>/dev/null
 ```
 
 ### Step 3: Analyze Client Logs
 
-Enable debug logging to get detailed network information:
-
-```java
-import org.apache.kafka.clients.producer.ProducerConfig;
-import java.util.Properties;
-
-Properties props = new Properties();
-props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "kafka:9092");
-
-// Enable detailed logging for network debugging
-System.setProperty("org.apache.kafka.common.network", "DEBUG");
-System.setProperty("org.apache.kafka.clients", "DEBUG");
-```
-
-For log4j configuration:
+Configure debug logging in your logging framework to get detailed network information. For example, with log4j:
 
 ```properties
 # log4j.properties
@@ -237,11 +223,10 @@ spec:
       containers:
         - name: kafka
           image: confluentinc/cp-kafka:7.5.0
+          command: ["/bin/sh", "-c"]
+          args:
+            - export KAFKA_BROKER_ID="${HOSTNAME##*-}" && exec /etc/confluent/docker/run
           env:
-            - name: KAFKA_BROKER_ID
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.name
             - name: POD_NAME
               valueFrom:
                 fieldRef:
@@ -493,7 +478,7 @@ public class RetryableKafkaProducer {
             RecordMetadata metadata = future.get(60, TimeUnit.SECONDS);
             System.out.println("Message delivered successfully");
 
-        } catch (TimeoutException e) {
+        } catch (java.util.concurrent.TimeoutException e) {
             System.err.println("Timed out waiting for message delivery");
         } catch (ExecutionException e) {
             System.err.println("Message delivery failed: " + e.getCause().getMessage());
