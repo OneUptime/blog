@@ -363,6 +363,7 @@ jobs:
         image: postgres:15
         env:
           POSTGRES_PASSWORD: test
+          POSTGRES_DB: test
         ports:
           - 5432:5432
     steps:
