@@ -288,14 +288,16 @@ Server Components enable direct data fetching without the need for API routes or
 import { notFound } from 'next/navigation';
 
 interface UserPageProps {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
 // Server Component with direct database access
 async function UserPage({ params }: UserPageProps) {
+  const { id } = await params;
+
   // Fetch user data directly from the database
   const user = await prisma.user.findUnique({
-    where: { id: params.id },
+    where: { id },
     include: {
       posts: {
         orderBy: { createdAt: 'desc' },
@@ -537,7 +539,9 @@ export default Page;
 ### 2. Use dynamic imports for heavy Client Components
 
 ```typescript
-// app/editor/page.tsx
+// components/RichTextEditorLoader.tsx
+'use client';
+
 import dynamic from 'next/dynamic';
 
 // Code split the heavy editor component
@@ -548,6 +552,13 @@ const RichTextEditor = dynamic(
     ssr: false,  // Only load on client
   }
 );
+
+export { RichTextEditor };
+```
+
+```typescript
+// app/editor/page.tsx
+import { RichTextEditor } from '@/components/RichTextEditorLoader';
 
 async function EditorPage() {
   const draft = await fetchDraft();
