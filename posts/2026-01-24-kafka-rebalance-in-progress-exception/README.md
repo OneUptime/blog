@@ -236,6 +236,7 @@ public class CooperativeConsumer {
         props.put(ConsumerConfig.SESSION_TIMEOUT_MS_CONFIG, 45000);
         props.put(ConsumerConfig.HEARTBEAT_INTERVAL_MS_CONFIG, 15000);
         props.put(ConsumerConfig.MAX_POLL_INTERVAL_MS_CONFIG, 300000);
+        props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
 
         this.consumer = new KafkaConsumer<>(props);
     }
@@ -327,6 +328,7 @@ public class StaticMemberConsumer {
 
         // Longer session timeout for static members
         props.put(ConsumerConfig.SESSION_TIMEOUT_MS_CONFIG, 60000);
+        props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
 
         // Use cooperative assignor with static membership
         props.put(ConsumerConfig.PARTITION_ASSIGNMENT_STRATEGY_CONFIG,
@@ -381,7 +383,7 @@ public class StaticMemberConsumer {
 ## Python Solutions
 
 ```python
-from confluent_kafka import Consumer, KafkaException, TopicPartition
+from confluent_kafka import Consumer, KafkaError, KafkaException, TopicPartition
 from dataclasses import dataclass
 from typing import Dict, List, Callable, Optional
 import threading
@@ -533,9 +535,9 @@ class StableConsumer:
         error_code = error.code()
 
         # Check for rebalance-related errors
-        if error_code == -168:  # _REVOKE_PARTITIONS
+        if error_code == KafkaError._REVOKE_PARTITIONS:
             print("Partition revocation in progress")
-        elif error_code == -169:  # _ASSIGN_PARTITIONS
+        elif error_code == KafkaError._ASSIGN_PARTITIONS:
             print("Partition assignment in progress")
         else:
             print(f"Consumer error: {error}")
