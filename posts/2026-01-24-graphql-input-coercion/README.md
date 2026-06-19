@@ -8,7 +8,7 @@ Description: Learn how to diagnose and fix input coercion errors in GraphQL incl
 
 ---
 
-Input coercion errors in GraphQL occur when the data provided by a client does not match the expected type in your schema. These errors can be confusing because they happen during the parsing phase before your resolvers even execute. This guide explains why these errors occur and how to fix them.
+Input coercion errors in GraphQL occur when the data provided by a client does not match the expected type in your schema. These errors can be confusing because they happen during validation and input coercion before your resolvers even execute. This guide explains why these errors occur and how to fix them.
 
 ## Understanding Input Coercion
 
@@ -167,7 +167,7 @@ type Mutation {
 
 # Client sends invalid enum value
 mutation {
-  updateRole(userId: "1", role: "SUPERUSER")  # Error: Invalid enum value
+  updateRole(userId: "1", role: SUPERUSER)  # Error: Invalid enum value
 }
 ```
 
@@ -552,19 +552,19 @@ const resolvers = {
 const server = new ApolloServer({
   typeDefs,
   resolvers,
-  formatError: (error) => {
+  formatError: (formattedError, error) => {
     // Log full error for debugging
     console.error('GraphQL Error:', {
-      message: error.message,
-      path: error.path,
-      extensions: error.extensions,
-      originalError: error.originalError,
+      message: formattedError.message,
+      path: formattedError.path,
+      extensions: formattedError.extensions,
+      originalError: error,
     });
 
     // Check if it's a coercion error
-    if (error.extensions?.code === 'BAD_USER_INPUT') {
+    if (formattedError.extensions?.code === 'BAD_USER_INPUT') {
       // Parse the error message to provide better feedback
-      const match = error.message.match(
+      const match = formattedError.message.match(
         /Variable "\$(\w+)" got invalid value (.+)/
       );
 
@@ -584,10 +584,10 @@ const server = new ApolloServer({
 
     // Return sanitized error for production
     return {
-      message: error.message,
-      path: error.path,
+      message: formattedError.message,
+      path: formattedError.path,
       extensions: {
-        code: error.extensions?.code || 'INTERNAL_ERROR',
+        code: formattedError.extensions?.code || 'INTERNAL_ERROR',
       },
     };
   },
@@ -678,21 +678,24 @@ const typeDefs = gql`
 `;
 
 function validateDirective(schema) {
+  const addValidationMetadata = (config) => {
+    const directive = getDirective(schema, config, 'validate')?.[0];
+    if (!directive) return config;
+
+    const { min, max, pattern, message } = directive;
+
+    // Store validation rules for runtime checking
+    config.extensions = {
+      ...config.extensions,
+      validation: { min, max, pattern, message },
+    };
+
+    return config;
+  };
+
   return mapSchema(schema, {
-    [MapperKind.INPUT_OBJECT_FIELD]: (fieldConfig) => {
-      const directive = getDirective(schema, fieldConfig, 'validate')?.[0];
-      if (!directive) return fieldConfig;
-
-      const { min, max, pattern, message } = directive;
-
-      // Store validation rules for runtime checking
-      fieldConfig.extensions = {
-        ...fieldConfig.extensions,
-        validation: { min, max, pattern, message },
-      };
-
-      return fieldConfig;
-    },
+    [MapperKind.INPUT_OBJECT_FIELD]: addValidationMetadata,
+    [MapperKind.ARGUMENT]: addValidationMetadata,
   });
 }
 ```
