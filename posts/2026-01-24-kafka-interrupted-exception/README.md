@@ -15,10 +15,11 @@ InterruptedException in Kafka consumers is a common issue that occurs during shu
 ```mermaid
 flowchart TD
     A[Consumer Thread Running] --> B{Interrupt Signal}
-    B --> |Thread.interrupt| C[InterruptedException Thrown]
+    B --> |Thread.interrupt| C[Interrupt Status Set]
     B --> |Shutdown Hook| D[Graceful Shutdown Initiated]
+    C --> L[Interruptible Operation Throws InterruptedException]
 
-    C --> E{Handling Strategy}
+    L --> E{Handling Strategy}
     E --> |Ignore| F[Hung Consumer]
     E --> |Rethrow| G[Abrupt Termination]
     E --> |Handle Gracefully| H[Clean Shutdown]
@@ -40,7 +41,7 @@ flowchart TD
 | **Shutdown hook** | JVM shutdown signal | Implement graceful shutdown |
 | **Thread pool shutdown** | ExecutorService termination | Use proper thread lifecycle |
 | **External interrupt** | Another thread calling interrupt() | Preserve interrupt status |
-| **Timeout** | Future.get() or similar timeouts | Handle timeout gracefully |
+| **Blocking wait** | Future.get() or similar blocking calls interrupted while waiting | Preserve interrupt status |
 | **Container lifecycle** | Kubernetes pod termination | Handle SIGTERM properly |
 
 ## Basic Interrupt Handling
@@ -67,17 +68,24 @@ public class InterruptSafeConsumer {
                     ConsumerRecords<String, String> records =
                         consumer.poll(Duration.ofMillis(1000));
 
+                    Map<TopicPartition, OffsetAndMetadata> processedOffsets =
+                        new HashMap<>();
+
                     for (ConsumerRecord<String, String> record : records) {
                         if (!running.get()) {
                             // Stop processing if shutdown requested
                             break;
                         }
                         processRecord(record);
+                        processedOffsets.put(
+                            new TopicPartition(record.topic(), record.partition()),
+                            new OffsetAndMetadata(record.offset() + 1)
+                        );
                     }
 
-                    // Commit after processing
-                    if (!records.isEmpty()) {
-                        consumer.commitSync();
+                    // Commit only offsets for records that were processed
+                    if (!processedOffsets.isEmpty()) {
+                        consumer.commitSync(processedOffsets);
                     }
 
                 } catch (WakeupException e) {
@@ -160,6 +168,7 @@ public class BlockingOperationConsumer {
                             Thread.currentThread().interrupt();
                             System.out.println("Processing interrupted for record: " +
                                 record.offset());
+                            throw new RuntimeException("Processing interrupted", e);
                         }
                     }));
                 }
@@ -174,12 +183,14 @@ public class BlockingOperationConsumer {
                     // Handle partial completion
                 }
             }
+        } catch (InterruptException e) {
+            Thread.currentThread().interrupt();
         } catch (WakeupException e) {
             if (running.get()) {
                 throw e;
             }
         } finally {
-            shutdown();
+            close();
         }
     }
 
@@ -226,6 +237,7 @@ public class BlockingOperationConsumer {
                 return false;
             } catch (ExecutionException e) {
                 System.err.println("Processing error: " + e.getCause().getMessage());
+                return false;
             } catch (TimeoutException e) {
                 future.cancel(true);
                 return false;
@@ -238,7 +250,9 @@ public class BlockingOperationConsumer {
     public void shutdown() {
         running.set(false);
         consumer.wakeup();
+    }
 
+    private void close() {
         // Shutdown processing executor gracefully
         processingExecutor.shutdown();
         try {
@@ -430,10 +444,11 @@ public class KafkaConsumerConfig {
         // Set error handler for interrupt exceptions
         factory.setCommonErrorHandler(new DefaultErrorHandler(
             (record, exception) -> {
-                if (exception.getCause() instanceof InterruptedException) {
+                if (containsCause(exception, InterruptedException.class)) {
                     System.out.println("Consumer interrupted, record: " +
                         record.offset());
                     Thread.currentThread().interrupt();
+                    throw new RuntimeException("Processing interrupted", exception);
                 } else {
                     System.err.println("Processing error: " + exception.getMessage());
                 }
@@ -442,6 +457,18 @@ public class KafkaConsumerConfig {
         ));
 
         return factory;
+    }
+
+    private boolean containsCause(Throwable exception,
+                                  Class<? extends Throwable> causeType) {
+        Throwable current = exception;
+        while (current != null) {
+            if (causeType.isInstance(current)) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
     }
 }
 
@@ -604,9 +631,12 @@ public class InterruptSafeCommitConsumer {
                 } catch (WakeupException | InterruptException e) {
                     // Save offsets for later commit attempt
                     System.out.println("Commit interrupted, will retry");
+                    if (e instanceof InterruptException) {
+                        Thread.currentThread().interrupt();
+                    }
                 } catch (CommitFailedException e) {
                     System.err.println("Commit failed: " + e.getMessage());
-                    processedOffsets.clear(); // Offsets will be lost
+                    processedOffsets.clear(); // Partitions may have been reassigned
                 }
             }
         } finally {
@@ -634,6 +664,8 @@ public class KubernetesConsumer {
 
     private final KafkaConsumer<String, String> consumer;
     private final AtomicBoolean running = new AtomicBoolean(true);
+    private final Map<TopicPartition, OffsetAndMetadata> processedOffsets =
+        new HashMap<>();
     private final int terminationGracePeriod;
 
     public KubernetesConsumer(Properties props, int terminationGracePeriod) {
@@ -691,6 +723,10 @@ public class KubernetesConsumer {
                         }
 
                         processRecord(record);
+                        processedOffsets.put(
+                            new TopicPartition(record.topic(), record.partition()),
+                            new OffsetAndMetadata(record.offset() + 1)
+                        );
                     }
 
                     // Commit with retry
@@ -715,10 +751,19 @@ public class KubernetesConsumer {
     }
 
     private void commitWithRetry(int maxRetries) {
+        if (processedOffsets.isEmpty()) {
+            return;
+        }
+
         for (int i = 0; i < maxRetries; i++) {
             try {
-                consumer.commitSync(Duration.ofSeconds(5));
+                consumer.commitSync(new HashMap<>(processedOffsets),
+                    Duration.ofSeconds(5));
+                processedOffsets.clear();
                 return;
+            } catch (InterruptException e) {
+                Thread.currentThread().interrupt();
+                break;
             } catch (Exception e) {
                 System.err.println("Commit attempt " + (i + 1) + " failed: " +
                     e.getMessage());
@@ -749,7 +794,13 @@ metadata:
   name: kafka-consumer
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: kafka-consumer
   template:
+    metadata:
+      labels:
+        app: kafka-consumer
     spec:
       # Grace period should match consumer configuration
       terminationGracePeriodSeconds: 60
