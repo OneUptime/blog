@@ -68,12 +68,12 @@ Git 2.30 introduced automatic maintenance:
 git maintenance start
 
 # This schedules regular tasks:
-# - Hourly: prefetch from remotes
-# - Daily: gc and commit-graph updates
-# - Weekly: repack for optimal compression
+# - Hourly: prefetch from remotes and commit-graph updates
+# - Daily: loose-object cleanup and incremental repack
+# - Weekly: pack refs
 
-# Check maintenance status
-git maintenance run --task=gc --dry-run
+# Check whether maintenance is needed and run it if so
+git maintenance run --auto
 
 # Run specific tasks manually
 git maintenance run --task=commit-graph
@@ -150,8 +150,10 @@ Work with partial clones:
 git checkout main
 # Git fetches blobs for files in working directory
 
-# Prefetch blobs for offline work
+# Fetch the latest commits while keeping the blobless filter
 git fetch --filter=blob:none origin
+
+# Git fetches blobs for selected paths when needed
 git sparse-checkout set src/
 ```
 
@@ -217,10 +219,10 @@ Sparse checkout patterns:
 
 ```bash
 # Set patterns directly
-git sparse-checkout set '/*' '!/large-assets/' '!/test-fixtures/'
+git sparse-checkout set --no-cone '/*' '!/large-assets/' '!/test-fixtures/'
 
 # Exclude specific large directories
-git sparse-checkout set --no-cone
+git sparse-checkout init --no-cone
 echo "/*" > .git/info/sparse-checkout
 echo "!/node_modules/" >> .git/info/sparse-checkout
 echo "!/vendor/" >> .git/info/sparse-checkout
@@ -316,12 +318,12 @@ time git status
 git config core.fsmonitor true
 git config core.untrackedCache true
 
-# On Windows, use built-in FSMonitor
+# On Windows and supported macOS versions, use built-in FSMonitor
 git config core.fsmonitor true
 
-# On macOS/Linux, use watchman
-# Install watchman first, then:
-git config core.fsmonitor "watchman"
+# For Watchman-based monitoring, configure Git's fsmonitor-watchman hook
+# and set core.fsmonitor to the hook path.
+git config core.fsmonitor .git/hooks/query-watchman
 ```
 
 Index optimization:
@@ -365,7 +367,7 @@ Add these to `.git/config` for repository-specific optimizations:
 
 [index]
     # Skip expensive worktree check
-    skipHash = false
+    skipHash = true
 
 [feature]
     # Enable experimental performance features
@@ -461,7 +463,7 @@ For self-hosted Git servers:
 
 ```bash
 # Enable bitmap indices for faster clones
-git config pack.writeBitmaps true
+git config repack.writeBitmaps true
 git repack -a -d -b
 
 # Configure alternates for related repositories
