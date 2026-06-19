@@ -226,6 +226,7 @@ import (
     "google.golang.org/genproto/googleapis/rpc/errdetails"
     "google.golang.org/grpc/codes"
     "google.golang.org/grpc/status"
+    "google.golang.org/protobuf/types/known/timestamppb"
     pb "myapp/proto"
 )
 
@@ -446,6 +447,16 @@ func (s *ResourceService) createStateError(resourceID, currentState string, vali
     st, _ = st.WithDetails(pf)
     return st.Err()
 }
+
+func removeFromSlice(items []string, target string) []string {
+    result := items[:0]
+    for _, item := range items {
+        if item != target {
+            result = append(result, item)
+        }
+    }
+    return result
+}
 ```
 
 ### 4. Account/User Preconditions
@@ -587,7 +598,6 @@ func (s *AccountService) createMultiplePreconditionError(violations []*errdetail
 package client
 
 import (
-    "fmt"
     "log"
 
     "google.golang.org/genproto/googleapis/rpc/errdetails"
@@ -695,6 +705,7 @@ import (
     "context"
     "log"
 
+    "google.golang.org/genproto/googleapis/rpc/errdetails"
     "google.golang.org/grpc/codes"
     "google.golang.org/grpc/status"
     pb "myapp/proto"
