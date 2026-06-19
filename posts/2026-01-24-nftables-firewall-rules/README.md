@@ -185,7 +185,7 @@ sudo nft -f /etc/nftables.conf
 sudo nft list ruleset
 
 # Save current rules to file
-sudo nft list ruleset > /etc/nftables.conf
+sudo sh -c 'nft list ruleset > /etc/nftables.conf'
 ```
 
 ---
@@ -284,6 +284,7 @@ table inet filter {
         type ipv4_addr
         flags dynamic,timeout
         timeout 1m
+        size 65535
     }
 
     chain input {
@@ -304,7 +305,7 @@ table inet filter {
 
         # SSH with rate limiting (prevent brute force)
         tcp dport $SSH_PORT ct state new \
-            add @ssh_limit { ip saddr limit rate 3/minute burst 5 packets } \
+            update @ssh_limit { ip saddr limit rate 3/minute burst 5 packets } \
             accept
 
         # Web traffic (HTTP/HTTPS)
@@ -503,6 +504,7 @@ table inet filter {
         type ipv4_addr
         flags dynamic,timeout
         timeout 1m
+        size 65535
     }
 
     # Set for banned IPs
@@ -510,6 +512,7 @@ table inet filter {
         type ipv4_addr
         flags timeout
         timeout 1h
+        size 65535
     }
 
     chain input {
@@ -536,17 +539,17 @@ table inet filter {
 
         # HTTP rate limiting
         tcp dport 80 ct state new \
-            add @flood_watch { ip saddr limit rate 50/second } accept
+            update @flood_watch { ip saddr limit rate 50/second } accept
         tcp dport 80 drop
 
         # HTTPS rate limiting
         tcp dport 443 ct state new \
-            add @flood_watch { ip saddr limit rate 50/second } accept
+            update @flood_watch { ip saddr limit rate 50/second } accept
         tcp dport 443 drop
 
         # SSH strict rate limiting
         tcp dport 22 ct state new \
-            add @flood_watch { ip saddr limit rate 3/minute burst 5 packets } accept
+            update @flood_watch { ip saddr limit rate 3/minute burst 5 packets } accept
         tcp dport 22 drop
 
         counter drop
@@ -579,24 +582,28 @@ table inet filter {
         type ipv4_addr
         flags timeout
         timeout 10s
+        size 65535
     }
 
     set knock_stage2 {
         type ipv4_addr
         flags timeout
         timeout 10s
+        size 65535
     }
 
     set knock_stage3 {
         type ipv4_addr
         flags timeout
         timeout 10s
+        size 65535
     }
 
     set allowed_ssh {
         type ipv4_addr
         flags timeout
         timeout 30s
+        size 65535
     }
 
     chain input {
@@ -690,7 +697,7 @@ View logs:
 sudo journalctl -k | grep -E "SSH-NEW|WEB-NEW|DROP"
 
 # Real-time monitoring
-sudo journalctl -kf | grep nftables
+sudo journalctl -kf | grep -E "SSH-NEW|WEB-NEW|DROP"
 
 # Using dmesg
 dmesg | grep -E "SSH-NEW|DROP"
@@ -712,8 +719,8 @@ sudo nft add chain inet filter mychain
 # Add a rule to existing chain
 sudo nft add rule inet filter input tcp dport 8080 accept
 
-# Insert rule at specific position (0 = first)
-sudo nft insert rule inet filter input position 0 tcp dport 8081 accept
+# Insert rule before the first rule in the chain (index 0 = current first rule)
+sudo nft insert rule inet filter input index 0 tcp dport 8081 accept
 
 # Delete a rule (need handle number)
 sudo nft -a list chain inet filter input  # shows handles
@@ -800,15 +807,14 @@ Manage firewall configurations:
 
 ```bash
 # Backup current rules
-sudo nft list ruleset > /root/nftables-backup-$(date +%Y%m%d).conf
+sudo sh -c 'nft list ruleset > /root/nftables-backup-$(date +%Y%m%d).conf'
 
 # Restore from backup
 sudo nft -f /root/nftables-backup-20260124.conf
 
-# Create atomic backup (stops traffic briefly)
-sudo nft list ruleset > /tmp/rules.bak && \
-    sudo nft flush ruleset && \
-    sudo nft -f /tmp/rules.bak
+# Create a backup and verify it parses
+sudo sh -c 'nft list ruleset > /tmp/rules.bak' && \
+    sudo nft -c -f /tmp/rules.bak
 
 # Scheduled backup via cron
 echo "0 2 * * * root nft list ruleset > /root/nftables-backup-\$(date +\%Y\%m\%d).conf" | \
