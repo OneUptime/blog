@@ -122,7 +122,7 @@ interface Node {
   id: ID!
 }
 
-# GOOD: id type matches interface exactly
+# GOOD: id type is compatible with the interface field
 type User implements Node {
   id: ID!
   name: String!
@@ -233,7 +233,7 @@ interface Searchable {
   search(query: String!, limit: Int): [SearchResult!]!
 }
 
-# GOOD: All arguments match the interface
+# GOOD: All interface arguments are present with matching types
 type Post implements Searchable {
   search(query: String!, limit: Int): [SearchResult!]!
 
@@ -274,7 +274,7 @@ type Draft implements Timestamped {
 # Option 1: Make implementing field non-null
 type Draft implements Timestamped {
   createdAt: DateTime!
-  updatedAt: DateTime!  # Must match interface
+  updatedAt: DateTime!  # Must be compatible with the interface
 }
 
 # Option 2: Make interface field nullable if nulls are valid
@@ -360,7 +360,7 @@ const resolvers = {
 
 ---
 
-## Interface Inheritance (GraphQL SDL Extensions)
+## Interface Inheritance (Interfaces Implementing Interfaces)
 
 ```graphql
 # Base interface
@@ -400,6 +400,9 @@ Here is a complete example implementing a content management system with interfa
 ```graphql
 # schema.graphql
 
+scalar DateTime
+scalar JSON
+
 # Base interface for all entities
 interface Node {
   id: ID!
@@ -424,13 +427,37 @@ interface Versionable {
   previousVersions: [ContentVersion!]!
 }
 
-# Union for content version snapshots
+# Type for content version snapshots
 type ContentVersion {
   id: ID!
   version: Int!
   content: JSON!
   createdAt: DateTime!
   createdBy: User!
+}
+
+type User implements Node & Timestamped {
+  id: ID!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  name: String!
+  email: String!
+}
+
+type Tag implements Node {
+  id: ID!
+  name: String!
+}
+
+type Category implements Node {
+  id: ID!
+  name: String!
+}
+
+enum PageTemplate {
+  DEFAULT
+  LANDING
+  DOCUMENTATION
 }
 
 # Article implements multiple interfaces
@@ -839,7 +866,7 @@ flowchart TD
 
 1. **Define interfaces for shared behavior** not just shared data
 2. **Keep interfaces focused** on a single responsibility
-3. **Always implement resolveType** for abstract types
+3. **Provide `__resolveType`, `__typename`, or `isTypeOf`** for abstract type resolution
 4. **Use meaningful interface names** that describe the capability
 5. **Document interface contracts** with descriptions
 6. **Test all implementing types** through interface queries
@@ -853,8 +880,8 @@ Interface implementation errors in GraphQL occur when types fail to properly imp
 
 Key takeaways:
 
-- Implement all interface fields with exact type matches
-- Provide `__resolveType` for all interfaces
+- Implement all interface fields with compatible return types and matching argument types
+- Provide `__resolveType`, `__typename`, or `isTypeOf` for interface results
 - Use multiple interfaces for composition
 - Test interface queries with all implementing types
 - Choose interfaces for shared behavior, unions for grouping
