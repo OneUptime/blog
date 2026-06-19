@@ -105,10 +105,11 @@ cert-manager is the standard for Kubernetes certificate automation.
 
 ```bash
 # Install cert-manager
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.0/cert-manager.yaml
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
 
 # Wait for it to be ready
 kubectl wait --for=condition=available --timeout=300s deployment/cert-manager -n cert-manager
+kubectl wait --for=condition=available --timeout=300s deployment/cert-manager-cainjector -n cert-manager
 kubectl wait --for=condition=available --timeout=300s deployment/cert-manager-webhook -n cert-manager
 ```
 
@@ -129,7 +130,7 @@ spec:
     solvers:
       - http01:
           ingress:
-            class: nginx
+            ingressClassName: nginx
 ---
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
@@ -144,7 +145,7 @@ spec:
     solvers:
       - http01:
           ingress:
-            class: nginx
+            ingressClassName: nginx
 ```
 
 ### Request Certificates via Ingress Annotations
@@ -265,7 +266,9 @@ openssl req -x509 -new -nodes \
   -sha256 \
   -days 3650 \
   -out root-ca/root-ca.crt \
-  -subj "/C=US/ST=State/L=City/O=Company/OU=IT/CN=Internal Root CA"
+  -subj "/C=US/ST=State/L=City/O=Company/OU=IT/CN=Internal Root CA" \
+  -addext "basicConstraints=critical,CA:true,pathlen:1" \
+  -addext "keyUsage=critical,keyCertSign,cRLSign"
 
 # Generate Intermediate CA private key
 openssl genrsa -out intermediate-ca/intermediate-ca.key 4096
@@ -416,7 +419,7 @@ groups:
 # check_certificates.py - Check certificate expiry dates
 import ssl
 import socket
-from datetime import datetime
+from datetime import datetime, timezone
 import sys
 
 def check_certificate(hostname, port=443):
@@ -430,9 +433,12 @@ def check_certificate(hostname, port=443):
 
                 # Parse expiry date
                 expiry_str = cert['notAfter']
-                expiry_date = datetime.strptime(expiry_str, '%b %d %H:%M:%S %Y %Z')
+                expiry_date = datetime.fromtimestamp(
+                    ssl.cert_time_to_seconds(expiry_str),
+                    tz=timezone.utc
+                )
 
-                days_until_expiry = (expiry_date - datetime.now()).days
+                days_until_expiry = (expiry_date - datetime.now(timezone.utc)).days
 
                 return {
                     'hostname': hostname,
@@ -536,7 +542,9 @@ sleep 30
 # Delete old secret (keep last 2 versions)
 kubectl get secrets -n ${NAMESPACE} | grep "${SECRET_NAME}-" | \
   sort -r | tail -n +3 | awk '{print $1}' | \
-  xargs -I {} kubectl delete secret {} -n ${NAMESPACE}
+  while read -r secret; do
+    kubectl delete secret "${secret}" -n ${NAMESPACE}
+  done
 
 echo "Certificate rotated successfully"
 ```
