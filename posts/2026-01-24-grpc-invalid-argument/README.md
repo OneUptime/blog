@@ -40,7 +40,7 @@ flowchart TD
     E --> E2[Missing nested message]
 
     F --> F1[Invalid state transition]
-    F --> F2[Reference to non-existent entity]
+    F --> F2[Invalid combination of fields]
 ```
 
 ---
@@ -52,7 +52,6 @@ flowchart TD
 ```python
 import grpc
 import re
-from datetime import datetime
 
 class UserServiceServicer(user_pb2_grpc.UserServiceServicer):
 
@@ -80,12 +79,11 @@ class UserServiceServicer(user_pb2_grpc.UserServiceServicer):
         elif not self._is_valid_email(request.email):
             errors.append(('email', 'Invalid email format'))
 
-        # Validate age (if provided)
-        if request.HasField('age'):
-            if request.age < 0:
-                errors.append(('age', 'Age cannot be negative'))
-            elif request.age > 150:
-                errors.append(('age', 'Age must be a realistic value'))
+        # Validate age
+        if request.age < 0:
+            errors.append(('age', 'Age cannot be negative'))
+        elif request.age > 150:
+            errors.append(('age', 'Age must be a realistic value'))
 
         # Validate password strength
         if not request.password:
@@ -173,8 +171,8 @@ class OrderServiceServicer(order_pb2_grpc.OrderServiceServicer):
         # Validate customer_id
         if not request.customer_id:
             violations.append(('customer_id', 'Customer ID is required'))
-        elif not self._customer_exists(request.customer_id):
-            violations.append(('customer_id', f'Customer {request.customer_id} does not exist'))
+        elif not self._is_valid_customer_id_format(request.customer_id):
+            violations.append(('customer_id', 'Customer ID format is invalid'))
 
         # Validate items
         if not request.items:
@@ -285,7 +283,6 @@ package main
 import (
     "context"
     "regexp"
-    "strings"
 
     "google.golang.org/genproto/googleapis/rpc/errdetails"
     "google.golang.org/grpc/codes"
@@ -426,7 +423,7 @@ message CreateUserRequest {
         (validate.rules).string.email = true
     ];
 
-    // Age: optional, 0-150
+    // Age: 0-150
     int32 age = 3 [
         (validate.rules).int32 = {
             gte: 0,
@@ -478,7 +475,8 @@ package main
 import (
     "context"
 
-    "github.com/envoyproxy/protoc-gen-validate/validate"
+    "google.golang.org/genproto/googleapis/rpc/errdetails"
+    "google.golang.org/grpc"
     "google.golang.org/grpc/codes"
     "google.golang.org/grpc/status"
 
@@ -504,23 +502,22 @@ func ValidatingInterceptor(
 }
 
 func convertValidationError(err error) error {
-    // Check if it is a validation error from protoc-gen-validate
-    if validationErr, ok := err.(validate.ValidationErrors); ok {
-        br := &errdetails.BadRequest{}
-
-        for _, fieldErr := range validationErr.Errors() {
-            br.FieldViolations = append(br.FieldViolations, &errdetails.BadRequest_FieldViolation{
-                Field:       fieldErr.Field(),
-                Description: fieldErr.Reason(),
-            })
-        }
-
-        st := status.New(codes.InvalidArgument, "validation failed")
-        st, _ = st.WithDetails(br)
-        return st.Err()
+    br := &errdetails.BadRequest{
+        FieldViolations: []*errdetails.BadRequest_FieldViolation{
+            {
+                Field:       "request",
+                Description: err.Error(),
+            },
+        },
     }
 
-    return status.Error(codes.InvalidArgument, err.Error())
+    st := status.New(codes.InvalidArgument, "validation failed")
+    st, detailErr := st.WithDetails(br)
+    if detailErr != nil {
+        return status.Error(codes.InvalidArgument, err.Error())
+    }
+
+    return st.Err()
 }
 
 // Apply interceptor to server
@@ -558,6 +555,10 @@ flowchart TD
 ### Debug Logging Interceptor
 
 ```python
+import os
+os.environ['GRPC_VERBOSITY'] = 'DEBUG'
+os.environ['GRPC_TRACE'] = 'all'
+
 import grpc
 import json
 import logging
@@ -574,6 +575,10 @@ class DebugInterceptor(grpc.ServerInterceptor):
 
     def intercept_service(self, continuation, handler_call_details):
         method = handler_call_details.method
+        handler = continuation(handler_call_details)
+
+        if handler is None or handler.unary_unary is None:
+            return handler
 
         def debug_handler(request, context):
             # Log the incoming request
@@ -589,20 +594,18 @@ class DebugInterceptor(grpc.ServerInterceptor):
 
             # Call the actual handler
             try:
-                response = continuation(handler_call_details)(request, context)
+                response = handler.unary_unary(request, context)
                 logger.debug(f'Response from {method}: success')
                 return response
             except Exception as e:
                 logger.error(f'Error in {method}: {e}')
                 raise
 
-        return grpc.unary_unary_rpc_method_handler(debug_handler)
-
-
-# Enable gRPC debug logging
-import os
-os.environ['GRPC_VERBOSITY'] = 'DEBUG'
-os.environ['GRPC_TRACE'] = 'all'
+        return grpc.unary_unary_rpc_method_handler(
+            debug_handler,
+            request_deserializer=handler.request_deserializer,
+            response_serializer=handler.response_serializer,
+        )
 ```
 
 ### Client-Side Request Debugging
