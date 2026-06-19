@@ -330,7 +330,7 @@ interface Serializable {
     fromJSON(json: string): void;
 }
 
-// Error: Class incorrectly implements interface
+// Correct: The class implements all required interface methods
 class User implements Serializable {
     name: string;
 
@@ -342,7 +342,7 @@ class User implements Serializable {
         return JSON.stringify({ name: this.name });
     }
 
-    // Fix: Implement all required methods
+    // Required method from the Serializable interface
     fromJSON(json: string): void {
         const data = JSON.parse(json);
         this.name = data.name;
