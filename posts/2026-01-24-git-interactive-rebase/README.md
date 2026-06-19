@@ -78,7 +78,7 @@ pick mno7890 Complete user feature
 | pick | p | Keep the commit as-is |
 | reword | r | Keep commit, edit message |
 | edit | e | Pause to modify commit |
-| squash | s | Combine with previous, keep message |
+| squash | s | Combine with previous, edit combined message |
 | fixup | f | Combine with previous, discard message |
 | drop | d | Delete the commit entirely |
 | exec | x | Run a shell command |
@@ -109,7 +109,7 @@ fixup ghi9012 Fix another login bug
 squash jkl3456 Add login tests
 ```
 
-Result: Two commits. The bug fixes are absorbed into the first commit. The test commit is squashed but you can edit the combined message.
+Result: One commit. The bug fixes are absorbed into the first commit. The test commit is squashed but you can edit the combined message.
 
 ### Reordering Commits
 
@@ -147,7 +147,7 @@ pick def5678 Other work
 When Git pauses at the commit:
 
 ```bash
-# Undo the commit but keep changes staged
+# Undo the commit but keep changes in the working tree
 git reset HEAD^
 
 # Now stage and commit separately
@@ -346,7 +346,7 @@ git config --global core.editor "nano"
 ### Enable Autosquash by Default
 
 ```bash
-git config --global rebase.autosquash true
+git config --global rebase.autoSquash true
 ```
 
 ### Helpful Aliases
@@ -381,7 +381,7 @@ git reset --hard def5678
 ### Lost Commits
 
 ```bash
-# All commits are recoverable via reflog
+# Recent commits are usually recoverable via reflog
 git reflog
 
 # Find and restore lost commit
