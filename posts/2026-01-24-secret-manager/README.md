@@ -188,6 +188,9 @@ metadata:
   name: my-api
 spec:
   template:
+    metadata:
+      annotations:
+        run.googleapis.com/secrets: "database-password:projects/my-project/secrets/database-password,tls-certificate:projects/my-project/secrets/tls-certificate"
     spec:
       containers:
         - image: gcr.io/my-project/my-api:latest
@@ -218,8 +221,7 @@ Deploy with gcloud:
 # Deploy Cloud Run service with secret
 gcloud run deploy my-api \
     --image=gcr.io/my-project/my-api:latest \
-    --set-secrets="DATABASE_PASSWORD=database-password:latest" \
-    --set-secrets="/secrets/tls/server.crt=tls-certificate:latest"
+    --update-secrets="DATABASE_PASSWORD=database-password:latest,/secrets/tls/server.crt=tls-certificate:latest"
 ```
 
 ### Google Kubernetes Engine (GKE)
@@ -237,12 +239,6 @@ spec:
   containers:
     - name: app
       image: gcr.io/my-project/my-app:latest
-      env:
-        - name: DB_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: db-secret
-              key: password
       volumeMounts:
         - name: secrets
           mountPath: /etc/secrets
@@ -250,7 +246,7 @@ spec:
   volumes:
     - name: secrets
       csi:
-        driver: secrets-store.csi.k8s.io
+        driver: secrets-store-gke.csi.k8s.io
         readOnly: true
         volumeAttributes:
           secretProviderClass: gcp-secrets
@@ -260,7 +256,7 @@ kind: SecretProviderClass
 metadata:
   name: gcp-secrets
 spec:
-  provider: gcp
+  provider: gke
   parameters:
     secrets: |
       - resourceName: "projects/my-project/secrets/database-password/versions/latest"
@@ -426,7 +422,7 @@ gcloud secrets get-iam-policy database-password
 Use conditional IAM bindings for additional security.
 
 ```bash
-# Allow access only from specific IP ranges
+# Allow access only when a specific Access Context Manager access level is present
 gcloud secrets add-iam-policy-binding database-password \
     --member="serviceAccount:my-app@my-project.iam.gserviceaccount.com" \
     --role="roles/secretmanager.secretAccessor" \
@@ -436,6 +432,7 @@ gcloud secrets add-iam-policy-binding database-password \
 ## Auditing Secret Access
 
 Monitor who accesses your secrets using Cloud Audit Logs.
+Enable Data Access audit logs for Secret Manager if you want to capture `AccessSecretVersion` requests.
 
 ```bash
 # View recent secret access events
@@ -448,45 +445,41 @@ gcloud logging read 'protoPayload.serviceName="secretmanager.googleapis.com" AND
     --limit=20
 ```
 
-Create alerts for suspicious access patterns.
+Create alerts for suspicious access events.
 
 ```python
 from google.cloud import monitoring_v3
 
-def create_secret_access_alert(project_id, secret_id, threshold=100):
-    """Create an alert for unusual secret access patterns."""
+def create_secret_access_alert(
+    project_id, secret_id, notification_channel, notification_rate_limit_seconds=300
+):
+    """Create a log-based alert for secret access events."""
 
     client = monitoring_v3.AlertPolicyServiceClient()
     project_name = f"projects/{project_id}"
 
     alert_policy = {
-        "display_name": f"High Secret Access Rate - {secret_id}",
+        "display_name": f"Secret Access Event - {secret_id}",
         "conditions": [
             {
-                "display_name": "Secret access rate",
-                "condition_threshold": {
+                "display_name": "Secret access event",
+                "condition_matched_log": {
                     "filter": f'''
                         resource.type="audited_resource"
                         protoPayload.serviceName="secretmanager.googleapis.com"
                         protoPayload.methodName="google.cloud.secretmanager.v1.SecretManagerService.AccessSecretVersion"
                         protoPayload.resourceName:"{secret_id}"
                     ''',
-                    "comparison": "COMPARISON_GT",
-                    "threshold_value": threshold,
-                    "duration": {"seconds": 300},
-                    "aggregations": [
-                        {
-                            "alignment_period": {"seconds": 60},
-                            "per_series_aligner": "ALIGN_RATE",
-                        }
-                    ],
                 },
             }
         ],
         "combiner": "OR",
-        "notification_channels": [
-            f"projects/{project_id}/notificationChannels/security-team"
-        ],
+        "notification_channels": [notification_channel],
+        "alert_strategy": {
+            "notification_rate_limit": {
+                "period": {"seconds": notification_rate_limit_seconds}
+            }
+        },
     }
 
     policy = client.create_alert_policy(
