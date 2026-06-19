@@ -53,7 +53,12 @@ service:
   telemetry:
     metrics:
       # Expose collector metrics on port 8888
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
       level: detailed
 ```
 
@@ -197,6 +202,8 @@ package main
 
 import (
     "context"
+    "log"
+
     "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/metric"
 )
@@ -237,39 +244,39 @@ OpenTelemetry Views let you modify metrics at the SDK level to drop or aggregate
 # Use Views to remove high-cardinality attributes before export
 from opentelemetry import metrics
 from opentelemetry.sdk.metrics import MeterProvider
-from opentelemetry.sdk.metrics.view import View, ExplicitBucketHistogramAggregation
+from opentelemetry.sdk.metrics.view import View
 
-# Create a view that drops the 'request_id' attribute from all metrics
-# This prevents cardinality explosion from unique request IDs
-drop_request_id_view = View(
+# Create a view that drops all measurement attributes from all metrics
+# This prevents cardinality explosion, but also removes useful dimensions
+drop_all_attributes_view = View(
     instrument_name="*",  # Apply to all instruments
-    attribute_keys=[],    # Empty list means drop all attributes
+    attribute_keys=set(), # Empty set means drop all attributes
     # Or specify which to KEEP:
-    # attribute_keys=["method", "status", "endpoint"]
+    # attribute_keys={"method", "status", "endpoint"}
 )
 
 # Create a view specifically for http_requests metric
 # Only keep bounded attributes, drop everything else
 http_requests_view = View(
     instrument_name="http_requests",
-    attribute_keys=["method", "status_code", "endpoint_pattern"],
+    attribute_keys={"method", "status_code", "endpoint_pattern"},
 )
 
 # Configure the meter provider with these views
 provider = MeterProvider(
-    views=[drop_request_id_view, http_requests_view]
+    views=[drop_all_attributes_view, http_requests_view]
 )
 metrics.set_meter_provider(provider)
 ```
 
-### Aggregating Labels
+### Configuring Histogram Buckets
 
 ```python
-# Aggregate high-cardinality labels into buckets
-from opentelemetry.sdk.metrics.view import View
+# Configure histogram buckets for response times
+from opentelemetry.sdk.metrics.view import View, ExplicitBucketHistogramAggregation
 
 # Create a view that buckets response times
-# This reduces cardinality while preserving useful information
+# This controls the number of histogram bucket series while preserving useful information
 latency_view = View(
     instrument_name="http_request_duration",
     # Define custom histogram buckets for latency
@@ -277,7 +284,7 @@ latency_view = View(
         boundaries=[0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0]
     ),
     # Only keep these bounded attributes
-    attribute_keys=["method", "route", "status_class"]  # status_class: 2xx, 4xx, 5xx
+    attribute_keys={"method", "route", "status_class"}  # status_class: 2xx, 4xx, 5xx
 )
 ```
 
@@ -292,49 +299,46 @@ Use the OpenTelemetry Collector to filter and transform metrics before they reac
 processors:
   # Filter processor to drop high-cardinality metrics entirely
   filter/drop-high-cardinality:
-    metrics:
-      # Exclude metrics that match these patterns
-      exclude:
-        match_type: regexp
-        metric_names:
-          # Drop metrics known to have cardinality issues
-          - ".*_by_user_id"
-          - ".*_by_request_id"
-          - "debug_.*"
+    error_mode: ignore
+    metric_conditions:
+      # Drop metrics known to have cardinality issues
+      - IsMatch(metric.name, ".*_by_user_id")
+      - IsMatch(metric.name, ".*_by_request_id")
+      - IsMatch(metric.name, "debug_.*")
 
   # Filter based on attribute values
   filter/drop-debug:
-    metrics:
-      exclude:
-        match_type: strict
-        resource_attributes:
-          - key: environment
-            value: debug
+    error_mode: ignore
+    metric_conditions:
+      - resource.attributes["environment"] == "debug"
 ```
 
 ### Transform Processor
+
+The transform processor is available in OpenTelemetry Collector Contrib and distributions that include it.
 
 ```yaml
 # otel-collector-config.yaml
 processors:
   # Transform processor to modify attributes
   transform/normalize:
+    error_mode: ignore
     metric_statements:
       - context: datapoint
         statements:
           # Remove high-cardinality attributes from all metrics
-          - delete_key(attributes, "request_id")
-          - delete_key(attributes, "trace_id")
-          - delete_key(attributes, "user_id")
+          - delete_key(datapoint.attributes, "request_id")
+          - delete_key(datapoint.attributes, "trace_id")
+          - delete_key(datapoint.attributes, "user_id")
 
           # Normalize endpoint paths
           # Replace /users/123 with /users/:id
-          - replace_pattern(attributes["http.route"], "/[0-9]+", "/:id")
+          - replace_pattern(datapoint.attributes["http.route"], "/[0-9]+", "/:id")
 
           # Bucket status codes into classes (2xx, 4xx, 5xx)
-          - set(attributes["status_class"], "2xx") where attributes["http.status_code"] >= 200 and attributes["http.status_code"] < 300
-          - set(attributes["status_class"], "4xx") where attributes["http.status_code"] >= 400 and attributes["http.status_code"] < 500
-          - set(attributes["status_class"], "5xx") where attributes["http.status_code"] >= 500
+          - set(datapoint.attributes["status_class"], "2xx") where datapoint.attributes["http.status_code"] >= 200 and datapoint.attributes["http.status_code"] < 300
+          - set(datapoint.attributes["status_class"], "4xx") where datapoint.attributes["http.status_code"] >= 400 and datapoint.attributes["http.status_code"] < 500
+          - set(datapoint.attributes["status_class"], "5xx") where datapoint.attributes["http.status_code"] >= 500
 ```
 
 ### Attributes Processor
@@ -353,8 +357,8 @@ processors:
       - key: request_id
         action: delete
 
-      # Hash sensitive data instead of removing it
-      # This preserves uniqueness for debugging while limiting cardinality
+      # Hash sensitive data only for obfuscation
+      # This does not reduce cardinality; use delete or bucketing for that
       - key: customer_id
         action: hash
 ```
@@ -397,19 +401,18 @@ processors:
 
   # Transform to normalize paths
   transform/normalize:
+    error_mode: ignore
     metric_statements:
       - context: datapoint
         statements:
-          - replace_pattern(attributes["http.target"], "/[0-9]+", "/:id")
-          - replace_pattern(attributes["url.path"], "/[0-9]+", "/:id")
+          - replace_pattern(datapoint.attributes["http.target"], "/[0-9]+", "/:id")
+          - replace_pattern(datapoint.attributes["url.path"], "/[0-9]+", "/:id")
 
   # Filter out known problematic metrics
   filter/cardinality:
-    metrics:
-      exclude:
-        match_type: regexp
-        metric_names:
-          - ".*_by_id$"
+    error_mode: ignore
+    metric_conditions:
+      - IsMatch(metric.name, ".*_by_id$")
 
 exporters:
   otlp:
@@ -437,7 +440,7 @@ groups:
     rules:
       # Alert when total time series count is too high
       - alert: HighMetricCardinality
-        expr: sum(scrape_series_added) > 1000000
+        expr: prometheus_tsdb_head_series > 1000000
         for: 5m
         labels:
           severity: warning
@@ -447,7 +450,7 @@ groups:
 
       # Alert on rapid cardinality growth
       - alert: CardinalityGrowthRate
-        expr: rate(scrape_series_added[1h]) > 1000
+        expr: sum(rate(scrape_series_added[1h])) > 1000
         for: 15m
         labels:
           severity: warning
