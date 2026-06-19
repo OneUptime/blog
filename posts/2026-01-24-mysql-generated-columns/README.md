@@ -87,25 +87,25 @@ Use this decision tree to pick the right type:
 ```mermaid
 flowchart TD
     A[Need a Generated Column?] --> B{Will you index it?}
-    B -->|Yes| C[Use STORED]
+    B -->|Yes| C[Use STORED or indexed VIRTUAL]
     B -->|No| D{Expensive computation?}
     D -->|Yes| E{Read frequently?}
     D -->|No| F[Use VIRTUAL]
     E -->|Yes| G[Use STORED]
     E -->|No| F
 
-    C --> H[Stored on disk]
+    C --> H[Stored on disk, or materialized in index]
     G --> H
     F --> I[Computed on read]
 ```
 
 | Consideration | Virtual | Stored |
 |---------------|---------|--------|
-| Storage space | None | Same as column type |
+| Storage space | None unless indexed | Same as column type |
 | Read performance | Slower (computed each time) | Faster (already calculated) |
-| Write performance | Faster (no computation) | Slower (must compute and store) |
+| Write performance | Faster unless indexed | Slower (must compute and store) |
 | Can be indexed | Yes (with limitations) | Yes |
-| Can have foreign key | No | Yes |
+| Can have foreign key | No | Yes (with limitations) |
 
 ## Practical Examples
 
@@ -140,23 +140,23 @@ SELECT * FROM events WHERE user_id = 123;
 SELECT * FROM events WHERE event_type = 'purchase';
 ```
 
-### Computed Age from Birth Date
+### Computed Birth Year from Birth Date
 
 ```sql
 CREATE TABLE members (
     id INT PRIMARY KEY AUTO_INCREMENT,
     name VARCHAR(100) NOT NULL,
     birth_date DATE NOT NULL,
-    -- Calculate age (use VIRTUAL since it changes over time)
-    age INT GENERATED ALWAYS AS (
-        TIMESTAMPDIFF(YEAR, birth_date, CURDATE())
+    -- Extract birth year for grouping and filtering
+    birth_year INT GENERATED ALWAYS AS (
+        YEAR(birth_date)
     ) VIRTUAL
 );
 
 INSERT INTO members (name, birth_date) VALUES ('Alice', '1990-05-15');
 
-SELECT name, birth_date, age FROM members;
--- age updates automatically as time passes
+SELECT name, birth_date, birth_year FROM members;
+-- Output: name='Alice', birth_date='1990-05-15', birth_year=1990
 ```
 
 ### Normalized Search Column
@@ -181,7 +181,7 @@ INSERT INTO articles (title) VALUES ('  MySQL Best Practices  ');
 SELECT * FROM articles WHERE title_normalized = 'mysql best practices';
 ```
 
-### Computed Status Based on Dates
+### Computed Status Based on Stored Dates
 
 ```sql
 CREATE TABLE subscriptions (
@@ -189,21 +189,22 @@ CREATE TABLE subscriptions (
     user_id INT NOT NULL,
     start_date DATE NOT NULL,
     end_date DATE NOT NULL,
-    -- Compute status based on current date
+    checked_on DATE NOT NULL,
+    -- Compute status based on a stored date value
     status VARCHAR(20) GENERATED ALWAYS AS (
         CASE
-            WHEN CURDATE() < start_date THEN 'pending'
-            WHEN CURDATE() BETWEEN start_date AND end_date THEN 'active'
+            WHEN checked_on < start_date THEN 'pending'
+            WHEN checked_on BETWEEN start_date AND end_date THEN 'active'
             ELSE 'expired'
         END
     ) VIRTUAL
 );
 
-INSERT INTO subscriptions (user_id, start_date, end_date)
-VALUES (1, '2026-01-01', '2026-12-31');
+INSERT INTO subscriptions (user_id, start_date, end_date, checked_on)
+VALUES (1, '2026-01-01', '2026-12-31', '2026-06-19');
 
 SELECT * FROM subscriptions;
--- status is automatically 'active', 'pending', or 'expired'
+-- status is automatically 'active', 'pending', or 'expired' for the stored checked_on date
 ```
 
 ## Adding Generated Columns to Existing Tables
@@ -236,19 +237,19 @@ CREATE INDEX idx_price_with_tax ON products(price_with_tax);
 CREATE INDEX idx_full_name ON users(full_name);
 ```
 
-Note: Indexing virtual columns works in MySQL 5.7+ but the index stores actual values, using disk space similar to stored columns.
+Note: Indexing virtual columns works in MySQL 5.7+ for InnoDB secondary indexes. MySQL materializes the generated values in the index records, so the index uses disk space and adds write cost.
 
 ## Limitations and Restrictions
 
 Generated columns have several limitations:
 
 ```sql
--- Cannot reference other generated columns (in MySQL 5.7)
+-- Cannot reference generated columns defined later in the table
 -- This fails:
 CREATE TABLE bad_example (
     a INT,
-    b INT GENERATED ALWAYS AS (a * 2) STORED,
-    c INT GENERATED ALWAYS AS (b * 2) STORED  -- Error: references b
+    c INT GENERATED ALWAYS AS (b * 2) STORED,  -- Error: references b before it exists
+    b INT GENERATED ALWAYS AS (a * 2) STORED
 );
 
 -- Cannot use subqueries
@@ -260,31 +261,35 @@ CREATE TABLE bad_example (
     ) STORED  -- Error: subqueries not allowed
 );
 
--- Cannot use non-deterministic functions in STORED columns
+-- Cannot use non-deterministic functions in generated columns
 -- This fails:
 CREATE TABLE bad_example (
     id INT,
     random_val INT GENERATED ALWAYS AS (RAND()) STORED  -- Error
 );
 
--- But VIRTUAL allows some non-deterministic functions
-CREATE TABLE ok_example (
+-- This also fails, even though the column is VIRTUAL
+CREATE TABLE bad_example (
     id INT,
-    current_time TIMESTAMP GENERATED ALWAYS AS (NOW()) VIRTUAL  -- Works
+    current_time TIMESTAMP GENERATED ALWAYS AS (NOW()) VIRTUAL  -- Error
 );
 ```
 
 ## Updating Generated Column Definitions
 
-You cannot directly modify a generated column. Drop and recreate it:
+You can modify a generated column's data type or expression with `ALTER TABLE ... MODIFY COLUMN`. To change between `VIRTUAL` and `STORED`, drop and recreate the column:
 
 ```sql
 -- Change the expression for a generated column
-ALTER TABLE users DROP COLUMN full_name;
-
-ALTER TABLE users ADD COLUMN full_name VARCHAR(102) GENERATED ALWAYS AS (
+ALTER TABLE users MODIFY COLUMN full_name VARCHAR(102) GENERATED ALWAYS AS (
     CONCAT(first_name, ' ', UPPER(last_name))
 ) VIRTUAL;
+
+-- Change a virtual column to stored
+ALTER TABLE users DROP COLUMN full_name;
+ALTER TABLE users ADD COLUMN full_name VARCHAR(102) GENERATED ALWAYS AS (
+    CONCAT(first_name, ' ', UPPER(last_name))
+) STORED;
 ```
 
 ## Migration Considerations
@@ -292,13 +297,17 @@ ALTER TABLE users ADD COLUMN full_name VARCHAR(102) GENERATED ALWAYS AS (
 When migrating data to tables with generated columns:
 
 ```sql
--- Generated columns are excluded from INSERT statements
+-- Generated columns are usually excluded from INSERT statements
 -- This works:
 INSERT INTO users (first_name, last_name) VALUES ('John', 'Doe');
 
 -- This fails:
 INSERT INTO users (first_name, last_name, full_name)
 VALUES ('John', 'Doe', 'John Doe');  -- Error: cannot insert into generated column
+
+-- If you list a generated column explicitly, the only allowed value is DEFAULT:
+INSERT INTO users (first_name, last_name, full_name)
+VALUES ('John', 'Doe', DEFAULT);
 
 -- For bulk imports, exclude generated columns from your CSV/data
 LOAD DATA INFILE '/data/users.csv'
@@ -311,11 +320,11 @@ FIELDS TERMINATED BY ','
 
 1. **Use VIRTUAL for simple expressions** that are fast to compute and not frequently queried.
 
-2. **Use STORED for indexed columns** or computationally expensive expressions.
+2. **Use STORED for computationally expensive expressions** or when you want the value materialized in the table. InnoDB can also index virtual generated columns.
 
-3. **Extract JSON fields into stored columns** for efficient indexing and querying.
+3. **Extract JSON fields into generated columns** for efficient indexing and querying.
 
-4. **Avoid expressions that change frequently** in stored columns (like age calculations based on current date).
+4. **Avoid non-deterministic expressions** like current-date or random-value calculations. MySQL generated columns require deterministic expressions.
 
 5. **Test performance** before and after adding generated columns, especially stored ones on large tables.
 
