@@ -42,6 +42,9 @@ Different image formats serve different purposes. Here is when to use each:
 Serve the best format based on browser support using the `Accept` header.
 
 ```javascript
+const fs = require('fs').promises;
+const path = require('path');
+
 // Express middleware for format negotiation
 function imageFormatMiddleware(req, res, next) {
     const accept = req.headers.accept || '';
@@ -61,11 +64,16 @@ function imageFormatMiddleware(req, res, next) {
 // Route handler that serves optimized images
 app.get('/images/:name', imageFormatMiddleware, async (req, res) => {
     const { name } = req.params;
+    const safeName = path.basename(name);
     const format = req.preferredFormat;
 
     // Try to serve the optimized format
-    const optimizedPath = `./images/${name}.${format}`;
-    const fallbackPath = `./images/${name}.jpeg`;
+    const imageDir = path.join(__dirname, 'images');
+    const optimizedPath = path.join(imageDir, `${safeName}.${format}`);
+    const fallbackPath = path.join(imageDir, `${safeName}.jpeg`);
+
+    // Ensure shared caches keep separate variants per Accept header
+    res.vary('Accept');
 
     try {
         await fs.access(optimizedPath);
@@ -255,6 +263,7 @@ class LazyLoader {
         };
 
         // Start loading
+        if (srcset) tempImg.srcset = srcset;
         tempImg.src = src;
     }
 }
@@ -438,11 +447,11 @@ Integrate image optimization into your build process.
 ```javascript
 // vite.config.js - Image optimization plugin
 import { defineConfig } from 'vite';
-import imageOptimizer from 'vite-plugin-image-optimizer';
+import { ViteImageOptimizer } from 'vite-plugin-image-optimizer';
 
 export default defineConfig({
     plugins: [
-        imageOptimizer({
+        ViteImageOptimizer({
             // JPEG options
             jpeg: {
                 quality: 80,
@@ -461,9 +470,9 @@ export default defineConfig({
             // AVIF options
             avif: {
                 quality: 65,
-                speed: 5
+                effort: 5
             },
-            // Generate WebP versions automatically
+            // Cache optimized assets between builds
             cache: true,
             cacheLocation: './node_modules/.cache/image-optimizer'
         })
@@ -498,6 +507,8 @@ observer.observe({ entryTypes: ['resource'] });
 // Report metrics after page load
 window.addEventListener('load', () => {
     setTimeout(() => {
+        if (imageMetrics.length === 0) return;
+
         const totalSize = imageMetrics.reduce(
             (sum, m) => sum + m.transferSize, 0
         );
