@@ -10,7 +10,7 @@ Description: Learn how to properly validate and sanitize user input to prevent i
 
 > Input validation is your first line of defense against attacks. Every piece of data from users, APIs, or external systems should be validated before use. This guide covers validation techniques, common pitfalls, and best practices across multiple languages.
 
-Never trust input. Always validate. This simple rule can prevent most injection attacks and data integrity issues.
+Never trust input. Always validate. This simple rule can reduce the risk of injection attacks and data integrity issues.
 
 ---
 
@@ -207,11 +207,13 @@ class InputValidator {
             max = Number.MAX_SAFE_INTEGER
         } = options;
 
-        const num = parseInt(input, 10);
+        const value = String(input).trim();
 
-        if (isNaN(num)) {
+        if (!validator.isInt(value, { min, max })) {
             return { valid: false, error: 'Must be a valid integer' };
         }
+
+        const num = Number(value);
 
         if (num < min) {
             return { valid: false, error: `Must be at least ${min}` };
@@ -386,8 +388,7 @@ const validations = {
         query('q')
             .trim()
             .isLength({ min: 1, max: 100 })
-            .withMessage('Search query must be 1-100 characters')
-            .escape(),  // Sanitize for safety
+            .withMessage('Search query must be 1-100 characters'),
 
         validate
     ]
@@ -409,7 +410,7 @@ router.get('/users/:id', validations.idParam, async (req, res) => {
 });
 
 router.get('/search', validations.search, async (req, res) => {
-    const { q } = req.query;  // Sanitized search query
+    const { q } = req.query;  // Validated search query
     // ... perform search
 });
 
@@ -425,13 +426,15 @@ module.exports = { validate, validations };
 
 # Input validation with Pydantic
 
-from pydantic import BaseModel, Field, EmailStr, validator, root_validator
-from typing import Optional, List
+from pydantic import BaseModel, ConfigDict, Field, EmailStr, field_validator, model_validator
+from typing import Annotated, Optional, List
 import re
 from datetime import datetime
 
 class UserRegistration(BaseModel):
     """User registration request with validation"""
+
+    model_config = ConfigDict(str_strip_whitespace=True)
 
     email: EmailStr = Field(..., description="User email address")
 
@@ -449,7 +452,8 @@ class UserRegistration(BaseModel):
         description="Strong password"
     )
 
-    @validator('username')
+    @field_validator('username')
+    @classmethod
     def validate_username(cls, v):
         # Only allow alphanumeric, underscore, hyphen
         if not re.match(r'^[a-zA-Z0-9_-]+$', v):
@@ -462,7 +466,8 @@ class UserRegistration(BaseModel):
 
         return v
 
-    @validator('password')
+    @field_validator('password')
+    @classmethod
     def validate_password(cls, v):
         errors = []
 
@@ -480,11 +485,6 @@ class UserRegistration(BaseModel):
 
         return v
 
-    class Config:
-        # Strip whitespace from strings
-        anystr_strip_whitespace = True
-
-
 class PaginationParams(BaseModel):
     """Pagination parameters with safe defaults"""
 
@@ -500,24 +500,13 @@ class SearchQuery(BaseModel):
     """Search query with sanitization"""
 
     q: str = Field(..., min_length=1, max_length=100)
-    filters: Optional[List[str]] = Field(default=None, max_items=10)
+    filters: Optional[List[Annotated[str, Field(pattern=r'^(active|inactive|pending|verified)$')]]] = Field(default=None, max_length=10)
 
-    @validator('q')
-    def sanitize_query(cls, v):
-        # Remove potential SQL injection characters
-        # Note: This is defense in depth - always use parameterized queries
-        dangerous_chars = ['\'', '"', ';', '--', '/*', '*/', 'xp_']
-        for char in dangerous_chars:
-            v = v.replace(char, '')
+    @field_validator('q')
+    @classmethod
+    def normalize_query(cls, v):
+        # Normalize whitespace; use parameterized queries for database access.
         return v.strip()
-
-    @validator('filters', each_item=True)
-    def validate_filter(cls, v):
-        # Whitelist allowed filter values
-        allowed = {'active', 'inactive', 'pending', 'verified'}
-        if v not in allowed:
-            raise ValueError(f'Invalid filter. Allowed: {allowed}')
-        return v
 
 
 class DateRangeQuery(BaseModel):
@@ -526,21 +515,17 @@ class DateRangeQuery(BaseModel):
     start_date: datetime
     end_date: datetime
 
-    @root_validator
-    def validate_date_range(cls, values):
-        start = values.get('start_date')
-        end = values.get('end_date')
+    @model_validator(mode='after')
+    def validate_date_range(self):
+        if self.start_date > self.end_date:
+            raise ValueError('start_date must be before end_date')
 
-        if start and end:
-            if start > end:
-                raise ValueError('start_date must be before end_date')
+        # Limit range to 1 year
+        delta = self.end_date - self.start_date
+        if delta.days > 365:
+            raise ValueError('Date range cannot exceed 1 year')
 
-            # Limit range to 1 year
-            delta = end - start
-            if delta.days > 365:
-                raise ValueError('Date range cannot exceed 1 year')
-
-        return values
+        return self
 
 
 # FastAPI usage example
@@ -576,7 +561,6 @@ async def search(
 package validation
 
 import (
-    "errors"
     "regexp"
     "strings"
     "unicode"
