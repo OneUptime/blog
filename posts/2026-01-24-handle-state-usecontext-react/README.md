@@ -58,11 +58,8 @@ graph TD
 // ThemeContext.js
 import { createContext, useContext, useState } from 'react';
 
-// Create the context with a default value
-const ThemeContext = createContext({
-  theme: 'light',
-  toggleTheme: () => {},
-});
+// Create the context with an undefined default
+const ThemeContext = createContext(undefined);
 
 // Custom hook for consuming the context
 export function useTheme() {
@@ -132,7 +129,7 @@ For more complex state, combine useContext with useReducer:
 
 ```javascript
 // AuthContext.js
-import { createContext, useContext, useReducer, useCallback } from 'react';
+import { createContext, useContext, useReducer, useCallback, useMemo } from 'react';
 
 // Define action types
 const AUTH_ACTIONS = {
@@ -213,11 +210,11 @@ export function AuthProvider({ children }) {
     dispatch({ type: AUTH_ACTIONS.LOGOUT });
   }, []);
 
-  const value = {
+  const value = useMemo(() => ({
     ...state,
     login,
     logout,
-  };
+  }), [state, login, logout]);
 
   return (
     <AuthContext.Provider value={value}>
@@ -240,6 +237,7 @@ export function useAuth() {
 
 ```javascript
 // LoginForm.js
+import { useState } from 'react';
 import { useAuth } from './AuthContext';
 
 function LoginForm() {
@@ -333,6 +331,8 @@ function AppProviders({ children }) {
 ### Memoize Context Value
 
 ```javascript
+import { useMemo, useState } from 'react';
+
 // BAD: New object on every render
 function ThemeProvider({ children }) {
   const [theme, setTheme] = useState('light');
