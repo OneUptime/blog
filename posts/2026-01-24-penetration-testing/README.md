@@ -125,11 +125,8 @@ systemctl reload security-logging
 
 # Create network monitoring rules
 echo "Setting up network monitoring..."
-cat > /etc/iptables/pentest-monitoring.rules << 'EOF'
-# Log all traffic from pentest IP ranges
--A INPUT -s 203.0.113.0/24 -j LOG --log-prefix "PENTEST: "
--A OUTPUT -d 203.0.113.0/24 -j LOG --log-prefix "PENTEST: "
-EOF
+iptables -A INPUT -s 203.0.113.0/24 -j LOG --log-prefix "PENTEST: "
+iptables -A OUTPUT -d 203.0.113.0/24 -j LOG --log-prefix "PENTEST: "
 
 # Notify monitoring team
 echo "Notifying SOC team..."
@@ -577,9 +574,10 @@ case $TEST_TYPE in
             --batch \
             --level=3 \
             --risk=2 \
+            --flush-session \
             --output-dir=/tmp/sqlmap-verify
 
-        if grep -q "not injectable" /tmp/sqlmap-verify/*/log; then
+        if grep -Eqi "does not appear to be injectable|not injectable" /tmp/sqlmap-verify/*/log; then
             echo "PASS: SQL injection vulnerability remediated"
             exit 0
         else
@@ -597,8 +595,8 @@ case $TEST_TYPE in
         )
 
         for payload in "${PAYLOADS[@]}"; do
-            response=$(curl -s "https://app.example.com/search?q=$(urlencode "$payload")")
-            if echo "$response" | grep -q "$payload"; then
+            response=$(curl -G -s "https://app.example.com/search" --data-urlencode "q=$payload")
+            if echo "$response" | grep -Fq -- "$payload"; then
                 echo "FAIL: XSS payload reflected: $payload"
                 exit 1
             fi
