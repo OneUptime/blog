@@ -12,7 +12,7 @@ The `useSearchParams` hook in Next.js reads URL search parameters on the client 
 
 ## Understanding the Problem
 
-The `useSearchParams` hook requires special handling because search parameters are only available on the client during static rendering.
+The `useSearchParams` hook requires special handling during static rendering because the route is prerendered before a request URL is available. In a prerendered route, calling `useSearchParams` causes the Client Component tree up to the closest Suspense boundary to be client-side rendered.
 
 ```mermaid
 sequenceDiagram
@@ -20,13 +20,13 @@ sequenceDiagram
     participant Client
     participant Browser
 
-    Server->>Server: Render HTML (no search params)
-    Server->>Client: Send HTML with placeholder
+    Server->>Server: Prerender static HTML
+    Server->>Client: Send HTML with Suspense fallback
     Client->>Browser: Hydrate React
     Browser->>Client: Read URL search params
     Client->>Client: Re-render with params
 
-    Note over Server,Client: Mismatch causes hydration error
+    Note over Server,Client: Missing Suspense causes a CSR bailout or build error
 ```
 
 ## Common Error Messages
@@ -119,13 +119,15 @@ flowchart TB
 
 ## Solution 2: Dynamic Import with SSR Disabled
 
-For components that heavily depend on search parameters, disable SSR entirely.
+For components that heavily depend on search parameters, disable prerendering for that Client Component.
 
 ```tsx
 // src/app/dashboard/page.tsx
+'use client';
+
 import dynamic from 'next/dynamic';
 
-// Disable SSR for the entire component
+// Disable prerendering for this Client Component
 const DashboardFilters = dynamic(
   () => import('./DashboardFilters'),
   {
@@ -190,7 +192,7 @@ export default function DashboardFilters() {
 
 ## Solution 3: Custom Hook with Fallback
 
-Create a custom hook that provides a default value during SSR.
+Create a custom hook that provides a default value before the component has mounted. This pattern does not remove the Suspense requirement for statically prerendered routes, because it still calls `useSearchParams`.
 
 ```tsx
 // src/hooks/useSearchParamsSafe.ts
@@ -199,9 +201,11 @@ Create a custom hook that provides a default value during SSR.
 import { useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
+type SearchParams = ReturnType<typeof useSearchParams>;
+
 interface SearchParamsState {
   isReady: boolean;
-  params: URLSearchParams | null;
+  params: SearchParams | null;
 }
 
 export function useSearchParamsSafe() {
@@ -275,18 +279,21 @@ For pages that need search params on the server, use the page props.
 
 ```tsx
 // src/app/products/page.tsx
+import { Suspense } from 'react';
+
 interface ProductsPageProps {
-  searchParams: { [key: string]: string | string[] | undefined };
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }
 
 // Server component - no Suspense needed
 export default async function ProductsPage({
   searchParams
 }: ProductsPageProps) {
-  // Access search params directly on server
-  const category = searchParams.category as string || 'all';
-  const page = parseInt(searchParams.page as string || '1', 10);
-  const sort = searchParams.sort as string || 'newest';
+  // In Next.js 15+, searchParams is a Promise and must be awaited
+  const params = await searchParams;
+  const category = params.category as string || 'all';
+  const page = parseInt(params.page as string || '1', 10);
+  const sort = params.sort as string || 'newest';
 
   // Fetch data on server with search params
   const products = await fetchProducts({ category, page, sort });
@@ -538,9 +545,10 @@ import Pagination from '@/components/Pagination';
 export default async function BlogPage({
   searchParams,
 }: {
-  searchParams: { page?: string };
+  searchParams: Promise<{ page?: string }>;
 }) {
-  const page = Number(searchParams.page) || 1;
+  const { page: pageParam } = await searchParams;
+  const page = Number(pageParam) || 1;
   const { posts, totalPages } = await fetchPosts(page);
 
   return (
@@ -593,8 +601,8 @@ describe('SearchResults', () => {
 
 Key solutions for useSearchParams SSR issues:
 
-1. Always wrap useSearchParams components in Suspense boundaries
-2. Use dynamic imports with ssr: false for heavy client-only components
+1. Wrap useSearchParams components in Suspense boundaries for statically prerendered routes
+2. Use dynamic imports with ssr: false for heavy client-only components when you want to skip prerendering
 3. Leverage page props for server-side search param access
 4. Create custom hooks with safe fallback values
 5. Use useTransition for smooth URL updates
