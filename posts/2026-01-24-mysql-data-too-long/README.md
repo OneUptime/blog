@@ -284,7 +284,8 @@ SELECT @@sql_mode;
 -- To allow truncation with warning (not recommended for production):
 SET SESSION sql_mode = '';
 -- Or remove only strict mode
-SET SESSION sql_mode = REPLACE(@@sql_mode, 'STRICT_TRANS_TABLES', '');
+SET SESSION sql_mode = sys.list_drop(@@SESSION.sql_mode, 'STRICT_TRANS_TABLES');
+SET SESSION sql_mode = sys.list_drop(@@SESSION.sql_mode, 'STRICT_ALL_TABLES');
 ```
 
 **Warning**: Disabling strict mode can lead to silent data corruption. It is better to fix the schema or validate data properly.
@@ -318,7 +319,7 @@ phone VARCHAR(20)
 first_name VARCHAR(100)
 last_name VARCHAR(100)
 
--- Descriptions: Use TEXT for unlimited user input
+-- Descriptions: Use TEXT for variable-length user input up to 65,535 bytes
 description TEXT
 
 -- JSON data: Use JSON type or LONGTEXT
@@ -327,7 +328,7 @@ metadata JSON
 metadata LONGTEXT
 ```
 
-### Add CHECK Constraints (MySQL 8.0+)
+### Add CHECK Constraints (MySQL 8.0.16+)
 
 ```sql
 CREATE TABLE users (
@@ -361,7 +362,7 @@ ALTER TABLE your_table_copy MODIFY COLUMN column_name VARCHAR(255);
 ALTER TABLE your_table MODIFY COLUMN column_name VARCHAR(255);
 
 -- For large tables, use pt-online-schema-change to avoid locks
--- pt-online-schema-change --alter "MODIFY COLUMN column_name VARCHAR(255)" D=db,t=table
+-- pt-online-schema-change --alter "MODIFY COLUMN column_name VARCHAR(255)" D=db,t=table --execute
 ```
 
 ## Troubleshooting Checklist
