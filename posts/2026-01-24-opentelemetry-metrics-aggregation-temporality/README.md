@@ -88,10 +88,12 @@ flowchart TD
 ```javascript
 // metrics.js - Configure metrics with specific temporality
 const { MeterProvider, PeriodicExportingMetricReader } = require('@opentelemetry/sdk-metrics');
-const { OTLPMetricExporter } = require('@opentelemetry/exporter-metrics-otlp-http');
-const { PrometheusExporter } = require('@opentelemetry/exporter-prometheus');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const {
+  OTLPMetricExporter,
+  AggregationTemporalityPreference,
+} = require('@opentelemetry/exporter-metrics-otlp-http');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const { ATTR_SERVICE_NAME } = require('@opentelemetry/semantic-conventions');
 
 // Import temporality types
 const {
@@ -107,7 +109,7 @@ function deltaTemporalitySelector(instrumentType) {
     case InstrumentType.OBSERVABLE_COUNTER:
     case InstrumentType.HISTOGRAM:
     case InstrumentType.OBSERVABLE_GAUGE:
-      // Use delta for counters and histograms
+      // Use delta for additive instruments and observable gauges
       return AggregationTemporality.DELTA;
     case InstrumentType.UP_DOWN_COUNTER:
     case InstrumentType.OBSERVABLE_UP_DOWN_COUNTER:
@@ -127,26 +129,22 @@ function cumulativeTemporalitySelector(instrumentType) {
 // Create OTLP exporter with delta temporality (for stateless backends)
 const otlpExporter = new OTLPMetricExporter({
   url: process.env.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT || 'http://localhost:4318/v1/metrics',
-  temporalityPreference: AggregationTemporality.DELTA,
-  // Or use the selector function for fine-grained control
-  // temporalityPreference: deltaTemporalitySelector,
+  temporalityPreference: AggregationTemporalityPreference.DELTA,
 });
 
 // Create the meter provider
 const meterProvider = new MeterProvider({
-  resource: new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: 'my-service',
+  resource: resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: 'my-service',
   }),
+  readers: [
+    new PeriodicExportingMetricReader({
+      exporter: otlpExporter,
+      exportIntervalMillis: 60000, // Export every 60 seconds
+      exportTimeoutMillis: 30000,
+    }),
+  ],
 });
-
-// Add the metric reader with export interval
-meterProvider.addMetricReader(
-  new PeriodicExportingMetricReader({
-    exporter: otlpExporter,
-    exportIntervalMillis: 60000, // Export every 60 seconds
-    exportTimeoutMillis: 30000,
-  })
-);
 
 // Get a meter for creating instruments
 const meter = meterProvider.getMeter('my-service-metrics');
@@ -162,6 +160,14 @@ module.exports = { meterProvider, meter };
 
 from opentelemetry import metrics
 from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics import (
+    Counter,
+    Histogram,
+    ObservableCounter,
+    ObservableGauge,
+    ObservableUpDownCounter,
+    UpDownCounter,
+)
 from opentelemetry.sdk.metrics.export import (
     PeriodicExportingMetricReader,
     AggregationTemporality,
@@ -173,23 +179,23 @@ from opentelemetry.sdk.resources import Resource, SERVICE_NAME
 # This dictionary maps each instrument type to its preferred temporality
 DELTA_TEMPORALITY = {
     # Counters use delta - report change since last export
-    "Counter": AggregationTemporality.DELTA,
-    "UpDownCounter": AggregationTemporality.CUMULATIVE,  # Needs cumulative for negative values
-    "Histogram": AggregationTemporality.DELTA,
+    Counter: AggregationTemporality.DELTA,
+    UpDownCounter: AggregationTemporality.CUMULATIVE,
+    Histogram: AggregationTemporality.DELTA,
     # Observable instruments
-    "ObservableCounter": AggregationTemporality.DELTA,
-    "ObservableUpDownCounter": AggregationTemporality.CUMULATIVE,
-    "ObservableGauge": AggregationTemporality.CUMULATIVE,
+    ObservableCounter: AggregationTemporality.DELTA,
+    ObservableUpDownCounter: AggregationTemporality.CUMULATIVE,
+    ObservableGauge: AggregationTemporality.CUMULATIVE,
 }
 
 CUMULATIVE_TEMPORALITY = {
     # All instruments use cumulative for Prometheus compatibility
-    "Counter": AggregationTemporality.CUMULATIVE,
-    "UpDownCounter": AggregationTemporality.CUMULATIVE,
-    "Histogram": AggregationTemporality.CUMULATIVE,
-    "ObservableCounter": AggregationTemporality.CUMULATIVE,
-    "ObservableUpDownCounter": AggregationTemporality.CUMULATIVE,
-    "ObservableGauge": AggregationTemporality.CUMULATIVE,
+    Counter: AggregationTemporality.CUMULATIVE,
+    UpDownCounter: AggregationTemporality.CUMULATIVE,
+    Histogram: AggregationTemporality.CUMULATIVE,
+    ObservableCounter: AggregationTemporality.CUMULATIVE,
+    ObservableUpDownCounter: AggregationTemporality.CUMULATIVE,
+    ObservableGauge: AggregationTemporality.CUMULATIVE,
 }
 
 
@@ -345,7 +351,6 @@ processors:
     send_batch_size: 1000
 
   # Transform processor can help with metric manipulation
-  # but temporality conversion is handled by exporters
   transform:
     metric_statements:
       - context: datapoint
@@ -353,15 +358,22 @@ processors:
           # Example: Add metadata to help track temporality
           - set(attributes["temporality.original"], "delta") where resource.attributes["service.name"] == "delta-service"
 
+  # Convert delta temporality to cumulative for Prometheus.
+  # This processor is available in the OpenTelemetry Collector contrib distribution.
+  deltatocumulative:
+
+  # Convert cumulative monotonic sums and histograms to delta for delta-oriented backends.
+  # This processor is available in the OpenTelemetry Collector contrib distribution.
+  cumulativetodelta:
+
 exporters:
   # Prometheus exporter (requires cumulative)
-  # The exporter automatically converts delta to cumulative
   prometheus:
     endpoint: 0.0.0.0:8889
-    # Enable cumulative temporality conversion
+    # Enable OpenMetrics output format. Temporality conversion is handled by processors.
     enable_open_metrics: true
 
-  # OTLP exporter with delta preference
+  # OTLP exporter receiving delta metrics after the cumulativetodelta processor
   otlp/delta:
     endpoint: delta-backend:4317
     tls:
@@ -378,13 +390,13 @@ service:
     # Pipeline for Prometheus (cumulative)
     metrics/prometheus:
       receivers: [otlp]
-      processors: [memory_limiter, batch]
+      processors: [memory_limiter, deltatocumulative, batch]
       exporters: [prometheus]
 
     # Pipeline for delta backend
     metrics/delta:
       receivers: [otlp]
-      processors: [memory_limiter, batch]
+      processors: [memory_limiter, cumulativetodelta, batch]
       exporters: [otlp/delta]
 ```
 
@@ -420,7 +432,9 @@ const prometheusExporter = new PrometheusExporter({
 });
 
 // Prometheus exporter automatically uses cumulative temporality
-meterProvider.addMetricReader(prometheusExporter);
+const meterProvider = new MeterProvider({
+  readers: [prometheusExporter],
+});
 ```
 
 ### Issue 2: Memory Growth with Cumulative Metrics
@@ -477,11 +491,31 @@ Histogram temporality affects how bucket boundaries are reported:
 
 ```javascript
 // Configure histogram with explicit bucket boundaries
+const {
+  AggregationType,
+  MeterProvider,
+  PeriodicExportingMetricReader,
+} = require('@opentelemetry/sdk-metrics');
+
+const meterProvider = new MeterProvider({
+  views: [
+    {
+      instrumentName: 'http_request_duration',
+      aggregation: {
+        type: AggregationType.EXPLICIT_BUCKET_HISTOGRAM,
+        options: {
+          boundaries: [5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000],
+        },
+      },
+    },
+  ],
+  readers: [new PeriodicExportingMetricReader({ exporter: otlpExporter })],
+});
+
+const meter = meterProvider.getMeter('my-service-metrics');
 const requestDuration = meter.createHistogram('http_request_duration', {
   description: 'HTTP request duration in milliseconds',
   unit: 'ms',
-  // Define bucket boundaries in milliseconds
-  boundaries: [5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000],
 });
 
 // Record a duration measurement
@@ -525,7 +559,7 @@ const otlpExporter = new OTLPMetricExporter({
   // 1. Our backend (Datadog) prefers delta
   // 2. We have high-cardinality metrics that would cause memory issues with cumulative
   // 3. Our services are short-lived (serverless) and don't benefit from cumulative
-  temporalityPreference: AggregationTemporality.DELTA,
+  temporalityPreference: AggregationTemporalityPreference.DELTA,
 });
 ```
 
@@ -533,17 +567,17 @@ const otlpExporter = new OTLPMetricExporter({
 
 ```javascript
 // Use views to override temporality for specific instruments
-const { View } = require('@opentelemetry/sdk-metrics');
+const { AggregationType, MeterProvider } = require('@opentelemetry/sdk-metrics');
 
 const meterProvider = new MeterProvider({
   views: [
-    // Use delta for high-cardinality counter
-    new View({
+    // Use sum aggregation for this counter. Temporality still comes from the exporter.
+    {
       instrumentName: 'high_cardinality_counter',
-      aggregation: new SumAggregation(),
+      aggregation: { type: AggregationType.SUM },
       // Note: Temporality is set at the exporter level, not view level
       // But views can change the aggregation type
-    }),
+    },
   ],
 });
 ```
