@@ -21,7 +21,7 @@ dotnet add package Microsoft.Extensions.Http.Polly
 dotnet add package Polly.Extensions.Http
 ```
 
-The `Microsoft.Extensions.Http.Polly` package integrates Polly with `IHttpClientFactory`, which is the recommended way to manage HTTP clients in .NET.
+The `Microsoft.Extensions.Http.Polly` package integrates Polly with `IHttpClientFactory`; `IHttpClientFactory` is the recommended way to manage HTTP clients in .NET. These examples use the Polly v7-style HTTP integration; for new .NET 8+ projects, Microsoft recommends `Microsoft.Extensions.Http.Resilience`, the successor to `Microsoft.Extensions.Http.Polly` built on Polly v8.
 
 ## Basic Retry Policy
 
@@ -136,9 +136,11 @@ static IAsyncPolicy<HttpResponseMessage> GetCircuitBreakerPolicy()
 
 ## Combining Policies
 
-Combine multiple policies using `PolicyWrap`. The order matters - policies wrap from right to left:
+Combine multiple policies using `PolicyWrap`. The order matters - the first policy is the outermost policy, and the last policy is the innermost policy:
 
 ```csharp
+using Polly.Timeout;
+
 public static class PollyPolicies
 {
     public static IAsyncPolicy<HttpResponseMessage> GetCombinedPolicy(ILogger logger)
@@ -269,6 +271,8 @@ builder.Services.AddHttpClient<ExternalApiClient>(client =>
 Sometimes you need to retry on specific status codes beyond the standard transient errors:
 
 ```csharp
+using System.Net;
+
 static IAsyncPolicy<HttpResponseMessage> GetCustomRetryPolicy()
 {
     return Policy
@@ -389,12 +393,15 @@ public class PollyPoliciesTests
         var client = new HttpClient(mockHandler);
 
         // Act & Assert
-        // First two failures should be allowed
-        await Assert.ThrowsAsync<HttpRequestException>(() =>
-            circuitBreaker.ExecuteAsync(() => client.GetAsync("http://test.com")));
+        // First two handled 5xx results should be allowed through
+        var firstResponse = await circuitBreaker.ExecuteAsync(() =>
+            client.GetAsync("http://test.com"));
 
-        await Assert.ThrowsAsync<HttpRequestException>(() =>
-            circuitBreaker.ExecuteAsync(() => client.GetAsync("http://test.com")));
+        var secondResponse = await circuitBreaker.ExecuteAsync(() =>
+            client.GetAsync("http://test.com"));
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, firstResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, secondResponse.StatusCode);
 
         // Third attempt should throw BrokenCircuitException
         await Assert.ThrowsAsync<BrokenCircuitException>(() =>
