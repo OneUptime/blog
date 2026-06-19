@@ -118,8 +118,10 @@ sudo blkid /dev/sdb1
 # For NTFS
 sudo apt install ntfs-3g
 
-# For exFAT
-sudo apt install exfat-fuse exfat-utils
+# For exFAT tools (modern kernels include the driver)
+sudo apt install exfatprogs
+# On older systems without kernel exFAT support
+sudo apt install exfat-fuse
 
 # For Btrfs
 sudo apt install btrfs-progs
@@ -146,7 +148,9 @@ sudo fsck.ext4 -y /dev/sdb1
 # For XFS filesystem
 sudo xfs_repair /dev/sdb1
 
-# For Btrfs filesystem
+# For Btrfs filesystem (check first; --repair can cause data loss)
+sudo btrfs check --readonly /dev/sdb1
+# Only repair after backups and expert guidance
 sudo btrfs check --repair /dev/sdb1
 
 # Step 3: Try mounting again
@@ -161,7 +165,7 @@ flowchart TD
 
     Check -->|ext4| Ext4[sudo fsck.ext4 -y /dev/sdX]
     Check -->|XFS| XFS[sudo xfs_repair /dev/sdX]
-    Check -->|Btrfs| Btrfs[sudo btrfs check --repair /dev/sdX]
+    Check -->|Btrfs| Btrfs[sudo btrfs check --readonly /dev/sdX]
     Check -->|NTFS| NTFS[sudo ntfsfix /dev/sdX]
 
     Ext4 --> TryMount[Try mount again]
@@ -319,11 +323,11 @@ A misconfigured /etc/fstab can prevent booting:
 ### Understanding fstab Format
 
 ```bash
-# Format: <device> <mountpoint> <fstype> <options> <dump> <fsck>
+# Format: <device> <mountpoint> <fstype> <options> <dump> <pass>
 # Example entries:
 UUID=abc-123  /            ext4   defaults               0  1
 UUID=def-456  /home        ext4   defaults               0  2
-UUID=ghi-789  /data        xfs    defaults,noatime       0  2
+UUID=ghi-789  /data        xfs    defaults,noatime       0  0
 /dev/sdb1     /backup      ext4   defaults,nofail        0  2
 192.168.1.10:/share  /nfs  nfs    defaults,_netdev       0  0
 ```
@@ -495,7 +499,7 @@ password=secret
 domain=WORKGROUP
 
 # Set permissions
-chmod 600 /root/.smbcredentials
+sudo chmod 600 /root/.smbcredentials
 
 # Mount using credentials file
 sudo mount -t cifs //server/share /mnt -o credentials=/root/.smbcredentials
