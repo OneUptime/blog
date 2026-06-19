@@ -26,7 +26,7 @@ Before starting, ensure you have:
 - A running Kubernetes cluster (minikube, kind, EKS, GKE, or similar)
 - kubectl configured to access your cluster
 - Helm 3 installed
-- Prometheus already deployed (we will use kube-prometheus-stack)
+- A default StorageClass if you want Prometheus persistent storage provisioned automatically
 
 ## Deploying Grafana with Helm
 
@@ -72,9 +72,9 @@ metadata:
   name: grafana-ingress
   namespace: monitoring
   annotations:
-    kubernetes.io/ingress.class: nginx
     cert-manager.io/cluster-issuer: letsencrypt-prod
 spec:
+  ingressClassName: nginx
   tls:
     - hosts:
         - grafana.yourdomain.com
@@ -256,8 +256,8 @@ The Grafana community maintains thousands of dashboards. Import them by ID:
 Recommended dashboards for Kubernetes:
 
 - **315**: Kubernetes cluster monitoring
-- **6417**: Kubernetes Pods
-- **13770**: kube-state-metrics v2
+- **6417**: Kubernetes Cluster (Prometheus)
+- **13332**: kube-state-metrics v2
 
 ## Practical Tips
 
