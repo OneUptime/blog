@@ -100,13 +100,13 @@ Unmerged paths:
 Before editing, understand what each branch was trying to accomplish.
 
 ```bash
-# See what HEAD (your branch) changed
+# Compare the conflicted file with the current branch version
 git diff --ours src/config.js
 
-# See what the incoming branch changed
+# Compare the conflicted file with the incoming branch version
 git diff --theirs src/config.js
 
-# See the common ancestor
+# Compare the conflicted file with the common ancestor
 git diff --base src/config.js
 
 # View the full conflict with context
@@ -186,6 +186,8 @@ git checkout --theirs src/config.js
 git add src/config.js
 ```
 
+During a rebase, `--ours` refers to the branch you are rebasing onto, and `--theirs` refers to the branch holding the work being replayed.
+
 ### Strategy 2: Interactive Staging
 
 For complex files, stage specific hunks:
@@ -251,7 +253,7 @@ Long-running branches accumulate differences and increase conflict likelihood. M
 
 Consistent formatting eliminates whitespace conflicts:
 
-```bash
+```yaml
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -269,7 +271,7 @@ repos:
 
 When multiple developers work on the same codebase, divide work to minimize overlap:
 
-```bash
+```text
 # Project structure that reduces conflicts
 src/
   ├── features/
@@ -297,11 +299,13 @@ yarn install
 
 # Stage the regenerated file
 git add package-lock.json
+# or
+git add yarn.lock
 ```
 
 ### Merge Conflict in a Rebase
 
-Rebase conflicts require resolving the same conflict multiple times as each commit is replayed.
+Rebase conflicts can require resolving the same conflict multiple times as each commit is replayed.
 
 ```bash
 # During rebase, conflict occurs
@@ -345,7 +349,7 @@ When facing a merge conflict, follow this checklist:
 git status
 git log --oneline --graph -10
 
-# 2. See what changed on each side
+# 2. Compare the conflicted file with each side
 git diff --ours <file>
 git diff --theirs <file>
 
@@ -353,11 +357,11 @@ git diff --theirs <file>
 # Edit files manually or use mergetool
 git mergetool
 
-# 4. Verify resolution
+# 4. Mark resolved and verify resolution
+git add <resolved-files>
 git diff --staged
 
 # 5. Complete the merge
-git add <resolved-files>
 git commit
 
 # 6. Clean up mergetool backup files
@@ -369,9 +373,9 @@ find . -name "*.orig" -delete
 | Action | Command |
 |--------|---------|
 | Check conflict status | `git status` |
-| See your changes | `git diff --ours <file>` |
-| See their changes | `git diff --theirs <file>` |
-| Accept yours | `git checkout --ours <file>` |
+| Compare with ours | `git diff --ours <file>` |
+| Compare with theirs | `git diff --theirs <file>` |
+| Accept ours | `git checkout --ours <file>` |
 | Accept theirs | `git checkout --theirs <file>` |
 | Launch merge tool | `git mergetool` |
 | Abort merge | `git merge --abort` |
