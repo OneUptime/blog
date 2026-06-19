@@ -174,6 +174,7 @@ func (h *HealthChecker) ReadinessHandler() http.HandlerFunc {
 
         response.Latency = time.Since(start).String()
 
+        w.Header().Set("Content-Type", "application/json")
         if unhealthy {
             response.Status = "unhealthy"
             w.WriteHeader(http.StatusServiceUnavailable)
@@ -181,7 +182,6 @@ func (h *HealthChecker) ReadinessHandler() http.HandlerFunc {
             w.WriteHeader(http.StatusOK)
         }
 
-        w.Header().Set("Content-Type", "application/json")
         json.NewEncoder(w).Encode(response)
     }
 }
@@ -252,8 +252,9 @@ class HealthChecker:
         start = time.time()
         try:
             # Run check with timeout
+            loop = asyncio.get_running_loop()
             result = await asyncio.wait_for(
-                asyncio.get_event_loop().run_in_executor(
+                loop.run_in_executor(
                     None, dep.check_fn
                 ),
                 timeout=dep.timeout_seconds
@@ -406,7 +407,13 @@ kind: Deployment
 metadata:
   name: my-service
 spec:
+  selector:
+    matchLabels:
+      app: my-service
   template:
+    metadata:
+      labels:
+        app: my-service
     spec:
       containers:
       - name: app
