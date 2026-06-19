@@ -108,19 +108,18 @@ class TokenManager extends EventEmitter {
     // Set tokens from authentication response
     setTokens(tokenResponse) {
         this.accessToken = tokenResponse.access_token;
-        this.refreshToken = tokenResponse.refresh_token;
+        this.refreshToken = tokenResponse.refresh_token || this.refreshToken;
 
         // Calculate expiry times
         const now = Date.now();
         const expiresIn = tokenResponse.expires_in || 3600;
         this.accessTokenExpiry = now + (expiresIn * 1000);
 
-        // Refresh token expiry (if provided, otherwise assume longer lifetime)
+        // Refresh token expiry (if provided by the authorization server)
         if (tokenResponse.refresh_expires_in) {
             this.refreshTokenExpiry = now + (tokenResponse.refresh_expires_in * 1000);
         } else {
-            // Default to 30 days if not specified
-            this.refreshTokenExpiry = now + (30 * 24 * 60 * 60 * 1000);
+            this.refreshTokenExpiry = null;
         }
 
         // Schedule proactive refresh
@@ -151,9 +150,10 @@ class TokenManager extends EventEmitter {
 
     // Check if refresh token is expired
     isRefreshTokenExpired() {
-        if (!this.refreshToken || !this.refreshTokenExpiry) {
+        if (!this.refreshToken) {
             return true;
         }
+        if (!this.refreshTokenExpiry) return false;
         return Date.now() >= this.refreshTokenExpiry;
     }
 
@@ -460,8 +460,6 @@ import asyncio
 import aiohttp
 from typing import Optional, Dict, Any, Callable
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from enum import Enum
 
 
 class TokenError(Exception):
@@ -525,7 +523,7 @@ class TokenManager:
 
         self._tokens = TokenData(
             access_token=token_response["access_token"],
-            refresh_token=token_response.get("refresh_token"),
+            refresh_token=token_response.get("refresh_token") or self.refresh_token,
             token_type=token_response.get("token_type", "Bearer"),
             expires_at=now + expires_in,
             refresh_expires_at=now + refresh_expires_in if refresh_expires_in else None,
@@ -676,6 +674,17 @@ class AuthenticatedSession:
     ):
         self.token_manager = token_manager
         self.base_url = base_url
+        self._session: Optional[aiohttp.ClientSession] = None
+
+    async def _get_session(self) -> aiohttp.ClientSession:
+        if self._session is None or self._session.closed:
+            self._session = aiohttp.ClientSession()
+        return self._session
+
+    async def close(self) -> None:
+        """Close the underlying HTTP session."""
+        if self._session and not self._session.closed:
+            await self._session.close()
 
     async def request(
         self,
@@ -686,32 +695,38 @@ class AuthenticatedSession:
         """
         Make authenticated HTTP request with automatic token refresh.
         """
-        async with aiohttp.ClientSession() as session:
-            for attempt in range(2):  # Try once, then retry after refresh
-                try:
-                    access_token = await self.token_manager.get_access_token()
+        session = await self._get_session()
 
-                    headers = kwargs.pop("headers", {})
-                    headers["Authorization"] = f"Bearer {access_token}"
+        for attempt in range(2):  # Try once, then retry after refresh
+            try:
+                access_token = await self.token_manager.get_access_token()
 
-                    async with session.request(
-                        method,
-                        self.base_url + url,
-                        headers=headers,
-                        **kwargs
-                    ) as response:
-                        # Check for token expiration response
-                        if response.status == 401 and attempt == 0:
-                            error_body = await response.json()
-                            if self._is_token_expired_error(response, error_body):
-                                # Force refresh and retry
-                                await self.token_manager.refresh()
-                                continue
+                headers = dict(kwargs.get("headers", {}))
+                headers["Authorization"] = f"Bearer {access_token}"
+                request_kwargs = {**kwargs, "headers": headers}
 
-                        return response
+                response = await session.request(
+                    method,
+                    self.base_url + url,
+                    **request_kwargs
+                )
 
-                except TokenExpiredError:
-                    raise
+                # Check for token expiration response
+                if response.status == 401 and attempt == 0:
+                    try:
+                        error_body = await response.json(content_type=None)
+                    except (aiohttp.ContentTypeError, ValueError):
+                        error_body = {}
+                    if self._is_token_expired_error(response, error_body):
+                        # Force refresh and retry
+                        response.release()
+                        await self.token_manager.refresh()
+                        continue
+
+                return response
+
+            except TokenExpiredError:
+                raise
 
         raise RefreshError("max_retries", "Request failed after token refresh")
 
@@ -780,8 +795,11 @@ async def main():
     try:
         response = await session.get("/users/me")
         print(f"Status: {response.status}")
+        response.release()
     except TokenExpiredError as e:
         print(f"Need to re-authenticate: {e.message}")
+    finally:
+        await session.close()
 
 
 if __name__ == "__main__":
@@ -887,7 +905,7 @@ flowchart TD
 
     E -->|Yes| H{Refresh Token Valid?}
 
-    H -->|No - Expired| I[Return 401<br/>invalid_grant]
+    H -->|No - Expired| I[Auth Server: 400<br/>invalid_grant]
     I --> G
 
     H -->|Yes| J[Request New Access Token]
