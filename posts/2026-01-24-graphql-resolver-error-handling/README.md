@@ -8,7 +8,7 @@ Description: Learn comprehensive strategies for handling errors in GraphQL resol
 
 ---
 
-Error handling in GraphQL differs significantly from REST APIs. While REST uses HTTP status codes to indicate errors, GraphQL always returns HTTP 200 and includes errors in the response body. This guide covers comprehensive strategies for handling errors in GraphQL resolvers, from basic error throwing to sophisticated error classification systems.
+Error handling in GraphQL differs significantly from REST APIs. While REST uses HTTP status codes to indicate many application errors, GraphQL commonly returns HTTP 200 for resolver execution errors and includes errors in the response body. Malformed requests, validation failures, authentication failures, and server errors can still use non-200 HTTP status codes depending on the server and GraphQL-over-HTTP media type. This guide covers comprehensive strategies for handling errors in GraphQL resolvers, from basic error throwing to sophisticated error classification systems.
 
 ## Understanding GraphQL Error Responses
 
@@ -23,7 +23,7 @@ graph TD
     D -->|No| F[Complete Failure]
 
     E --> G["data: {...}, errors: [...]"]
-    F --> H["data: null, errors: [...]"]
+    F --> H["data: null or omitted, errors: [...]"]
 
     style E fill:#ff9,stroke:#333
     style F fill:#f66,stroke:#333
@@ -90,10 +90,17 @@ Create custom error classes for better error categorization and handling.
 
 ```javascript
 // errors/index.js
+const { GraphQLError: GraphQLBaseError } = require("graphql");
+
 // Base class for all custom GraphQL errors
-class GraphQLError extends Error {
+class GraphQLError extends GraphQLBaseError {
   constructor(message, code, statusCode = 200) {
-    super(message);
+    super(message, {
+      extensions: {
+        code,
+        http: { status: statusCode }
+      }
+    });
     this.name = this.constructor.name;
     this.code = code;
     this.statusCode = statusCode;
@@ -304,6 +311,7 @@ Configure Apollo Server to format errors consistently.
 ```javascript
 // server.js
 const { ApolloServer } = require("@apollo/server");
+const { unwrapResolverError } = require("@apollo/server/errors");
 const { GraphQLError } = require("./errors");
 
 const server = new ApolloServer({
@@ -320,7 +328,7 @@ const server = new ApolloServer({
     });
 
     // Get the original error
-    const originalError = error.originalError || error;
+    const originalError = unwrapResolverError(error);
 
     // Handle custom errors
     if (originalError instanceof GraphQLError) {
@@ -409,6 +417,11 @@ type FieldError {
 }
 
 type AuthenticationError implements Error {
+  message: String!
+  code: String!
+}
+
+type ForbiddenError implements Error {
   message: String!
   code: String!
 }
@@ -629,6 +642,8 @@ Handle errors in asynchronous operations properly.
 
 ```javascript
 // utils/async-handler.js
+const { GraphQLError, InternalError } = require("../errors");
+
 // Wrapper for async resolvers to catch unhandled rejections
 function asyncHandler(resolver) {
   return async (parent, args, context, info) => {
@@ -772,6 +787,7 @@ Design errors for easy client consumption.
 ```javascript
 // Example client-side error handling (React with Apollo Client)
 import { useQuery, useMutation } from "@apollo/client";
+import { CombinedGraphQLErrors } from "@apollo/client/errors";
 
 function UserProfile({ userId }) {
   const { data, loading, error } = useQuery(GET_USER, {
@@ -782,7 +798,9 @@ function UserProfile({ userId }) {
 
   if (error) {
     // Handle different error types
-    const errorCode = error.graphQLErrors?.[0]?.extensions?.code;
+    const errorCode = CombinedGraphQLErrors.is(error)
+      ? error.errors[0]?.extensions?.code
+      : undefined;
 
     switch (errorCode) {
       case "UNAUTHENTICATED":
