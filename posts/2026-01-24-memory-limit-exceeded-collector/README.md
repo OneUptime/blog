@@ -51,9 +51,9 @@ processors:
   memory_limiter:
     # Check memory usage every second
     check_interval: 1s
-    # Hard limit - data will be dropped above this
+    # Hard limit - GC is forced above this
     limit_mib: 512
-    # Soft limit - backpressure applied before hitting hard limit
+    # Spike limit - soft limit is limit_mib - spike_limit_mib
     spike_limit_mib: 128
 
   batch:
@@ -101,17 +101,17 @@ flowchart TD
     A[Incoming Data] --> B{Memory Below<br/>limit - spike?}
     B -->|Yes| C[Accept Normally]
     B -->|No| D{Memory Below<br/>limit?}
-    D -->|Yes| E[Accept with<br/>Backpressure]
-    D -->|No| F[Drop Data]
+    D -->|Yes| E[Refuse Data<br/>Return Error Upstream]
+    D -->|No| F[Refuse Data<br/>Force GC]
 
     C --> G[Process Data]
-    E --> G
-    F --> H[Log Warning]
+    E --> H[Upstream Retries<br/>or Drops]
+    F --> L[Force GC<br/>and Log Warning]
 
     subgraph "Memory Zones"
         I[Safe Zone<br/>0 to limit-spike]
-        J[Warning Zone<br/>limit-spike to limit]
-        K[Drop Zone<br/>Above limit]
+        J[Limited Zone<br/>limit-spike to limit]
+        K[Hard Limit Zone<br/>Above limit]
     end
 
     style I fill:#c8e6c9
@@ -144,14 +144,14 @@ processors:
 
 ### 4. Exporter Queue Buildup
 
-When exporters cannot keep up with incoming data, queues grow unbounded.
+When exporters cannot keep up with incoming data, queues fill up and new data can be rejected or dropped.
 
 ```yaml
 exporters:
   otlp:
     endpoint: http://backend:4317
 
-    # Configure retry to prevent infinite queue growth
+    # Configure retry to avoid retrying forever
     retry_on_failure:
       enabled: true
       initial_interval: 5s
@@ -163,19 +163,17 @@ exporters:
       enabled: true
       num_consumers: 10       # Parallel export workers
       queue_size: 5000        # Maximum items in queue
-      # When queue is full, oldest items are dropped
+      # When queue is full, new data is rejected unless block_on_overflow is enabled
 
   otlphttp:
     endpoint: https://api.backend.com
 
+    # Enable persistent queue to survive restarts
+    # (requires file storage extension)
     sending_queue:
       enabled: true
       num_consumers: 10
       queue_size: 5000
-
-    # Enable persistent queue to survive restarts
-    # (requires file storage extension)
-    sending_queue:
       storage: file_storage
 ```
 
@@ -204,9 +202,9 @@ processors:
 
   # Filter EARLY to reduce data volume
   filter:
-    traces:
-      span:
-        - 'attributes["http.route"] == "/health"'
+    error_mode: ignore
+    trace_conditions:
+      - 'span.attributes["http.route"] == "/health"'
 
   # Combine transformations into one processor
   transform:
@@ -228,16 +226,6 @@ processors:
 The collector exposes memory metrics that help identify issues:
 
 ```yaml
-service:
-  telemetry:
-    metrics:
-      # Expose collector's own metrics
-      address: 0.0.0.0:8888
-      level: detailed  # Include memory metrics
-
-    logs:
-      level: info
-
 extensions:
   # Enable pprof for memory profiling
   pprof:
@@ -249,17 +237,31 @@ extensions:
 
 service:
   extensions: [pprof, zpages]
+
+  telemetry:
+    metrics:
+      # Expose collector's own metrics
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+      level: detailed  # Include memory metrics
+
+    logs:
+      level: info
 ```
 
 ### Step 2: Monitor Key Metrics
 
 ```bash
 # Query collector metrics
-curl -s http://localhost:8888/metrics | grep -E "otelcol_processor_memory|otelcol_exporter_queue"
+curl -s http://localhost:8888/metrics | grep -E "otelcol_processor_refused|otelcol_exporter_queue|process_runtime_heap"
 
 # Key metrics to watch:
 # otelcol_processor_accepted_spans - spans accepted by processor
-# otelcol_processor_dropped_spans - spans dropped (memory issues)
+# otelcol_processor_refused_spans - spans refused by processor
 # otelcol_exporter_queue_size - current queue size
 # otelcol_exporter_queue_capacity - maximum queue size
 # process_runtime_heap_alloc_bytes - Go heap allocation
@@ -289,9 +291,9 @@ open http://localhost:55679/debug/tracez
 open http://localhost:55679/debug/pipelinez
 
 # These pages show:
-# - Active spans and their memory usage
-# - Pipeline processing status
-# - Exporter queue depths
+# - TraceZ latency and error samples
+# - PipelineZ pipeline components and status
+# - ExtensionZ and other live collector diagnostics
 ```
 
 ## Complete Optimized Configuration
@@ -337,14 +339,13 @@ processors:
 
   # Filter early to reduce memory usage
   filter/reduce:
-    traces:
-      span:
-        - 'attributes["http.route"] == "/health"'
-        - 'attributes["http.route"] == "/ready"'
-        - 'attributes["http.route"] == "/metrics"'
-    logs:
-      log_record:
-        - 'severity_number < 9'  # Drop DEBUG logs
+    error_mode: ignore
+    trace_conditions:
+      - 'span.attributes["http.route"] == "/health"'
+      - 'span.attributes["http.route"] == "/ready"'
+      - 'span.attributes["http.route"] == "/metrics"'
+    log_conditions:
+      - 'log.severity_number < SEVERITY_NUMBER_INFO'  # Drop TRACE and DEBUG logs
 
   # Minimal attribute processing
   attributes/essential:
@@ -423,7 +424,12 @@ service:
       level: info
       encoding: json
     metrics:
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
       level: detailed
 ```
 
