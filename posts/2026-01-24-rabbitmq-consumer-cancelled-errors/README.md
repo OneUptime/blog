@@ -20,8 +20,8 @@ Consumer cancellation is a critical event that requires proper handling to maint
 flowchart TD
     subgraph "Cancellation Causes"
         Q[Queue Deleted] -->|Server-initiated| C[Consumer Cancelled]
-        P[Policy Change] -->|Server-initiated| C
-        HA[HA Failover] -->|Server-initiated| C
+        P[Queue Recreated] -->|Server-initiated| C
+        HA[Replicated Queue Failover] -->|Server-initiated| C
         CL[Client Request] -->|Client-initiated| C
         CH[Channel Close] -->|Connection issue| C
     end
@@ -50,18 +50,18 @@ rabbitmqctl delete_queue my-queue
 curl -X DELETE http://admin:password@localhost:15672/api/queues/%2f/my-queue
 ```
 
-### 2. Queue Policy Changes
+### 2. Queue Recreation
 
-Changing queue policies can trigger consumer cancellation:
+Changing a queue's type requires deleting and recreating it, which cancels existing consumers:
 
 ```bash
-# Applying a policy that changes queue type can cancel consumers
-rabbitmqctl set_policy ha-policy "^ha\." '{"ha-mode":"all"}'
+# Queue type cannot be changed in place; declare the replacement queue with the new type
+rabbitmqctl delete_queue my-queue
 ```
 
-### 3. HA Queue Failover
+### 3. Replicated Queue Failover
 
-When a mirrored queue fails over to another node, consumers may be cancelled.
+When a replicated queue changes leader, consumers that requested failover cancellation may be cancelled.
 
 ### 4. Exclusive Queue Owner Disconnect
 
@@ -106,8 +106,9 @@ async function consumeWithCancellationHandling() {
         queue,
         (msg) => {
             if (msg === null) {
-                // This happens when consumer is cancelled
+                // This happens when consumer is cancelled by RabbitMQ
                 console.log('Consumer was cancelled by server');
+                recoverConsumer(channel, queue);
                 return;
             }
 
@@ -118,14 +119,6 @@ async function consumeWithCancellationHandling() {
     );
 
     console.log(`Consumer started with tag: ${consumerTag}`);
-
-    // Handle channel events
-    channel.on('cancel', (consumerTag) => {
-        // This event fires when consumer is cancelled server-side
-        console.log(`Consumer ${consumerTag} was cancelled`);
-        // Implement recovery logic here
-        recoverConsumer(channel, queue);
-    });
 
     channel.on('error', (err) => {
         console.error('Channel error:', err.message);
@@ -265,17 +258,14 @@ class ResilientConsumer:
 
     def _subscribe(self):
         """Subscribe to the queue"""
+        # Register cancellation callback
+        self.channel.add_on_cancel_callback(self.on_cancel)
+
         self.consumer_tag = self.channel.basic_consume(
             queue=self.queue,
             on_message_callback=self.on_message,
-            auto_ack=False,
-            # Enable cancel notifications
-            # This tells RabbitMQ to notify us of server-initiated cancellations
-            arguments={'x-cancel-on-ha-failover': True}
+            auto_ack=False
         )
-
-        # Register cancellation callback
-        self.channel.add_on_cancel_callback(self.on_cancel)
 
         logger.info(f"Subscribed with consumer tag: {self.consumer_tag}")
 
@@ -379,13 +369,6 @@ class RobustConsumer extends EventEmitter {
                 this.isConsuming = false;
             });
 
-            // Handle consumer cancellation
-            this.channel.on('cancel', (consumerTag) => {
-                console.log(`Consumer ${consumerTag} was cancelled by server`);
-                this.emit('cancelled', consumerTag);
-                this._handleCancellation();
-            });
-
             // Set up consumer
             await this._setupConsumer();
 
@@ -422,8 +405,9 @@ class RobustConsumer extends EventEmitter {
 
     _onMessage(msg) {
         if (msg === null) {
-            // Consumer was cancelled
+            // Consumer was cancelled by RabbitMQ
             console.log('Received null message - consumer cancelled');
+            this.emit('cancelled', this.consumerTag);
             this._handleCancellation();
             return;
         }
@@ -590,9 +574,9 @@ flowchart TD
 
 ---
 
-## Handling HA Failover Cancellations
+## Handling Replicated Queue Failover Cancellations
 
-When using mirrored queues, consumers are cancelled during failover:
+When using RabbitMQ 3.x mirrored classic queues, consumers can opt in to cancellation during failover. Classic queue mirroring was removed in RabbitMQ 4.0, so use quorum queues or streams for new replicated workloads:
 
 ```python
 # ha_failover_consumer.py
@@ -604,7 +588,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class HAConsumer:
-    """Consumer that handles HA failover gracefully"""
+    """Consumer that handles replicated queue failover gracefully"""
 
     def __init__(self, hosts: list, queue: str):
         self.hosts = hosts
@@ -640,8 +624,8 @@ class HAConsumer:
         return False
 
     def on_cancel(self, frame):
-        """Handle HA failover cancellation"""
-        logger.warning("Consumer cancelled - likely HA failover")
+        """Handle replicated queue failover cancellation"""
+        logger.warning("Consumer cancelled - likely replicated queue failover")
 
         # Short delay to allow failover to complete
         time.sleep(2)
@@ -654,15 +638,16 @@ class HAConsumer:
         # Set QoS
         self.channel.basic_qos(prefetch_count=10)
 
-        # Subscribe with HA failover notification enabled
+        # Register cancel callback
+        self.channel.add_on_cancel_callback(self.on_cancel)
+
+        # Request cancellation on mirrored classic queue failover in RabbitMQ 3.x
         self.consumer_tag = self.channel.basic_consume(
             queue=self.queue,
             on_message_callback=self.on_message,
-            auto_ack=False
+            auto_ack=False,
+            arguments={'x-cancel-on-ha-failover': True}
         )
-
-        # Register cancel callback
-        self.channel.add_on_cancel_callback(self.on_cancel)
 
         logger.info(f"Subscribed to {self.queue}")
 
@@ -816,7 +801,7 @@ if __name__ == '__main__':
 
 5. **Monitor consumer counts** - Alert when queues have zero consumers
 
-6. **Handle HA failover** - Enable `x-cancel-on-ha-failover` for explicit notification
+6. **Handle replicated queue failover** - On RabbitMQ 3.x mirrored classic queues, use `x-cancel-on-ha-failover` if you want failover to cancel the consumer explicitly; use quorum queues or streams for new replicated workloads
 
 7. **Log cancellation events** - Track patterns and investigate frequent cancellations
 
@@ -830,7 +815,7 @@ Consumer cancellation errors require proper handling to maintain reliable messag
 
 - **Detect cancellations** via callbacks and null messages
 - **Implement recovery logic** that resubscribes automatically
-- **Handle edge cases** like deleted queues and HA failover
+- **Handle edge cases** like deleted queues and replicated queue failover
 - **Monitor consumer health** and alert on zero-consumer queues
 - **Test your recovery code** before production issues occur
 
