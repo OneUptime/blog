@@ -108,8 +108,9 @@ INSERT INTO users (username, email) VALUES
 
 # Extract and validate each row
 
+values_clause = insert_sql.split("VALUES", 1)[1]
 values_pattern = r"\(([^)]+)\)"
-matches = re.findall(values_pattern, insert_sql)
+matches = re.findall(values_pattern, values_clause)
 
 expected_columns = 2  # username, email
 
@@ -155,7 +156,7 @@ FROM users_backup;
 
 ```sql
 -- Create a column list dynamically (for many columns)
-SELECT GROUP_CONCAT(COLUMN_NAME)
+SELECT GROUP_CONCAT(COLUMN_NAME ORDER BY ORDINAL_POSITION)
 FROM INFORMATION_SCHEMA.COLUMNS
 WHERE TABLE_SCHEMA = 'mydb'
   AND TABLE_NAME = 'users_backup'
@@ -166,7 +167,7 @@ WHERE TABLE_SCHEMA = 'mydb'
 
 ### The Problem
 
-Views can cause confusion when the underlying table changes:
+Views can cause confusion when the underlying table changes. In MySQL, a view definition is frozen when the view is created, so columns added later do not automatically become part of the view:
 
 ```sql
 -- Original table
@@ -183,8 +184,8 @@ CREATE VIEW product_view AS SELECT * FROM products;
 ALTER TABLE products ADD COLUMN category VARCHAR(50);
 
 -- Now this fails!
-INSERT INTO product_view VALUES (1, 'Widget', 29.99);
--- Error: Column count doesn't match (view expects 4 columns now)
+INSERT INTO product_view VALUES (1, 'Widget', 29.99, 'Tools');
+-- Error: Column count doesn't match (view still expects 3 columns)
 ```
 
 ### The Fix
@@ -321,7 +322,7 @@ CREATE PROCEDURE safe_dynamic_insert(
     IN values_str TEXT
 )
 BEGIN
-    -- Validate column count matches value count
+    -- Basic validation for simple comma-separated lists
     SET @col_count = LENGTH(column_list) - LENGTH(REPLACE(column_list, ',', '')) + 1;
     SET @val_count = LENGTH(values_str) - LENGTH(REPLACE(values_str, ',', '')) + 1;
 
