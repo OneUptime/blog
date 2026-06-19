@@ -102,9 +102,10 @@ tumbling_aggregation = watermarked_df \
     )
 
 # Write results to Delta Lake
+# Results are written once each window is finalized.
 query = tumbling_aggregation.writeStream \
     .format("delta") \
-    .outputMode("append")  # Results written once window is finalized \
+    .outputMode("append") \
     .option("checkpointLocation", "/checkpoints/tumbling") \
     .start("/delta/event_aggregates")
 ```
@@ -193,7 +194,10 @@ watermarked_df = configure_watermark(
 
 ```python
 # Track late data metrics
-from pyspark.sql.functions import current_timestamp, unix_timestamp
+from pyspark.sql.functions import (
+    avg, current_timestamp, max as spark_max,
+    percentile_approx, unix_timestamp
+)
 
 # Add latency calculation
 latency_df = watermarked_df \
@@ -209,13 +213,16 @@ latency_df = watermarked_df \
 # Log latency statistics periodically
 def process_batch(batch_df, batch_id):
     if batch_df.count() > 0:
-        stats = batch_df.agg({
-            "latency_seconds": "max",
-            "latency_seconds": "avg",
-            "latency_seconds": "percentile_approx(latency_seconds, 0.99)"
-        }).collect()[0]
+        stats = batch_df.agg(
+            spark_max("latency_seconds").alias("max_latency_seconds"),
+            avg("latency_seconds").alias("avg_latency_seconds"),
+            percentile_approx("latency_seconds", 0.99).alias("p99_latency_seconds")
+        ).collect()[0]
 
-        print(f"Batch {batch_id}: Max latency={stats[0]}s, Avg={stats[1]:.1f}s")
+        print(
+            f"Batch {batch_id}: Max latency={stats['max_latency_seconds']}s, "
+            f"Avg={stats['avg_latency_seconds']:.1f}s"
+        )
 
 query = latency_df.writeStream \
     .foreachBatch(process_batch) \
@@ -272,7 +279,8 @@ graph TD
 For data that arrives beyond the watermark, implement a secondary processing path.
 
 ```python
-from pyspark.sql.functions import lit, when
+from datetime import datetime, timedelta, timezone
+from pyspark.sql.functions import coalesce, expr, lit
 
 # Main streaming path with watermark
 main_stream = watermarked_df \
@@ -284,19 +292,26 @@ def process_late_data(spark, lookback_hours: int = 24):
     """
     Reprocess late data that arrived after watermark.
     """
-    # Read raw events from the last 24 hours
+    start_ms = int(
+        (datetime.now(timezone.utc) - timedelta(hours=lookback_hours)).timestamp() * 1000
+    )
+
+    # Read raw events from the lookback period
     raw_events = spark.read \
         .format("kafka") \
         .option("kafka.bootstrap.servers", "localhost:9092") \
         .option("subscribe", "events") \
-        .option("startingOffsets", "earliest") \
+        .option("startingTimestamp", str(start_ms)) \
         .option("endingOffsets", "latest") \
         .load()
 
     # Parse and filter for late events
     parsed = raw_events \
-        .select(from_json(col("value").cast("string"), event_schema).alias("data")) \
-        .select("data.*") \
+        .select(
+            from_json(col("value").cast("string"), event_schema).alias("data"),
+            col("timestamp").alias("kafka_timestamp")
+        ) \
+        .select("data.*", "kafka_timestamp") \
         .withColumn("event_timestamp", to_timestamp(col("event_time")))
 
     # Find events where processing time is much later than event time
@@ -317,17 +332,19 @@ def process_late_data(spark, lookback_hours: int = 24):
         .withColumn("processing_path", lit("late_recovery"))
 
     # Merge with existing aggregates
-    existing = spark.read.delta("/delta/event_aggregates")
+    existing = spark.read.format("delta").load("/delta/event_aggregates")
 
     merged = existing.alias("e").join(
         late_aggregates.alias("l"),
         ["window", "event_type"],
         "outer"
     ).select(
-        col("e.window").alias("window"),
-        col("e.event_type").alias("event_type"),
-        (col("e.event_count") + col("l.late_event_count")).alias("event_count"),
-        (col("e.total_amount") + col("l.late_amount")).alias("total_amount")
+        col("window"),
+        col("event_type"),
+        (coalesce(col("e.event_count"), lit(0)) +
+            coalesce(col("l.late_event_count"), lit(0))).alias("event_count"),
+        (coalesce(col("e.total_amount"), lit(0.0)) +
+            coalesce(col("l.late_amount"), lit(0.0))).alias("total_amount")
     )
 
     merged.write \
@@ -375,11 +392,11 @@ def monitor_streaming_query(query):
             for op in state_ops:
                 print(f"State rows: {op.get('numRowsTotal', 0):,}")
                 print(f"State memory: {op.get('memoryUsedBytes', 0) / (1024**2):.1f} MB")
-                print(f"Late inputs: {op.get('numLateInputRows', 0):,}")
+                print(f"Dropped by watermark: {op.get('numRowsDroppedByWatermark', 0):,}")
 
             # Processing metrics
             print(f"Input rows/sec: {progress.get('inputRowsPerSecond', 0):.0f}")
-            print(f"Processing time: {progress.get('triggerExecution', {}).get('latency', {}).get('triggerExecution', 0)}ms")
+            print(f"Processing time: {progress.get('durationMs', {}).get('triggerExecution', 0)}ms")
 
         time.sleep(30)
 
@@ -469,7 +486,7 @@ realtime_metrics = watermarked_orders \
 # Write to memory table for dashboard queries
 dashboard_query = realtime_metrics.writeStream \
     .format("memory") \
-    .outputMode("update") \
+    .outputMode("complete") \
     .queryName("realtime_dashboard") \
     .trigger(processingTime="10 seconds") \
     .start()
