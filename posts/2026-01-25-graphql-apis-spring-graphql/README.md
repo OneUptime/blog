@@ -18,7 +18,7 @@ Before diving into code, let's address the "why." GraphQL solves a few pain poin
 - **Strong typing:** The schema acts as a contract between frontend and backend.
 - **Introspection:** Clients can query the schema itself, making API discovery trivial.
 
-Spring for GraphQL, introduced as a first-party Spring project, replaced the older graphql-java-kickstart libraries. It integrates tightly with Spring MVC, WebFlux, and Spring Data, so you get the familiar annotation-driven development experience.
+Spring for GraphQL, introduced as a first-party Spring project, is the successor to the GraphQL Java Spring project and is the modern Spring-supported choice for GraphQL applications. It integrates tightly with Spring MVC, WebFlux, and Spring Data, so you get the familiar annotation-driven development experience.
 
 ## Setting Up Your Project
 
@@ -38,10 +38,16 @@ Start with a Spring Boot project. Add these dependencies to your `pom.xml`:
         <artifactId>spring-boot-starter-graphql</artifactId>
     </dependency>
 
-    <!-- For the GraphiQL interface during development -->
+    <!-- For GraphQL testing utilities -->
     <dependency>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-test</artifactId>
+        <scope>test</scope>
+    </dependency>
+
+    <dependency>
+        <groupId>org.springframework.graphql</groupId>
+        <artifactId>spring-graphql-test</artifactId>
         <scope>test</scope>
     </dependency>
 </dependencies>
@@ -107,7 +113,7 @@ A few things to note here. The `!` suffix means a field is non-nullable. Input t
 
 ## Building the Domain Model
 
-Create simple Java records (or classes if you're on an older Java version) that mirror your GraphQL types:
+Create simple Java records (or classes if you're on an older Java version) to represent the data behind your GraphQL types:
 
 ```java
 // Book.java
@@ -160,6 +166,28 @@ public class BookRepository {
         Book savedBook = new Book(id, book.title(), book.isbn(), book.publishedYear(), book.authorId());
         books.put(id, savedBook);
         return savedBook;
+    }
+}
+
+@Repository
+public class AuthorRepository {
+
+    private final Map<String, Author> authors = new ConcurrentHashMap<>();
+
+    public AuthorRepository() {
+        authors.put("1", new Author("1", "Robert C. Martin"));
+        authors.put("2", new Author("2", "David Thomas"));
+    }
+
+    public Optional<Author> findById(String id) {
+        return Optional.ofNullable(authors.get(id));
+    }
+
+    public List<Author> findAllById(Collection<String> ids) {
+        return ids.stream()
+            .map(authors::get)
+            .filter(Objects::nonNull)
+            .toList();
     }
 }
 ```
@@ -277,18 +305,15 @@ The resolver approach above works, but it has a flaw. If you query 100 books wit
 @Configuration
 public class DataLoaderConfig {
 
-    @Bean
-    public BatchLoaderRegistry batchLoaderRegistry(AuthorRepository authorRepository) {
-        return (registry) -> {
-            registry.forTypePair(String.class, Author.class)
-                .registerMappedBatchLoader((authorIds, env) -> {
-                    // Fetch all authors in a single query
-                    Map<String, Author> authorsById = authorRepository.findAllById(authorIds)
-                        .stream()
-                        .collect(Collectors.toMap(Author::id, Function.identity()));
-                    return Mono.just(authorsById);
-                });
-        };
+    public DataLoaderConfig(BatchLoaderRegistry registry, AuthorRepository authorRepository) {
+        registry.forTypePair(String.class, Author.class)
+            .registerMappedBatchLoader((authorIds, env) -> {
+                // Fetch all authors in a single query
+                Map<String, Author> authorsById = authorRepository.findAllById(authorIds)
+                    .stream()
+                    .collect(Collectors.toMap(Author::id, Function.identity()));
+                return Mono.just(authorsById);
+            });
     }
 }
 ```
@@ -312,7 +337,7 @@ GraphQL has its own error format. Spring for GraphQL lets you customize it:
 @ControllerAdvice
 public class GraphQLExceptionHandler {
 
-    @ExceptionHandler(BookNotFoundException.class)
+    @GraphQlExceptionHandler(BookNotFoundException.class)
     public GraphQLError handleNotFound(BookNotFoundException ex) {
         return GraphQLError.newError()
             .errorType(ErrorType.NOT_FOUND)
