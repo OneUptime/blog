@@ -20,7 +20,7 @@ flowchart LR
     G -->|Watches| A[ArgoCD]
     A -->|Syncs| K[Kubernetes Cluster]
     K -->|Status| A
-    A -->|Reports| G
+    A -->|Reports| D
 ```
 
 1. **Declarative configuration**: All infrastructure is defined as code
@@ -38,7 +38,7 @@ Deploy ArgoCD to your cluster:
 kubectl create namespace argocd
 
 # Install ArgoCD
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+kubectl apply -n argocd --server-side --force-conflicts -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 
 # Wait for pods to be ready
 kubectl wait --for=condition=Ready pods --all -n argocd --timeout=300s
@@ -62,7 +62,7 @@ curl -sSL -o argocd-linux-amd64 https://github.com/argoproj/argo-cd/releases/lat
 sudo install -m 555 argocd-linux-amd64 /usr/local/bin/argocd
 
 # Login to ArgoCD
-argocd login localhost:8080
+argocd login localhost:8080 --insecure
 ```
 
 ## Creating Your First Application
@@ -180,9 +180,6 @@ spec:
     chart: kube-prometheus-stack
     targetRevision: 55.0.0
     helm:
-      # Values file from a Git repo
-      valueFiles:
-        - values-production.yaml
       # Inline values
       values: |
         prometheus:
@@ -286,7 +283,7 @@ spec:
       kind: ResourceQuota
     - group: ''
       kind: LimitRange
-    - group: ''
+    - group: networking.k8s.io
       kind: NetworkPolicy
 
   # Allow specific cluster-scoped resources
@@ -323,11 +320,11 @@ syncPolicy:
   syncOptions:
     # Create namespace if it does not exist
     - CreateNamespace=true
-    # Apply manifests in specific order
+    # Apply only resources that are out of sync
     - ApplyOutOfSyncOnly=true
     # Use server-side apply
     - ServerSideApply=true
-    # Respect resource hooks
+    # Respect ignoreDifferences rules during sync
     - RespectIgnoreDifferences=true
 ```
 
