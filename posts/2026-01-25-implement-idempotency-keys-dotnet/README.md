@@ -44,16 +44,25 @@ public class IdempotencyService
         // Check if we already processed this request
         if (_cache.TryGetValue(idempotencyKey, out var existing))
         {
-            if (existing.Status == IdempotencyStatus.Completed)
+            if (DateTime.UtcNow - existing.CreatedAt > _entryLifetime)
+            {
+                _cache.TryRemove(idempotencyKey, out _);
+            }
+            else if (existing.Status == IdempotencyStatus.Completed)
             {
                 // Return cached result without executing again
                 return (T)existing.Result!;
             }
-
-            if (existing.Status == IdempotencyStatus.Processing)
+            else if (existing.Status == IdempotencyStatus.Processing)
             {
                 // Another thread is processing this request
                 throw new ConflictException("Request is already being processed");
+            }
+            else if (existing.Status == IdempotencyStatus.Failed)
+            {
+                // Return the same failure for retries with the same key
+                throw new InvalidOperationException(
+                    existing.ErrorMessage ?? "Request failed previously");
             }
         }
 
@@ -180,35 +189,67 @@ public class IdempotencyMiddleware
             return;
         }
 
-        // Capture the response
-        var originalBodyStream = context.Response.Body;
-        using var responseBody = new MemoryStream();
-        context.Response.Body = responseBody;
+        // Acquire a distributed lock to prevent concurrent duplicate execution
+        if (!await _store.TryLockAsync(compositeKey, TimeSpan.FromSeconds(30)))
+        {
+            context.Response.StatusCode = StatusCodes.Status409Conflict;
+            await context.Response.WriteAsync(
+                "Request with this idempotency key is already being processed");
+            return;
+        }
 
         try
         {
-            await _next(context);
-
-            // Read the response
-            responseBody.Seek(0, SeekOrigin.Begin);
-            var responseText = await new StreamReader(responseBody).ReadToEndAsync();
-
-            // Store the response for future identical requests
-            await _store.SetAsync(compositeKey, new CachedResponse
+            // Check again after acquiring the lock in case another request completed
+            existingResponse = await _store.GetAsync(compositeKey);
+            if (existingResponse != null)
             {
-                StatusCode = context.Response.StatusCode,
-                ContentType = context.Response.ContentType ?? "application/json",
-                Body = responseText,
-                CreatedAt = DateTime.UtcNow
-            });
+                _logger.LogInformation(
+                    "Returning cached response for idempotency key {Key}",
+                    idempotencyKey);
 
-            // Copy response to original stream
-            responseBody.Seek(0, SeekOrigin.Begin);
-            await responseBody.CopyToAsync(originalBodyStream);
+                context.Response.StatusCode = existingResponse.StatusCode;
+                context.Response.ContentType = existingResponse.ContentType;
+                context.Response.Headers["Idempotency-Replayed"] = "true";
+
+                await context.Response.WriteAsync(existingResponse.Body);
+                return;
+            }
+
+            // Capture the response
+            var originalBodyStream = context.Response.Body;
+            using var responseBody = new MemoryStream();
+            context.Response.Body = responseBody;
+
+            try
+            {
+                await _next(context);
+
+                // Read the response
+                responseBody.Seek(0, SeekOrigin.Begin);
+                var responseText = await new StreamReader(responseBody).ReadToEndAsync();
+
+                // Store the response for future identical requests
+                await _store.SetAsync(compositeKey, new CachedResponse
+                {
+                    StatusCode = context.Response.StatusCode,
+                    ContentType = context.Response.ContentType ?? "application/json",
+                    Body = responseText,
+                    CreatedAt = DateTime.UtcNow
+                });
+
+                // Copy response to original stream
+                responseBody.Seek(0, SeekOrigin.Begin);
+                await responseBody.CopyToAsync(originalBodyStream);
+            }
+            finally
+            {
+                context.Response.Body = originalBodyStream;
+            }
         }
         finally
         {
-            context.Response.Body = originalBodyStream;
+            await _store.ReleaseLockAsync(compositeKey);
         }
     }
 
@@ -227,7 +268,7 @@ public class IdempotencyMiddleware
 For production systems, store idempotency data in Redis. This handles multiple server instances and provides automatic expiration.
 
 ```csharp
-// Production-ready idempotency store using Redis
+// Redis-backed idempotency store
 // Supports distributed scenarios with multiple API instances
 public class RedisIdempotencyStore : IIdempotencyStore
 {
@@ -256,7 +297,10 @@ public class RedisIdempotencyStore : IIdempotencyStore
         return JsonSerializer.Deserialize<CachedResponse>(value!);
     }
 
-    public async Task SetAsync(string key, CachedResponse response)
+    public async Task SetAsync(
+        string key,
+        CachedResponse response,
+        TimeSpan? expiry = null)
     {
         var db = _redis.GetDatabase();
         var json = JsonSerializer.Serialize(response);
@@ -265,7 +309,7 @@ public class RedisIdempotencyStore : IIdempotencyStore
         await db.StringSetAsync(
             $"idempotency:{key}",
             json,
-            _defaultExpiry);
+            expiry ?? _defaultExpiry);
     }
 
     // Use Redis SETNX to prevent race conditions
@@ -291,7 +335,10 @@ public class RedisIdempotencyStore : IIdempotencyStore
 public interface IIdempotencyStore
 {
     Task<CachedResponse?> GetAsync(string key);
-    Task SetAsync(string key, CachedResponse response);
+    Task SetAsync(
+        string key,
+        CachedResponse response,
+        TimeSpan? expiry = null);
     Task<bool> TryLockAsync(string key, TimeSpan lockDuration);
     Task ReleaseLockAsync(string key);
 }
@@ -382,7 +429,7 @@ public class IdempotentAttribute : Attribute, IAsyncActionFilter
                     ContentType = "application/json",
                     Body = json,
                     CreatedAt = DateTime.UtcNow
-                });
+                }, TimeSpan.FromSeconds(CacheSeconds));
             }
         }
         finally
