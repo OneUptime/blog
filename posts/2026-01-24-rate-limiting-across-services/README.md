@@ -87,6 +87,7 @@ func (rl *RateLimiter) SlidingWindowLimit(
     // Lua script for atomic sliding window rate limiting
     script := redis.NewScript(`
         local key = KEYS[1]
+        local sequence_key = KEYS[2]
         local window_start = tonumber(ARGV[1])
         local now = tonumber(ARGV[2])
         local limit = tonumber(ARGV[3])
@@ -100,16 +101,18 @@ func (rl *RateLimiter) SlidingWindowLimit(
 
         if current < limit then
             -- Add new request
-            redis.call('ZADD', key, now, now .. ':' .. math.random())
+            local sequence = redis.call('INCR', sequence_key)
+            redis.call('ZADD', key, now, now .. ':' .. sequence)
             -- Set expiry on the key
             redis.call('PEXPIRE', key, window_ms)
+            redis.call('PEXPIRE', sequence_key, window_ms)
             return {1, limit - current - 1}
         else
             return {0, 0}
         end
     `)
 
-    result, err := script.Run(ctx, rl.client, []string{fullKey},
+    result, err := script.Run(ctx, rl.client, []string{fullKey, fullKey + ":seq"},
         windowStart, nowMs, limit, window.Milliseconds()).Int64Slice()
 
     if err != nil {
@@ -157,7 +160,7 @@ func (rl *RateLimiter) TokenBucketLimit(
         end
 
         -- Update bucket state
-        redis.call('HMSET', key, 'tokens', tokens, 'last_update', now)
+        redis.call('HSET', key, 'tokens', tokens, 'last_update', now)
         redis.call('EXPIRE', key, 3600)
 
         return {allowed, math.floor(tokens)}
@@ -268,7 +271,6 @@ from enum import Enum
 from typing import Optional, Tuple
 import time
 import redis
-import hashlib
 
 class UserTier(Enum):
     FREE = "free"
@@ -409,7 +411,7 @@ class TieredRateLimiter:
 # Usage example
 def rate_limit_middleware(get_user_tier):
     """FastAPI middleware for tiered rate limiting"""
-    from fastapi import Request, HTTPException
+    from fastapi import Request
     from fastapi.responses import JSONResponse
 
     limiter = TieredRateLimiter(
@@ -557,7 +559,7 @@ class ServiceRateLimiter {
                 retry_after = math.ceil((1 - tokens) / refill_rate * 1000)
             end
 
-            redis.call('HMSET', key, 'tokens', tokens, 'last_update', now)
+            redis.call('HSET', key, 'tokens', tokens, 'last_update', now)
             redis.call('EXPIRE', key, 3600)
 
             return {allowed, math.floor(tokens), retry_after}
@@ -722,9 +724,7 @@ flowchart TD
 package httpclient
 
 import (
-    "context"
     "fmt"
-    "io"
     "net/http"
     "strconv"
     "time"
@@ -752,12 +752,19 @@ func NewRateLimitedClient(maxRetries int) *RateLimitedClient {
 func (c *RateLimitedClient) Do(req *http.Request) (*http.Response, error) {
     var lastErr error
 
+    if req.Body != nil && req.GetBody == nil {
+        return nil, fmt.Errorf("request body is not replayable for retries")
+    }
+
     for attempt := 0; attempt <= c.maxRetries; attempt++ {
         // Clone request for retry
         reqCopy := req.Clone(req.Context())
-        if req.Body != nil {
-            // Note: In production, use a body that can be read multiple times
-            reqCopy.Body = req.Body
+        if req.GetBody != nil {
+            body, err := req.GetBody()
+            if err != nil {
+                return nil, fmt.Errorf("failed to clone request body: %w", err)
+            }
+            reqCopy.Body = body
         }
 
         resp, err := c.client.Do(reqCopy)
@@ -835,7 +842,7 @@ func (c *RateLimitedClient) calculateBackoff(attempt int) time.Duration {
 # Kong API Gateway rate limiting configuration
 # kong.yml
 
-_format_version: "2.1"
+_format_version: "3.0"
 
 services:
   - name: order-service
@@ -854,9 +861,11 @@ services:
 
           # Policy: local, cluster, or redis
           policy: redis
-          redis_host: redis
-          redis_port: 6379
-          redis_database: 0
+          redis:
+            host: redis
+            port: 6379
+            timeout: 2000
+            database: 0
 
           # Identifier for rate limiting
           limit_by: consumer  # or ip, header, path
@@ -865,17 +874,32 @@ services:
           hide_client_headers: false
 
       - name: rate-limiting-advanced
+        consumer_group: free-tier
         config:
           # Different limits per consumer group
-          limits:
-            - consumer_groups:
-                - free-tier
-              minute: 10
-              hour: 100
-            - consumer_groups:
-                - premium-tier
-              minute: 1000
-              hour: 10000
+          limit:
+            - 10
+            - 100
+          window_size:
+            - 60
+            - 3600
+          window_type: sliding
+          namespace: free-tier
+      - name: rate-limiting-advanced
+        consumer_group: premium-tier
+        config:
+          limit:
+            - 1000
+            - 10000
+          window_size:
+            - 60
+            - 3600
+          window_type: sliding
+          namespace: premium-tier
+
+consumer_groups:
+  - name: free-tier
+  - name: premium-tier
 
 consumers:
   - username: api-user-1
@@ -909,7 +933,7 @@ var (
         []string{"client_type", "endpoint", "decision"},
     )
 
-    // Histogram for current usage relative to limit
+    // Gauge for current usage relative to limit
     rateLimitUsage = promauto.NewGaugeVec(
         prometheus.GaugeOpts{
             Name: "rate_limit_usage_ratio",
