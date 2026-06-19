@@ -68,7 +68,7 @@ WHERE TABLE_SCHEMA = 'your_database'
 
 MyISAM tables are most prone to crashes because they lack crash recovery.
 
-### Method 1: REPAIR TABLE (Online)
+### Method 1: REPAIR TABLE (Server Running)
 
 ```sql
 -- Basic repair
@@ -125,14 +125,14 @@ myisamchk -e your_table.MYI
 # Standard repair
 myisamchk -r your_table.MYI
 
-# Safe repair (slower but preserves more data)
+# Quick repair (repairs the index file only)
 myisamchk -r -q your_table.MYI
 
 # Force repair (last resort, may lose some data)
 myisamchk -r -f your_table.MYI
 
-# Recover with best effort
-myisamchk -r -o your_table.MYI
+# Safe recovery (slower, use if standard repair fails)
+myisamchk -o your_table.MYI
 ```
 
 **Full recovery command sequence:**
@@ -151,9 +151,9 @@ myisamchk -e your_table
 myisamchk -r your_table
 
 # If that fails, try safe recovery
-myisamchk -r -q your_table
+myisamchk -o your_table
 
-# If still failing, force recovery
+# If still failing, force recovery as a last resort
 myisamchk -r -f your_table
 
 # Fix ownership after repair
@@ -274,21 +274,20 @@ When repair fails, try to extract what data you can.
 # Create recovery table structure
 mysql -u root -p -e "CREATE TABLE your_database.recovered LIKE your_database.your_table"
 
-# Use myisamchk to extract rows
+# Try an index-only repair before copying rows
 myisamchk -r -q /var/lib/mysql/your_database/your_table
 
 # Copy data from damaged table
 mysql -u root -p -e "INSERT IGNORE INTO your_database.recovered SELECT * FROM your_database.your_table"
 ```
 
-**For InnoDB using Percona Data Recovery:**
+**For InnoDB:**
 
 ```bash
-# Install Percona Toolkit
-sudo apt install percona-toolkit
+# Try dumping the table after starting with innodb_force_recovery
+mysqldump -u root -p your_database your_table > recovered_table.sql
 
-# Extract data from InnoDB tablespace
-# This is complex and requires the table definition
+# If dumping fails, restore from a known-good backup or use a specialist recovery tool
 ```
 
 ## Prevention Strategies
@@ -321,7 +320,7 @@ SHOW VARIABLES LIKE 'innodb_doublewrite';
 
 ```ini
 [mysqld]
-# Wait for transactions to complete
+# Use a slow shutdown that completes purge and change buffer merge work
 innodb_fast_shutdown = 0
 ```
 
