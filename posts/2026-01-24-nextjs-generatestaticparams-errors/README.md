@@ -171,7 +171,7 @@ export async function generateStaticParams() {
 
     if (!response.ok) {
       console.error('Failed to fetch posts:', response.status);
-      return []; // Return empty array - pages will 404 or use fallback
+      return []; // No pages are generated at build time
     }
 
     const posts = await response.json();
@@ -181,20 +181,19 @@ export async function generateStaticParams() {
     }));
   } catch (error) {
     console.error('Error in generateStaticParams:', error);
-    return []; // Graceful fallback
+    return []; // Graceful fallback when Cache Components are not enabled
   }
 }
 ```
 
 ## Error 6: Environment Variables Not Available
 
-Build-time functions may not have access to runtime environment variables.
+Build-time functions only have access to environment variables that are available when `next build` runs.
 
 ```tsx
-// WRONG: Using runtime-only env vars
+// WRONG: Assuming a runtime-only env var is available at build time
 export async function generateStaticParams() {
-  // NEXT_PUBLIC_ vars work, but others may not
-  const apiUrl = process.env.API_URL; // May be undefined at build time
+  const apiUrl = process.env.API_URL; // Undefined unless set for the build
 
   const response = await fetch(`${apiUrl}/posts`);
   // Fails if apiUrl is undefined
@@ -204,13 +203,14 @@ export async function generateStaticParams() {
 ```tsx
 // CORRECT: Use build-time available variables
 export async function generateStaticParams() {
-  // Use NEXT_PUBLIC_ prefix for client-accessible vars
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+  // Set API_URL in your build environment or .env files
+  const apiUrl = process.env.API_URL;
 
-  // Or hardcode for build time, override at runtime
-  const buildTimeUrl = process.env.BUILD_API_URL || 'https://api.example.com';
+  if (!apiUrl) {
+    throw new Error('API_URL must be set when running next build');
+  }
 
-  const response = await fetch(`${buildTimeUrl}/posts`);
+  const response = await fetch(`${apiUrl}/posts`);
   const posts = await response.json();
 
   return posts.map((post) => ({
@@ -254,7 +254,7 @@ export async function generateStaticParams() {
   } catch (error) {
     console.error('Database error in generateStaticParams:', error);
 
-    // Option 1: Return empty array (pages use dynamic fallback)
+    // Option 1: Return empty array (paths can be generated at request time)
     return [];
 
     // Option 2: Return known slugs as fallback
@@ -277,19 +277,19 @@ export async function generateStaticParams() {
 }
 
 // WRONG: Page expects different param structure
-export default function Page({ params }: { params: { id: string } }) {
+export default async function Page({
+  params
+}: {
+  params: Promise<{ id: string }>
+}) {
   // Looking for 'id' but params has 'slug'
-  return <div>Post: {params.id}</div>;
+  const { id } = await params;
+  return <div>Post: {id}</div>;
 }
 ```
 
 ```tsx
 // CORRECT: Page params match generateStaticParams
-export default function Page({ params }: { params: { slug: string } }) {
-  return <div>Post: {params.slug}</div>;
-}
-
-// With async params (Next.js 15+)
 export default async function Page({
   params
 }: {
@@ -316,8 +316,13 @@ export async function generateStaticParams() {
 export const dynamicParams = true; // Allow paths not in generateStaticParams
 // export const dynamicParams = false; // 404 for unknown paths
 
-export default async function Page({ params }: { params: { slug: string } }) {
-  const post = await getPost(params.slug);
+export default async function Page({
+  params
+}: {
+  params: Promise<{ slug: string }>
+}) {
+  const { slug } = await params;
+  const post = await getPost(slug);
 
   if (!post) {
     notFound(); // Return 404 page
@@ -405,12 +410,13 @@ export async function generateStaticParams(): Promise<Params[]> {
 
 // Type the page props
 type Props = {
-  params: Params;
-  searchParams: { [key: string]: string | string[] | undefined };
+  params: Promise<Params>;
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 };
 
-export default function Page({ params }: Props) {
-  return <div>Slug: {params.slug}</div>;
+export default async function Page({ params }: Props) {
+  const { slug } = await params;
+  return <div>Slug: {slug}</div>;
 }
 ```
 
@@ -439,6 +445,7 @@ export async function generateStaticParams() {
 
 // Allow other products to be generated on-demand
 export const dynamicParams = true;
+// Note: dynamicParams is not available when Cache Components are enabled.
 
 // Optionally, set revalidation for on-demand pages
 export const revalidate = 3600; // Revalidate every hour
@@ -508,9 +515,10 @@ export const revalidate = 3600; // Revalidate every hour
 export async function generateMetadata({
   params
 }: {
-  params: { slug: string }
+  params: Promise<{ slug: string }>
 }) {
-  const post = await getPostBySlug(params.slug);
+  const { slug } = await params;
+  const post = await getPostBySlug(slug);
 
   if (!post) {
     return { title: 'Post Not Found' };
@@ -526,9 +534,10 @@ export async function generateMetadata({
 export default async function BlogPost({
   params
 }: {
-  params: { slug: string }
+  params: Promise<{ slug: string }>
 }) {
-  const post = await getPostBySlug(params.slug);
+  const { slug } = await params;
+  const post = await getPostBySlug(slug);
 
   if (!post) {
     notFound();
@@ -552,7 +561,7 @@ export default async function BlogPost({
 | Missing params | Return all dynamic segments |
 | Catch-all errors | Use arrays for [...slug] routes |
 | Fetch failures | Add try/catch with fallback |
-| Env var issues | Use NEXT_PUBLIC_ or build-time vars |
+| Env var issues | Provide required variables in the build environment |
 | DB connection | Handle errors, provide fallbacks |
 | Type mismatches | Ensure page params match function return |
 | Unknown paths 404 | Set dynamicParams = true |
