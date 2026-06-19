@@ -58,16 +58,21 @@ The easiest way to run the Collector is using Docker:
 ```bash
 # Pull the official OpenTelemetry Collector image
 
-docker pull otel/opentelemetry-collector:latest
+docker pull otel/opentelemetry-collector:0.154.0
 
 # Run the collector with a custom configuration file
 docker run -d \
   --name otel-collector \
-  -p 4317:4317 \      # gRPC receiver port
-  -p 4318:4318 \      # HTTP receiver port
-  -p 55679:55679 \    # zpages extension for debugging
-  -v $(pwd)/otel-collector-config.yaml:/etc/otel-collector-config.yaml \
-  otel/opentelemetry-collector:latest \
+  -p 4317:4317 \
+  -p 4318:4318 \
+  -p 9411:9411 \
+  -p 14250:14250 \
+  -p 14268:14268 \
+  -p 13133:13133 \
+  -p 1777:1777 \
+  -p 55679:55679 \
+  -v "$(pwd)/otel-collector-config.yaml:/etc/otel-collector-config.yaml" \
+  otel/opentelemetry-collector:0.154.0 \
   --config=/etc/otel-collector-config.yaml
 ```
 
@@ -78,11 +83,10 @@ For a more structured deployment, use Docker Compose:
 ```yaml
 # docker-compose.yaml
 # This configuration sets up the OpenTelemetry Collector with Jaeger as a backend
-version: '3.8'
 
 services:
   otel-collector:
-    image: otel/opentelemetry-collector:latest
+    image: otel/opentelemetry-collector:0.154.0
     container_name: otel-collector
     # Mount the configuration file into the container
     volumes:
@@ -92,17 +96,21 @@ services:
     ports:
       - "4317:4317"   # OTLP gRPC receiver
       - "4318:4318"   # OTLP HTTP receiver
+      - "9411:9411"   # Zipkin receiver
+      - "14250:14250" # Jaeger gRPC receiver
+      - "14268:14268" # Jaeger thrift HTTP receiver
+      - "13133:13133" # health_check extension
+      - "1777:1777"   # pprof extension
       - "55679:55679" # zpages extension
     networks:
       - observability
 
   # Optional: Add Jaeger for trace visualization
   jaeger:
-    image: jaegertracing/all-in-one:latest
+    image: jaegertracing/all-in-one:1.76.0
     container_name: jaeger
     ports:
       - "16686:16686" # Jaeger UI
-      - "14250:14250" # gRPC receiver
     networks:
       - observability
 
@@ -116,12 +124,12 @@ networks:
 For production environments, you may want to install the Collector as a system service:
 
 ```bash
-# Download the latest release for your platform
+# Download a release for your platform
 # Replace VERSION and ARCH with appropriate values
-wget https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.90.0/otelcol_0.90.0_linux_amd64.tar.gz
+wget https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.154.0/otelcol_0.154.0_linux_amd64.tar.gz
 
 # Extract the binary
-tar -xzf otelcol_0.90.0_linux_amd64.tar.gz
+tar -xzf otelcol_0.154.0_linux_amd64.tar.gz
 
 # Move to a system location
 sudo mv otelcol /usr/local/bin/
@@ -197,16 +205,16 @@ processors:
     timeout: 10s
     # Maximum number of spans per batch
     send_batch_size: 10000
-    # Maximum batch size in bytes
+    # Maximum number of spans in an outgoing batch
     send_batch_max_size: 11000
 
   # Memory limiter prevents out-of-memory situations
   memory_limiter:
     # Check memory usage at this interval
     check_interval: 5s
-    # Hard limit - collector will drop data above this
+    # Hard limit for heap allocation
     limit_mib: 4000
-    # Soft limit - collector will start throttling above this
+    # Expected memory spike between checks; soft limit is limit_mib - spike_limit_mib
     spike_limit_mib: 500
 
   # Resource processor adds attributes to all spans
@@ -235,18 +243,18 @@ exporters:
   debug:
     verbosity: detailed
 
-  # OTLP exporter sends to another OTLP-compatible backend
-  otlp:
-    endpoint: "https://ingest.oneuptime.com:443"
+  # OTLP HTTP exporter sends to OneUptime
+  otlphttp/oneuptime:
+    endpoint: "https://oneuptime.com/otlp"
+    encoding: json
     headers:
       # Replace with your actual API key
+      Content-Type: "application/json"
       x-oneuptime-token: "YOUR_ONEUPTIME_TOKEN"
-    tls:
-      insecure: false
 
-  # Jaeger exporter for Jaeger backend
-  jaeger:
-    endpoint: "jaeger:14250"
+  # OTLP exporter sends traces to Jaeger, which supports OTLP directly
+  otlp/jaeger:
+    endpoint: "jaeger:4317"
     tls:
       insecure: true
 
@@ -275,7 +283,7 @@ service:
     traces:
       receivers: [otlp, jaeger, zipkin]
       processors: [memory_limiter, resource, attributes, batch]
-      exporters: [otlp, jaeger, debug]
+      exporters: [otlphttp/oneuptime, otlp/jaeger, debug]
 ```
 
 ## Pipeline Architecture
@@ -298,8 +306,8 @@ flowchart TB
     end
 
     subgraph Exporters
-        OE[OTLP Exporter]
-        JE[Jaeger Exporter]
+        OE[OTLP HTTP Exporter]
+        JE[OTLP Exporter to Jaeger]
         DE[Debug Exporter]
     end
 
@@ -327,8 +335,11 @@ Once the Collector is running, configure your applications to send traces to it.
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const {
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+} = require('@opentelemetry/semantic-conventions');
 
 // Create OTLP exporter pointing to your Collector
 const traceExporter = new OTLPTraceExporter({
@@ -339,10 +350,10 @@ const traceExporter = new OTLPTraceExporter({
 // Initialize the SDK with auto-instrumentation
 const sdk = new NodeSDK({
   // Define resource attributes for your service
-  resource: new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: 'my-nodejs-service',
-    [SemanticResourceAttributes.SERVICE_VERSION]: '1.0.0',
-    [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: 'production',
+  resource: resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: 'my-nodejs-service',
+    [ATTR_SERVICE_VERSION]: '1.0.0',
+    'deployment.environment.name': 'production',
   }),
   // Configure the trace exporter
   traceExporter: traceExporter,
@@ -372,13 +383,13 @@ from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-from opentelemetry.sdk.resources import Resource, SERVICE_NAME, SERVICE_VERSION
+from opentelemetry.sdk.resources import Resource
 
 # Define resource attributes for your service
-resource = Resource(attributes={
-    SERVICE_NAME: "my-python-service",
-    SERVICE_VERSION: "1.0.0",
-    "deployment.environment": "production",
+resource = Resource.create({
+    "service.name": "my-python-service",
+    "service.version": "1.0.0",
+    "deployment.environment.name": "production",
 })
 
 # Create a TracerProvider with the resource
