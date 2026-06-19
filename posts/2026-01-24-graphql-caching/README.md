@@ -70,6 +70,7 @@ Start with simple in-memory caching for frequently requested queries.
 // Simple in-memory cache using LRU cache
 import { LRUCache } from 'lru-cache';
 import crypto from 'crypto';
+import { getOperationAST } from 'graphql';
 
 // Configure LRU cache
 // max: Maximum number of entries
@@ -87,7 +88,7 @@ const responseCache = new LRUCache({
 // Generate cache key from query and variables
 function generateCacheKey(query, variables, context) {
   const normalized = JSON.stringify({
-    query: query.replace(/\s+/g, ' ').trim(),
+    query: (query || '').replace(/\s+/g, ' ').trim(),
     variables: variables || {},
     // Include user ID for personalized data
     userId: context.user?.id || 'anonymous',
@@ -97,34 +98,36 @@ function generateCacheKey(query, variables, context) {
 
 // Response caching plugin for Apollo Server
 const responseCachePlugin = {
-  async requestDidStart({ request, context }) {
-    // Skip caching for mutations
-    if (request.query?.includes('mutation')) {
-      return {};
-    }
-
+  async requestDidStart({ request, contextValue }) {
     const cacheKey = generateCacheKey(
       request.query,
       request.variables,
-      context
+      contextValue
     );
 
-    // Check cache before execution
-    const cached = responseCache.get(cacheKey);
-    if (cached) {
-      console.log(`Cache hit: ${cacheKey.slice(0, 8)}...`);
-      return {
-        async willSendResponse({ response }) {
-          // Replace response with cached data
-          response.body = cached;
-        },
-      };
-    }
-
     return {
+      async responseForOperation({ operation, document, operationName }) {
+        // Skip caching for mutations
+        const operationAST = operation || getOperationAST(document, operationName);
+        if (operationAST?.operation === 'mutation') {
+          return null;
+        }
+
+        // Check cache before execution
+        const cachedBody = responseCache.get(cacheKey);
+        if (cachedBody) {
+          console.log(`Cache hit: ${cacheKey.slice(0, 8)}...`);
+          return { body: cachedBody };
+        }
+
+        return null;
+      },
       async willSendResponse({ response }) {
         // Cache successful responses only
-        if (!response.body.errors) {
+        if (
+          response.body.kind === 'single' &&
+          !response.body.singleResult.errors
+        ) {
           responseCache.set(cacheKey, response.body);
           console.log(`Cached: ${cacheKey.slice(0, 8)}...`);
         }
@@ -142,12 +145,12 @@ For production systems, use Redis for distributed caching across multiple server
 // redis-cache.js
 import Redis from 'ioredis';
 
-// Create Redis client with connection pooling
+// Create Redis client
 const redis = new Redis({
   host: process.env.REDIS_HOST || 'localhost',
   port: process.env.REDIS_PORT || 6379,
   password: process.env.REDIS_PASSWORD,
-  // Connection pool settings
+  // Retry settings
   maxRetriesPerRequest: 3,
   retryStrategy: (times) => {
     if (times > 3) return null; // Stop retrying
@@ -197,16 +200,27 @@ class GraphQLCache {
 
   // Delete by pattern (for cache invalidation)
   async deletePattern(pattern) {
-    const keys = await this.redis.keys(this.key(pattern));
-    if (keys.length > 0) {
-      await this.redis.del(...keys);
-      console.log(`Invalidated ${keys.length} cache entries`);
+    const stream = this.redis.scanStream({
+      match: this.key(pattern),
+      count: 100,
+    });
+
+    let invalidated = 0;
+    for await (const keys of stream) {
+      if (keys.length > 0) {
+        invalidated += keys.length;
+        await this.redis.del(...keys);
+      }
+    }
+
+    if (invalidated > 0) {
+      console.log(`Invalidated ${invalidated} cache entries`);
     }
   }
 
   // Check if key exists
   async exists(id) {
-    return await this.redis.exists(this.key(id));
+    return (await this.redis.exists(this.key(id))) === 1;
   }
 }
 
@@ -227,7 +241,7 @@ const resolvers = {
 
       // Check cache first
       const cached = await cache.get(cacheKey);
-      if (cached) {
+      if (cached !== null) {
         return cached;
       }
 
@@ -247,7 +261,7 @@ const resolvers = {
       const cacheKey = `user:${id}`;
 
       const cached = await cache.get(cacheKey);
-      if (cached) {
+      if (cached !== null) {
         return cached;
       }
 
@@ -401,6 +415,17 @@ import { ApolloServerPluginCacheControl } from '@apollo/server/plugin/cacheContr
 import responseCachePlugin from '@apollo/server-plugin-response-cache';
 
 const typeDefs = gql`
+  enum CacheControlScope {
+    PUBLIC
+    PRIVATE
+  }
+
+  directive @cacheControl(
+    maxAge: Int
+    scope: CacheControlScope
+    inheritMaxAge: Boolean
+  ) on FIELD_DEFINITION | OBJECT | INTERFACE | UNION
+
   type Query {
     # Cache for 1 hour, shared across users
     publicPosts: [Post!]! @cacheControl(maxAge: 3600)
@@ -442,15 +467,15 @@ const server = new ApolloServer({
     // Full response caching
     responseCachePlugin({
       // Custom session ID for private caching
-      sessionId: (context) => context.user?.id || null,
-      // Custom cache key
-      generateCacheKey: (context) => {
-        const { query, variables } = context.request;
-        return `${query}:${JSON.stringify(variables)}`;
-      },
+      sessionId: (requestContext) =>
+        requestContext.contextValue.user?.id || null,
+      // Add request-specific data to the generated cache key
+      extraCacheKeyData: (requestContext) => ({
+        authorization:
+          requestContext.request.http?.headers.get('authorization') || null,
+      }),
       // Don't cache errors
       shouldReadFromCache: (context) => !context.request.http?.headers.get('no-cache'),
-      shouldWriteToCache: (context) => !context.response.errors,
     }),
   ],
 });
@@ -477,31 +502,20 @@ flowchart LR
 ```javascript
 // Enable CDN caching with persisted queries
 import { ApolloServer } from '@apollo/server';
-import { createHash } from 'crypto';
-
-// Persisted query map
-const persistedQueries = new Map();
-
-// Generate query hash
-function generateHash(query) {
-  return createHash('sha256').update(query).digest('hex');
-}
-
-// Register persisted query
-function registerQuery(query) {
-  const hash = generateHash(query);
-  persistedQueries.set(hash, query);
-  return hash;
-}
+import Keyv from 'keyv';
+import KeyvRedis from '@keyv/redis';
+import { KeyvAdapter } from '@apollo/utils.keyvadapter';
 
 // CDN-friendly server configuration
 const server = new ApolloServer({
   typeDefs,
   resolvers,
-  // Enable persisted queries
+  // Enable automatic persisted queries
   persistedQueries: {
     // Use Redis for distributed storage
-    cache: new KeyValueCache(),
+    cache: new KeyvAdapter(
+      new Keyv(new KeyvRedis('redis://localhost:6379'))
+    ),
   },
   plugins: [
     {
@@ -533,7 +547,7 @@ const server = new ApolloServer({
 // Express middleware to add cache headers
 app.use('/graphql', (req, res, next) => {
   // Enable GET requests for CDN caching
-  if (req.method === 'GET' && req.query.query) {
+  if (req.method === 'GET') {
     // Public queries can be cached
     res.set('Cache-Control', 'public, max-age=60');
     res.set('Vary', 'Accept-Encoding');
