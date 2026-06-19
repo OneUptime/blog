@@ -30,9 +30,9 @@ flowchart TD
         end
 
         subgraph "Standard"
-            E --> G[http.method: POST]
-            E --> H[http.status_code: 200]
-            E --> I[http.url: /api/orders]
+            E --> G[http.request.method: POST]
+            E --> H[http.response.status_code: 200]
+            E --> I[url.path: /api/orders]
         end
 
         subgraph "Custom"
@@ -117,7 +117,7 @@ def process_order(order_id, customer_id, items):
 ### JavaScript/TypeScript
 
 ```javascript
-const { trace } = require('@opentelemetry/api');
+const { SpanStatusCode, trace } = require('@opentelemetry/api');
 
 const tracer = trace.getTracer('order-service');
 
@@ -168,7 +168,7 @@ async function processOrder(orderId, customerId, items) {
         span.setAttribute('error.type', error.name);
         span.setAttribute('error.message', error.message);
         span.recordException(error);
-        span.setStatus({ code: 2, message: error.message });
+        span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
         throw error;
 
       } finally {
@@ -261,10 +261,12 @@ func ProcessOrder(ctx context.Context, order Order) error {
 
 ```java
 import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.StatusCode;
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.api.common.AttributeKey;
-import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.context.Scope;
+import java.util.List;
+import java.util.stream.Collectors;
 
 public class OrderService {
 
@@ -409,43 +411,38 @@ ATTRIBUTE_NAMESPACES = {
 ### Using Standard OpenTelemetry Conventions
 
 ```python
-from opentelemetry.semconv.trace import SpanAttributes
-
 # HTTP attributes (use standard conventions)
-span.set_attribute(SpanAttributes.HTTP_METHOD, "POST")
-span.set_attribute(SpanAttributes.HTTP_URL, "https://api.example.com/orders")
-span.set_attribute(SpanAttributes.HTTP_STATUS_CODE, 200)
-span.set_attribute(SpanAttributes.HTTP_REQUEST_CONTENT_LENGTH, 1024)
+span.set_attribute("http.request.method", "POST")
+span.set_attribute("url.full", "https://api.example.com/orders")
+span.set_attribute("http.response.status_code", 200)
+span.set_attribute("http.request.body.size", 1024)
 
 # Database attributes
-span.set_attribute(SpanAttributes.DB_SYSTEM, "postgresql")
-span.set_attribute(SpanAttributes.DB_NAME, "orders")
-span.set_attribute(SpanAttributes.DB_OPERATION, "SELECT")
-span.set_attribute(SpanAttributes.DB_STATEMENT, "SELECT * FROM orders WHERE id = ?")
+span.set_attribute("db.system.name", "postgresql")
+span.set_attribute("db.namespace", "orders")
+span.set_attribute("db.operation.name", "SELECT")
+span.set_attribute("db.query.text", "SELECT * FROM orders WHERE id = ?")
 
 # Messaging attributes
-span.set_attribute(SpanAttributes.MESSAGING_SYSTEM, "kafka")
-span.set_attribute(SpanAttributes.MESSAGING_DESTINATION, "order-events")
-span.set_attribute(SpanAttributes.MESSAGING_MESSAGE_ID, "msg_123")
+span.set_attribute("messaging.system", "kafka")
+span.set_attribute("messaging.destination.name", "order-events")
+span.set_attribute("messaging.message.id", "msg_123")
 
 # RPC attributes
-span.set_attribute(SpanAttributes.RPC_SYSTEM, "grpc")
-span.set_attribute(SpanAttributes.RPC_SERVICE, "OrderService")
-span.set_attribute(SpanAttributes.RPC_METHOD, "CreateOrder")
+span.set_attribute("rpc.system.name", "grpc")
+span.set_attribute("rpc.method", "OrderService/CreateOrder")
 ```
 
 ### Extending Standard Conventions
 
 ```python
-from opentelemetry.semconv.trace import SpanAttributes
-
 def create_http_span_with_custom_attrs(tracer, method, url, custom_context):
     """Create an HTTP span with both standard and custom attributes."""
 
     with tracer.start_as_current_span("HTTP Request") as span:
         # Standard HTTP attributes
-        span.set_attribute(SpanAttributes.HTTP_METHOD, method)
-        span.set_attribute(SpanAttributes.HTTP_URL, url)
+        span.set_attribute("http.request.method", method)
+        span.set_attribute("url.full", url)
 
         # Custom business context
         span.set_attribute("request.correlation_id", custom_context.get("correlation_id"))
@@ -466,10 +463,9 @@ def create_http_span_with_custom_attrs(tracer, method, url, custom_context):
 
 ```python
 import re
-from opentelemetry.sdk.trace import SpanProcessor
 
-class SensitiveDataFilter(SpanProcessor):
-    """Filter sensitive data from span attributes before export."""
+class SensitiveDataFilter:
+    """Filter sensitive data before setting span attributes."""
 
     # Patterns that indicate sensitive data
     SENSITIVE_PATTERNS = [
@@ -488,43 +484,31 @@ class SensitiveDataFilter(SpanProcessor):
         re.compile(r'card[_-]?number', re.IGNORECASE): lambda v: '****' + str(v)[-4:] if len(str(v)) > 4 else '****',
     }
 
-    def on_end(self, span):
-        """Filter attributes when span ends."""
+    def set_attributes(self, span, attributes):
+        """Set filtered attributes on a span."""
 
-        # Get mutable copy of attributes
-        attrs = dict(span.attributes) if span.attributes else {}
-        modified = False
-
-        for key, value in list(attrs.items()):
+        for key, value in attributes.items():
             # Check if attribute should be completely removed
             if self._is_sensitive(key):
-                attrs[key] = "[REDACTED]"
-                modified = True
+                span.set_attribute(key, "[REDACTED]")
                 continue
 
             # Check if attribute should be masked
+            masked = False
             for pattern, mask_func in self.MASK_PATTERNS.items():
                 if pattern.search(key):
-                    attrs[key] = mask_func(value)
-                    modified = True
+                    span.set_attribute(key, mask_func(value))
+                    masked = True
                     break
 
-        if modified:
-            # Update span attributes
-            span._attributes = attrs
+            if masked:
+                continue
+
+            span.set_attribute(key, value)
 
     def _is_sensitive(self, key):
         """Check if attribute key indicates sensitive data."""
         return any(pattern.search(key) for pattern in self.SENSITIVE_PATTERNS)
-
-    def on_start(self, span, parent_context):
-        pass
-
-    def shutdown(self):
-        pass
-
-    def force_flush(self, timeout_millis=None):
-        pass
 ```
 
 ### Safe Attribute Helper
@@ -536,20 +520,22 @@ class SafeAttributeHelper {
     'password',
     'secret',
     'token',
-    'api_key',
-    'apiKey',
-    'credit_card',
-    'creditCard',
+    'apikey',
+    'creditcard',
     'ssn',
-    'social_security',
+    'socialsecurity',
   ]);
 
   // Keys that should be masked
-  static MASK_KEYS = new Set(['email', 'phone', 'ip_address', 'ipAddress']);
+  static MASK_KEYS = new Set(['email', 'phone', 'ipaddress']);
 
   static setAttributes(span, attributes) {
     for (const [key, value] of Object.entries(attributes)) {
-      const normalizedKey = key.toLowerCase().replace(/[-_]/g, '');
+      const normalizedKey = key
+        .split('.')
+        .pop()
+        .toLowerCase()
+        .replace(/[-_]/g, '');
 
       // Skip blocked keys
       if (this.BLOCKED_KEYS.has(normalizedKey)) {
@@ -598,22 +584,21 @@ SafeAttributeHelper.setAttributes(span, {
 ### Attribute Limits
 
 ```python
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.sdk.trace import SpanLimits, TracerProvider
 
 # Configure attribute limits
 provider = TracerProvider(
     # Set limits on span attributes
-    span_limits={
+    span_limits=SpanLimits(
         # Maximum number of attributes per span
-        'max_attributes': 128,
+        max_span_attributes=128,
         # Maximum number of events per span
-        'max_events': 128,
+        max_events=128,
         # Maximum number of links per span
-        'max_links': 128,
+        max_links=128,
         # Maximum length of attribute values
-        'max_attribute_length': 1024,
-    }
+        max_span_attribute_length=1024,
+    )
 )
 ```
 
@@ -696,13 +681,14 @@ class AttributeBuilder:
 package main
 
 import (
+    "context"
+
     "go.opentelemetry.io/otel/attribute"
-    "go.opentelemetry.io/otel/trace"
 )
 
 // SetAttributes in batch is more efficient than multiple SetAttribute calls
 func processOrder(ctx context.Context, order Order) {
-    ctx, span := tracer.Start(ctx, "ProcessOrder")
+    _, span := tracer.Start(ctx, "ProcessOrder")
     defer span.End()
 
     // GOOD: Set multiple attributes at once
@@ -711,7 +697,7 @@ func processOrder(ctx context.Context, order Order) {
         attribute.String("customer.id", order.CustomerID),
         attribute.Int("order.item_count", len(order.Items)),
         attribute.Float64("order.total", order.Total),
-        attribute.Bool("order.is_express", order.IsExpress),
+        attribute.Bool("order.is_premium", order.Total > 100),
     )
 
     // BAD: Multiple individual calls (less efficient)
