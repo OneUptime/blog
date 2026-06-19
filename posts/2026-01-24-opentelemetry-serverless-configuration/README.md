@@ -46,7 +46,7 @@ service: my-service
 
 provider:
   name: aws
-  runtime: nodejs18.x
+  runtime: nodejs22.x
   # Environment variables for OpenTelemetry configuration
   environment:
     # Enable auto-instrumentation for AWS SDK calls
@@ -63,8 +63,8 @@ functions:
   hello:
     handler: handler.hello
     layers:
-      # Add the OpenTelemetry Lambda Layer for your region
-      - arn:aws:lambda:us-east-1:901920570463:layer:aws-otel-nodejs-amd64-ver-1-18-1:1
+      # Add the current OpenTelemetry Lambda Layer ARN for your region and architecture
+      - arn:aws:lambda:us-east-1:901920570463:layer:aws-otel-nodejs-amd64-ver-<version>:<layer-version>
 ```
 
 ### Manual SDK Configuration for Node.js Lambda
@@ -83,16 +83,26 @@ const { AWSXRayIdGenerator } = require('@opentelemetry/id-generator-aws-xray');
 const { AwsInstrumentation } = require('@opentelemetry/instrumentation-aws-sdk');
 const { AwsLambdaInstrumentation } = require('@opentelemetry/instrumentation-aws-lambda');
 const { registerInstrumentations } = require('@opentelemetry/instrumentation');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const {
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+} = require('@opentelemetry/semantic-conventions');
+const {
+  ATTR_CLOUD_PROVIDER,
+  ATTR_CLOUD_PLATFORM,
+  ATTR_FAAS_NAME,
+  CLOUD_PROVIDER_VALUE_AWS,
+  CLOUD_PLATFORM_VALUE_AWS_LAMBDA,
+} = require('@opentelemetry/semantic-conventions/incubating');
 
 // Create a resource that identifies your service
-const resource = new Resource({
-  [SemanticResourceAttributes.SERVICE_NAME]: process.env.AWS_LAMBDA_FUNCTION_NAME,
-  [SemanticResourceAttributes.SERVICE_VERSION]: process.env.AWS_LAMBDA_FUNCTION_VERSION,
-  [SemanticResourceAttributes.CLOUD_PROVIDER]: 'aws',
-  [SemanticResourceAttributes.CLOUD_PLATFORM]: 'aws_lambda',
-  [SemanticResourceAttributes.FAAS_NAME]: process.env.AWS_LAMBDA_FUNCTION_NAME,
+const resource = resourceFromAttributes({
+  [ATTR_SERVICE_NAME]: process.env.AWS_LAMBDA_FUNCTION_NAME,
+  [ATTR_SERVICE_VERSION]: process.env.AWS_LAMBDA_FUNCTION_VERSION,
+  [ATTR_CLOUD_PROVIDER]: CLOUD_PROVIDER_VALUE_AWS,
+  [ATTR_CLOUD_PLATFORM]: CLOUD_PLATFORM_VALUE_AWS_LAMBDA,
+  [ATTR_FAAS_NAME]: process.env.AWS_LAMBDA_FUNCTION_NAME,
 });
 
 // Configure the OTLP exporter to send traces to your collector
@@ -107,17 +117,17 @@ const provider = new NodeTracerProvider({
   resource: resource,
   // Use AWS X-Ray ID generator for compatibility with AWS tracing
   idGenerator: new AWSXRayIdGenerator(),
+  spanProcessors: [
+    new BatchSpanProcessor(traceExporter, {
+      // Smaller batch size for faster export in short-lived functions
+      maxExportBatchSize: 10,
+      // Shorter delay to ensure spans are exported before function ends
+      scheduledDelayMillis: 100,
+      // Shorter timeout for export operations
+      exportTimeoutMillis: 5000,
+    }),
+  ],
 });
-
-// Add the batch processor with serverless-optimized settings
-provider.addSpanProcessor(new BatchSpanProcessor(traceExporter, {
-  // Smaller batch size for faster export in short-lived functions
-  maxExportBatchSize: 10,
-  // Shorter delay to ensure spans are exported before function ends
-  scheduledDelayMillis: 100,
-  // Shorter timeout for export operations
-  exportTimeoutMillis: 5000,
-}));
 
 // Register the provider globally
 provider.register({
@@ -133,9 +143,7 @@ registerInstrumentations({
       suppressInternalInstrumentation: true,
     }),
     // Automatically trace Lambda invocations
-    new AwsLambdaInstrumentation({
-      disableAwsContextPropagation: false,
-    }),
+    new AwsLambdaInstrumentation(),
   ],
 });
 
@@ -222,8 +230,17 @@ For Azure Functions, you need to configure OpenTelemetry to work with the Functi
 const { NodeTracerProvider } = require('@opentelemetry/sdk-trace-node');
 const { SimpleSpanProcessor, BatchSpanProcessor } = require('@opentelemetry/sdk-trace-base');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const {
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+} = require('@opentelemetry/semantic-conventions');
+const {
+  ATTR_CLOUD_PROVIDER,
+  ATTR_CLOUD_PLATFORM,
+  CLOUD_PROVIDER_VALUE_AZURE,
+  CLOUD_PLATFORM_VALUE_AZURE_FUNCTIONS,
+} = require('@opentelemetry/semantic-conventions/incubating');
 const { W3CTraceContextPropagator } = require('@opentelemetry/core');
 const { HttpInstrumentation } = require('@opentelemetry/instrumentation-http');
 const { registerInstrumentations } = require('@opentelemetry/instrumentation');
@@ -231,11 +248,11 @@ const { registerInstrumentations } = require('@opentelemetry/instrumentation');
 // Detect if running in Azure Functions environment
 const isAzureFunctions = process.env.FUNCTIONS_WORKER_RUNTIME !== undefined;
 
-const resource = new Resource({
-  [SemanticResourceAttributes.SERVICE_NAME]: process.env.WEBSITE_SITE_NAME || 'azure-function',
-  [SemanticResourceAttributes.SERVICE_VERSION]: '1.0.0',
-  [SemanticResourceAttributes.CLOUD_PROVIDER]: 'azure',
-  [SemanticResourceAttributes.CLOUD_PLATFORM]: 'azure_functions',
+const resource = resourceFromAttributes({
+  [ATTR_SERVICE_NAME]: process.env.WEBSITE_SITE_NAME || 'azure-function',
+  [ATTR_SERVICE_VERSION]: '1.0.0',
+  [ATTR_CLOUD_PROVIDER]: CLOUD_PROVIDER_VALUE_AZURE,
+  [ATTR_CLOUD_PLATFORM]: CLOUD_PLATFORM_VALUE_AZURE_FUNCTIONS,
   // Azure-specific attributes
   'azure.function.name': process.env.WEBSITE_SITE_NAME,
   'azure.region': process.env.REGION_NAME,
@@ -249,17 +266,16 @@ const exporter = new OTLPTraceExporter({
   },
 });
 
-const provider = new NodeTracerProvider({
-  resource: resource,
-});
-
 // Use SimpleSpanProcessor for Azure Functions to ensure immediate export
 // BatchSpanProcessor may lose spans if the function ends before the batch is exported
-if (isAzureFunctions) {
-  provider.addSpanProcessor(new SimpleSpanProcessor(exporter));
-} else {
-  provider.addSpanProcessor(new BatchSpanProcessor(exporter));
-}
+const spanProcessor = isAzureFunctions
+  ? new SimpleSpanProcessor(exporter)
+  : new BatchSpanProcessor(exporter);
+
+const provider = new NodeTracerProvider({
+  resource: resource,
+  spanProcessors: [spanProcessor],
+});
 
 provider.register({
   propagator: new W3CTraceContextPropagator(),
@@ -269,7 +285,8 @@ registerInstrumentations({
   instrumentations: [
     new HttpInstrumentation({
       // Ignore health check endpoints
-      ignoreIncomingPaths: ['/api/health', '/api/ready'],
+      ignoreIncomingRequestHook: (request) =>
+        ['/api/health', '/api/ready'].includes(request.url),
     }),
   ],
 });
@@ -337,19 +354,33 @@ app.http('httpTrigger', {
 const { NodeTracerProvider } = require('@opentelemetry/sdk-trace-node');
 const { SimpleSpanProcessor } = require('@opentelemetry/sdk-trace-base');
 const { TraceExporter } = require('@google-cloud/opentelemetry-cloud-trace-exporter');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const {
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+} = require('@opentelemetry/semantic-conventions');
+const {
+  ATTR_CLOUD_PROVIDER,
+  ATTR_CLOUD_PLATFORM,
+  ATTR_FAAS_NAME,
+  ATTR_FAAS_VERSION,
+  CLOUD_PROVIDER_VALUE_GCP,
+  CLOUD_PLATFORM_VALUE_GCP_CLOUD_FUNCTIONS,
+} = require('@opentelemetry/semantic-conventions/incubating');
 const { trace, SpanStatusCode } = require('@opentelemetry/api');
 const { CloudPropagator } = require('@google-cloud/opentelemetry-cloud-trace-propagator');
 
 // Initialize tracing before the function handler
-const resource = new Resource({
-  [SemanticResourceAttributes.SERVICE_NAME]: process.env.FUNCTION_NAME || 'cloud-function',
-  [SemanticResourceAttributes.SERVICE_VERSION]: '1.0.0',
-  [SemanticResourceAttributes.CLOUD_PROVIDER]: 'gcp',
-  [SemanticResourceAttributes.CLOUD_PLATFORM]: 'gcp_cloud_functions',
-  [SemanticResourceAttributes.FAAS_NAME]: process.env.FUNCTION_NAME,
-  [SemanticResourceAttributes.FAAS_VERSION]: process.env.X_GOOGLE_FUNCTION_VERSION,
+const functionName = process.env.K_SERVICE || process.env.FUNCTION_NAME || 'cloud-function';
+const functionVersion = process.env.K_REVISION || '1.0.0';
+
+const resource = resourceFromAttributes({
+  [ATTR_SERVICE_NAME]: functionName,
+  [ATTR_SERVICE_VERSION]: functionVersion,
+  [ATTR_CLOUD_PROVIDER]: CLOUD_PROVIDER_VALUE_GCP,
+  [ATTR_CLOUD_PLATFORM]: CLOUD_PLATFORM_VALUE_GCP_CLOUD_FUNCTIONS,
+  [ATTR_FAAS_NAME]: functionName,
+  [ATTR_FAAS_VERSION]: functionVersion,
 });
 
 // Use Google Cloud Trace Exporter for native integration
@@ -359,10 +390,10 @@ const exporter = new TraceExporter({
 
 const provider = new NodeTracerProvider({
   resource: resource,
+  spanProcessors: [
+    new SimpleSpanProcessor(exporter),
+  ],
 });
-
-// Use SimpleSpanProcessor for immediate export in serverless
-provider.addSpanProcessor(new SimpleSpanProcessor(exporter));
 
 provider.register({
   // Use Cloud Trace propagator for compatibility with GCP tracing
@@ -527,9 +558,9 @@ function initializeTracing() {
 
   provider = new NodeTracerProvider({
     resource: createResource(),
+    spanProcessors: [createSpanProcessor()],
   });
 
-  provider.addSpanProcessor(createSpanProcessor());
   provider.register();
 
   initialized = true;
@@ -586,11 +617,13 @@ function isColdStart() {
 If spans are not appearing in your backend, ensure you are flushing:
 
 ```javascript
-// Always await the flush operation
-await provider.forceFlush();
+async function flushTelemetry() {
+  // Always await the flush operation
+  await provider.forceFlush();
 
-// Add a small delay if needed (some backends need time to process)
-await new Promise(resolve => setTimeout(resolve, 100));
+  // Add a small delay if needed (some backends need time to process)
+  await new Promise(resolve => setTimeout(resolve, 100));
+}
 ```
 
 ### High Cold Start Latency
