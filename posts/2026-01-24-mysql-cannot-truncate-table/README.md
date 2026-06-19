@@ -198,15 +198,18 @@ CREATE PROCEDURE truncate_with_dependencies(IN target_table VARCHAR(64))
 BEGIN
     DECLARE done INT DEFAULT FALSE;
     DECLARE child_table VARCHAR(64);
+    DECLARE original_fk_checks INT DEFAULT 1;
 
     -- Cursor for child tables
     DECLARE child_cursor CURSOR FOR
-        SELECT TABLE_NAME
+        SELECT DISTINCT TABLE_NAME
         FROM information_schema.KEY_COLUMN_USAGE
         WHERE REFERENCED_TABLE_SCHEMA = DATABASE()
         AND REFERENCED_TABLE_NAME = target_table;
 
     DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = TRUE;
+
+    SET original_fk_checks = @@FOREIGN_KEY_CHECKS;
 
     -- Disable foreign key checks
     SET FOREIGN_KEY_CHECKS = 0;
@@ -225,24 +228,25 @@ BEGIN
     CLOSE child_cursor;
 
     -- Truncate the target table
-    SET @sql = CONCAT('TRUNCATE TABLE ', target_table);
+    SET @sql = CONCAT('TRUNCATE TABLE `', REPLACE(target_table, '`', '``'), '`');
     PREPARE stmt FROM @sql;
     EXECUTE stmt;
     DEALLOCATE PREPARE stmt;
 
-    -- Re-enable foreign key checks
-    SET FOREIGN_KEY_CHECKS = 1;
+    -- Restore the previous setting
+    SET FOREIGN_KEY_CHECKS = original_fk_checks;
 END //
 
 DELIMITER ;
 
 -- Usage
+SET SESSION max_sp_recursion_depth = 10;
 CALL truncate_with_dependencies('orders');
 ```
 
 ## Handling Self-Referencing Tables
 
-Tables with self-referencing foreign keys (like hierarchical data) need special handling:
+Tables with only self-referencing foreign keys (like hierarchical data) can be truncated directly. MySQL blocks TRUNCATE when other tables reference the target table, but self-references are permitted:
 
 ```sql
 -- Example: categories with parent_id referencing itself
@@ -253,12 +257,10 @@ CREATE TABLE categories (
     FOREIGN KEY (parent_id) REFERENCES categories(id)
 );
 
--- Cannot truncate due to self-reference
--- Solution 1: Set parent_id to NULL first
-UPDATE categories SET parent_id = NULL;
+-- Self-references are allowed
 TRUNCATE TABLE categories;
 
--- Solution 2: Disable checks
+-- If other tables reference categories, disable checks while truncating related tables
 SET FOREIGN_KEY_CHECKS = 0;
 TRUNCATE TABLE categories;
 SET FOREIGN_KEY_CHECKS = 1;
