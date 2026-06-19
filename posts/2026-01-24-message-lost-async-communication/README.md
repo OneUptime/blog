@@ -293,15 +293,26 @@ func (r *OutboxRepository) SaveWithOutbox(ctx context.Context, order *Order, eve
     return nil
 }
 
-// GetPendingMessages retrieves messages ready to be sent
-func (r *OutboxRepository) GetPendingMessages(ctx context.Context, limit int) ([]OutboxMessage, error) {
-    rows, err := r.db.QueryContext(ctx, `
-        SELECT id, topic, key, payload, status, retries, created_at
-        FROM outbox
-        WHERE status = 'PENDING' AND retries < 5
-        ORDER BY created_at ASC
-        LIMIT $1
-        FOR UPDATE SKIP LOCKED
+// ClaimPendingMessages retrieves messages ready to be sent and marks them as in progress
+func (r *OutboxRepository) ClaimPendingMessages(ctx context.Context, limit int) ([]OutboxMessage, error) {
+    tx, err := r.db.BeginTx(ctx, nil)
+    if err != nil {
+        return nil, fmt.Errorf("beginning transaction: %w", err)
+    }
+    defer tx.Rollback()
+
+    rows, err := tx.QueryContext(ctx, `
+        UPDATE outbox
+        SET status = 'PROCESSING'
+        WHERE id IN (
+            SELECT id
+            FROM outbox
+            WHERE status = 'PENDING' AND retries < 5
+            ORDER BY created_at ASC
+            LIMIT $1
+            FOR UPDATE SKIP LOCKED
+        )
+        RETURNING id, topic, key, payload, status, retries, created_at
     `, limit)
 
     if err != nil {
@@ -316,6 +327,14 @@ func (r *OutboxRepository) GetPendingMessages(ctx context.Context, limit int) ([
             return nil, fmt.Errorf("scanning row: %w", err)
         }
         messages = append(messages, msg)
+    }
+
+    if err := rows.Err(); err != nil {
+        return nil, fmt.Errorf("reading outbox rows: %w", err)
+    }
+
+    if err := tx.Commit(); err != nil {
+        return nil, fmt.Errorf("committing claimed messages: %w", err)
     }
 
     return messages, nil
@@ -337,7 +356,7 @@ func (r *OutboxRepository) MarkAsSent(ctx context.Context, id string) error {
 func (r *OutboxRepository) IncrementRetry(ctx context.Context, id string) error {
     _, err := r.db.ExecContext(ctx, `
         UPDATE outbox
-        SET retries = retries + 1
+        SET retries = retries + 1, status = 'PENDING'
         WHERE id = $1
     `, id)
 
@@ -396,7 +415,7 @@ func (s *RelayService) Start(ctx context.Context) error {
 }
 
 func (s *RelayService) processOutbox(ctx context.Context) error {
-    messages, err := s.repo.GetPendingMessages(ctx, 100)
+    messages, err := s.repo.ClaimPendingMessages(ctx, 100)
     if err != nil {
         return fmt.Errorf("getting pending messages: %w", err)
     }
@@ -458,6 +477,8 @@ import (
     "database/sql"
     "fmt"
     "time"
+
+    "github.com/segmentio/kafka-go"
 )
 
 // IdempotencyStore tracks processed messages
@@ -486,7 +507,7 @@ func (s *IdempotencyStore) MarkProcessed(ctx context.Context, messageID string) 
     return err
 }
 
-// IdempotentConsumer ensures each message is processed exactly once
+// IdempotentConsumer safely handles redelivery of the same message
 type IdempotentConsumer struct {
     reader     *kafka.Reader
     store      *IdempotencyStore
@@ -531,6 +552,7 @@ func (c *IdempotentConsumer) Consume(ctx context.Context) error {
         // Mark as processed
         if err := c.store.MarkProcessed(ctx, messageID); err != nil {
             fmt.Printf("Error marking message as processed: %v\n", err)
+            continue
         }
 
         // Commit offset
@@ -558,6 +580,8 @@ import (
     "encoding/json"
     "fmt"
     "time"
+
+    "github.com/segmentio/kafka-go"
 )
 
 // DeadLetterMessage wraps the original message with metadata
@@ -586,6 +610,7 @@ func NewRetryableConsumer(
     topic string,
     groupID string,
     dlqTopic string,
+    handler MessageHandler,
     maxRetries int,
 ) *RetryableConsumer {
     return &RetryableConsumer{
@@ -600,6 +625,7 @@ func NewRetryableConsumer(
             Topic:        dlqTopic,
             RequiredAcks: kafka.RequireAll,
         },
+        handler:    handler,
         maxRetries: maxRetries,
         retryDelay: time.Second,
     }
@@ -621,7 +647,7 @@ func (c *RetryableConsumer) Consume(ctx context.Context) error {
                 lastErr = err
                 fmt.Printf("Attempt %d failed: %v\n", attempt, err)
 
-                // Exponential backoff
+                // Back off before retrying
                 delay := c.retryDelay * time.Duration(attempt)
                 time.Sleep(delay)
                 continue
@@ -635,6 +661,7 @@ func (c *RetryableConsumer) Consume(ctx context.Context) error {
             // Send to dead letter queue
             if err := c.sendToDLQ(ctx, msg, lastErr); err != nil {
                 fmt.Printf("Failed to send to DLQ: %v\n", err)
+                continue
             }
         }
 
