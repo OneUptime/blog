@@ -35,7 +35,7 @@ flowchart LR
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | `batch.size` | Maximum batch size in bytes | 16384 (16 KB) |
-| `linger.ms` | Time to wait for more messages before sending | 0 |
+| `linger.ms` | Time to wait for more messages before sending | 5 |
 | `buffer.memory` | Total memory for buffering | 33554432 (32 MB) |
 | `max.block.ms` | Time to block when buffer is full | 60000 |
 
@@ -426,7 +426,7 @@ public class PartitionAwareBatcher {
     }
 
     /**
-     * Send a message using default partitioning based on key hash.
+     * Send a message using a simple key hash.
      */
     public void send(String key, String value) {
         int partition = Math.abs(key.hashCode() % numPartitions);
@@ -504,8 +504,8 @@ public class BatchMetricsCollector {
             "record-queue-time-max",    // Maximum time in buffer
             "records-per-request-avg",  // Average records per request
             "buffer-available-bytes",   // Available buffer space
-            "buffer-exhausted-rate",    // Rate of buffer exhaustion
-            "bufferpool-wait-time-total" // Time waiting for buffer
+            "waiting-threads",          // Threads blocked waiting for buffer memory
+            "bufferpool-wait-time-ns-total" // Total time waiting for buffer memory
         };
 
         System.out.println("=== Batch Metrics ===");
@@ -547,9 +547,9 @@ public class BatchMetricsCollector {
                         " ms). Consider reducing batch.size or linger.ms");
                 }
 
-                // Check buffer exhaustion
-                if (name.equals("buffer-exhausted-rate") && doubleValue > 0) {
-                    recommendations.add("Buffer exhaustion detected. " +
+                // Check buffer pressure
+                if (name.equals("waiting-threads") && doubleValue > 0) {
+                    recommendations.add("Producer threads are waiting for buffer memory. " +
                         "Consider increasing buffer.memory");
                 }
             }
@@ -628,9 +628,7 @@ def create_monitored_producer(bootstrap_servers: str) -> tuple:
         'batch.num.messages': 10000,
         'queue.buffering.max.ms': 10,
         'queue.buffering.max.kbytes': 65536,
-        'compression.type': 'lz4',
-        # Statistics callback interval
-        'statistics.interval.ms': 1000
+        'compression.type': 'lz4'
     }
 
     producer = Producer(config)
