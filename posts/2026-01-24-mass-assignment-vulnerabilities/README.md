@@ -86,18 +86,18 @@ def update_user(id):
 ### Ruby on Rails
 
 ```ruby
-# VULNERABLE: Without strong parameters
+# VULNERABLE: Bypassing strong parameters with an unsafe hash
 class UsersController < ApplicationController
   def create
-    # Accepts all parameters
-    @user = User.new(params[:user])
+    # Accepts all nested user parameters
+    @user = User.new(params.require(:user).to_unsafe_h)
     @user.save
   end
 
   def update
     @user = User.find(params[:id])
     # Attacker can modify any attribute
-    @user.update(params[:user])
+    @user.update(params.require(:user).to_unsafe_h)
   end
 end
 ```
@@ -346,7 +346,7 @@ end
 
 ## Mongoose Schema Protection
 
-Configure your schema to prevent mass assignment at the model level.
+Add model-level safeguards to reduce mass assignment risk.
 
 ```javascript
 const mongoose = require('mongoose');
@@ -365,7 +365,7 @@ const userSchema = new mongoose.Schema({
   isAdmin: {
     type: Boolean,
     default: false,
-    immutable: true  // Cannot be changed after creation
+    immutable: true  // Cannot be changed after creation; still whitelist on create
   },
   balance: {
     type: Number,
