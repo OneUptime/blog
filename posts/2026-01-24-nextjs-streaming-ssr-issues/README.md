@@ -39,7 +39,7 @@ sequenceDiagram
 
 ## Issue 1: Missing Suspense Boundaries
 
-Streaming only works when you wrap async components in Suspense boundaries.
+Component-level streaming works when you wrap async components in Suspense boundaries.
 
 ```tsx
 // app/page.tsx - WRONG: No streaming happens
@@ -168,7 +168,7 @@ export default function CurrentTime() {
 
 ## Issue 4: Streaming Not Working with fetch()
 
-Data fetching must happen inside async Server Components for streaming to work.
+Data fetching that should stream independently must happen inside async Server Components wrapped by Suspense.
 
 ```tsx
 // WRONG: Fetching at module level blocks streaming
@@ -180,7 +180,9 @@ export default function Page() {
 ```
 
 ```tsx
-// CORRECT: Fetch inside the component
+// CORRECT: Fetch inside a suspended component
+import { Suspense } from 'react';
+
 async function getData() {
   const res = await fetch('https://api.example.com/data', {
     // Opt out of caching for dynamic data
@@ -194,7 +196,15 @@ async function getData() {
   return res.json();
 }
 
-export default async function Page() {
+export default function Page() {
+  return (
+    <Suspense fallback={<p>Loading data...</p>}>
+      <DataView />
+    </Suspense>
+  );
+}
+
+async function DataView() {
   const data = await getData();
 
   return <div>{data.content}</div>;
@@ -203,7 +213,7 @@ export default async function Page() {
 
 ## Issue 5: Error Boundaries Not Catching Streaming Errors
 
-Wrap Suspense boundaries with error boundaries to handle failures gracefully.
+Use route segment error boundaries to handle failures gracefully.
 
 ```tsx
 // app/dashboard/error.tsx
@@ -236,34 +246,19 @@ export default function Error({
 ```tsx
 // app/dashboard/page.tsx
 import { Suspense } from 'react';
-import { ErrorBoundary } from 'react-error-boundary';
-
-function ErrorFallback({ error, resetErrorBoundary }) {
-  return (
-    <div role="alert">
-      <p>Error loading component:</p>
-      <pre>{error.message}</pre>
-      <button onClick={resetErrorBoundary}>Retry</button>
-    </div>
-  );
-}
 
 export default function DashboardPage() {
   return (
     <div>
       <h1>Dashboard</h1>
 
-      <ErrorBoundary FallbackComponent={ErrorFallback}>
-        <Suspense fallback={<ChartSkeleton />}>
-          <AsyncChartComponent />
-        </Suspense>
-      </ErrorBoundary>
+      <Suspense fallback={<ChartSkeleton />}>
+        <AsyncChartComponent />
+      </Suspense>
 
-      <ErrorBoundary FallbackComponent={ErrorFallback}>
-        <Suspense fallback={<TableSkeleton />}>
-          <AsyncTableComponent />
-        </Suspense>
-      </ErrorBoundary>
+      <Suspense fallback={<TableSkeleton />}>
+        <AsyncTableComponent />
+      </Suspense>
     </div>
   );
 }
@@ -331,7 +326,7 @@ export default function DashboardPage() {
 
 ## Issue 7: Streaming with Route Handlers
 
-Route handlers do not support streaming by default. Use the Web Streams API.
+Route handlers can stream raw responses with the Web Streams API.
 
 ```tsx
 // app/api/stream/route.ts
@@ -358,7 +353,7 @@ export async function GET(request: NextRequest) {
   return new Response(stream, {
     headers: {
       'Content-Type': 'text/plain; charset=utf-8',
-      'Transfer-Encoding': 'chunked',
+      'X-Content-Type-Options': 'nosniff',
     },
   });
 }
@@ -366,15 +361,13 @@ export async function GET(request: NextRequest) {
 
 ## Issue 8: PPR (Partial Prerendering) Configuration
 
-Next.js 14+ supports Partial Prerendering for combining static and dynamic content.
+Next.js 16 supports Partial Prerendering through Cache Components for combining static and dynamic content.
 
 ```tsx
 // next.config.js
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  experimental: {
-    ppr: true, // Enable Partial Prerendering
-  },
+  cacheComponents: true, // Enable Cache Components and PPR behavior
 };
 
 module.exports = nextConfig;
@@ -385,19 +378,25 @@ module.exports = nextConfig;
 import { Suspense } from 'react';
 
 // Static shell is prerendered at build time
-export default function ProductPage({ params }) {
+export default async function ProductPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+
   return (
     <div>
       {/* Static content - prerendered */}
-      <ProductHeader id={params.id} />
+      <ProductHeader id={id} />
 
       {/* Dynamic content - streamed at request time */}
       <Suspense fallback={<PriceSkeleton />}>
-        <DynamicPrice id={params.id} />
+        <DynamicPrice id={id} />
       </Suspense>
 
       <Suspense fallback={<InventorySkeleton />}>
-        <LiveInventory id={params.id} />
+        <LiveInventory id={id} />
       </Suspense>
     </div>
   );
@@ -406,9 +405,15 @@ export default function ProductPage({ params }) {
 // This component fetches dynamic data
 async function DynamicPrice({ id }: { id: string }) {
   // Force dynamic rendering
-  const price = await fetch(`https://api.example.com/prices/${id}`, {
+  const res = await fetch(`https://api.example.com/prices/${id}`, {
     cache: 'no-store',
   });
+
+  if (!res.ok) {
+    throw new Error('Failed to fetch price');
+  }
+
+  const price = await res.json();
 
   return <div className="price">${price.amount}</div>;
 }
