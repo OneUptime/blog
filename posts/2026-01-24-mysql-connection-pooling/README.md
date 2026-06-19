@@ -81,7 +81,7 @@ thread_cache_size = 50
 SQLAlchemy provides built-in connection pooling with extensive configuration options:
 
 ```python
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.pool import QueuePool
 
 # Create engine with connection pool settings
@@ -119,7 +119,7 @@ def get_user(user_id):
     session = Session()
     try:
         result = session.execute(
-            "SELECT * FROM users WHERE id = :id",
+            text("SELECT * FROM users WHERE id = :id"),
             {"id": user_id}
         )
         return result.fetchone()
@@ -187,7 +187,6 @@ const pool = mysql.createPool({
 
     // Connection configuration
     connectTimeout: 10000,    // 10 seconds
-    acquireTimeout: 10000,    // 10 seconds to acquire connection
 
     // Keep connections alive
     enableKeepAlive: true,
