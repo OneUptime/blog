@@ -71,7 +71,7 @@ def make_request_with_metadata(stub, request):
 def make_request_with_binary_metadata(stub, request):
     """
     Send binary data in metadata using the -bin suffix.
-    Binary metadata is automatically base64 encoded.
+    Pass binary metadata as bytes; gRPC handles the wire encoding.
     """
     import json
 
@@ -86,7 +86,7 @@ def make_request_with_binary_metadata(stub, request):
         # Regular string metadata
         ('x-request-id', 'req-12345'),
         # Binary metadata (key must end with -bin)
-        # The value is automatically base64 encoded
+        # The value must be bytes in Python
         ('x-trace-context-bin', json.dumps(trace_context).encode('utf-8')),
     ]
 
@@ -286,6 +286,7 @@ package main
 
 import (
     "context"
+    "fmt"
     "log"
     "time"
 
@@ -300,6 +301,11 @@ import (
 
 type myServer struct {
     pb.UnimplementedMyServiceServer
+}
+
+type User struct {
+    ID   string
+    Name string
 }
 
 func (s *myServer) MyMethod(ctx context.Context, req *pb.MyRequest) (*pb.MyResponse, error) {
@@ -400,7 +406,7 @@ sequenceDiagram
 ```python
 import grpc
 import jwt
-from functools import wraps
+from concurrent import futures
 
 class AuthInterceptor(grpc.ServerInterceptor):
     """
@@ -428,9 +434,7 @@ class AuthInterceptor(grpc.ServerInterceptor):
 
         token = auth_header[7:]
         try:
-            payload = jwt.decode(token, self.jwt_secret, algorithms=['HS256'])
-            # Store user info in context for later use
-            handler_call_details.user = payload
+            jwt.decode(token, self.jwt_secret, algorithms=['HS256'])
         except jwt.ExpiredSignatureError:
             return self._unauthenticated_handler('Token has expired')
         except jwt.InvalidTokenError as e:
@@ -440,9 +444,7 @@ class AuthInterceptor(grpc.ServerInterceptor):
 
     def _unauthenticated_handler(self, message):
         def handler(request, context):
-            context.set_code(grpc.StatusCode.UNAUTHENTICATED)
-            context.set_details(message)
-            return None
+            context.abort(grpc.StatusCode.UNAUTHENTICATED, message)
 
         return grpc.unary_unary_rpc_method_handler(handler)
 
@@ -467,6 +469,7 @@ package main
 
 import (
     "context"
+    "fmt"
     "strings"
 
     "github.com/golang-jwt/jwt/v5"
@@ -538,6 +541,9 @@ func (i *AuthInterceptor) authenticate(ctx context.Context) (context.Context, er
 
     // Parse and validate JWT
     token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+        if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+            return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+        }
         return i.jwtSecret, nil
     })
     if err != nil {
@@ -567,8 +573,14 @@ func GetUserFromContext(ctx context.Context) (jwt.MapClaims, bool) {
 ```python
 import grpc
 import uuid
+from collections import namedtuple
 from opentelemetry import trace
 from opentelemetry.propagate import inject, extract
+
+_ClientCallDetails = namedtuple(
+    '_ClientCallDetails',
+    ('method', 'timeout', 'metadata', 'credentials', 'wait_for_ready', 'compression')
+)
 
 class TracingInterceptor(grpc.ServerInterceptor):
     """
@@ -585,6 +597,11 @@ class TracingInterceptor(grpc.ServerInterceptor):
 
         # Extract trace context from metadata
         ctx = extract(metadata)
+        handler = continuation(handler_call_details)
+        if handler is None:
+            return None
+        if handler.unary_unary is None:
+            return handler
 
         def traced_handler(request, context):
             with self.tracer.start_as_current_span(
@@ -598,7 +615,7 @@ class TracingInterceptor(grpc.ServerInterceptor):
                 span.set_attribute('rpc.method', method)
 
                 try:
-                    response = continuation(handler_call_details)(request, context)
+                    response = handler.unary_unary(request, context)
                     span.set_attribute('rpc.status_code', 'OK')
                     return response
                 except Exception as e:
@@ -606,7 +623,11 @@ class TracingInterceptor(grpc.ServerInterceptor):
                     span.record_exception(e)
                     raise
 
-        return grpc.unary_unary_rpc_method_handler(traced_handler)
+        return grpc.unary_unary_rpc_method_handler(
+            traced_handler,
+            request_deserializer=handler.request_deserializer,
+            response_serializer=handler.response_serializer,
+        )
 
 
 class TracingClientInterceptor(grpc.UnaryUnaryClientInterceptor):
@@ -630,7 +651,14 @@ class TracingClientInterceptor(grpc.UnaryUnaryClientInterceptor):
 
             # Create new call details with updated metadata
             new_metadata = list(metadata.items())
-            new_call_details = call_details._replace(metadata=new_metadata)
+            new_call_details = _ClientCallDetails(
+                call_details.method,
+                call_details.timeout,
+                new_metadata,
+                call_details.credentials,
+                call_details.wait_for_ready,
+                call_details.compression,
+            )
 
             try:
                 response = continuation(new_call_details, request)
@@ -669,6 +697,7 @@ import (
     "context"
 
     "google.golang.org/grpc"
+    "google.golang.org/grpc/credentials/insecure"
     "google.golang.org/grpc/metadata"
 
     pb "myservice/proto"
@@ -733,7 +762,10 @@ func (s *myServer) ProcessWithDownstream(ctx context.Context, req *pb.MyRequest)
 
 // Setup
 func main() {
-    downstreamConn, _ := grpc.Dial("downstream:50051", grpc.WithInsecure())
+    downstreamConn, _ := grpc.NewClient(
+        "downstream:50051",
+        grpc.WithTransportCredentials(insecure.NewCredentials()),
+    )
     propagatingClient := NewPropagatingClient(downstreamConn, []string{
         "x-request-id",
         "x-trace-id",
@@ -803,7 +835,7 @@ import json
 
 trace_context = {'trace_id': 'abc', 'span_id': '123'}
 metadata = [
-    # Binary key (ends with -bin) - automatically base64 encoded
+    # Binary key (ends with -bin) - pass bytes and let gRPC handle wire encoding
     ('x-trace-context-bin', json.dumps(trace_context).encode('utf-8')),
 ]
 ```
