@@ -164,12 +164,12 @@ async function fetchDashboardData(userId) {
 
 ## Express.js Error Handling
 
-Express does not catch async errors by default. Wrap your handlers:
+Express 4 does not catch async errors from rejected promises by default. Wrap your handlers:
 
 ```javascript
-// This breaks - Express does not catch the rejection
+// This breaks in Express 4 - Express does not catch the rejection
 app.get('/users/:id', async (req, res) => {
-    const user = await User.findById(req.params.id);  // If this throws, app crashes
+    const user = await User.findById(req.params.id);  // If this throws, it skips Express error middleware
     res.json(user);
 });
 
@@ -305,14 +305,14 @@ app.use((error, req, res, next) => {
 
 ## Handling Unhandled Rejections
 
-Always catch unhandled promise rejections at the process level:
+Always treat unhandled promise rejections as fatal at the process level:
 
 ```javascript
 // Catch unhandled promise rejections
 process.on('unhandledRejection', (reason, promise) => {
     console.error('Unhandled Rejection at:', promise, 'reason:', reason);
-    // Log to your error tracking service
-    // Do NOT exit - this is just a warning in Node 15+
+    // Log to your error tracking service, close resources, then exit
+    process.exit(1);
 });
 
 // Catch uncaught exceptions
