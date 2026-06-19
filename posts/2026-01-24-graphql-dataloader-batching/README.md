@@ -47,8 +47,7 @@ flowchart TD
 
 npm install dataloader
 
-# If using TypeScript
-npm install @types/dataloader --save-dev
+# TypeScript declarations are included with DataLoader
 ```
 
 ### Creating Your First DataLoader
@@ -87,7 +86,8 @@ module.exports = userLoader;
 
 ```javascript
 // server.js
-const { ApolloServer } = require('apollo-server');
+const { ApolloServer } = require('@apollo/server');
+const { startStandaloneServer } = require('@apollo/server/standalone');
 const DataLoader = require('dataloader');
 
 // Batch functions
@@ -115,13 +115,22 @@ function createLoaders() {
 
 const server = new ApolloServer({
   typeDefs,
-  resolvers,
-  // Create fresh loaders for each request
-  context: ({ req }) => ({
-    loaders: createLoaders(),
-    // Other context...
-  })
+  resolvers
 });
+
+async function startServer() {
+  // Create fresh loaders for each request
+  const { url } = await startStandaloneServer(server, {
+    context: async ({ req }) => ({
+      loaders: createLoaders(),
+      // Other context...
+    })
+  });
+
+  console.log(`Server ready at ${url}`);
+}
+
+startServer();
 ```
 
 ### Using DataLoader in Resolvers
@@ -166,7 +175,7 @@ const DataLoader = require('dataloader');
 
 const userLoader = new DataLoader(batchUsers, {
   // Disable caching (useful for mutations)
-  cache: true,
+  cache: false,
 
   // Custom cache key function
   cacheKeyFn: (key) => key.toString(),
@@ -221,13 +230,26 @@ function createPostsLoader(filters) {
   });
 }
 
+function getPostsLoader(context, filters) {
+  const cacheKey = `${filters.status}:${filters.since || ''}`;
+  context.loaders.postsByFilterLoaders ??= new Map();
+
+  if (!context.loaders.postsByFilterLoaders.has(cacheKey)) {
+    context.loaders.postsByFilterLoaders.set(
+      cacheKey,
+      createPostsLoader(filters)
+    );
+  }
+
+  return context.loaders.postsByFilterLoaders.get(cacheKey);
+}
+
 // Usage in resolver
 const resolvers = {
   User: {
-    // Create loader with specific filters
+    // Reuse one loader per filter set during the request
     publishedPosts: async (parent, args, context) => {
-      // Create a new loader for this specific query
-      const loader = createPostsLoader({
+      const loader = getPostsLoader(context, {
         status: 'published',
         since: args.since
       });
