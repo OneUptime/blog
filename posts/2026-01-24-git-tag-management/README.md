@@ -108,7 +108,7 @@ git push origin v1.0.0
 # Push all tags
 git push origin --tags
 
-# Push only annotated tags (not lightweight)
+# Push annotated tags reachable from pushed commits
 git push origin --follow-tags
 ```
 
@@ -168,7 +168,7 @@ git checkout v1.0.0
 git checkout -b hotfix/v1.0.1 v1.0.0
 
 # See which commit a tag points to
-git rev-parse v1.0.0
+git rev-list -n 1 v1.0.0
 
 # Compare two tags
 git diff v1.0.0 v1.1.0
@@ -282,10 +282,10 @@ jobs:
 # Find tag containing a specific commit
 git tag --contains abc1234
 
-# Find the most recent tag
+# Find the most recent reachable tag
 git describe --tags --abbrev=0
 
-# Find the most recent tag with distance from HEAD
+# Find the most recent reachable tag with distance from HEAD
 git describe --tags
 # Output: v1.2.0-5-g789abcd
 # Meaning: 5 commits after v1.2.0, commit hash 789abcd
@@ -369,7 +369,7 @@ echo "New version: $NEW_VERSION"
 git fetch --tags
 
 # Fetch tags and prune deleted ones
-git fetch --tags --prune
+git fetch --prune --prune-tags
 ```
 
 **Keep local and remote tags in sync:**
