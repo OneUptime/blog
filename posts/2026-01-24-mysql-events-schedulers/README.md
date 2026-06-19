@@ -109,7 +109,7 @@ DO
 -- Every week on Sunday at midnight
 CREATE EVENT weekly_archive
 ON SCHEDULE EVERY 1 WEEK
-STARTS '2026-01-26 00:00:00'  -- First Sunday
+STARTS '2026-01-25 00:00:00'  -- First Sunday
 DO
     CALL archive_old_orders();
 ```
@@ -269,9 +269,10 @@ CREATE EVENT safe_data_sync
 ON SCHEDULE EVERY 1 HOUR
 DO
 BEGIN
-    DECLARE CONTINUE HANDLER FOR SQLEXCEPTION
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
     BEGIN
-        -- Log error and continue
+        -- Roll back and log error
+        ROLLBACK;
         INSERT INTO event_errors (event_name, error_time, error_message)
         VALUES ('safe_data_sync', NOW(), 'Error during execution');
     END;
@@ -423,20 +424,23 @@ BEGIN
         unique_customers,
         avg_order_value
     )
-    SELECT
-        v_hour,
-        COUNT(*),
-        SUM(total_amount),
-        COUNT(DISTINCT customer_id),
-        AVG(total_amount)
-    FROM orders
-    WHERE order_date >= v_hour
-      AND order_date < v_hour + INTERVAL 1 HOUR
+    SELECT *
+    FROM (
+        SELECT
+            v_hour AS hour,
+            COUNT(*) AS new_total_orders,
+            SUM(total_amount) AS new_total_revenue,
+            COUNT(DISTINCT customer_id) AS new_unique_customers,
+            AVG(total_amount) AS new_avg_order_value
+        FROM orders
+        WHERE order_date >= v_hour
+          AND order_date < v_hour + INTERVAL 1 HOUR
+    ) AS new_summary
     ON DUPLICATE KEY UPDATE
-        total_orders = VALUES(total_orders),
-        total_revenue = VALUES(total_revenue),
-        unique_customers = VALUES(unique_customers),
-        avg_order_value = VALUES(avg_order_value);
+        total_orders = new_total_orders,
+        total_revenue = new_total_revenue,
+        unique_customers = new_unique_customers,
+        avg_order_value = new_avg_order_value;
 END //
 
 DELIMITER ;
