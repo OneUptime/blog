@@ -110,6 +110,8 @@ GraphQL allows you to extend existing types rather than redefining them. This is
 # schemas/base.graphql
 
 # Define the root types once
+scalar DateTime
+
 type Query {
   _empty: String
 }
@@ -207,10 +209,10 @@ import { Resolver, Query, ObjectType, Field, ID } from 'type-graphql';
 @ObjectType()
 class User {
   @Field(() => ID)
-  id: string;
+  id!: string;
 
   @Field()
-  email: string;
+  email!: string;
 }
 
 @Resolver()
@@ -230,19 +232,19 @@ import { Resolver, Query, ObjectType, Field, ID } from 'type-graphql';
 @ObjectType()
 class User {
   @Field(() => ID)
-  id: string;
+  id!: string;
 
   @Field()
-  email: string;
+  email!: string;
 }
 
 @ObjectType()
 class Order {
   @Field(() => ID)
-  id: string;
+  id!: string;
 
   @Field(() => User)
-  user: User;
+  user!: User;
 }
 
 @Resolver()
@@ -264,16 +266,16 @@ import { ObjectType, Field, ID } from 'type-graphql';
 @ObjectType({ description: 'User account information' })
 export class User {
   @Field(() => ID)
-  id: string;
+  id!: string;
 
   @Field()
-  email: string;
+  email!: string;
 
   @Field()
-  name: string;
+  name!: string;
 
   @Field()
-  createdAt: Date;
+  createdAt!: Date;
 }
 ```
 
@@ -285,22 +287,22 @@ import { User } from './User';
 @ObjectType({ description: 'Customer order' })
 export class Order {
   @Field(() => ID)
-  id: string;
+  id!: string;
 
   @Field(() => User)
-  user: User;
+  user!: User;
 
   @Field()
-  total: number;
+  total!: number;
 
   @Field()
-  status: string;
+  status!: string;
 }
 ```
 
 ```typescript
 // resolvers/UserResolver.ts
-import { Resolver, Query, Arg, Mutation } from 'type-graphql';
+import { Resolver, Query, Arg } from 'type-graphql';
 import { User } from '../types/User';
 
 @Resolver(() => User)
@@ -312,7 +314,7 @@ export class UserResolver {
   }
 
   @Query(() => User, { nullable: true })
-  async user(@Arg('id') id: string): Promise<User | null> {
+  async user(@Arg('id') _id: string): Promise<User | null> {
     // Implementation
     return null;
   }
@@ -334,7 +336,7 @@ export class OrderResolver {
 
   // Field resolver for the user relationship
   @FieldResolver(() => User)
-  async user(@Root() order: Order): Promise<User> {
+  async user(@Root() _order: Order): Promise<User> {
     // Load user for order
     return {} as User;
   }
@@ -350,7 +352,8 @@ import { OrderResolver } from '../resolvers/OrderResolver';
 export async function createSchema() {
   return buildSchema({
     resolvers: [UserResolver, OrderResolver],
-    // Validate that no duplicate types exist
+    // Enable class-validator integration for resolver arguments and inputs.
+    // Duplicate GraphQL type names are still caught while the schema is built.
     validate: true,
   });
 }
