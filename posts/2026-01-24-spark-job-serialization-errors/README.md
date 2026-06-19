@@ -92,14 +92,15 @@ class DataProcessor extends Serializable {
 **Solution 2: Use mapPartitions to reduce overhead**
 
 ```scala
+import org.apache.spark.TaskContext
+
 class DataProcessor extends Serializable {
   def process(rdd: RDD[String]): RDD[String] = {
     rdd.mapPartitions(partition => {
       // Create one connection per partition instead of per record
       val connection = new DatabaseConnection()
-      val results = partition.map(record => connection.transform(record))
-      connection.close()
-      results
+      TaskContext.get().addTaskCompletionListener[Unit](_ => connection.close())
+      partition.map(record => connection.transform(record))
     })
   }
 }
@@ -143,8 +144,10 @@ class SparkJob {
 Mark fields that should not be serialized with `@transient`.
 
 ```scala
+import org.apache.spark.TaskContext
+
 class DataProcessor extends Serializable {
-  // This field will be skipped during serialization
+  // This driver-side field will be skipped during serialization
   @transient lazy val connection: DatabaseConnection = new DatabaseConnection()
 
   val batchSize = 1000 // This will be serialized normally
@@ -152,8 +155,9 @@ class DataProcessor extends Serializable {
   def process(rdd: RDD[String]): RDD[String] = {
     val size = batchSize // Local copy for closure
     rdd.mapPartitions(partition => {
-      // Connection created lazily on each executor
+      // Connection created inside each partition
       val conn = new DatabaseConnection()
+      TaskContext.get().addTaskCompletionListener[Unit](_ => conn.close())
       partition.grouped(size).flatMap(batch => {
         conn.transformBatch(batch)
       })
@@ -245,19 +249,15 @@ def isSerializable(obj: Any): Boolean = {
 println(s"MyClass serializable: ${isSerializable(new MyClass())}")
 ```
 
-### Step 3: Use SerializationDebugger
+### Step 3: Use Spark's Serialization Stack
 
-Spark provides a helpful debugging tool:
+Spark uses an internal serialization debugger to add the "Serialization stack" details to many task serialization failures. Read that stack instead of importing Spark's internal `SerializationDebugger` directly.
 
-```scala
-import org.apache.spark.util.SerializationDebugger
-
-try {
-  // Your code that triggers serialization error
-} catch {
-  case e: NotSerializableException =>
-    println(SerializationDebugger.find(e))
-}
+```text
+org.apache.spark.SparkException: Task not serializable
+Serialization stack:
+    - object not serializable (class: com.example.DatabaseConnection)
+    - field (class: com.example.DataProcessor, name: connection)
 ```
 
 ## Best Practices Summary
@@ -280,7 +280,7 @@ flowchart TD
 
 1. **Keep closures small** - Only reference what you absolutely need inside transformations
 2. **Use local variables** - Copy class fields to local variables before using them in closures
-3. **Prefer Kryo** - It is faster and handles more types than Java serialization
+3. **Consider Kryo** - It is faster and more compact than Java serialization, especially when you register custom classes
 4. **Use mapPartitions** - Create expensive resources once per partition, not per record
 5. **Broadcast large data** - Use broadcast variables for lookup tables and reference data
 6. **Test early** - Write unit tests that verify your objects can be serialized
