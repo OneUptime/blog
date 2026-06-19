@@ -8,7 +8,7 @@ Description: A practical guide to configuring and troubleshooting timeouts in Is
 
 ---
 
-Timeouts in Istio are straightforward to configure but surprisingly easy to get wrong. You set a 30-second timeout, but requests still fail after 15 seconds. Or you configure retries, and now requests take 2 minutes before finally failing. This guide explains how Istio timeouts actually work and how to configure them correctly.
+Timeouts in Istio are straightforward to configure but surprisingly easy to get wrong. You set a 30-second timeout, but requests still fail sooner because another layer has a shorter timeout. Or you configure retries, and now requests take 2 minutes before finally failing. This guide explains how Istio timeouts actually work and how to configure them correctly.
 
 ## How Istio Timeouts Work
 
@@ -38,7 +38,7 @@ The timeout covers the entire round trip from when the source proxy sends the re
 Set a timeout in your VirtualService:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: reviews-timeout
@@ -68,7 +68,7 @@ Here is a common mistake where each retry can take 30 seconds, but you only have
 ```yaml
 # Problematic: per-try timeout equals overall timeout
 
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: reviews-retries
@@ -79,7 +79,7 @@ spec:
     - timeout: 30s
       retries:
         attempts: 3
-        perTryTimeout: 30s  # Each try can take 30s, but total is also 30s
+        perTryTimeout: 30s  # The initial try and each retry can take 30s, but total is also 30s
       route:
         - destination:
             host: reviews
@@ -89,7 +89,7 @@ The correct approach is to make the overall timeout accommodate all retry attemp
 
 ```yaml
 # Correct: total timeout accommodates retries
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: reviews-retries
@@ -97,7 +97,7 @@ spec:
   hosts:
     - reviews
   http:
-    - timeout: 60s  # Allows for 3 attempts at 10s each plus buffer
+    - timeout: 45s  # Allows for the initial try plus 3 retries at 10s each, with buffer
       retries:
         attempts: 3
         perTryTimeout: 10s
@@ -107,16 +107,16 @@ spec:
             host: reviews
 ```
 
-The math should be: `timeout >= (attempts * perTryTimeout)` plus some buffer for network overhead.
+The math should be: `timeout >= ((attempts + 1) * perTryTimeout)` plus some buffer for retry backoff and network overhead, because `attempts` is the number of retries after the initial request.
 
 ## Default Timeout Behavior
 
-If you don't specify a timeout, Istio uses a default of 15 seconds. This surprises many people who expect no timeout at all.
+If you don't specify a timeout, Istio disables the request timeout by default. This surprises many people who expect Istio to enforce a default request timeout.
 
-To disable the timeout entirely (not recommended for production), set it to 0s:
+To make that behavior explicit (not recommended for most production routes), set it to 0s:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: long-running-job
@@ -124,7 +124,7 @@ spec:
   hosts:
     - batch-processor
   http:
-    - timeout: 0s  # Disables timeout - use with caution
+    - timeout: 0s  # Explicitly disables the request timeout - use with caution
       route:
         - destination:
             host: batch-processor
@@ -135,7 +135,7 @@ spec:
 Different routes can have different timeouts:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-timeouts
@@ -187,7 +187,7 @@ istioctl analyze -n default
 The Istio Gateway or ingress controller might have its own timeout:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: my-gateway
@@ -216,10 +216,10 @@ Requests take much longer than your configured timeout before failing.
 Calculate the worst-case time:
 
 ```text
-Worst case = attempts * perTryTimeout + retry backoff
+Worst case = (attempts + 1) * perTryTimeout + retry backoff
 ```
 
-With 3 attempts and 30-second per-try timeout, the worst case is over 90 seconds.
+With 3 retries and a 30-second per-try timeout, the worst case is over 120 seconds.
 
 ### Check Envoy Configuration
 
@@ -244,7 +244,7 @@ kubectl logs <pod-name> -c istio-proxy | grep -i timeout
 For WebSocket or streaming connections, standard timeouts don't work well. Use idle timeouts instead via DestinationRule:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: websocket-config
@@ -254,6 +254,7 @@ spec:
     connectionPool:
       tcp:
         connectTimeout: 10s
+        idleTimeout: 3600s
         tcpKeepalive:
           time: 7200s
           interval: 75s
@@ -308,7 +309,7 @@ flowchart TD
 # Fast API with retries
 timeout: 10s
 retries:
-  attempts: 3
+  attempts: 2
   perTryTimeout: 3s
   retryOn: 5xx,reset
 ```
@@ -331,11 +332,29 @@ timeout: 0s
 
 ## Testing Your Timeout Configuration
 
-Use fault injection to verify timeouts work as expected:
+Use fault injection on an upstream dependency to verify timeouts work as expected. Do not put fault injection and timeout on the same `VirtualService`, because Istio does not apply timeout or retry policies on the client side when faults are enabled on that same route:
 
 ```yaml
-# Inject a delay longer than your timeout
-apiVersion: networking.istio.io/v1beta1
+# Inject a delay longer than your timeout on the upstream dependency
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: ratings-test-delay
+spec:
+  hosts:
+    - ratings
+  http:
+    - fault:
+        delay:
+          percentage:
+            value: 100.0
+          fixedDelay: 60s  # Longer than any expected timeout
+      route:
+        - destination:
+            host: ratings
+---
+# Configure the timeout on the service that calls that dependency
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: reviews-test-timeout
@@ -343,18 +362,13 @@ spec:
   hosts:
     - reviews
   http:
-    - fault:
-        delay:
-          percentage:
-            value: 100.0
-          fixedDelay: 60s  # Longer than any expected timeout
-      timeout: 10s
-      route:
+    - route:
         - destination:
             host: reviews
+      timeout: 10s
 ```
 
-The request should fail after 10 seconds, not 60. If it takes longer, your timeout isn't being applied correctly.
+If `reviews` calls `ratings` while handling the request, the request should fail after 10 seconds, not 60. If it takes longer, your timeout isn't being applied correctly.
 
 ## Common Timeout Values
 
@@ -362,16 +376,16 @@ Here are reasonable starting points for different scenarios:
 
 | Use Case | Timeout | Per-Try Timeout | Retries |
 |----------|---------|-----------------|---------|
-| Health check | 2s | 1s | 2 |
-| API call | 10s | 3s | 3 |
-| Database query | 30s | 10s | 2 |
-| File upload | 120s | 60s | 1 |
+| Health check | 4s | 1s | 2 |
+| API call | 15s | 3s | 3 |
+| Database query | 35s | 10s | 2 |
+| File upload | 130s | 60s | 1 |
 | Report generation | 300s | none | 0 |
 
 ## Checklist for Timeout Configuration
 
 1. Set explicit timeouts, don't rely on defaults
-2. Make overall timeout greater than `attempts * perTryTimeout`
+2. Make overall timeout greater than `(attempts + 1) * perTryTimeout`
 3. Check for conflicting VirtualServices with `istioctl analyze`
 4. Verify the proxy has correct config with `istioctl proxy-config`
 5. Test with fault injection before going to production
