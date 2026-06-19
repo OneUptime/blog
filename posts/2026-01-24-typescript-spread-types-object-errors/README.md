@@ -10,37 +10,40 @@ Description: Learn how to diagnose and fix the 'Spread types may only be created
 
 ## Introduction
 
-The error "Spread types may only be created from object types" is one of the more confusing TypeScript errors you might encounter. It appears when using the spread operator (`...`) with values that TypeScript cannot guarantee are objects at compile time. This guide explains why this error occurs and provides practical solutions for different scenarios.
+The error "Spread types may only be created from object types" is one of the more confusing TypeScript errors you might encounter. It appears when using the spread operator (`...`) with values that TypeScript knows might be non-object values at compile time. This guide explains why this error occurs and provides practical solutions for different scenarios.
 
 ## Understanding the Error
 
 ### What Causes This Error
 
-TypeScript's spread operator (`...`) in object literals is designed to work with objects. When TypeScript cannot verify that a value is definitely an object type, it raises this error to prevent potential runtime issues.
+TypeScript's spread operator (`...`) in object literals is designed to work with object-like values. When TypeScript sees a type such as `unknown` or a union that includes a non-object primitive, it raises this error to prevent potential runtime issues.
 
 Here is a simple example that triggers the error:
 
 ```typescript
 // Error: Spread types may only be created from object types
-function mergeWithDefaults<T>(defaults: T, overrides: T): T {
+function mergeWithDefaults(
+  defaults: { theme: string },
+  overrides: { theme?: string } | string
+) {
   return { ...defaults, ...overrides };
 }
 ```
 
-The error occurs because `T` is unconstrained. It could be `string`, `number`, `null`, or any other non-object type.
+The error occurs because `overrides` might be a `string`, which is not a valid object spread type in TypeScript.
 
 ### When It Happens
 
 Common scenarios that trigger this error include:
 
-1. Using unconstrained generic types with spread
-2. Spreading values that might be `null` or `undefined`
+1. Using generic constraints that still allow non-object types
+2. Spreading values typed as `unknown`
 3. Spreading union types that include non-object types
 4. Working with values from external sources without proper type guards
 
 ## Solution 1: Constrain Generic Types
 
-The most common fix is to constrain your generic type to extend `object`:
+When a generic value should always be spread as an object, constrain your generic type to extend `object`:
 
 ```typescript
 // Fixed: T is constrained to object types
@@ -72,7 +75,7 @@ The `extends object` constraint excludes primitive types:
 ```typescript
 // These work with T extends object
 mergeWithDefaults({ a: 1 }, { a: 2 });           // Objects work
-mergeWithDefaults([1, 2], [3, 4]);               // Arrays are objects
+mergeWithDefaults({ items: [1, 2] }, { items: [3, 4] }); // Nested arrays work
 
 // These would cause compile errors (as intended)
 // mergeWithDefaults("hello", "world");          // strings not allowed
@@ -82,7 +85,7 @@ mergeWithDefaults([1, 2], [3, 4]);               // Arrays are objects
 
 ## Solution 2: Handle Nullable Types
 
-When dealing with values that might be `null` or `undefined`, use conditional spreading or type guards:
+When dealing with values that might be `null` or `undefined`, use a fallback object when you want to make the runtime behavior explicit. For values typed as `unknown` or broader unions, use type guards:
 
 ### Conditional Spreading with Nullish Coalescing
 
@@ -141,11 +144,11 @@ const unchanged = safeMerge({ name: "John" }, null);
 
 ## Solution 3: Use Record Types
 
-When working with dynamic keys, use `Record` types instead of unconstrained generics:
+When working with dynamic keys from values that start as unknown input, use `Record` types after narrowing or constraining the input:
 
 ```typescript
-// Before: Error with unconstrained generic
-function addProperty<T, K extends string, V>(obj: T, key: K, value: V) {
+// Before: Error with unknown input
+function addProperty<K extends string, V>(obj: unknown, key: K, value: V) {
   return { ...obj, [key]: value };  // Error
 }
 
@@ -205,7 +208,7 @@ When you need to spread optional properties conditionally:
 
 ```typescript
 type SpreadableProps<T> = {
-  [K in keyof T]?: T[K];
+  [K in keyof T]?: T[K] | undefined;
 };
 
 function updateEntity<T extends object>(
@@ -385,16 +388,17 @@ const enriched = transformResponse(apiResponse, { role: "admin" });
 
 ### Check the Full Error Message
 
-TypeScript often provides hints about what type is causing the issue:
+TypeScript points to the spread expression that uses a non-object type:
 
 ```typescript
-// Error: Spread types may only be created from object types.
-//        Type 'T' is not assignable to type 'object'.
-//        Type 'T' is assignable to the constraint of type 'T',
-//        but 'T' could be instantiated with a different subtype of constraint '{}'.
+declare const value: unknown;
+
+const result = { ...value };
+//             ^^^^^^^^^^
+// Error TS2698: Spread types may only be created from object types.
 ```
 
-This tells you that `T` needs an `object` constraint.
+This tells you to inspect the type at the spread site and narrow it to an object type before spreading.
 
 ### Use Type Assertions Sparingly
 
@@ -421,7 +425,7 @@ In your editor, hover over variables to see their inferred types. This helps ide
 The "Spread types may only be created from object types" error is TypeScript protecting you from spreading non-object values. The key solutions are:
 
 1. Add `extends object` constraints to generic type parameters
-2. Handle `null` and `undefined` with nullish coalescing or type guards
+2. Handle `unknown` and broad unions with type guards
 3. Use `Record` types for dynamic key scenarios
 4. Apply intersection types to preserve type information when merging
 5. Use mapped types for conditional property handling
