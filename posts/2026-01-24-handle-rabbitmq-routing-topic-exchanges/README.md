@@ -104,7 +104,7 @@ When publishing, use routing keys that follow your naming convention.
 
 import pika
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 def publish_event(routing_key, message):
     """
@@ -119,7 +119,7 @@ def publish_event(routing_key, message):
 
     # Add metadata to the message
     # Timestamps help with debugging and message tracing
-    message['timestamp'] = datetime.utcnow().isoformat()
+    message['timestamp'] = datetime.now(timezone.utc).isoformat()
     message['routing_key'] = routing_key
 
     # Publish to the topic exchange
@@ -148,7 +148,7 @@ publish_event('order.created.us', {
     'total': 99.99
 })
 
-# This matches: order.*.eu and order.created.* and order.#
+# This matches: order.created.* and order.#
 publish_event('order.created.eu', {
     'order_id': '12346',
     'customer': 'marie@example.com',
@@ -556,6 +556,14 @@ def test_routing_patterns():
 
         # Test messages that should match
         for routing_key in tc['should_match']:
+            channel.basic_publish(
+                exchange='test_events',
+                routing_key=routing_key,
+                body=json.dumps({'test': routing_key})
+            )
+
+        # Test messages that should not match this binding
+        for routing_key in tc['should_not_match']:
             channel.basic_publish(
                 exchange='test_events',
                 routing_key=routing_key,
