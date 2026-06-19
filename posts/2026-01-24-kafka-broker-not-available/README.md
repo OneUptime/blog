@@ -120,10 +120,11 @@ Ensure the bootstrap servers are correctly configured.
 # Test connection using Kafka tools
 kafka-broker-api-versions.sh --bootstrap-server localhost:9092
 
-# List brokers in the cluster
-kafka-metadata.sh --snapshot /var/kafka-logs/__cluster_metadata-0/00000000000000000000.log \
-  --command brokers 2>/dev/null || \
-  zookeeper-shell.sh localhost:2181 <<< "ls /brokers/ids"
+# Check KRaft metadata quorum status
+kafka-metadata-quorum.sh --bootstrap-server localhost:9092 describe --status
+
+# For ZooKeeper-backed clusters, list registered broker IDs
+zookeeper-shell.sh localhost:2181 <<< "ls /brokers/ids"
 
 # Get broker details
 kafka-configs.sh --bootstrap-server localhost:9092 \
@@ -219,8 +220,11 @@ import java.util.Properties;
 Properties props = new Properties();
 props.put("bootstrap.servers", "localhost:9092");
 
-// Enable debug logging
-props.put("log.connection.close", "true");
+// Serializers are required for the Java producer
+props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG,
+    "org.apache.kafka.common.serialization.StringSerializer");
+props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG,
+    "org.apache.kafka.common.serialization.StringSerializer");
 
 // Set shorter timeout for faster failure detection during testing
 props.put(CommonClientConfigs.REQUEST_TIMEOUT_MS_CONFIG, 10000);
@@ -321,8 +325,18 @@ Docker networking requires special configuration.
 # docker-compose.yml - Correct configuration
 version: '3'
 services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.0
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - kafka-network
+
   kafka:
-    image: confluentinc/cp-kafka:latest
+    image: confluentinc/cp-kafka:7.6.0
+    depends_on:
+      - zookeeper
     ports:
       - "9092:9092"
       - "9093:9093"
@@ -573,7 +587,8 @@ def create_resilient_producer(bootstrap_servers, max_retries=5):
             )
 
             # Verify connection
-            producer.bootstrap_connected()
+            if not producer.bootstrap_connected():
+                raise NoBrokersAvailable()
             print(f"Connected on attempt {attempt + 1}")
             return producer
 
@@ -709,10 +724,10 @@ class KafkaHealthChecker:
 
             for broker in cluster['brokers']:
                 broker_details.append({
-                    'id': broker.nodeId,
-                    'host': broker.host,
-                    'port': broker.port,
-                    'rack': broker.rack,
+                    'id': broker.get('broker_id', broker.get('node_id')),
+                    'host': broker['host'],
+                    'port': broker['port'],
+                    'rack': broker.get('rack'),
                 })
 
             admin.close()
@@ -849,12 +864,14 @@ flowchart TB
 
 ```yaml
 # prometheus-alerts.yaml
+# Metric names depend on your JMX exporter mapping. The examples below assume
+# Kafka JMX metric names are exported with a kafka_* Prometheus prefix.
 groups:
   - name: kafka-connectivity
     rules:
       # Alert when no connections to brokers
       - alert: KafkaNoConnectionsToBrokers
-        expr: kafka_producer_connection_count == 0
+        expr: kafka_producer_producer_metrics_connection_count == 0
         for: 2m
         labels:
           severity: critical
@@ -864,7 +881,7 @@ groups:
 
       # Alert on high connection close rate
       - alert: KafkaHighConnectionCloseRate
-        expr: rate(kafka_producer_connection_close_total[5m]) > 1
+        expr: kafka_producer_producer_metrics_connection_close_rate > 1
         for: 5m
         labels:
           severity: warning
@@ -874,7 +891,7 @@ groups:
 
       # Alert on authentication failures
       - alert: KafkaAuthenticationFailures
-        expr: rate(kafka_producer_failed_authentication_total[5m]) > 0
+        expr: kafka_producer_producer_metrics_failed_authentication_rate > 0
         for: 1m
         labels:
           severity: warning
@@ -882,15 +899,15 @@ groups:
           summary: "Kafka authentication failures"
           description: "Authentication failures occurring at {{ $value }}/sec"
 
-      # Alert on request timeouts
-      - alert: KafkaRequestTimeouts
-        expr: rate(kafka_producer_request_timeout_total[5m]) > 0.1
+      # Alert on high request latency
+      - alert: KafkaHighRequestLatency
+        expr: kafka_producer_producer_node_metrics_request_latency_max > 30000
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "Kafka request timeouts"
-          description: "Request timeouts at {{ $value }}/sec"
+          summary: "Kafka request latency is high"
+          description: "Maximum request latency is {{ $value }} ms"
 
       # Alert on broker unavailability
       - alert: KafkaBrokerOffline
