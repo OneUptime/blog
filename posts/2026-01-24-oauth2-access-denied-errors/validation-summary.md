@@ -4,33 +4,32 @@
 validated
 
 ## Post Type
-Tutorial / Troubleshooting guide
+Technical troubleshooting guide
 
 ## Technologies Covered
-- OAuth2 / OpenID Connect (RFC 6749 authorization endpoint error responses)
-- Python 3 (dataclasses, enums, type hints)
-- Flask (callback route handling, templates)
-- Microsoft Entra ID (Azure AD) admin consent flow
-- Microsoft Graph API (`oauth2PermissionGrants`)
-- Google-style incremental authorization (`include_granted_scopes`)
+- OAuth 2.0 authorization code flow
+- OAuth 2.0 authorization endpoint error handling
+- OpenID Connect scopes
+- Python
+- Flask
+- Microsoft Entra ID admin consent
+- Microsoft Graph delegated permission grants
+- Google OAuth 2.0 incremental authorization
 
 ## Sources Consulted
-- RFC 6749, The OAuth 2.0 Authorization Framework, §4.1.2.1 / §4.2.2.1 (authorization endpoint error codes including `access_denied`) — https://datatracker.ietf.org/doc/html/rfc6749
-- Microsoft identity platform admin consent protocols (v2.0 admin consent endpoint, parameters, and `admin_consent=True` callback) — https://learn.microsoft.com/en-us/entra/identity-platform/v2-admin-consent
-- Microsoft Graph `oauth2PermissionGrants` reference (clientId filter) — https://learn.microsoft.com/en-us/graph/api/resources/oauth2permissiongrant
-- Google Identity incremental authorization (`include_granted_scopes`) — https://developers.google.com/identity/protocols/oauth2/web-server#incrementalAuth
+- RFC 6749: The OAuth 2.0 Authorization Framework: https://datatracker.ietf.org/doc/html/rfc6749
+- Microsoft identity platform admin consent endpoint documentation: https://learn.microsoft.com/en-us/entra/identity-platform/v2-admin-consent
+- Microsoft identity platform scopes and permissions documentation: https://learn.microsoft.com/en-us/entra/identity-platform/scopes-oidc
+- Microsoft Graph oAuth2PermissionGrant list documentation: https://learn.microsoft.com/en-us/graph/api/oauth2permissiongrant-list?view=graph-rest-1.0
+- Google OAuth 2.0 for Web Server Applications documentation: https://developers.google.com/identity/protocols/oauth2/web-server
+- Flask 3.1 documentation: https://flask.palletsprojects.com/en/stable/
 
 ## Issues Found
-No technical issues found.
-
-- The `access_denied` error code and its description ("The resource owner or authorization server denied the request") match RFC 6749 §4.1.2.1.
-- The Microsoft Entra v2.0 admin consent URL (`https://login.microsoftonline.com/{tenant}/v2.0/adminconsent`), its required parameters (`client_id`, `scope`, `redirect_uri`, `state`), and the `admin_consent=True` callback value all match the current Microsoft documentation.
-- The Microsoft Graph `oauth2PermissionGrants` endpoint and `$filter=clientId eq '...'` usage are valid.
-- All Python code (Flask callback handling, `DenialReason`/`PolicyType` enums, `ScopeConfig` dataclass, scope validation, redirect URI normalization, comprehensive error dispatcher) is syntactically correct and uses non-deprecated APIs.
-- Redirect URI normalization correctly lowercases only scheme/netloc and leaves the path case-sensitive, consistent with URI semantics.
+- The sequence diagram showed scope and client authorization failures as `access_denied (invalid_scope)` and `access_denied (unauthorized_client)`. RFC 6749 defines `access_denied`, `invalid_scope`, and `unauthorized_client` as separate authorization endpoint error codes, so the diagram was corrected to show `invalid_scope` and `unauthorized_client` directly.
+- The invalid scope diagnosis example used `access_denied`. RFC 6749 defines `invalid_scope` for requested scopes that are invalid, unknown, or malformed, so the example was updated to use `invalid_scope`.
+- The admin consent code block used `List[str]` without importing `List`. Added `from typing import List` so the snippet is syntactically complete.
+- The redirect URI section stated that mismatched redirect URIs cause access denied errors. RFC 6749 says the authorization server must not automatically redirect to an invalid redirect URI, and these failures are typically surfaced as `invalid_request` or provider-specific redirect URI errors, so the wording was corrected.
+- The redirect URI validator normalized away trailing slashes, making its own "trailing slash will fail" example incorrect and weakening OAuth redirect URI matching. The validator now compares full registered redirect URI strings exactly and uses closest-match logic only for diagnostics.
 
 ## Review Notes
-- The opening sequence diagram labels some causes as `access_denied (invalid_scope)` and `access_denied (unauthorized_client)`. Per RFC 6749, `invalid_scope` and `unauthorized_client` are distinct top-level authorization-endpoint error codes, not sub-codes returned under `access_denied`. The diagram reads as a conceptual grouping of denial causes (and the rest of the post correctly handles `invalid_scope`/`unauthorized_client` as separate top-level errors in `OAuth2ErrorHandler`), so this is a presentational simplification rather than a code error. Left as-is to avoid restructuring the author's diagram; worth tightening in a future revision.
-- The error sub-codes shown in parentheses (`user_denied`, `policy_violation`) are illustrative — they are not standardized OAuth2 error codes. The post's own `classify_denial`/`parse_policy_error` functions derive these from free-text `error_description`, which is the correct approach since providers vary.
-- The redirect URI validator performs normalization (trailing-slash and case folding) for diagnostic/UX purposes; real authorization servers perform exact string matching per RFC 6749 §3.1.2.3 and the OAuth 2.0 Security BCP. This is consistent with how the post frames it (a client-side helper), but readers should not assume servers normalize.
-- Microsoft also returns `admin_consent=True` on the admin-consent *error* callback (alongside an `error` parameter); the post's `handle_admin_consent_callback` checks `error` first, so it handles this correctly.
+The examples are illustrative and provider behavior can vary, especially for policy failures and enterprise consent messages. The post now distinguishes standards-defined OAuth error codes from provider-specific descriptions while preserving the original troubleshooting approach.
