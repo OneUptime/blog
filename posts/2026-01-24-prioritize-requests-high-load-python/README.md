@@ -55,7 +55,7 @@ import asyncio
 from enum import IntEnum
 from dataclasses import dataclass, field
 from typing import Callable, Awaitable, Any, Optional
-from datetime import datetime
+import time
 import heapq
 
 class Priority(IntEnum):
@@ -100,6 +100,7 @@ class PriorityRequestQueue:
         self._max_workers = max_workers
         self._active_workers = 0
         self._running = False
+        self._worker_tasks: list[asyncio.Task] = []
 
         # Metrics for monitoring
         self._processed = 0
@@ -107,10 +108,15 @@ class PriorityRequestQueue:
 
     async def start(self) -> None:
         """Start the worker pool for processing requests."""
+        if self._running:
+            return
+
         self._running = True
         # Spawn worker tasks
-        for _ in range(self._max_workers):
+        self._worker_tasks = [
             asyncio.create_task(self._worker())
+            for _ in range(self._max_workers)
+        ]
 
     async def stop(self) -> None:
         """Gracefully stop the queue processor."""
@@ -118,6 +124,10 @@ class PriorityRequestQueue:
         # Wake up all workers so they can exit
         async with self._not_empty:
             self._not_empty.notify_all()
+
+        if self._worker_tasks:
+            await asyncio.gather(*self._worker_tasks, return_exceptions=True)
+            self._worker_tasks.clear()
 
     async def submit(
         self,
@@ -139,17 +149,17 @@ class PriorityRequestQueue:
                     self._dropped += 1
                     raise QueueFullError("Queue full, low priority request dropped")
 
-                # For higher priorities, try to evict a low priority request
-                evicted = self._try_evict_lowest()
-                if not evicted and priority > Priority.HIGH:
+                # For higher priorities, try to evict a lower-priority request
+                evicted = self._try_evict_lower_priority(priority)
+                if not evicted:
                     self._dropped += 1
                     raise QueueFullError("Queue full, unable to evict")
 
             # Create the priority request
-            future = asyncio.get_event_loop().create_future()
+            future = asyncio.get_running_loop().create_future()
             request = PriorityRequest(
                 priority=priority,
-                timestamp=datetime.utcnow().timestamp(),
+                timestamp=time.monotonic(),
                 request_id=request_id or str(id(handler)),
                 handler=handler,
                 args=args,
@@ -165,26 +175,27 @@ class PriorityRequestQueue:
 
         return future
 
-    def _try_evict_lowest(self) -> bool:
+    def _try_evict_lower_priority(self, incoming_priority: Priority) -> bool:
         """
-        Try to evict the lowest priority request from the queue.
+        Try to evict the lowest-priority request below the incoming priority.
         Returns True if a request was evicted.
         """
         # Find lowest priority request
         lowest_idx = None
-        lowest_priority = Priority.CRITICAL
+        lowest_priority = incoming_priority
 
         for i, req in enumerate(self._queue):
             if req.priority > lowest_priority:
                 lowest_priority = req.priority
                 lowest_idx = i
 
-        if lowest_idx is not None and lowest_priority >= Priority.LOW:
+        if lowest_idx is not None:
             # Remove the lowest priority request
             evicted = self._queue.pop(lowest_idx)
-            evicted.future.set_exception(
-                RequestEvictedError("Request evicted due to capacity")
-            )
+            if not evicted.future.done():
+                evicted.future.set_exception(
+                    RequestEvictedError("Request evicted due to capacity")
+                )
             heapq.heapify(self._queue)  # Restore heap invariant
             self._dropped += 1
             return True
@@ -193,7 +204,7 @@ class PriorityRequestQueue:
 
     async def _worker(self) -> None:
         """Worker coroutine that processes requests from the queue."""
-        while self._running:
+        while True:
             request = None
 
             async with self._not_empty:
@@ -201,7 +212,7 @@ class PriorityRequestQueue:
                 while not self._queue and self._running:
                     await self._not_empty.wait()
 
-                if not self._running:
+                if not self._queue and not self._running:
                     break
 
                 # Get highest priority request
@@ -211,10 +222,12 @@ class PriorityRequestQueue:
                 try:
                     # Process the request
                     result = await request.handler(*request.args, **request.kwargs)
-                    request.future.set_result(result)
+                    if not request.future.done():
+                        request.future.set_result(result)
                     self._processed += 1
                 except Exception as e:
-                    request.future.set_exception(e)
+                    if not request.future.done():
+                        request.future.set_exception(e)
 
     def get_stats(self) -> dict:
         """Return queue statistics for monitoring."""
@@ -247,7 +260,14 @@ Here's how to integrate priority-based request handling with FastAPI:
 from fastapi import FastAPI, Request, Response, HTTPException
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
-from priority_queue import PriorityRequestQueue, Priority, QueueFullError
+from contextlib import asynccontextmanager
+from collections.abc import Mapping
+from priority_queue import (
+    PriorityRequestQueue,
+    Priority,
+    QueueFullError,
+    RequestEvictedError
+)
 import asyncio
 
 # Global priority queue instance
@@ -274,21 +294,21 @@ PRIORITY_RULES = {
     "/api/v1/reports": Priority.LOW,
 }
 
-def get_request_priority(path: str, headers: dict) -> Priority:
+def get_request_priority(path: str, headers: Mapping[str, str]) -> Priority:
     """
     Determine priority for a request based on path and headers.
     Admin requests and requests with priority header get special treatment.
     """
     # Check for explicit priority header
-    if "X-Request-Priority" in headers:
-        priority_name = headers["X-Request-Priority"].upper()
+    if "x-request-priority" in headers:
+        priority_name = headers["x-request-priority"].upper()
         try:
             return Priority[priority_name]
         except KeyError:
             pass
 
     # Admin requests get high priority
-    if headers.get("X-Admin-Token"):
+    if headers.get("x-admin-token"):
         return Priority.HIGH
 
     # Match path against rules
@@ -307,7 +327,7 @@ class PriorityMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next) -> Response:
         priority = get_request_priority(
             request.url.path,
-            dict(request.headers)
+            request.headers
         )
 
         # Critical requests bypass the queue
@@ -326,7 +346,7 @@ class PriorityMiddleware(BaseHTTPMiddleware):
             # Wait for the request to be processed
             return await future
 
-        except QueueFullError:
+        except (QueueFullError, RequestEvictedError):
             # Return 503 when queue is full
             return JSONResponse(
                 status_code=503,
@@ -337,16 +357,14 @@ class PriorityMiddleware(BaseHTTPMiddleware):
                 headers={"Retry-After": "5"}
             )
 
-# FastAPI application setup
-app = FastAPI()
-
-@app.on_event("startup")
-async def startup():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     await request_queue.start()
-
-@app.on_event("shutdown")
-async def shutdown():
+    yield
     await request_queue.stop()
+
+# FastAPI application setup
+app = FastAPI(lifespan=lifespan)
 
 # Add the priority middleware
 app.add_middleware(PriorityMiddleware)
@@ -507,11 +525,10 @@ Here's a complete service that ties everything together:
 from fastapi import FastAPI, Request, HTTPException, Depends
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
-from datetime import datetime
 import asyncio
 import time
 
-from priority_queue import PriorityRequestQueue, Priority
+from priority_queue import PriorityRequestQueue, Priority, QueueFullError, RequestEvictedError
 from admission_control import AdmissionController
 
 # Initialize components
@@ -575,51 +592,100 @@ async def check_admission(
 @app.post("/api/v1/payments/process")
 async def process_payment(
     request: Request,
+    priority: Priority = Depends(get_priority),
     _: None = Depends(check_admission)
 ):
     """Critical priority - payment processing."""
-    start_time = time.time()
-    await admission_controller.record_request_start()
+    async def handler():
+        start_time = time.time()
+        await admission_controller.record_request_start()
+
+        try:
+            # Simulate payment processing
+            await asyncio.sleep(0.1)
+            return {"status": "payment_processed"}
+        finally:
+            latency_ms = (time.time() - start_time) * 1000
+            await admission_controller.record_request_end(latency_ms, is_error=False)
+
+    if priority == Priority.CRITICAL:
+        return await handler()
 
     try:
-        # Simulate payment processing
-        await asyncio.sleep(0.1)
-        return {"status": "payment_processed"}
-    finally:
-        latency_ms = (time.time() - start_time) * 1000
-        await admission_controller.record_request_end(latency_ms, is_error=False)
+        future = await request_queue.submit(
+            handler=handler,
+            priority=priority,
+            request_id=request.headers.get("x-request-id")
+        )
+        return await future
+    except (QueueFullError, RequestEvictedError):
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "Service overloaded", "retry_after": 5}
+        )
 
 @app.get("/api/v1/users/{user_id}")
 async def get_user(
+    request: Request,
     user_id: int,
+    priority: Priority = Depends(get_priority),
     _: None = Depends(check_admission)
 ):
     """High priority - user data retrieval."""
-    start_time = time.time()
-    await admission_controller.record_request_start()
+    async def handler():
+        start_time = time.time()
+        await admission_controller.record_request_start()
+
+        try:
+            await asyncio.sleep(0.05)
+            return {"user_id": user_id, "name": "Example User"}
+        finally:
+            latency_ms = (time.time() - start_time) * 1000
+            await admission_controller.record_request_end(latency_ms, is_error=False)
 
     try:
-        await asyncio.sleep(0.05)
-        return {"user_id": user_id, "name": "Example User"}
-    finally:
-        latency_ms = (time.time() - start_time) * 1000
-        await admission_controller.record_request_end(latency_ms, is_error=False)
+        future = await request_queue.submit(
+            handler=handler,
+            priority=priority,
+            request_id=request.headers.get("x-request-id")
+        )
+        return await future
+    except (QueueFullError, RequestEvictedError):
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "Service overloaded", "retry_after": 5}
+        )
 
 @app.post("/api/v1/analytics/track")
 async def track_analytics(
     request: Request,
+    priority: Priority = Depends(get_priority),
     _: None = Depends(check_admission)
 ):
     """Low priority - analytics tracking."""
-    start_time = time.time()
-    await admission_controller.record_request_start()
+    async def handler():
+        start_time = time.time()
+        await admission_controller.record_request_start()
+
+        try:
+            await asyncio.sleep(0.02)
+            return {"status": "tracked"}
+        finally:
+            latency_ms = (time.time() - start_time) * 1000
+            await admission_controller.record_request_end(latency_ms, is_error=False)
 
     try:
-        await asyncio.sleep(0.02)
-        return {"status": "tracked"}
-    finally:
-        latency_ms = (time.time() - start_time) * 1000
-        await admission_controller.record_request_end(latency_ms, is_error=False)
+        future = await request_queue.submit(
+            handler=handler,
+            priority=priority,
+            request_id=request.headers.get("x-request-id")
+        )
+        return await future
+    except (QueueFullError, RequestEvictedError):
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "Service overloaded", "retry_after": 5}
+        )
 
 @app.get("/metrics")
 async def get_metrics():
