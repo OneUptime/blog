@@ -102,9 +102,8 @@ def process_large_dataset_safely(spark, input_path: str):
     Process large datasets with memory-efficient techniques.
     """
     # Read with appropriate partitioning
-    df = spark.read \
-        .option("maxPartitionBytes", "128m") \
-        .parquet(input_path)
+    spark.conf.set("spark.sql.files.maxPartitionBytes", "128m")
+    df = spark.read.parquet(input_path)
 
     # Check partition count and repartition if needed
     current_partitions = df.rdd.getNumPartitions()
@@ -115,7 +114,7 @@ def process_large_dataset_safely(spark, input_path: str):
 
     # Use persist with appropriate storage level
     from pyspark import StorageLevel
-    df.persist(StorageLevel.MEMORY_AND_DISK_SER)
+    df.persist(StorageLevel.MEMORY_AND_DISK)
 
     # Process in smaller chunks if needed
     result = df.groupBy("category").agg(
@@ -136,7 +135,6 @@ spark-submit \
     --executor-cores 4 \
     --num-executors 10 \
     --conf spark.executor.memoryOverhead=2g \
-    --conf spark.yarn.executor.memoryOverhead=2g \
     --conf spark.dynamicAllocation.enabled=true \
     --conf spark.dynamicAllocation.minExecutors=5 \
     --conf spark.dynamicAllocation.maxExecutors=20 \
@@ -171,7 +169,6 @@ def create_resilient_session():
         .appName("ResilientJob") \
         .config("spark.executor.heartbeatInterval", "60s") \
         .config("spark.network.timeout", "600s") \
-        .config("spark.storage.blockManagerSlaveTimeoutMs", "600000") \
         .config("spark.shuffle.io.connectionTimeout", "300s") \
         .config("spark.rpc.askTimeout", "300s") \
         .config("spark.sql.broadcastTimeout", "600") \
@@ -399,21 +396,19 @@ def handle_skewed_join(spark, large_df, skewed_df, join_key: str):
         F.concat(F.col(join_key), F.lit("_"), F.col("salt"))
     )
 
-    # Explode skewed dataframe to match salts
-    skewed_exploded = skewed_df.withColumn(
-        "salt",
-        F.when(
-            F.col(join_key).isin(skewed_key_list),
-            F.explode(F.array([F.lit(i) for i in range(num_salts)]))
-        ).otherwise(F.lit(0))
-    ).withColumn(
+    # Explode the matching side to every salt for skewed keys
+    skewed_regular = skewed_df.filter(~F.col(join_key).isin(skewed_key_list)) \
+        .withColumn("salt", F.lit(0))
+    skewed_exploded = skewed_df.filter(F.col(join_key).isin(skewed_key_list)) \
+        .withColumn("salt", F.explode(F.array([F.lit(i) for i in range(num_salts)])))
+    skewed_salted = skewed_regular.unionByName(skewed_exploded).withColumn(
         "salted_key",
         F.concat(F.col(join_key), F.lit("_"), F.col("salt"))
     )
 
     # Join on salted key
     result = large_salted.join(
-        skewed_exploded,
+        skewed_salted,
         on="salted_key"
     ).drop("salt", "salted_key")
 
@@ -560,12 +555,12 @@ def configure_fault_tolerant_job():
         .appName("FaultTolerantJob") \
         .config("spark.task.maxFailures", "8") \
         .config("spark.stage.maxConsecutiveAttempts", "10") \
-        .config("spark.blacklist.enabled", "true") \
-        .config("spark.blacklist.task.maxTaskAttemptsPerExecutor", "2") \
-        .config("spark.blacklist.task.maxTaskAttemptsPerNode", "4") \
-        .config("spark.blacklist.stage.maxFailedTasksPerExecutor", "3") \
-        .config("spark.blacklist.stage.maxFailedExecutorsPerNode", "2") \
-        .config("spark.blacklist.application.maxFailedTasksPerExecutor", "5") \
+        .config("spark.excludeOnFailure.enabled", "true") \
+        .config("spark.excludeOnFailure.task.maxTaskAttemptsPerExecutor", "2") \
+        .config("spark.excludeOnFailure.task.maxTaskAttemptsPerNode", "4") \
+        .config("spark.excludeOnFailure.stage.maxFailedTasksPerExecutor", "3") \
+        .config("spark.excludeOnFailure.stage.maxFailedExecutorsPerNode", "2") \
+        .config("spark.excludeOnFailure.application.maxFailedTasksPerExecutor", "5") \
         .config("spark.speculation", "true") \
         .config("spark.speculation.multiplier", "1.5") \
         .config("spark.speculation.quantile", "0.9") \
@@ -581,7 +576,7 @@ def configure_fault_tolerant_job():
 1. **Monitor proactively** - Set up alerts for memory, disk, and network metrics before failures occur
 2. **Use dynamic allocation** - Let Spark scale executors based on workload
 3. **Configure proper timeouts** - Balance between detecting failures quickly and handling slow tasks
-4. **Enable blacklisting** - Automatically avoid problematic nodes
+4. **Enable exclude-on-failure** - Automatically avoid problematic nodes
 5. **Use checkpointing** - For long-running jobs, checkpoint intermediate results
 6. **Test failure scenarios** - Regularly test how your jobs handle worker failures
 7. **Keep workers homogeneous** - Use similar hardware across workers to prevent stragglers
