@@ -44,7 +44,7 @@ Start with a simple controlled form approach:
 
 ```tsx
 // components/BasicForm.tsx
-import { useState, FormEvent, ChangeEvent } from 'react';
+import { useState, FormEvent, ChangeEvent, FocusEvent } from 'react';
 
 // Define the shape of form data
 interface FormData {
@@ -151,7 +151,7 @@ export function BasicForm() {
   };
 
   // Mark field as touched when user leaves it
-  const handleBlur = (e: ChangeEvent<HTMLInputElement>) => {
+  const handleBlur = (e: FocusEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
 
     // Mark this field as touched
@@ -275,44 +275,42 @@ const formSchema = z.object({
   // Email field with format validation
   email: z
     .string()
-    .min(1, 'Email is required')
-    .email('Invalid email address'),
+    .min(1, { error: 'Email is required' })
+    .pipe(z.email({ error: 'Invalid email address' })),
 
   // Password with multiple validation rules
   password: z
     .string()
-    .min(1, 'Password is required')
-    .min(8, 'Password must be at least 8 characters')
-    .regex(/[A-Z]/, 'Password must contain at least one uppercase letter')
-    .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
-    .regex(/[0-9]/, 'Password must contain at least one number')
-    .regex(/[^A-Za-z0-9]/, 'Password must contain at least one special character'),
+    .min(1, { error: 'Password is required' })
+    .min(8, { error: 'Password must be at least 8 characters' })
+    .regex(/[A-Z]/, { error: 'Password must contain at least one uppercase letter' })
+    .regex(/[a-z]/, { error: 'Password must contain at least one lowercase letter' })
+    .regex(/[0-9]/, { error: 'Password must contain at least one number' })
+    .regex(/[^A-Za-z0-9]/, { error: 'Password must contain at least one special character' }),
 
   // Username with length constraints
   username: z
     .string()
-    .min(1, 'Username is required')
-    .min(3, 'Username must be at least 3 characters')
-    .max(20, 'Username must be at most 20 characters')
-    .regex(/^[a-zA-Z0-9_]+$/, 'Username can only contain letters, numbers, and underscores'),
+    .min(1, { error: 'Username is required' })
+    .min(3, { error: 'Username must be at least 3 characters' })
+    .max(20, { error: 'Username must be at most 20 characters' })
+    .regex(/^[a-zA-Z0-9_]+$/, { error: 'Username can only contain letters, numbers, and underscores' }),
 
   // Age with number validation
   age: z
-    .number({ invalid_type_error: 'Age must be a number' })
-    .min(18, 'You must be at least 18 years old')
-    .max(120, 'Please enter a valid age'),
+    .number({ error: 'Age must be a number' })
+    .min(18, { error: 'You must be at least 18 years old' })
+    .max(120, { error: 'Please enter a valid age' }),
 
   // Website URL validation (optional field)
   website: z
-    .string()
-    .url('Please enter a valid URL')
-    .optional()
-    .or(z.literal('')),
+    .union([z.url({ error: 'Please enter a valid URL' }), z.literal('')])
+    .optional(),
 
   // Boolean field for terms acceptance
   acceptTerms: z
     .boolean()
-    .refine((val) => val === true, 'You must accept the terms and conditions'),
+    .refine((val) => val === true, { error: 'You must accept the terms and conditions' }),
 });
 
 // Infer TypeScript type from the Zod schema
@@ -512,7 +510,7 @@ export function useAsyncValidation<T>(
 ) {
   const [isValidating, setIsValidating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const validate = useCallback(
     (value: T) => {
