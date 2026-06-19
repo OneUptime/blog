@@ -49,10 +49,10 @@ services:
     image: traefik:v3.0
     command:
       # Enable Docker Swarm provider
-      - --providers.docker=true
-      - --providers.docker.swarmMode=true
-      - --providers.docker.exposedbydefault=false
-      - --providers.docker.network=traefik-public
+      - --providers.swarm=true
+      - --providers.swarm.endpoint=unix:///var/run/docker.sock
+      - --providers.swarm.exposedbydefault=false
+      - --providers.swarm.network=traefik-public
 
       # Define entrypoints
       - --entrypoints.web.address=:80
@@ -84,7 +84,7 @@ services:
         mode: host
 
     volumes:
-      # Docker socket for service discovery
+      # Docker socket for Swarm service discovery
       - /var/run/docker.sock:/var/run/docker.sock:ro
       # Persistent storage for certificates
       - traefik-certificates:/letsencrypt
@@ -93,10 +93,11 @@ services:
       - traefik-public
 
     deploy:
-      mode: global  # Run on all manager nodes
+      mode: replicated
+      replicas: 1  # Use one replica with Traefik OSS ACME
       placement:
         constraints:
-          # Only run on manager nodes (they have docker.sock)
+          # Only run on manager nodes (the Swarm API is exposed there)
           - node.role == manager
       labels:
         # Enable Traefik for this service
@@ -109,7 +110,7 @@ services:
         - traefik.http.routers.dashboard.tls.certresolver=letsencrypt
 
         # Basic auth for dashboard
-        - traefik.http.middlewares.dashboard-auth.basicauth.users=admin:$$2y$$05$$hash
+        - traefik.http.middlewares.dashboard-auth.basicauth.users=admin:$$apr1$$H6uskkkW$$IgXLP6ewTrSuBkTrqE8wj/
         - traefik.http.routers.dashboard.middlewares=dashboard-auth
 
         # Required for Swarm - define the service port
@@ -247,7 +248,7 @@ networks:
 
 ## High Availability Configuration
 
-For production, run Traefik on multiple manager nodes:
+For production, run Traefik on multiple manager nodes only when certificates are provisioned outside Traefik OSS ACME or with Traefik Enterprise distributed Let's Encrypt:
 
 ```yaml
 # ha-traefik-stack.yaml
@@ -257,21 +258,15 @@ services:
   traefik:
     image: traefik:v3.0
     command:
-      - --providers.docker=true
-      - --providers.docker.swarmMode=true
-      - --providers.docker.exposedbydefault=false
-      - --providers.docker.network=traefik-public
+      - --providers.swarm=true
+      - --providers.swarm.endpoint=unix:///var/run/docker.sock
+      - --providers.swarm.exposedbydefault=false
+      - --providers.swarm.network=traefik-public
       - --entrypoints.web.address=:80
       - --entrypoints.websecure.address=:443
 
-      # Use distributed certificate storage for HA
-      # Option 1: Consul
-      # - --certificatesresolvers.letsencrypt.acme.storage=consul://consul:8500/traefik/acme
-
-      # Option 2: File storage with shared volume (NFS)
-      - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
-
-      - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
+      # Do not share acme.json between multiple Traefik OSS replicas.
+      # Use external certificate management or Traefik Enterprise for distributed ACME.
 
     ports:
       - target: 80
@@ -283,7 +278,7 @@ services:
 
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      # For HA: mount NFS volume or use distributed KV store
+      # Mount externally managed certificates or dynamic TLS configuration here
       - traefik-certificates:/letsencrypt
 
     networks:
@@ -310,7 +305,7 @@ networks:
 volumes:
   traefik-certificates:
     driver: local
-    # For HA: use NFS or cloud storage driver
+    # For HA with Traefik OSS, store externally managed certificates here
     # driver_opts:
     #   type: nfs
     #   o: addr=nfs-server.example.com,rw
@@ -399,7 +394,7 @@ flowchart TB
 ## Production Checklist
 
 1. **Network isolation**: Create separate networks for frontend and backend services
-2. **Certificate storage**: Use distributed storage (Consul, etcd) for HA certificate management
+2. **Certificate storage**: Do not share `acme.json` across multiple Traefik OSS replicas; use external certificate management or Traefik Enterprise for distributed Let's Encrypt
 3. **Access logs**: Enable and ship to your logging system
 4. **Metrics**: Export Prometheus metrics for monitoring
 5. **Security**: Protect the Docker socket and dashboard endpoint
