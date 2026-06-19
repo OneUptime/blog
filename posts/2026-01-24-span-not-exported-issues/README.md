@@ -17,8 +17,8 @@ Before diving into solutions, it is important to understand how spans flow throu
 ```mermaid
 flowchart LR
     A[Application Code] --> B[Tracer Provider]
-    B --> C[Span Processor]
-    C --> D[Sampler]
+    B --> C[Sampler]
+    C --> D[Span Processor]
     D --> E[Exporter]
     E --> F[Collector/Backend]
 
@@ -42,11 +42,10 @@ The most common cause of missing spans is forgetting to register the TracerProvi
 // WRONG: Creating a tracer without registering the provider
 // This tracer will use the no-op implementation and spans will be lost
 const { trace } = require('@opentelemetry/api');
-const tracer = trace.getTracer('my-service'); // Uses no-op tracer!
+const noopTracer = trace.getTracer('my-service'); // Uses no-op tracer!
 
 // CORRECT: Register the provider before getting a tracer
 const { NodeTracerProvider } = require('@opentelemetry/sdk-trace-node');
-const { trace } = require('@opentelemetry/api');
 
 // Create and configure the provider
 const provider = new NodeTracerProvider();
@@ -67,8 +66,6 @@ const { NodeTracerProvider } = require('@opentelemetry/sdk-trace-node');
 const { SimpleSpanProcessor, BatchSpanProcessor } = require('@opentelemetry/sdk-trace-base');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
 
-const provider = new NodeTracerProvider();
-
 // Create an exporter that sends spans to your collector
 const exporter = new OTLPTraceExporter({
   url: 'http://localhost:4318/v1/traces'  // OTLP HTTP endpoint
@@ -76,16 +73,24 @@ const exporter = new OTLPTraceExporter({
 
 // Option 1: SimpleSpanProcessor - exports spans immediately (good for development)
 // Use this when you need to see spans right away, but it has performance overhead
-provider.addSpanProcessor(new SimpleSpanProcessor(exporter));
+const developmentProcessor = new SimpleSpanProcessor(exporter);
 
 // Option 2: BatchSpanProcessor - batches spans before export (recommended for production)
 // This is more efficient but spans may be delayed slightly
-provider.addSpanProcessor(new BatchSpanProcessor(exporter, {
+const productionProcessor = new BatchSpanProcessor(exporter, {
   maxQueueSize: 2048,           // Maximum spans to queue before dropping
   maxExportBatchSize: 512,      // Maximum spans per export batch
   scheduledDelayMillis: 5000,   // Time to wait before exporting a batch
   exportTimeoutMillis: 30000    // Timeout for export operations
-}));
+});
+
+const provider = new NodeTracerProvider({
+  spanProcessors: [
+    process.env.NODE_ENV === 'production'
+      ? productionProcessor
+      : developmentProcessor
+  ]
+});
 
 provider.register();
 ```
@@ -111,7 +116,7 @@ const badProvider = new NodeTracerProvider({
 
 // SOLUTION 1: Use AlwaysOnSampler for development/debugging
 const debugProvider = new NodeTracerProvider({
-  sampler: new AlwaysOnSampler()  // Exports every span
+  sampler: new AlwaysOnSampler()  // Records every span
 });
 
 // SOLUTION 2: Use ratio-based sampling for production
@@ -135,8 +140,8 @@ flowchart TD
     D --> G{Ratio Check}
     G -->|Pass| E
     G -->|Fail| F
-    E --> H[Span Exported]
-    F --> I[Span Dropped]
+    E --> H[Ended Span Sent to Processor]
+    F --> I[Span Not Recorded]
 
     style E fill:#c8e6c9
     style F fill:#ffcdd2
@@ -150,6 +155,8 @@ Your exporter might be failing to connect to the collector or backend.
 
 ```javascript
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
+const { NodeTracerProvider } = require('@opentelemetry/sdk-trace-node');
+const { SimpleSpanProcessor } = require('@opentelemetry/sdk-trace-base');
 const { diag, DiagConsoleLogger, DiagLogLevel } = require('@opentelemetry/api');
 
 // Enable diagnostic logging to see exporter errors
@@ -167,30 +174,21 @@ const exporter = new OTLPTraceExporter({
   timeoutMillis: 10000
 });
 
-// Test the exporter connection manually
+// Test the exporter connection with a real span
 async function testExporter() {
   try {
-    // Create a test span to verify export works
-    const testSpan = {
-      traceId: '1234567890abcdef1234567890abcdef',
-      spanId: '1234567890abcdef',
-      name: 'test-span',
-      kind: 0,
-      startTime: [Date.now(), 0],
-      endTime: [Date.now() + 100, 0],
-      status: { code: 0 },
-      attributes: {},
-      events: [],
-      links: []
-    };
-
-    await exporter.export([testSpan], (result) => {
-      if (result.code === 0) {
-        console.log('Export successful!');
-      } else {
-        console.error('Export failed:', result.error);
-      }
+    const provider = new NodeTracerProvider({
+      spanProcessors: [new SimpleSpanProcessor(exporter)]
     });
+    provider.register();
+
+    const tracer = provider.getTracer('export-test');
+    const span = tracer.startSpan('test-span');
+    span.end();
+
+    await provider.forceFlush();
+    await provider.shutdown();
+    console.log('Export completed. Check diagnostic logs for any errors.');
   } catch (error) {
     console.error('Exporter test failed:', error);
   }
@@ -202,7 +200,7 @@ async function testExporter() {
 Spans must be explicitly ended before they can be exported. Unended spans remain in memory and are never sent.
 
 ```javascript
-const { trace } = require('@opentelemetry/api');
+const { trace, SpanStatusCode } = require('@opentelemetry/api');
 
 const tracer = trace.getTracer('my-service');
 
@@ -218,12 +216,12 @@ function processRequestGood(data) {
   const span = tracer.startSpan('process-request');
   try {
     // Do some work...
-    span.setStatus({ code: 0 });  // Mark as successful
+    span.setStatus({ code: SpanStatusCode.OK });  // Mark as successful
     return result;
   } catch (error) {
     // Record the error in the span
     span.recordException(error);
-    span.setStatus({ code: 2, message: error.message });
+    span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
     throw error;
   } finally {
     // ALWAYS end the span in finally block
@@ -236,11 +234,11 @@ async function processRequestBest(data) {
   return tracer.startActiveSpan('process-request', async (span) => {
     try {
       // Do some work...
-      span.setStatus({ code: 0 });
+      span.setStatus({ code: SpanStatusCode.OK });
       return result;
     } catch (error) {
       span.recordException(error);
-      span.setStatus({ code: 2, message: error.message });
+      span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
       throw error;
     } finally {
       span.end();  // Still need to end, but context is managed automatically
@@ -258,11 +256,12 @@ const { NodeTracerProvider } = require('@opentelemetry/sdk-trace-node');
 const { BatchSpanProcessor } = require('@opentelemetry/sdk-trace-base');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
 
-const provider = new NodeTracerProvider();
 const exporter = new OTLPTraceExporter();
 const processor = new BatchSpanProcessor(exporter);
 
-provider.addSpanProcessor(processor);
+const provider = new NodeTracerProvider({
+  spanProcessors: [processor]
+});
 provider.register();
 
 // For serverless or short-lived processes, force flush before exit
@@ -331,8 +330,11 @@ Here is a complete, working setup that handles all the common pitfalls:
 const { NodeTracerProvider } = require('@opentelemetry/sdk-trace-node');
 const { BatchSpanProcessor } = require('@opentelemetry/sdk-trace-base');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const {
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION
+} = require('@opentelemetry/semantic-conventions');
 const { diag, DiagConsoleLogger, DiagLogLevel, trace } = require('@opentelemetry/api');
 const { ParentBasedSampler, TraceIdRatioBasedSampler } = require('@opentelemetry/sdk-trace-base');
 
@@ -341,10 +343,10 @@ const { ParentBasedSampler, TraceIdRatioBasedSampler } = require('@opentelemetry
 diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.INFO);
 
 // Step 2: Create a resource that identifies your service
-const resource = new Resource({
-  [SemanticResourceAttributes.SERVICE_NAME]: 'my-service',
-  [SemanticResourceAttributes.SERVICE_VERSION]: '1.0.0',
-  [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV || 'development'
+const resource = resourceFromAttributes({
+  [ATTR_SERVICE_NAME]: 'my-service',
+  [ATTR_SERVICE_VERSION]: '1.0.0',
+  'deployment.environment.name': process.env.NODE_ENV || 'development'
 });
 
 // Step 3: Configure the sampler based on environment
@@ -352,21 +354,12 @@ const sampler = process.env.NODE_ENV === 'production'
   ? new ParentBasedSampler({ root: new TraceIdRatioBasedSampler(0.1) })  // 10% in production
   : new ParentBasedSampler({ root: new TraceIdRatioBasedSampler(1.0) }); // 100% in development
 
-// Step 4: Create the tracer provider with resource and sampler
-const provider = new NodeTracerProvider({
-  resource,
-  sampler
-});
-
-// Step 5: Configure the exporter with proper endpoint
+// Step 4: Configure the exporter with proper endpoint
 const exporter = new OTLPTraceExporter({
-  url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4318/v1/traces',
-  headers: process.env.OTEL_EXPORTER_OTLP_HEADERS
-    ? JSON.parse(process.env.OTEL_EXPORTER_OTLP_HEADERS)
-    : {}
+  url: process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT || 'http://localhost:4318/v1/traces'
 });
 
-// Step 6: Add a batch processor with sensible defaults
+// Step 5: Add a batch processor with sensible defaults
 const processor = new BatchSpanProcessor(exporter, {
   maxQueueSize: 2048,
   maxExportBatchSize: 512,
@@ -374,7 +367,12 @@ const processor = new BatchSpanProcessor(exporter, {
   exportTimeoutMillis: 30000
 });
 
-provider.addSpanProcessor(processor);
+// Step 6: Create the tracer provider with resource, sampler, and processor
+const provider = new NodeTracerProvider({
+  resource,
+  sampler,
+  spanProcessors: [processor]
+});
 
 // Step 7: Register the provider globally
 provider.register();
