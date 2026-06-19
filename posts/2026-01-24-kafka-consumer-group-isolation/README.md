@@ -8,11 +8,11 @@ Description: Learn how to configure Kafka consumer group isolation to prevent re
 
 ---
 
-Consumer group isolation in Kafka ensures that different applications or teams can consume from the same topics without interfering with each other. Without proper isolation, one misbehaving consumer can affect others, leading to lag, rebalancing storms, and degraded performance. This guide covers practical strategies for achieving robust consumer group isolation.
+Consumer group isolation in Kafka ensures that different applications or teams can consume from the same topics without sharing offsets or membership state. Without proper isolation, one misbehaving consumer can affect its own group, leading to lag, rebalancing storms, and degraded performance. This guide covers practical strategies for achieving robust consumer group isolation.
 
 ## Why Consumer Group Isolation Matters
 
-When multiple applications share a Kafka cluster, they compete for resources. A consumer that processes messages slowly or crashes frequently can trigger rebalances that affect other consumers. Isolation prevents these cascading failures.
+When multiple applications share a Kafka cluster, they compete for resources. A consumer that processes messages slowly or crashes frequently can trigger rebalances that affect other consumers in the same group. Isolation helps contain these failures.
 
 ```mermaid
 flowchart TD
@@ -220,14 +220,14 @@ kafka-acls.sh --bootstrap-server $BOOTSTRAP \
     --operation Read \
     --topic $TOPIC
 
-# Grant read access to consumer group (required for commits)
+# Grant read access to consumer group (required to join the group and commit offsets)
 kafka-acls.sh --bootstrap-server $BOOTSTRAP \
     --add \
     --allow-principal User:$TEAM \
     --operation Read \
     --group $GROUP
 
-# Grant describe access (required for group coordination)
+# Grant describe access to the group if the principal needs to inspect group state
 kafka-acls.sh --bootstrap-server $BOOTSTRAP \
     --add \
     --allow-principal User:$TEAM \
@@ -293,7 +293,7 @@ public class TimeoutConfiguration {
 
 ## Rebalance Listener for Graceful Handling
 
-Implement a rebalance listener to handle partition assignments and revocations gracefully. This prevents message loss during consumer group changes.
+Implement a rebalance listener to handle partition assignments and revocations gracefully. This helps prevent duplicate processing or skipped records during consumer group changes when offsets are tracked correctly.
 
 ```java
 // Rebalance listener for graceful partition handling
@@ -401,9 +401,12 @@ public class MultiTenantConsumerFactory {
         props.put(ConsumerConfig.GROUP_ID_CONFIG,
             "tenant-" + tenantId + "-" + config.getApplicationName());
 
-        // Static membership for stability
-        props.put(ConsumerConfig.GROUP_INSTANCE_ID_CONFIG,
-            "tenant-" + tenantId + "-" + getInstanceId());
+        // Static membership for stability; instance ID must be unique and stable
+        // across restarts for this consumer instance
+        if (config.getInstanceId() != null && !config.getInstanceId().trim().isEmpty()) {
+            props.put(ConsumerConfig.GROUP_INSTANCE_ID_CONFIG,
+                "tenant-" + tenantId + "-" + config.getInstanceId());
+        }
 
         // Limit fetch size per tenant to prevent resource hogging
         props.put(ConsumerConfig.FETCH_MAX_BYTES_CONFIG,
@@ -443,14 +446,12 @@ public class MultiTenantConsumerFactory {
         return consumer.poll(timeout);
     }
 
-    private String getInstanceId() {
-        return UUID.randomUUID().toString().substring(0, 8);
-    }
 }
 
 // Tenant configuration
 class TenantConfig {
     private String applicationName;
+    private String instanceId;
     private int maxFetchBytes = 10485760; // 10MB default
     private int maxPollRecords = 500;
     private int maxPollIntervalMs = 300000;
@@ -459,6 +460,8 @@ class TenantConfig {
     // Getters and setters
     public String getApplicationName() { return applicationName; }
     public void setApplicationName(String name) { this.applicationName = name; }
+    public String getInstanceId() { return instanceId; }
+    public void setInstanceId(String id) { this.instanceId = id; }
     public int getMaxFetchBytes() { return maxFetchBytes; }
     public void setMaxFetchBytes(int bytes) { this.maxFetchBytes = bytes; }
     public int getMaxPollRecords() { return maxPollRecords; }
@@ -475,7 +478,7 @@ class TenantConfig {
 Monitor consumer group metrics to detect isolation issues before they cause problems.
 
 ```java
-// Consumer group monitoring with JMX metrics
+// Consumer group monitoring with Micrometer metrics
 public class ConsumerGroupMonitor {
 
     private final AdminClient adminClient;
@@ -503,13 +506,17 @@ public class ConsumerGroupMonitor {
                 Tags.of("group", groupId),
                 description.members().size());
 
+            GroupState groupState = description.groupState();
+
             meterRegistry.gauge("kafka.consumer.group.state",
-                Tags.of("group", groupId, "state", description.state().toString()),
-                description.state() == ConsumerGroupState.STABLE ? 1 : 0);
+                Tags.of("group", groupId, "state", groupState.toString()),
+                groupState == GroupState.STABLE ? 1 : 0);
 
             // Check for rebalancing
-            if (description.state() == ConsumerGroupState.PREPARING_REBALANCE ||
-                description.state() == ConsumerGroupState.COMPLETING_REBALANCE) {
+            if (groupState == GroupState.PREPARING_REBALANCE ||
+                groupState == GroupState.COMPLETING_REBALANCE ||
+                groupState == GroupState.ASSIGNING ||
+                groupState == GroupState.RECONCILING) {
                 System.out.println("WARNING: Consumer group " + groupId +
                     " is rebalancing");
             }
