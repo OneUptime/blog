@@ -44,7 +44,7 @@ EXPLAIN SELECT * FROM orders WHERE customer_id = 12345;
 -- rows: estimated rows to examine
 -- Extra: additional information
 
--- EXPLAIN ANALYZE (MySQL 8.0+) shows actual execution time
+-- EXPLAIN ANALYZE (MySQL 8.0.18+) shows actual execution time
 EXPLAIN ANALYZE
 SELECT * FROM orders
 WHERE customer_id = 12345
@@ -106,7 +106,7 @@ ON orders(customer_id, status, created_at);
 -- 2. WHERE customer_id = ? AND status = ?
 -- 3. WHERE customer_id = ? AND status = ? AND created_at > ?
 
--- But NOT these queries (leftmost prefix not satisfied):
+-- But not efficiently for filtering these queries (leftmost prefix not satisfied):
 -- 1. WHERE status = ?
 -- 2. WHERE created_at > ?
 -- 3. WHERE status = ? AND created_at > ?
@@ -116,7 +116,7 @@ ON orders(customer_id, status, created_at);
 flowchart TD
     A[Composite Index: customer_id, status, created_at]
     A --> B[Uses Index]
-    A --> C[Cannot Use Index]
+    A --> C[Cannot Use Index Efficiently]
 
     B --> B1["WHERE customer_id = 1"]
     B --> B2["WHERE customer_id = 1 AND status = 'active'"]
@@ -182,20 +182,14 @@ Unused indexes waste storage and slow down writes. Identify and remove them.
 SELECT
     object_schema AS database_name,
     object_name AS table_name,
-    index_name,
-    rows_selected,
-    rows_inserted,
-    rows_updated,
-    rows_deleted
-FROM performance_schema.table_io_waits_summary_by_index_usage
-WHERE index_name IS NOT NULL
-AND rows_selected = 0
-AND object_schema NOT IN ('mysql', 'sys', 'performance_schema')
+    index_name
+FROM sys.schema_unused_indexes
+WHERE object_schema NOT IN ('mysql', 'sys', 'performance_schema')
 ORDER BY object_schema, object_name;
 
--- Check index usage stats
+-- Check index size stats
 SELECT
-    table_schema,
+    database_name,
     table_name,
     index_name,
     stat_value AS pages,
@@ -203,6 +197,18 @@ SELECT
 FROM mysql.innodb_index_stats
 WHERE stat_name = 'size'
 ORDER BY stat_value DESC;
+
+-- Check read/write activity per index
+SELECT
+    table_schema,
+    table_name,
+    index_name,
+    rows_selected,
+    rows_inserted,
+    rows_updated,
+    rows_deleted
+FROM sys.schema_index_statistics
+ORDER BY rows_selected ASC;
 ```
 
 ### Finding Duplicate Indexes
@@ -210,27 +216,23 @@ ORDER BY stat_value DESC;
 Duplicate indexes provide no benefit but consume resources.
 
 ```sql
--- Find duplicate indexes (indexes with same leftmost columns)
+-- Find redundant indexes
 SELECT
-    t.table_schema,
-    t.table_name,
-    t.index_name,
-    t.column_name,
-    t.seq_in_index
-FROM information_schema.statistics t
-JOIN information_schema.statistics t2
-    ON t.table_schema = t2.table_schema
-    AND t.table_name = t2.table_name
-    AND t.column_name = t2.column_name
-    AND t.seq_in_index = t2.seq_in_index
-    AND t.index_name != t2.index_name
-WHERE t.table_schema NOT IN ('mysql', 'sys', 'performance_schema')
-ORDER BY t.table_schema, t.table_name, t.index_name, t.seq_in_index;
+    table_schema,
+    table_name,
+    redundant_index_name,
+    redundant_index_columns,
+    dominant_index_name,
+    dominant_index_columns,
+    sql_drop_index
+FROM sys.schema_redundant_indexes
+WHERE table_schema NOT IN ('mysql', 'sys', 'performance_schema')
+ORDER BY table_schema, table_name, redundant_index_name;
 
--- Example: These are duplicates
+-- Example: This can be redundant
 -- idx_customer_id ON orders(customer_id)
 -- idx_customer_status ON orders(customer_id, status)
--- The first index is redundant because the second covers it
+-- The first index may be redundant because the second has the same leftmost column
 ```
 
 ### Analyzing Index Cardinality
@@ -249,18 +251,20 @@ SHOW INDEX FROM orders;
 ANALYZE TABLE orders;
 
 -- Check if cardinality is reasonable
--- Low cardinality columns (like status with 5 values) are poor
--- candidates for single-column indexes but fine in composites
+-- Low cardinality columns (like status with 5 values) are often poor
+-- candidates for single-column indexes, but can work well in composites
 SELECT
-    table_name,
-    index_name,
-    column_name,
-    cardinality,
-    (SELECT COUNT(*) FROM information_schema.tables
-     WHERE table_name = s.table_name) AS approx_rows
+    s.table_name,
+    s.index_name,
+    s.column_name,
+    s.cardinality,
+    t.table_rows AS approx_rows
 FROM information_schema.statistics s
-WHERE table_schema = 'mydb'
-ORDER BY table_name, index_name, seq_in_index;
+JOIN information_schema.tables t
+    ON s.table_schema = t.table_schema
+    AND s.table_name = t.table_name
+WHERE s.table_schema = 'mydb'
+ORDER BY s.table_name, s.index_name, s.seq_in_index;
 ```
 
 ## Index Types
@@ -316,10 +320,17 @@ CREATE TABLE locations (
 CREATE SPATIAL INDEX idx_spatial ON locations(coordinates);
 
 -- Find locations within a radius
-SET @center = ST_GeomFromText('POINT(-73.935242 40.730610)', 4326);
+SET @center = ST_GeomFromText('POINT(-73.935242 40.730610)', 4326, 'axis-order=long-lat');
+SET @bbox = ST_GeomFromText(
+    'POLYGON((-73.9465 40.7216, -73.9240 40.7216, -73.9240 40.7396, -73.9465 40.7396, -73.9465 40.7216))',
+    4326,
+    'axis-order=long-lat'
+);
+
 SELECT name, ST_Distance_Sphere(coordinates, @center) AS distance
 FROM locations
-WHERE ST_Distance_Sphere(coordinates, @center) < 1000  -- within 1km
+WHERE MBRContains(@bbox, coordinates)                  -- uses spatial index for bounding box
+AND ST_Distance_Sphere(coordinates, @center) < 1000    -- precise distance filter
 ORDER BY distance;
 ```
 
@@ -335,7 +346,7 @@ Every index must be updated on INSERT, UPDATE, and DELETE operations.
 -- Table with 5 indexes: ~20,000 inserts/second
 -- Table with 10 indexes: ~10,000 inserts/second
 
--- For bulk inserts, consider temporarily disabling indexes
+-- For MyISAM bulk inserts, consider temporarily disabling nonunique indexes
 ALTER TABLE orders DISABLE KEYS;
 -- ... bulk insert data ...
 ALTER TABLE orders ENABLE KEYS;
@@ -406,6 +417,6 @@ flowchart TD
 | JOIN ON foreign_key | Index on foreign_key |
 | SELECT col1, col2 WHERE col1 = ? | Covering index (col1, col2) |
 | LIKE 'prefix%' | B-Tree index works |
-| LIKE '%suffix' | Full-text index needed |
+| LIKE '%suffix' | B-Tree index cannot use a leading wildcard; use full-text or another search strategy if appropriate |
 
 Effective indexing requires understanding your query patterns. Start with EXPLAIN to identify problems, create targeted indexes, and regularly review for unused or duplicate indexes. The goal is finding the balance between read performance and write overhead.
