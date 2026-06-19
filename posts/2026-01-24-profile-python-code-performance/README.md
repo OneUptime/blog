@@ -169,6 +169,8 @@ pip install line_profiler
 
 ```python
 # script.py
+from line_profiler import profile
+
 @profile  # Decorator for line_profiler
 def process_data(data):
     # Which line is slow?
@@ -423,6 +425,7 @@ profile_function(realistic_data)
 ### Multiple Runs for Consistency
 
 ```python
+import time
 import statistics
 
 def benchmark(func, iterations=10):
