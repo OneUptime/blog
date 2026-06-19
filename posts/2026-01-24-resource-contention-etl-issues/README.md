@@ -124,7 +124,7 @@ while true; do
     timestamp=$(date '+%Y-%m-%d %H:%M:%S')
 
     # CPU usage
-    cpu_usage=$(top -bn1 | grep "Cpu(s)" | awk '{print $2}')
+    cpu_usage=$(top -bn1 | awk -F'[, ]+' '/Cpu\(s\)/ {print 100 - $8}')
 
     # Memory usage
     mem_info=$(free -m | grep Mem)
@@ -152,19 +152,24 @@ done
 # Spark configuration to prevent memory contention
 from pyspark.sql import SparkSession
 
-def create_spark_session(job_name, memory_budget_gb):
+def create_spark_session(job_name, executor_budget_gb):
     """Create Spark session with isolated memory allocation"""
 
-    # Calculate memory fractions based on budget
-    executor_memory = int(memory_budget_gb * 0.6)  # 60% for execution
-    memory_overhead = int(memory_budget_gb * 0.1)  # 10% overhead
+    # Calculate per-executor memory fractions based on budget
+    executor_memory = max(1, int(executor_budget_gb * 0.6))  # 60% for execution
+    memory_overhead = max(1, int(executor_budget_gb * 0.1))  # 10% overhead
+    off_heap_memory = max(1, int(executor_budget_gb * 0.1))  # 10% off-heap
 
     spark = SparkSession.builder \
         .appName(job_name) \
         .config("spark.executor.memory", f"{executor_memory}g") \
         .config("spark.executor.memoryOverhead", f"{memory_overhead}g") \
+        .config("spark.memory.offHeap.enabled", "true") \
+        .config("spark.memory.offHeap.size", f"{off_heap_memory}g") \
         .config("spark.memory.fraction", "0.6") \
         .config("spark.memory.storageFraction", "0.3") \
+        .config("spark.shuffle.spill.compress", "true") \
+        .config("spark.shuffle.compress", "true") \
         .config("spark.sql.shuffle.partitions", "200") \
         .config("spark.dynamicAllocation.enabled", "true") \
         .config("spark.dynamicAllocation.minExecutors", "2") \
@@ -177,14 +182,6 @@ def create_spark_session(job_name, memory_budget_gb):
 # Job-specific configurations
 def run_heavy_transformation(df, spark):
     """Run memory-intensive transformation with spill protection"""
-
-    # Configure memory spill to disk when needed
-    spark.conf.set("spark.memory.offHeap.enabled", "true")
-    spark.conf.set("spark.memory.offHeap.size", "4g")
-
-    # Use disk-based shuffle when memory is constrained
-    spark.conf.set("spark.shuffle.spill.compress", "true")
-    spark.conf.set("spark.shuffle.compress", "true")
 
     # Perform transformation with checkpointing
     spark.sparkContext.setCheckpointDir("/tmp/spark-checkpoints")
@@ -210,7 +207,7 @@ def repartition_for_processing(df, key_column, target_partition_size_mb=128):
     optimal_partitions = max(1, int(estimated_size_mb / target_partition_size_mb))
 
     # Repartition with salt to handle skew
-    from pyspark.sql.functions import concat, lit, rand
+    from pyspark.sql.functions import col, concat_ws, rand
 
     # Add salt to distribute skewed keys
     salted_df = df.withColumn(
@@ -218,10 +215,10 @@ def repartition_for_processing(df, key_column, target_partition_size_mb=128):
         (rand() * 10).cast("int")  # 10 salt buckets
     ).withColumn(
         "salted_key",
-        concat(df[key_column], lit("_"), "salt")
+        concat_ws("_", col(key_column).cast("string"), col("salt").cast("string"))
     )
 
-    return salted_df.repartition(optimal_partitions, "salted_key")
+    return salted_df.repartition(optimal_partitions, "salted_key").drop("salt", "salted_key")
 
 # Coalesce small partitions after filtering
 def optimize_after_filter(df, min_partition_size_mb=64):
@@ -358,8 +355,10 @@ WHERE order_date >= '2026-02-01' AND order_date < '2026-03-01';
 ```python
 # Python: Use connection pooling to prevent exhaustion
 from sqlalchemy import create_engine
+from sqlalchemy import text
 from sqlalchemy.pool import QueuePool
 import threading
+import time
 
 class ConnectionPoolManager:
     _instance = None
@@ -394,7 +393,8 @@ class ConnectionPoolManager:
         for attempt in range(max_retries):
             try:
                 with self.engine.connect() as conn:
-                    result = conn.execute(query, params or {})
+                    statement = text(query) if isinstance(query, str) else query
+                    result = conn.execute(statement, params or {})
                     conn.commit()
                     return result
             except Exception as e:
@@ -406,16 +406,21 @@ class ConnectionPoolManager:
 # Airflow: Configure connection pool per DAG
 def get_dag_connection_pool(dag_id, pool_size=5):
     """Create isolated connection pool for DAG"""
-    from airflow.hooks.postgres_hook import PostgresHook
+    from airflow.providers.postgres.hooks.postgres import PostgresHook
 
     hook = PostgresHook(
         postgres_conn_id='main_db',
         schema='analytics'
     )
 
-    # Override pool settings for this DAG
-    engine = hook.get_sqlalchemy_engine()
-    engine.pool._pool.maxsize = pool_size
+    # Create an engine with explicit pool settings instead of mutating internals
+    engine = hook.get_sqlalchemy_engine(
+        engine_kwargs={
+            "pool_size": pool_size,
+            "max_overflow": 0,
+            "pool_pre_ping": True,
+        }
+    )
 
     return engine
 ```
@@ -478,9 +483,8 @@ def throttled_write(file_path, data):
 
 ```python
 # Airflow DAG with I/O-aware scheduling
-from airflow import DAG
-from airflow.operators.python import PythonOperator
-from airflow.utils.task_group import TaskGroup
+from airflow.sdk import DAG, TaskGroup
+from airflow.providers.standard.operators.python import PythonOperator
 from datetime import datetime, timedelta
 
 default_args = {
@@ -492,7 +496,7 @@ default_args = {
 with DAG(
     'io_aware_etl',
     default_args=default_args,
-    schedule_interval='0 2 * * *',
+    schedule='0 2 * * *',
     start_date=datetime(2026, 1, 1),
     catchup=False,
     max_active_tasks=3,  # Limit concurrent I/O-heavy tasks
@@ -559,29 +563,29 @@ class DistributedSemaphore:
     def acquire(self, timeout=60):
         """Acquire semaphore slot with timeout"""
         start_time = time.time()
+        acquire_script = """
+        redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', ARGV[1])
+        if redis.call('ZCARD', KEYS[1]) < tonumber(ARGV[2]) then
+            redis.call('ZADD', KEYS[1], ARGV[3], ARGV[4])
+            return 1
+        end
+        return 0
+        """
 
         while time.time() - start_time < timeout:
-            # Clean up expired tokens
-            self.redis.zremrangebyscore(
+            now = time.time()
+            acquired = self.redis.eval(
+                acquire_script,
+                1,
                 self.name,
-                '-inf',
-                time.time() - 300  # 5 minute expiry
+                now - 300,  # 5 minute expiry
+                self.limit,
+                now,
+                self.token
             )
 
-            # Try to acquire
-            current_count = self.redis.zcard(self.name)
-
-            if current_count < self.limit:
-                # Add our token with current timestamp
-                self.redis.zadd(self.name, {self.token: time.time()})
-
-                # Verify we got in under the limit
-                our_rank = self.redis.zrank(self.name, self.token)
-                if our_rank is not None and our_rank < self.limit:
-                    return True
-                else:
-                    # We didn't make it, remove our token
-                    self.redis.zrem(self.name, self.token)
+            if acquired == 1:
+                return True
 
             time.sleep(1)
 
@@ -621,6 +625,8 @@ def run_etl_job(job_name, job_func):
 
 ```python
 # Monitor and alert on resource contention
+import time
+from functools import wraps
 from prometheus_client import Counter, Gauge, Histogram
 import psutil
 
