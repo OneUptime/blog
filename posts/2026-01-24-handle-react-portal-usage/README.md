@@ -144,15 +144,17 @@ export function Modal({
 
   // Add and remove event listener
   useEffect(() => {
-    if (isOpen) {
-      document.addEventListener('keydown', handleKeyDown);
-      // Prevent body scroll when modal is open
-      document.body.style.overflow = 'hidden';
-    }
+    if (!isOpen) return;
+
+    const previousOverflow = document.body.style.overflow;
+
+    document.addEventListener('keydown', handleKeyDown);
+    // Prevent body scroll when modal is open
+    document.body.style.overflow = 'hidden';
 
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
-      document.body.style.overflow = '';
+      document.body.style.overflow = previousOverflow;
     };
   }, [isOpen, handleKeyDown]);
 
@@ -420,7 +422,7 @@ export function Tooltip({
   });
   const triggerRef = useRef<HTMLSpanElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
-  const timeoutRef = useRef<NodeJS.Timeout>();
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Calculate tooltip position based on trigger element
   const calculatePosition = useCallback(() => {
@@ -489,6 +491,7 @@ export function Tooltip({
   const hideTooltip = () => {
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
     }
     setIsVisible(false);
   };
@@ -931,12 +934,14 @@ export function SafePortal({
 
     // Find or create the container
     let portalContainer = document.getElementById(containerId);
+    let createdContainer = false;
 
     if (!portalContainer) {
       // Create container if it does not exist
       portalContainer = document.createElement('div');
       portalContainer.id = containerId;
       document.body.appendChild(portalContainer);
+      createdContainer = true;
     }
 
     setContainer(portalContainer);
@@ -945,6 +950,7 @@ export function SafePortal({
     return () => {
       // Only remove if we created it and it is empty
       if (
+        createdContainer &&
         portalContainer &&
         portalContainer.childNodes.length === 0 &&
         portalContainer.parentNode
