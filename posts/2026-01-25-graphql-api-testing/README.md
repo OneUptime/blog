@@ -244,7 +244,8 @@ Test mutations including validation and side effects:
 
 ```typescript
 // mutations.test.ts
-import { createTestServer, createTestContext } from './test-server';
+import { createTestServer } from './test-server';
+import { createTestContext } from './test-context';
 
 describe('GraphQL Mutations', () => {
     let testServer: Awaited<ReturnType<typeof createTestServer>>;
@@ -439,8 +440,8 @@ Test GraphQL subscriptions for real-time updates:
 ```typescript
 // subscriptions.test.ts
 import { createServer } from 'http';
-import { WebSocket } from 'ws';
-import { useServer } from 'graphql-ws/lib/use/ws';
+import { WebSocket, WebSocketServer } from 'ws';
+import { useServer } from 'graphql-ws/use/ws';
 import { makeExecutableSchema } from '@graphql-tools/schema';
 import { typeDefs, resolvers } from '../schema';
 import { createClient } from 'graphql-ws';
@@ -448,18 +449,19 @@ import { createClient } from 'graphql-ws';
 describe('GraphQL Subscriptions', () => {
     let httpServer: any;
     let wsServer: any;
+    let serverCleanup: any;
     let client: any;
 
     beforeAll(async () => {
         const schema = makeExecutableSchema({ typeDefs, resolvers });
 
         httpServer = createServer();
-        wsServer = new WebSocket.Server({
+        wsServer = new WebSocketServer({
             server: httpServer,
             path: '/graphql',
         });
 
-        useServer({ schema }, wsServer);
+        serverCleanup = useServer({ schema }, wsServer);
 
         await new Promise<void>((resolve) => {
             httpServer.listen(4000, resolve);
@@ -473,6 +475,7 @@ describe('GraphQL Subscriptions', () => {
 
     afterAll(async () => {
         client.dispose();
+        await serverCleanup.dispose();
         wsServer.close();
         httpServer.close();
     });
@@ -572,7 +575,7 @@ Test schema integrity and breaking changes:
 
 ```typescript
 // schema.test.ts
-import { buildSchema, validateSchema, printSchema } from 'graphql';
+import { buildSchema, validateSchema } from 'graphql';
 import { typeDefs } from '../schema';
 import {
     findBreakingChanges,
@@ -655,7 +658,7 @@ Test for N+1 query problems:
 
 ```typescript
 // n-plus-one.test.ts
-import { createTestServer, createTestContext } from './test-server';
+import { createTestServer } from './test-server';
 
 describe('N+1 Query Detection', () => {
     let testServer: any;
@@ -742,7 +745,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Install dependencies
         run: npm ci
@@ -754,7 +757,7 @@ jobs:
         run: npm run graphql:check-changes
 
       - name: Run GraphQL tests
-        run: npm test -- --testPathPattern=graphql
+        run: npm test -- --testPathPatterns=graphql
 
       - name: Generate schema coverage
         run: npm run graphql:coverage
