@@ -42,13 +42,13 @@ declare module 'my-library' {
 
 ### Essential Compiler Options
 
-```json
+```jsonc
 {
     "compilerOptions": {
-        // Where to look for declaration files
-        "typeRoots": ["./node_modules/@types", "./src/types"],
+        // Restrict visible @types packages to these folders
+        "typeRoots": ["./node_modules/@types"],
 
-        // Specific types to include (leave empty for all)
+        // Specific @types packages to include in the global scope
         "types": ["node", "jest"],
 
         // Generate declaration files for your code
@@ -71,7 +71,7 @@ declare module 'my-library' {
 }
 ```
 
-### Type Root Organization
+### Declaration File Organization
 
 ```text
 project/
@@ -138,11 +138,8 @@ declare module '*.module.css' {
     export default classes;
 }
 
-// Regular CSS (no exports)
-declare module '*.css' {
-    const content: string;
-    export default content;
-}
+// Regular CSS (side-effect import only)
+declare module '*.css';
 
 // Image imports
 declare module '*.png' {
@@ -156,7 +153,7 @@ declare module '*.svg' {
     export default SVG;
 }
 
-// JSON imports
+// JSON imports for bundlers without resolveJsonModule
 declare module '*.json' {
     const value: unknown;
     export default value;
@@ -300,13 +297,19 @@ declare module 'config-aware' {
         };
     }
 
-    // Conditional export based on NODE_ENV
-    type Config = typeof process.env.NODE_ENV extends 'production'
+    // Conditional export based on a literal environment type
+    type Config<TEnvironment extends 'development' | 'production'> =
+        TEnvironment extends 'production'
         ? ProdConfig
         : DevConfig;
 
-    export function getConfig(): Config;
-    export function configure(config: Partial<Config>): void;
+    export function getConfig<TEnvironment extends 'development' | 'production'>(
+        environment: TEnvironment
+    ): Config<TEnvironment>;
+    export function configure<TEnvironment extends 'development' | 'production'>(
+        environment: TEnvironment,
+        config: Partial<Config<TEnvironment>>
+    ): void;
 }
 ```
 
@@ -346,7 +349,6 @@ declare module 'query-builder' {
 Configure your package to include declaration files.
 
 ```json
-// package.json
 {
     "name": "my-package",
     "version": "1.0.0",
@@ -359,7 +361,7 @@ Configure your package to include declaration files.
 }
 ```
 
-```json
+```jsonc
 // tsconfig.json for library
 {
     "compilerOptions": {
@@ -415,7 +417,7 @@ flowchart TD
 
 ### Declaration File Not Being Used
 
-```typescript
+```jsonc
 // Problem: Types not being recognized
 
 // Solution 1: Ensure file is in include pattern
@@ -423,12 +425,14 @@ flowchart TD
 {
     "include": ["src/**/*", "types/**/*.d.ts"]
 }
+```
 
+```typescript
 // Solution 2: Add triple-slash reference
 /// <reference path="./types/custom.d.ts" />
 
 // Solution 3: Import the declaration file
-import './types/global';
+import type {} from './types/global';
 ```
 
 ### Conflicting Declarations
