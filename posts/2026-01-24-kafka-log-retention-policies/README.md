@@ -25,7 +25,7 @@ flowchart TD
     E -->|Exceeded| G
     F -->|Obsolete Keys| H[Remove Old Values]
 
-    G --> I[Log Cleaner Deletes Segments]
+    G --> I[Broker Deletes Segments]
     H --> J[Compacted Log Retained]
 ```
 
@@ -57,7 +57,7 @@ log.retention.ms=604800000
 
 # Segment configuration affects when retention is applied
 log.segment.bytes=1073741824
-log.segment.ms=604800000
+log.roll.ms=604800000
 
 # How often to check for segments to delete
 log.retention.check.interval.ms=300000
@@ -92,6 +92,7 @@ kafka-configs.sh --describe \
 
 ```java
 import org.apache.kafka.clients.admin.*;
+import org.apache.kafka.common.config.ConfigResource;
 import org.apache.kafka.common.config.TopicConfig;
 
 import java.util.*;
@@ -200,6 +201,7 @@ log.retention.bytes=-1
 
 ```java
 import org.apache.kafka.clients.admin.*;
+import org.apache.kafka.common.config.ConfigResource;
 import org.apache.kafka.common.config.TopicConfig;
 
 import java.util.*;
@@ -397,11 +399,16 @@ public class CompactedTopicCreator {
 ## Python Retention Configuration
 
 ```python
-from confluent_kafka.admin import AdminClient, NewTopic, ConfigResource
+from confluent_kafka.admin import (
+    AdminClient,
+    AlterConfigOpType,
+    ConfigEntry,
+    ConfigResource,
+    NewTopic
+)
 from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, Optional
-import time
 
 
 class CleanupPolicy(Enum):
@@ -458,11 +465,16 @@ class KafkaRetentionManager:
         """Updates retention configuration for an existing topic"""
         config = self._build_config(retention)
 
-        resource = ConfigResource('topic', topic_name)
-        futures = self.admin.alter_configs([resource])
-
-        # Note: Using alter_configs requires full config replacement
-        # For incremental updates, use incremental_alter_configs if available
+        incremental_configs = [
+            ConfigEntry(name, value, incremental_operation=AlterConfigOpType.SET)
+            for name, value in config.items()
+        ]
+        resource = ConfigResource(
+            'topic',
+            topic_name,
+            incremental_configs=incremental_configs
+        )
+        futures = self.admin.incremental_alter_configs([resource])
 
         for res, future in futures.items():
             try:
