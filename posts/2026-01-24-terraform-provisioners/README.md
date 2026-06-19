@@ -51,7 +51,7 @@ resource "aws_instance" "web" {
   connection {
     type        = "ssh"
     user        = "ubuntu"
-    private_key = file("~/.ssh/id_rsa")
+    private_key = file(pathexpand("~/.ssh/id_rsa"))
     host        = self.public_ip
   }
 
@@ -71,7 +71,7 @@ resource "aws_instance" "web" {
 
 resource "aws_key_pair" "deployer" {
   key_name   = "deployer-key"
-  public_key = file("~/.ssh/id_rsa.pub")
+  public_key = file(pathexpand("~/.ssh/id_rsa.pub"))
 }
 
 resource "aws_security_group" "ssh" {
@@ -106,7 +106,7 @@ resource "aws_instance" "app" {
   connection {
     type        = "ssh"
     user        = "ubuntu"
-    private_key = file("~/.ssh/id_rsa")
+    private_key = file(pathexpand("~/.ssh/id_rsa"))
     host        = self.public_ip
   }
 
@@ -164,7 +164,11 @@ resource "aws_instance" "app" {
 }
 
 # Run a Python script
-resource "null_resource" "setup" {
+resource "terraform_data" "setup" {
+  triggers_replace = [
+    aws_instance.web.id
+  ]
+
   provisioner "local-exec" {
     command     = "python3 scripts/setup.py"
     interpreter = ["bash", "-c"]
@@ -190,7 +194,7 @@ resource "aws_instance" "web" {
   connection {
     type        = "ssh"
     user        = "ubuntu"
-    private_key = file("~/.ssh/id_rsa")
+    private_key = file(pathexpand("~/.ssh/id_rsa"))
     host        = self.public_ip
   }
 
@@ -198,6 +202,11 @@ resource "aws_instance" "web" {
   provisioner "file" {
     source      = "configs/nginx.conf"
     destination = "/tmp/nginx.conf"
+  }
+
+  # Create the destination directory before copying over SSH
+  provisioner "remote-exec" {
+    inline = ["mkdir -p /home/ubuntu/app"]
   }
 
   # Copy a directory
@@ -238,7 +247,7 @@ resource "aws_instance" "example" {
   connection {
     type        = "ssh"
     user        = "ubuntu"
-    private_key = file("~/.ssh/id_rsa")
+    private_key = file(pathexpand("~/.ssh/id_rsa"))
     host        = self.public_ip
     port        = 22
     timeout     = "5m"
@@ -246,7 +255,7 @@ resource "aws_instance" "example" {
     # Optional: Use bastion host
     bastion_host        = var.bastion_ip
     bastion_user        = "ubuntu"
-    bastion_private_key = file("~/.ssh/bastion_key")
+    bastion_private_key = file(pathexpand("~/.ssh/bastion_key"))
   }
 
   provisioner "remote-exec" {
@@ -304,6 +313,10 @@ resource "aws_instance" "web" {
   ami           = var.ami_id
   instance_type = "t3.micro"
 
+  tags = {
+    target_group_arn = var.target_group_arn
+  }
+
   # Runs before instance is destroyed
   provisioner "local-exec" {
     when    = destroy
@@ -313,7 +326,7 @@ resource "aws_instance" "web" {
   # Deregister from load balancer before destroy
   provisioner "local-exec" {
     when    = destroy
-    command = "aws elbv2 deregister-targets --target-group-arn ${var.target_group_arn} --targets Id=${self.id}"
+    command = "aws elbv2 deregister-targets --target-group-arn ${self.tags.target_group_arn} --targets Id=${self.id}"
   }
 }
 ```
@@ -330,7 +343,7 @@ resource "aws_instance" "web" {
   connection {
     type        = "ssh"
     user        = "ubuntu"
-    private_key = file("~/.ssh/id_rsa")
+    private_key = file(pathexpand("~/.ssh/id_rsa"))
     host        = self.public_ip
   }
 
@@ -354,14 +367,14 @@ resource "aws_instance" "web" {
 }
 ```
 
-## Null Resource for Standalone Provisioners
+## Terraform Data for Standalone Provisioners
 
-Use `null_resource` when provisioners are not tied to a specific resource.
+Use `terraform_data` when provisioners are not tied to a specific resource.
 
 ```hcl
-resource "null_resource" "configure_cluster" {
+resource "terraform_data" "configure_cluster" {
   # Trigger re-provisioning when these change
-  triggers = {
+  triggers_replace = {
     cluster_id     = aws_eks_cluster.main.id
     config_version = var.config_version
   }
@@ -377,8 +390,8 @@ resource "null_resource" "configure_cluster" {
 }
 
 # Run database migrations
-resource "null_resource" "db_migrations" {
-  triggers = {
+resource "terraform_data" "db_migrations" {
+  triggers_replace = {
     migration_version = var.migration_version
     db_endpoint       = aws_db_instance.main.endpoint
   }
@@ -447,8 +460,8 @@ resource "aws_instance" "app" {
 ### Ansible Integration
 
 ```hcl
-resource "null_resource" "ansible" {
-  triggers = {
+resource "terraform_data" "ansible" {
+  triggers_replace = {
     instance_ids = join(",", aws_instance.web[*].id)
   }
 
