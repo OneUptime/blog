@@ -83,18 +83,28 @@ pub fn shutdown_signal() -> broadcast::Sender<()> {
 Most Rust web applications use Axum or Actix. Here is how to wire up graceful shutdown with Axum:
 
 ```rust
-use axum::{routing::get, Router};
-use std::net::SocketAddr;
+use axum::{middleware, routing::get, Router};
+use std::{net::SocketAddr, sync::Arc};
 use tokio::sync::broadcast;
 
 async fn health_check() -> &'static str {
     "OK"
 }
 
-pub async fn run_server(shutdown_tx: broadcast::Sender<()>) {
+pub async fn run_server(
+    shutdown_tx: broadcast::Sender<()>,
+    coordinator: Arc<ShutdownCoordinator>,
+    health: Arc<HealthState>,
+) {
+    let app_state = Arc::new(AppState { coordinator });
+
     let app = Router::new()
         .route("/health", get(health_check))
-        .route("/", get(|| async { "Hello, World!" }));
+        .route("/health/live", get(liveness))
+        .route("/health/ready", get(readiness))
+        .route("/", get(|| async { "Hello, World!" }))
+        .with_state(health)
+        .layer(middleware::from_fn_with_state(app_state, shutdown_middleware));
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 3000));
     println!("Server listening on {}", addr);
@@ -119,12 +129,16 @@ pub async fn run_server(shutdown_tx: broadcast::Sender<()>) {
 For production services, you need a coordinator that manages multiple resources. This pattern ensures resources shut down in the correct order.
 
 ```rust
-use std::sync::Arc;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 use tokio::sync::{broadcast, Mutex, Semaphore};
 use tokio::time::{timeout, Duration};
 
 pub struct ShutdownCoordinator {
     shutdown_tx: broadcast::Sender<()>,
+    is_shutting_down: AtomicBool,
     // Track in-flight requests
     request_semaphore: Arc<Semaphore>,
     max_requests: usize,
@@ -141,6 +155,7 @@ impl ShutdownCoordinator {
 
         Self {
             shutdown_tx,
+            is_shutting_down: AtomicBool::new(false),
             request_semaphore: Arc::new(Semaphore::new(max_concurrent_requests)),
             max_requests: max_concurrent_requests,
             cleanup_handlers: Arc::new(Mutex::new(Vec::new())),
@@ -153,6 +168,10 @@ impl ShutdownCoordinator {
 
     pub fn shutdown_sender(&self) -> broadcast::Sender<()> {
         self.shutdown_tx.clone()
+    }
+
+    pub fn is_shutting_down(&self) -> bool {
+        self.is_shutting_down.load(Ordering::SeqCst)
     }
 
     // Acquire a permit for an in-flight request
@@ -186,6 +205,8 @@ impl ShutdownCoordinator {
     pub async fn shutdown(&self, timeout_duration: Duration) {
         println!("Starting graceful shutdown...");
 
+        self.is_shutting_down.store(true, Ordering::SeqCst);
+
         // Signal all components to stop
         let _ = self.shutdown_tx.send(());
 
@@ -217,25 +238,24 @@ Create middleware that tracks in-flight requests and rejects new ones during shu
 
 ```rust
 use axum::{
-    extract::State,
-    http::{Request, StatusCode},
+    extract::{Request, State},
+    http::StatusCode,
     middleware::Next,
     response::Response,
 };
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 pub struct AppState {
     pub coordinator: Arc<ShutdownCoordinator>,
-    pub is_shutting_down: AtomicBool,
 }
 
-pub async fn shutdown_middleware<Bd>(
+pub async fn shutdown_middleware(
     State(state): State<Arc<AppState>>,
-    request: Request<Bd>,
-    next: Next<Bd>,
+    request: Request,
+    next: Next,
 ) -> Result<Response, StatusCode> {
     // Reject requests during shutdown
-    if state.is_shutting_down.load(Ordering::SeqCst) {
+    if state.coordinator.is_shutting_down() {
         return Err(StatusCode::SERVICE_UNAVAILABLE);
     }
 
@@ -247,7 +267,7 @@ pub async fn shutdown_middleware<Bd>(
         return Err(StatusCode::TOO_MANY_REQUESTS);
     }
 
-    // Process request - permit automatically drops when response completes
+    // Process request - permit automatically drops when the handler returns
     let response = next.run(request).await;
 
     Ok(response)
@@ -261,6 +281,7 @@ Database connections need explicit cleanup. Here is a pattern for SQLx connectio
 ```rust
 use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
+use tokio::time::Duration;
 
 pub async fn create_db_pool(database_url: &str) -> PgPool {
     PgPoolOptions::new()
@@ -286,7 +307,11 @@ pub async fn shutdown_db_pool(pool: PgPool) {
 Kubernetes uses readiness probes to decide whether to send traffic to a pod. During shutdown, you should fail the readiness check before stopping the server:
 
 ```rust
-use std::sync::atomic::{AtomicBool, Ordering};
+use axum::{extract::State, http::StatusCode};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 
 pub struct HealthState {
     is_ready: AtomicBool,
@@ -345,7 +370,8 @@ async fn main() {
     let db_pool = create_db_pool(&std::env::var("DATABASE_URL").unwrap()).await;
 
     // Set up shutdown signal handler
-    let shutdown_tx = shutdown_signal();
+    let shutdown_tx = coordinator.shutdown_sender();
+    let mut signal_rx = shutdown_signal().subscribe();
 
     // Clone references for the shutdown task
     let coordinator_clone = coordinator.clone();
@@ -353,9 +379,8 @@ async fn main() {
     let db_pool_clone = db_pool.clone();
 
     // Spawn shutdown handler
-    let mut shutdown_rx = shutdown_tx.subscribe();
     tokio::spawn(async move {
-        let _ = shutdown_rx.recv().await;
+        let _ = signal_rx.recv().await;
 
         // Step 1: Mark as not ready (stop receiving traffic)
         health_clone.set_ready(false);
@@ -375,7 +400,7 @@ async fn main() {
     health.set_ready(true);
 
     // Run the server
-    run_server(shutdown_tx).await;
+    run_server(shutdown_tx, coordinator, health).await;
 }
 ```
 
@@ -416,7 +441,7 @@ spec:
                 command: ["sleep", "5"]
 ```
 
-The `preStop` hook gives Kubernetes time to remove the pod from service endpoints before sending SIGTERM.
+The `preStop` hook delays SIGTERM, which can give endpoint and external load-balancer updates time to propagate. Keep the sleep shorter than `terminationGracePeriodSeconds`, because Kubernetes counts `preStop` execution and application shutdown within the same grace period.
 
 ## Testing Your Shutdown Logic
 
