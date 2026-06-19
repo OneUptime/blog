@@ -51,8 +51,8 @@ def publish_message(queue, message_body):
         kind=SpanKind.PRODUCER,
         attributes={
             "messaging.system": "kafka",
-            "messaging.destination": queue,
-            "messaging.operation": "publish"
+            "messaging.destination.name": queue,
+            "messaging.operation.type": "send"
         }
     ) as span:
         # Create headers dict for context propagation
@@ -68,25 +68,25 @@ def publish_message(queue, message_body):
             headers=headers
         )
 
-        span.set_attribute("messaging.message_id", message_body.get("id"))
+        span.set_attribute("messaging.message.id", message_body.get("id"))
 
 def consume_message(queue, message):
     """Consume a message and continue the trace."""
     # Extract context from message headers
     ctx = extract(message.headers)
 
-    # Create a CONSUMER span linked to the producer
+    # Create a CONSUMER span continued from the producer context
     with tracer.start_as_current_span(
         f"{queue} process",
         context=ctx,
         kind=SpanKind.CONSUMER,
         attributes={
             "messaging.system": "kafka",
-            "messaging.destination": queue,
-            "messaging.operation": "process"
+            "messaging.destination.name": queue,
+            "messaging.operation.type": "process"
         }
     ) as span:
-        span.set_attribute("messaging.message_id", message.body.get("id"))
+        span.set_attribute("messaging.message.id", message.body.get("id"))
 
         # Process the message
         process_message(message)
@@ -117,9 +117,8 @@ class TracedKafkaProducer:
             kind=SpanKind.PRODUCER,
             attributes={
                 "messaging.system": "kafka",
-                "messaging.destination": topic,
-                "messaging.destination_kind": "topic",
-                "messaging.operation": "send"
+                "messaging.destination.name": topic,
+                "messaging.operation.type": "send"
             }
         ) as span:
             # Prepare headers for context propagation
@@ -133,14 +132,14 @@ class TracedKafkaProducer:
 
             # Add message key to span if present
             if key:
-                span.set_attribute("messaging.kafka.message_key", key)
+                span.set_attribute("messaging.kafka.message.key", key)
 
             # Delivery callback to record partition and offset
             def delivery_callback(err, msg):
                 if err:
                     span.set_status(trace.Status(trace.StatusCode.ERROR, str(err)))
                 else:
-                    span.set_attribute("messaging.kafka.partition", msg.partition())
+                    span.set_attribute("messaging.destination.partition.id", str(msg.partition()))
                     span.set_attribute("messaging.kafka.offset", msg.offset())
 
             self.producer.produce(
@@ -168,7 +167,7 @@ producer.produce("orders", b'{"order_id": "123"}', key="order-123")
 ```python
 from opentelemetry import trace
 from opentelemetry.propagate import extract
-from opentelemetry.trace import SpanKind, Link
+from opentelemetry.trace import SpanKind
 from confluent_kafka import Consumer
 
 tracer = trace.get_tracer(__name__)
@@ -178,6 +177,7 @@ class TracedKafkaConsumer:
 
     def __init__(self, config):
         self.consumer = Consumer(config)
+        self.consumer_group = config.get("group.id")
 
     def consume_messages(self, topics, handler):
         """Consume messages with tracing."""
@@ -209,12 +209,11 @@ class TracedKafkaConsumer:
                 kind=SpanKind.CONSUMER,
                 attributes={
                     "messaging.system": "kafka",
-                    "messaging.destination": msg.topic(),
-                    "messaging.destination_kind": "topic",
-                    "messaging.operation": "process",
-                    "messaging.kafka.partition": msg.partition(),
+                    "messaging.destination.name": msg.topic(),
+                    "messaging.operation.type": "process",
+                    "messaging.destination.partition.id": str(msg.partition()),
                     "messaging.kafka.offset": msg.offset(),
-                    "messaging.kafka.consumer_group": self.consumer._group_id
+                    "messaging.consumer.group.name": self.consumer_group
                 }
             ) as span:
                 try:
@@ -260,14 +259,16 @@ class TracedRabbitMQPublisher:
 
     def publish(self, exchange, routing_key, body):
         """Publish a message with trace context."""
+        destination = f"{exchange}:{routing_key}" if exchange else routing_key
+
         with tracer.start_as_current_span(
-            f"{exchange or 'default'} publish",
+            f"{destination or 'amq.default'} publish",
             kind=SpanKind.PRODUCER,
             attributes={
                 "messaging.system": "rabbitmq",
-                "messaging.destination": exchange or "default",
-                "messaging.rabbitmq.routing_key": routing_key,
-                "messaging.operation": "publish"
+                "messaging.destination.name": destination or "amq.default",
+                "messaging.rabbitmq.destination.routing_key": routing_key,
+                "messaging.operation.type": "send"
             }
         ) as span:
             # Inject trace context into headers
@@ -287,7 +288,7 @@ class TracedRabbitMQPublisher:
                 properties=properties
             )
 
-            span.set_attribute("messaging.message_payload_size_bytes", len(body))
+            span.set_attribute("messaging.message.body.size", len(body))
 
 # Usage
 publisher = TracedRabbitMQPublisher(
@@ -328,10 +329,10 @@ class TracedRabbitMQConsumer:
                 kind=SpanKind.CONSUMER,
                 attributes={
                     "messaging.system": "rabbitmq",
-                    "messaging.destination": queue,
-                    "messaging.operation": "process",
-                    "messaging.rabbitmq.routing_key": method.routing_key,
-                    "messaging.message_payload_size_bytes": len(body)
+                    "messaging.destination.name": queue,
+                    "messaging.operation.type": "process",
+                    "messaging.rabbitmq.destination.routing_key": method.routing_key,
+                    "messaging.message.body.size": len(body)
                 }
             ) as span:
                 try:
@@ -386,9 +387,9 @@ class TracedSQSPublisher:
             kind=SpanKind.PRODUCER,
             attributes={
                 "messaging.system": "aws_sqs",
-                "messaging.destination": queue_name,
-                "messaging.url": queue_url,
-                "messaging.operation": "send"
+                "messaging.destination.name": queue_name,
+                "aws.sqs.queue.url": queue_url,
+                "messaging.operation.type": "send"
             }
         ) as span:
             # Inject trace context into message attributes
@@ -409,7 +410,7 @@ class TracedSQSPublisher:
                 MessageAttributes=message_attributes
             )
 
-            span.set_attribute("messaging.message_id", response["MessageId"])
+            span.set_attribute("messaging.message.id", response["MessageId"])
 
             return response
 
@@ -472,9 +473,9 @@ class TracedSQSConsumer:
             kind=SpanKind.CONSUMER,
             attributes={
                 "messaging.system": "aws_sqs",
-                "messaging.destination": queue_name,
-                "messaging.operation": "process",
-                "messaging.message_id": message["MessageId"]
+                "messaging.destination.name": queue_name,
+                "messaging.operation.type": "process",
+                "messaging.message.id": message["MessageId"]
             }
         ) as span:
             try:
@@ -580,8 +581,8 @@ def process_batch(messages):
         kind=SpanKind.CONSUMER,
         links=links,
         attributes={
-            "messaging.batch_size": len(messages),
-            "messaging.operation": "process_batch"
+            "messaging.batch.message_count": len(messages),
+            "messaging.operation.type": "process"
         }
     ) as batch_span:
         results = []
@@ -592,7 +593,7 @@ def process_batch(messages):
                 f"process_message_{i}",
                 context=contexts[i],
                 attributes={
-                    "messaging.message_id": message.id
+                    "messaging.message.id": message.id
                 }
             ) as msg_span:
                 try:
@@ -627,8 +628,8 @@ def send_to_dlq(original_message, error, dlq_url):
         kind=SpanKind.PRODUCER,
         attributes={
             "messaging.system": "aws_sqs",
-            "messaging.destination": "dead-letter-queue",
-            "messaging.operation": "send",
+            "messaging.destination.name": "dead-letter-queue",
+            "messaging.operation.type": "send",
             "error.type": type(error).__name__,
             "error.message": str(error),
             "original.message_id": original_message.id
@@ -765,17 +766,18 @@ processors:
     timeout: 10s
 
   # Add messaging-specific attributes
-  attributes/messaging:
-    actions:
-      - key: messaging.client_id
-        from_attribute: resource.service.instance.id
-        action: upsert
+  transform/messaging:
+    error_mode: ignore
+    trace_statements:
+      - context: span
+        statements:
+          - set(attributes["messaging.client.id"], resource.attributes["service.instance.id"]) where resource.attributes["service.instance.id"] != nil
 
   # Filter out health check messages
   filter/messaging:
-    traces:
-      span:
-        - 'attributes["messaging.destination"] == "health-check"'
+    error_mode: ignore
+    trace_conditions:
+      - 'span.attributes["messaging.destination.name"] == "health-check"'
 
 exporters:
   otlp:
@@ -785,7 +787,7 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [attributes/messaging, filter/messaging, batch]
+      processors: [transform/messaging, filter/messaging, batch]
       exporters: [otlp]
 ```
 
@@ -793,7 +795,7 @@ service:
 
 1. **Always propagate context through message headers** to maintain trace continuity.
 
-2. **Use semantic conventions** for messaging attributes (messaging.system, messaging.destination, etc.).
+2. **Use semantic conventions** for messaging attributes (messaging.system, messaging.destination.name, etc.).
 
 3. **Create PRODUCER spans** when publishing and CONSUMER spans when processing.
 
