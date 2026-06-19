@@ -146,12 +146,14 @@ sudo chmod 600 /etc/mosquitto/passwd
 
 # Sensor devices can publish to their own topics
 user sensor_device_01
-topic write sensors/building-a/floor-1/temp
-topic write sensors/building-a/floor-1/humidity
+topic write sensors/building-a/floor-1/temperature/temp-sensor-001/reading
+topic write sensors/building-a/floor-1/humidity/humidity-sensor-001/reading
+topic write status/temp-sensor-001/health
 
 user sensor_device_02
-topic write sensors/building-a/floor-2/temp
-topic write sensors/building-a/floor-2/humidity
+topic write sensors/building-a/floor-2/temperature/temp-sensor-002/reading
+topic write sensors/building-a/floor-2/humidity/humidity-sensor-002/reading
+topic write status/temp-sensor-002/health
 
 # Backend service can read all sensor data
 user backend_service
@@ -201,8 +203,7 @@ import paho.mqtt.client as mqtt
 import json
 import time
 import random
-import ssl
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Broker configuration
 BROKER_HOST = "mqtt.example.com"
@@ -216,28 +217,22 @@ BASE_TOPIC = f"sensors/building-a/floor-1"
 TEMP_TOPIC = f"{BASE_TOPIC}/temperature/{DEVICE_ID}/reading"
 STATUS_TOPIC = f"status/{DEVICE_ID}/health"
 
-def on_connect(client, userdata, flags, rc):
+def on_connect(client, userdata, flags, reason_code, properties):
     """Callback when connected to broker"""
-    if rc == 0:
+    if reason_code == 0:
         print(f"Connected successfully to {BROKER_HOST}")
         # Publish online status
         publish_status(client, "online")
     else:
-        print(f"Connection failed with code: {rc}")
-        # Common error codes:
-        # 1 = incorrect protocol version
-        # 2 = invalid client identifier
-        # 3 = server unavailable
-        # 4 = bad username or password
-        # 5 = not authorized
+        print(f"Connection failed: {reason_code}")
 
-def on_disconnect(client, userdata, rc):
+def on_disconnect(client, userdata, disconnect_flags, reason_code, properties):
     """Callback when disconnected from broker"""
-    print(f"Disconnected with code: {rc}")
-    if rc != 0:
+    print(f"Disconnected: {reason_code}")
+    if reason_code != 0:
         print("Unexpected disconnect, attempting reconnect...")
 
-def on_publish(client, userdata, mid):
+def on_publish(client, userdata, mid, reason_code, properties):
     """Callback when message is published"""
     print(f"Message {mid} published successfully")
 
@@ -246,7 +241,7 @@ def publish_status(client, status):
     payload = {
         "device_id": DEVICE_ID,
         "status": status,
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat()
     }
     # QoS 1 ensures delivery at least once
     client.publish(STATUS_TOPIC, json.dumps(payload), qos=1, retain=True)
@@ -260,7 +255,11 @@ def read_temperature():
 def main():
     # Create MQTT client with clean session
     # Clean session=False maintains subscriptions across reconnects
-    client = mqtt.Client(client_id=DEVICE_ID, clean_session=False)
+    client = mqtt.Client(
+        callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
+        client_id=DEVICE_ID,
+        clean_session=False
+    )
 
     # Set username and password
     client.username_pw_set(USERNAME, PASSWORD)
@@ -269,15 +268,14 @@ def main():
     client.tls_set(
         ca_certs="/etc/ssl/certs/ca-certificates.crt",
         certfile=None,  # Use for client certificates
-        keyfile=None,
-        tls_version=ssl.PROTOCOL_TLS
+        keyfile=None
     )
 
     # Set last will message (sent if client disconnects unexpectedly)
     will_payload = json.dumps({
         "device_id": DEVICE_ID,
         "status": "offline",
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat()
     })
     client.will_set(STATUS_TOPIC, will_payload, qos=1, retain=True)
 
@@ -304,7 +302,7 @@ def main():
                 "measurement": "temperature",
                 "value": temperature,
                 "unit": "celsius",
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
 
             # Publish reading
@@ -339,8 +337,6 @@ if __name__ == "__main__":
 
 import paho.mqtt.client as mqtt
 import json
-import ssl
-from datetime import datetime
 from collections import defaultdict
 
 # Broker configuration
@@ -352,16 +348,16 @@ PASSWORD = "secure_password"
 
 # Topics to subscribe
 SENSOR_TOPICS = [
-    ("sensors/+/+/+/reading", 1),  # All sensor readings, QoS 1
+    ("sensors/+/+/+/+/reading", 1),  # All sensor readings, QoS 1
     ("status/+/health", 1),        # All device statuses, QoS 1
 ]
 
 # Store recent readings for analysis
 readings_buffer = defaultdict(list)
 
-def on_connect(client, userdata, flags, rc):
+def on_connect(client, userdata, flags, reason_code, properties):
     """Handle successful connection"""
-    if rc == 0:
+    if reason_code == 0:
         print("Connected to MQTT broker")
 
         # Subscribe to all topics
@@ -370,7 +366,7 @@ def on_connect(client, userdata, flags, rc):
             client.subscribe(topic, qos)
             print(f"Subscribed to: {topic}")
     else:
-        print(f"Connection failed: {rc}")
+        print(f"Connection failed: {reason_code}")
 
 def on_message(client, userdata, msg):
     """Process incoming messages"""
@@ -394,10 +390,10 @@ def on_message(client, userdata, msg):
 def process_sensor_reading(topic_parts, payload):
     """Process a sensor reading"""
     # Extract metadata from topic
-    # sensors/{location}/{sensor-type}/{device-id}/reading
-    location = topic_parts[1]
-    sensor_type = topic_parts[2]
-    device_id = topic_parts[3]
+    # sensors/{building}/{floor}/{sensor-type}/{device-id}/reading
+    location = "/".join(topic_parts[1:3])
+    sensor_type = topic_parts[3]
+    device_id = topic_parts[4]
 
     # Extract values from payload
     value = payload.get("value")
@@ -463,15 +459,18 @@ def trigger_anomaly_alert(device_id, sensor_type, value):
 
 def main():
     # Create client with persistent session
-    client = mqtt.Client(client_id=CLIENT_ID, clean_session=False)
+    client = mqtt.Client(
+        callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
+        client_id=CLIENT_ID,
+        clean_session=False
+    )
 
     # Authentication
     client.username_pw_set(USERNAME, PASSWORD)
 
     # TLS configuration
     client.tls_set(
-        ca_certs="/etc/ssl/certs/ca-certificates.crt",
-        tls_version=ssl.PROTOCOL_TLS
+        ca_certs="/etc/ssl/certs/ca-certificates.crt"
     )
 
     # Callbacks
@@ -570,11 +569,13 @@ openssl req -x509 -new -nodes -key ca.key -sha256 -days 3650 \
 # Generate server key and CSR
 openssl genrsa -out server.key 2048
 openssl req -new -key server.key -out server.csr \
-  -subj "/CN=mqtt.example.com"
+  -subj "/CN=mqtt.example.com" \
+  -addext "subjectAltName=DNS:mqtt.example.com"
 
 # Sign server certificate
 openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key \
-  -CAcreateserial -out server.crt -days 365 -sha256
+  -CAcreateserial -out server.crt -days 365 -sha256 \
+  -copy_extensions copy
 
 # Set permissions
 sudo cp ca.crt server.crt server.key /etc/mosquitto/certs/
