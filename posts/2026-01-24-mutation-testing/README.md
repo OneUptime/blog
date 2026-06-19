@@ -82,7 +82,7 @@ npx stryker run
 <plugin>
     <groupId>org.pitest</groupId>
     <artifactId>pitest-maven</artifactId>
-    <version>1.15.3</version>
+    <version>1.25.5</version>
     <configuration>
         <targetClasses>
             <param>com.example.*</param>
@@ -117,20 +117,16 @@ pip install mutmut
 ```ini
 # setup.cfg
 [mutmut]
-paths_to_mutate=src/
-tests_dir=tests/
-runner=python -m pytest
+source_paths=src/
+pytest_add_cli_args_test_selection=tests/
 ```
 
 ```bash
 # Run mutation testing
 mutmut run
 
-# View results
-mutmut results
-
-# View specific surviving mutant
-mutmut show 42
+# Browse results
+mutmut browse
 ```
 
 ## Example: Improving Tests Based on Mutation Results
@@ -247,11 +243,16 @@ Mutation Score = (Killed Mutants / Total Mutants) * 100
 Not all surviving mutants indicate problems:
 
 ```java
-// Equivalent mutant - behavior unchanged
-// Original
-if (x >= 0)
-// Mutated to
-if (x > -1)  // Same behavior for integers
+// Equivalent mutant - behavior unchanged for integers
+int absoluteValue(int x) {
+  if (x >= 0) {
+    return x;
+  }
+  return -x;
+}
+
+// Mutated condition:
+// if (x > -1)
 
 // Handling: Mark as equivalent or exclude from mutation
 ```
@@ -264,8 +265,10 @@ module.exports = {
     '!src/**/constants.ts',  // Don't mutate constants
     '!src/**/types.ts'       // Don't mutate type definitions
   ],
-  // Ignore specific mutants
-  ignorers: ['string-literal'],
+  // Exclude a mutator across the project
+  mutator: {
+    excludedMutations: ['StringLiteral']
+  },
 };
 ```
 
@@ -308,13 +311,7 @@ jobs:
           name: mutation-report
           path: reports/mutation/
 
-      - name: Check mutation score
-        run: |
-          SCORE=$(cat reports/mutation/mutation-report.json | jq '.mutationScore')
-          if (( $(echo "$SCORE < 60" | bc -l) )); then
-            echo "Mutation score $SCORE% is below threshold"
-            exit 1
-          fi
+      # Stryker exits with code 1 when the configured threshold.break is not met.
 ```
 
 ### Incremental Mutation Testing
@@ -322,13 +319,13 @@ jobs:
 Full mutation testing is slow. Run incrementally on changed files:
 
 ```bash
-# Only mutate changed files (Git diff)
-npx stryker run --mutate "$(git diff --name-only main | grep -E '\.ts$' | tr '\n' ',')"
+# Reuse previous results and run changed mutants/tests where possible
+npx stryker run --incremental
 ```
 
-```python
-# mutmut with specific files
-mutmut run --paths-to-mutate src/changed_file.py
+```bash
+# mutmut with a module/function wildcard
+mutmut run "changed_module*"
 ```
 
 ## Best Practices
@@ -358,7 +355,11 @@ module.exports = {
         <mutator>INCREMENTS</mutator>
         <mutator>MATH</mutator>
         <mutator>NEGATE_CONDITIONALS</mutator>
-        <mutator>RETURN_VALS</mutator>
+        <mutator>EMPTY_RETURNS</mutator>
+        <mutator>FALSE_RETURNS</mutator>
+        <mutator>TRUE_RETURNS</mutator>
+        <mutator>NULL_RETURNS</mutator>
+        <mutator>PRIMITIVE_RETURNS</mutator>
     </mutators>
 </configuration>
 ```
