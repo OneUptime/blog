@@ -147,6 +147,7 @@ Create loaders per request to prevent data leaking between users:
 ```javascript
 // server.js
 import { ApolloServer } from '@apollo/server';
+import { startStandaloneServer } from '@apollo/server/standalone';
 import DataLoader from 'dataloader';
 
 const server = new ApolloServer({
@@ -174,31 +175,32 @@ const { url } = await startStandaloneServer(server, {
 Set explicit timeouts to fail fast and prevent server overload.
 
 ```javascript
-// Apollo Server timeout configuration
+// Apollo Server slow-resolver monitoring
 import { ApolloServer } from '@apollo/server';
-import { ApolloServerPluginDrainHttpServer } from '@apollo/server/plugin/drainHttpServer';
 
 const server = new ApolloServer({
   typeDefs,
   resolvers,
-  // Plugin to handle graceful shutdown
   plugins: [
-    ApolloServerPluginDrainHttpServer({ httpServer }),
-    // Custom timeout plugin
+    // Custom monitoring plugin
     {
       async requestDidStart() {
         return {
           async executionDidStart() {
-            // Set a timeout for the entire execution
+            // Apollo plugin hooks can identify slow fields, but they do not
+            // cancel resolver promises. Enforce timeouts in resolvers or data sources.
             return {
               willResolveField({ info }) {
-                const timeout = setTimeout(() => {
-                  throw new Error(
-                    `Resolver timeout: ${info.parentType.name}.${info.fieldName}`
-                  );
-                }, 10000); // 10 second timeout
+                const start = Date.now();
 
-                return () => clearTimeout(timeout);
+                return () => {
+                  const duration = Date.now() - start;
+                  if (duration > 10000) {
+                    console.warn(
+                      `Slow resolver: ${info.parentType.name}.${info.fieldName} took ${duration}ms`
+                    );
+                  }
+                };
               },
             };
           },
@@ -214,10 +216,11 @@ Implement timeout at the resolver level:
 ```javascript
 // Utility function to wrap promises with timeout
 function withTimeout(promise, ms, message = 'Operation timed out') {
+  let timeoutId;
   const timeout = new Promise((_, reject) => {
-    setTimeout(() => reject(new Error(message)), ms);
+    timeoutId = setTimeout(() => reject(new Error(message)), ms);
   });
-  return Promise.race([promise, timeout]);
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timeoutId));
 }
 
 // Use in resolvers
@@ -254,7 +257,7 @@ Prevent expensive queries before they execute by analyzing query complexity.
 import {
   getComplexity,
   simpleEstimator,
-  fieldExtensionsEstimator
+  directiveEstimator
 } from 'graphql-query-complexity';
 
 const complexityPlugin = {
@@ -266,9 +269,10 @@ const complexityPlugin = {
           schema,
           query: document,
           variables: request.variables,
+          operationName: request.operationName,
           estimators: [
-            // Use field extensions for custom complexity
-            fieldExtensionsEstimator(),
+            // Use SDL @complexity directives for custom costs
+            directiveEstimator(),
             // Default: each field costs 1
             simpleEstimator({ defaultComplexity: 1 }),
           ],
@@ -295,6 +299,8 @@ Define complexity in your schema:
 ```javascript
 // Schema with complexity hints
 const typeDefs = gql`
+  directive @complexity(value: Int!, multipliers: [String!]) on FIELD_DEFINITION
+
   type Query {
     # Simple field - default complexity of 1
     user(id: ID!): User
@@ -314,24 +320,6 @@ const typeDefs = gql`
     posts(limit: Int = 10): [Post!]! @complexity(value: 5, multipliers: ["limit"])
   }
 `;
-
-// Custom directive implementation
-const complexityDirective = (schema) => {
-  return mapSchema(schema, {
-    [MapperKind.OBJECT_FIELD]: (fieldConfig) => {
-      const complexity = fieldConfig.astNode?.directives?.find(
-        d => d.name.value === 'complexity'
-      );
-      if (complexity) {
-        fieldConfig.extensions = {
-          ...fieldConfig.extensions,
-          complexity: parseComplexityDirective(complexity),
-        };
-      }
-      return fieldConfig;
-    },
-  });
-};
 ```
 
 ## Solution 4: Add Pagination
@@ -340,6 +328,8 @@ Never return unbounded lists. Always implement pagination.
 
 ```javascript
 // Cursor-based pagination implementation
+import { Op } from 'sequelize';
+
 const resolvers = {
   Query: {
     posts: async (_, { first = 10, after }) => {
@@ -351,7 +341,7 @@ const resolvers = {
       if (after) {
         const decodedCursor = Buffer.from(after, 'base64').toString('utf8');
         const cursorDate = new Date(decodedCursor);
-        whereClause = { createdAt: { $lt: cursorDate } };
+        whereClause = { createdAt: { [Op.lt]: cursorDate } };
       }
 
       // Fetch one extra to determine if there are more results
@@ -419,6 +409,8 @@ Slow database queries are often the root cause of timeouts.
 
 ```javascript
 // Add database query logging to identify slow queries
+import { IndexHints } from 'sequelize';
+
 const resolvers = {
   Query: {
     users: async (_, args, context) => {
@@ -428,8 +420,8 @@ const resolvers = {
         where: buildWhereClause(args),
         // Only select needed fields
         attributes: ['id', 'name', 'email'],
-        // Add indexes hint if supported
-        indexHints: [{ type: 'USE', values: ['idx_users_created_at'] }],
+        // Add index hints if supported by your database dialect
+        indexHints: [{ type: IndexHints.USE, values: ['idx_users_created_at'] }],
       });
 
       const duration = Date.now() - startTime;
@@ -491,7 +483,7 @@ async function cachedResolver(key, ttl, fetchFn) {
   const result = await fetchFn();
 
   // Store in cache
-  await redis.setex(key, ttl, JSON.stringify(result));
+  await redis.set(key, JSON.stringify(result), 'EX', ttl);
 
   return result;
 }
@@ -536,16 +528,17 @@ const externalApiClient = axios.create({
 });
 
 // Retry logic for transient failures
-async function fetchWithRetry(url, options = {}, retries = 3) {
-  const { timeout = 5000, backoff = 1000 } = options;
+async function fetchWithRetry(url, options = {}) {
+  const { timeout = 5000, backoff = 1000, retries = 3 } = options;
 
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
-      const response = await axios.get(url, { timeout });
+      const response = await externalApiClient.get(url, { timeout });
       return response.data;
     } catch (error) {
       const isRetryable =
         error.code === 'ECONNABORTED' || // Timeout
+        error.code === 'ETIMEDOUT' ||    // Timeout with clarified Axios errors
         error.code === 'ECONNRESET' ||   // Connection reset
         (error.response?.status >= 500); // Server error
 
