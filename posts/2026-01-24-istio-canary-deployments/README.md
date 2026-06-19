@@ -102,7 +102,7 @@ spec:
 Create a DestinationRule to define the subsets:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: reviews-destination
@@ -121,7 +121,7 @@ spec:
 Now create a VirtualService that splits traffic:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: reviews-canary
@@ -191,7 +191,7 @@ As confidence grows, shift more traffic to the canary:
 Before exposing the canary to real users, test it with internal traffic using header-based routing:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: reviews-header-canary
@@ -227,7 +227,7 @@ curl -H "x-canary: true" http://reviews:9080/api/reviews
 Route specific users to the canary for beta testing:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: reviews-user-canary
@@ -266,7 +266,7 @@ spec:
 Roll out to specific regions first:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: reviews-geo-canary
@@ -344,10 +344,10 @@ histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{des
 If the canary shows problems, roll back immediately:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
-  name: reviews-rollback
+  name: reviews-canary
   namespace: default
 spec:
   hosts:
@@ -366,11 +366,11 @@ Apply the rollback:
 kubectl apply -f reviews-rollback.yaml
 ```
 
-Traffic immediately shifts back to the stable version.
+After the updated configuration propagates, traffic shifts back to the stable version.
 
 ## Using Flagger for Automated Canaries
 
-For production environments, consider using Flagger to automate the canary process:
+For production environments, consider using Flagger to automate the canary process. Flagger manages a single target Deployment and creates the primary and canary services for it, so this example assumes your application Deployment is named `reviews`.
 
 ```yaml
 apiVersion: flagger.app/v1beta1
@@ -437,19 +437,19 @@ After successful promotion:
 
 **Mistake: Forgetting the DestinationRule**
 
-Without a DestinationRule, subsets don't exist and traffic splitting fails silently:
+Without a DestinationRule, subsets don't exist and routes that reference those subsets can return errors:
 
 ```bash
 # Always verify DestinationRule exists
-kubectl get destinationrule reviews -o yaml
+kubectl get destinationrule reviews-destination -o yaml
 ```
 
-**Mistake: Weight sum not equaling 100**
+**Mistake: Treating relative weights as percentages**
 
-Weights should add up to 100:
+Weights are relative, but when you are expressing percentages, keep them adding up to 100:
 
 ```yaml
-# Wrong - weights sum to 90
+# Confusing - this is 55.6% v1 and 44.4% v2, not 50% and 40%
 - destination:
     subset: v1
   weight: 50
