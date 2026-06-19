@@ -19,7 +19,7 @@ When you need low-latency communication between microservices, gRPC often beats 
 First, install the required packages:
 
 ```bash
-pip install grpcio==1.60.0 grpcio-tools==1.60.0
+pip install grpcio==1.60.0 grpcio-tools==1.60.0 grpcio-health-checking==1.60.0
 ```
 
 ### Project Structure
@@ -27,9 +27,8 @@ pip install grpcio==1.60.0 grpcio-tools==1.60.0
 ```text
 myservice/
     protos/
-        user_service.proto
-    generated/
         __init__.py
+        user_service.proto
         user_service_pb2.py
         user_service_pb2_grpc.py
     server.py
@@ -123,15 +122,15 @@ service UserService {
 # Generate Python code from proto file
 
 python -m grpc_tools.protoc \
-    -I./protos \
-    --python_out=./generated \
-    --grpc_python_out=./generated \
+    -I. \
+    --python_out=. \
+    --grpc_python_out=. \
     ./protos/user_service.proto
 ```
 
 This generates:
-- `user_service_pb2.py`: Message classes
-- `user_service_pb2_grpc.py`: Service stubs and server base class
+- `protos/user_service_pb2.py`: Message classes
+- `protos/user_service_pb2_grpc.py`: Service stubs and server base class
 
 ---
 
@@ -143,13 +142,12 @@ This generates:
 import grpc
 from concurrent import futures
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Iterator
-import asyncio
 
 # Import generated code
-from generated import user_service_pb2 as pb2
-from generated import user_service_pb2_grpc as pb2_grpc
+from protos import user_service_pb2 as pb2
+from protos import user_service_pb2_grpc as pb2_grpc
 
 # Simulated database
 USERS_DB = {
@@ -185,7 +183,7 @@ class UserServiceServicer(pb2_grpc.UserServiceServicer):
             email=user_data["email"],
             name=user_data["name"],
             is_active=user_data["is_active"],
-            created_at=int(datetime.utcnow().timestamp())
+            created_at=int(datetime.now(timezone.utc).timestamp())
         )
 
     def CreateUser(self, request: pb2.CreateUserRequest, context: grpc.ServicerContext) -> pb2.User:
@@ -221,7 +219,7 @@ class UserServiceServicer(pb2_grpc.UserServiceServicer):
             email=request.email,
             name=request.name,
             is_active=True,
-            created_at=int(datetime.utcnow().timestamp())
+            created_at=int(datetime.now(timezone.utc).timestamp())
         )
 
     def ListUsers(self, request: pb2.ListUsersRequest, context: grpc.ServicerContext) -> pb2.ListUsersResponse:
@@ -273,18 +271,14 @@ class UserServiceServicer(pb2_grpc.UserServiceServicer):
         # Simulate streaming updates
         # In production, this would listen to an event stream
         update_count = 0
-        while not context.is_active() or update_count < 10:
-            # Check if client disconnected
-            if context.is_active() == False:
-                break
-
+        while context.is_active() and update_count < 10:
             # Simulate an update event
             yield pb2.UserUpdate(
                 user_id=user_id,
                 field="last_seen",
                 old_value="",
-                new_value=str(datetime.utcnow().timestamp()),
-                timestamp=int(datetime.utcnow().timestamp())
+                new_value=str(datetime.now(timezone.utc).timestamp()),
+                timestamp=int(datetime.now(timezone.utc).timestamp())
             )
 
             update_count += 1
@@ -381,8 +375,8 @@ if __name__ == "__main__":
 # gRPC client for UserService
 import grpc
 from typing import Iterator, List
-from generated import user_service_pb2 as pb2
-from generated import user_service_pb2_grpc as pb2_grpc
+from protos import user_service_pb2 as pb2
+from protos import user_service_pb2_grpc as pb2_grpc
 
 class UserServiceClient:
     """
@@ -546,8 +540,8 @@ import asyncio
 import grpc
 from grpc import aio
 
-from generated import user_service_pb2 as pb2
-from generated import user_service_pb2_grpc as pb2_grpc
+from protos import user_service_pb2 as pb2
+from protos import user_service_pb2_grpc as pb2_grpc
 
 class AsyncUserServiceServicer(pb2_grpc.UserServiceServicer):
     """Async implementation of UserService."""
@@ -625,31 +619,24 @@ if __name__ == "__main__":
 # interceptors.py
 # gRPC interceptors for cross-cutting concerns
 import grpc
-import time
 import logging
+from concurrent import futures
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class LoggingInterceptor(grpc.ServerInterceptor):
     """
-    Server interceptor that logs all incoming requests.
-    Captures method name, duration, and status.
+    Server interceptor that logs incoming RPC methods.
     """
 
     def intercept_service(self, continuation, handler_call_details):
         # Get the method being called
         method = handler_call_details.method
-        start_time = time.time()
+        logger.info(f"gRPC call started: {method}")
 
         # Call the actual handler
-        handler = continuation(handler_call_details)
-
-        # Log after the call completes
-        duration_ms = (time.time() - start_time) * 1000
-        logger.info(f"gRPC call: {method} completed in {duration_ms:.2f}ms")
-
-        return handler
+        return continuation(handler_call_details)
 
 class AuthInterceptor(grpc.ServerInterceptor):
     """
@@ -661,23 +648,51 @@ class AuthInterceptor(grpc.ServerInterceptor):
         self._valid_tokens = valid_tokens
 
     def intercept_service(self, continuation, handler_call_details):
+        handler = continuation(handler_call_details)
+        if handler is None:
+            return None
+
         # Extract metadata
         metadata = dict(handler_call_details.invocation_metadata)
         token = metadata.get("authorization", "")
 
         # Validate token
-        if token not in self._valid_tokens:
-            # Return an error handler
+        if token in self._valid_tokens:
+            return handler
+
+        # Return an error handler with the same RPC shape as the original method
+        if not handler.request_streaming and not handler.response_streaming:
             return grpc.unary_unary_rpc_method_handler(
-                lambda req, ctx: self._unauthenticated(ctx)
+                lambda request, context: self._unauthenticated(context),
+                request_deserializer=handler.request_deserializer,
+                response_serializer=handler.response_serializer
             )
 
-        return continuation(handler_call_details)
+        if not handler.request_streaming and handler.response_streaming:
+            return grpc.unary_stream_rpc_method_handler(
+                lambda request, context: self._unauthenticated(context),
+                request_deserializer=handler.request_deserializer,
+                response_serializer=handler.response_serializer
+            )
+
+        if handler.request_streaming and not handler.response_streaming:
+            return grpc.stream_unary_rpc_method_handler(
+                lambda request_iterator, context: self._unauthenticated(context),
+                request_deserializer=handler.request_deserializer,
+                response_serializer=handler.response_serializer
+            )
+
+        return grpc.stream_stream_rpc_method_handler(
+            lambda request_iterator, context: self._unauthenticated(context),
+            request_deserializer=handler.request_deserializer,
+            response_serializer=handler.response_serializer
+        )
 
     def _unauthenticated(self, context):
-        context.set_code(grpc.StatusCode.UNAUTHENTICATED)
-        context.set_details("Invalid or missing authentication token")
-        return None
+        context.abort(
+            grpc.StatusCode.UNAUTHENTICATED,
+            "Invalid or missing authentication token"
+        )
 
 
 # Using interceptors when creating the server
