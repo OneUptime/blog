@@ -96,14 +96,7 @@ SELECT ROW_COUNT();  -- Returns 0 if skipped, 1 if inserted
 **Option 2: ON DUPLICATE KEY UPDATE - Upsert pattern:**
 
 ```sql
--- Insert or update if exists
-INSERT INTO users (id, email, name, updated_at)
-VALUES (1, 'john@example.com', 'John Doe', NOW())
-ON DUPLICATE KEY UPDATE
-    name = VALUES(name),
-    updated_at = NOW();
-
--- More explicit using the new MySQL 8 alias syntax
+-- Insert or update if exists using the MySQL 8.0.19+ alias syntax
 INSERT INTO users (id, email, name, updated_at)
 VALUES (1, 'john@example.com', 'John Doe', NOW()) AS new_values
 ON DUPLICATE KEY UPDATE
@@ -122,7 +115,7 @@ VALUES (1, 'john@example.com', 'John Doe');
 -- Difference from ON DUPLICATE KEY UPDATE:
 -- REPLACE triggers DELETE + INSERT
 -- ON DUPLICATE KEY UPDATE triggers UPDATE only
--- REPLACE resets auto-generated values and triggers
+-- REPLACE can reset unspecified auto-generated values and fires DELETE/INSERT triggers
 ```
 
 ## Problem 3: Bulk Insert Conflicts
@@ -152,10 +145,10 @@ INSERT INTO products (sku, name, price, updated_at)
 VALUES
     ('SKU001', 'Widget A', 9.99, NOW()),
     ('SKU002', 'Widget B', 14.99, NOW()),
-    ('SKU003', 'Widget C', 19.99, NOW())
+    ('SKU003', 'Widget C', 19.99, NOW()) AS new_values
 ON DUPLICATE KEY UPDATE
-    price = VALUES(price),
-    updated_at = VALUES(updated_at);
+    price = new_values.price,
+    updated_at = new_values.updated_at;
 ```
 
 ## Problem 4: Data Migration Duplicates
@@ -227,9 +220,9 @@ VALUES (1, 5, 2);
 ```sql
 -- Add to existing quantity or insert new row
 INSERT INTO order_items (order_id, product_id, quantity)
-VALUES (1, 5, 2)
+VALUES (1, 5, 2) AS new_values
 ON DUPLICATE KEY UPDATE
-    quantity = quantity + VALUES(quantity);
+    quantity = order_items.quantity + new_values.quantity;
 ```
 
 ## Problem 6: Race Conditions in Concurrent Inserts
@@ -239,7 +232,7 @@ Multiple processes inserting the same key simultaneously can cause duplicates ev
 **Bad: Check-then-insert pattern (race condition):**
 
 ```sql
--- DON'T DO THIS - race condition exists between check and insert
+-- Pseudocode: DON'T DO THIS - race condition exists between check and insert
 IF NOT EXISTS (SELECT 1 FROM users WHERE email = 'john@example.com') THEN
     INSERT INTO users (email, name) VALUES ('john@example.com', 'John');
 END IF;
@@ -258,14 +251,14 @@ ON DUPLICATE KEY UPDATE
 **For unique constraints beyond primary key:**
 
 ```sql
--- Add unique index if not exists
+-- Add a unique index if one does not already exist
 ALTER TABLE users ADD UNIQUE INDEX idx_email (email);
 
 -- Now duplicates on email also trigger ON DUPLICATE KEY UPDATE
 INSERT INTO users (email, name)
-VALUES ('john@example.com', 'John Doe')
+VALUES ('john@example.com', 'John Doe') AS new_values
 ON DUPLICATE KEY UPDATE
-    name = VALUES(name);
+    name = new_values.name;
 ```
 
 ## Diagnostic Queries
@@ -308,10 +301,10 @@ ORDER BY status, s.id;
 ```sql
 -- Standard upsert pattern for most cases
 INSERT INTO users (email, name, updated_at)
-VALUES (?, ?, NOW())
+VALUES (?, ?, NOW()) AS new_values
 ON DUPLICATE KEY UPDATE
-    name = VALUES(name),
-    updated_at = NOW();
+    name = new_values.name,
+    updated_at = new_values.updated_at;
 ```
 
 The duplicate entry error is MySQL protecting your data integrity. Rather than fighting it, use the built-in duplicate handling mechanisms to express your actual intent. INSERT IGNORE for "insert if not exists", ON DUPLICATE KEY UPDATE for upserts, and REPLACE for complete overwrites.
