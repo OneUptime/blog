@@ -22,12 +22,12 @@ flowchart TD
 
     S --> |"Default, smart merge"| S1[Best for most updates]
     J --> |"RFC 6902 operations"| J1[Precise array handling]
-    M --> |"Simple replacement"| M1[Replace entire fields]
+    M --> |"RFC 7386 object merge"| M1[Merge objects, replace arrays]
 ```
 
-- **Strategic Merge Patch** (default): Kubernetes-aware merging that understands resource schemas
+- **Strategic Merge Patch** (default): Kubernetes-aware merging that understands built-in resource schemas
 - **JSON Patch**: RFC 6902 operations for precise control over arrays
-- **Merge Patch**: Simple JSON merge that replaces fields wholesale
+- **Merge Patch**: Simple JSON merge that recursively merges objects and replaces arrays or scalar values
 
 ## Strategic Merge Patch
 
@@ -52,7 +52,7 @@ kubectl patch deployment web-app -n production \
   -p '{"metadata":{"labels":{"version":"v2"}}}'
 ```
 
-Strategic merge patch handles arrays intelligently by merging based on key fields:
+Strategic merge patch handles some arrays intelligently by merging based on key fields:
 
 ```yaml
 # Original deployment has containers: [web]
@@ -67,6 +67,8 @@ spec:
 '
 # Result: containers now has both [web, logging]
 ```
+
+This merge behavior depends on the field's patch strategy. For example, container lists merge by `name`, but other lists may be replaced.
 
 ## Using YAML Files for Patches
 
@@ -98,7 +100,7 @@ kubectl patch deployment web-app -n production --patch-file patch-file.yaml
 JSON Patch (RFC 6902) provides precise control over arrays:
 
 ```bash
-# Add an item to an array at specific index
+# Append an item to an array
 kubectl patch deployment web-app -n production --type='json' \
   -p='[{"op":"add","path":"/spec/template/spec/containers/0/env/-","value":{"name":"NEW_VAR","value":"test"}}]'
 
@@ -125,12 +127,16 @@ JSON Patch operations:
 
 ## Merge Patch
 
-Simple JSON merge that replaces fields:
+Simple JSON merge that recursively merges objects and replaces arrays or scalar values:
 
 ```bash
-# Replace entire labels (removes any not specified)
+# Add or update labels (leaves unspecified labels unchanged)
 kubectl patch deployment web-app -n production --type='merge' \
   -p '{"metadata":{"labels":{"app":"web-app","version":"v2"}}}'
+
+# Remove a specific label by setting it to null
+kubectl patch deployment web-app -n production --type='merge' \
+  -p '{"metadata":{"labels":{"old-version":null}}}'
 
 # With merge patch, arrays are completely replaced
 # This replaces ALL containers, not just the named one
@@ -138,7 +144,7 @@ kubectl patch deployment web-app -n production --type='merge' \
   -p '{"spec":{"template":{"spec":{"containers":[{"name":"web","image":"myapp:2.0.0"}]}}}}'
 ```
 
-Use merge patch when you want to replace a field entirely rather than merge it.
+Use merge patch when you want simple object merging, or when you want to replace an array or scalar field entirely.
 
 ## Common Patch Use Cases
 
@@ -153,7 +159,7 @@ kubectl patch deployment api-server -n production \
 ### Add or Update Environment Variables
 
 ```bash
-# Add environment variable using JSON patch
+# Add environment variable using JSON patch when the env array already exists
 kubectl patch deployment web-app -n production --type='json' \
   -p='[{"op":"add","path":"/spec/template/spec/containers/0/env/-","value":{"name":"DEBUG","value":"true"}}]'
 
@@ -288,15 +294,15 @@ kubectl rollout status deployment/"$DEPLOYMENT" -n "$NAMESPACE" --timeout=5m
 
 ## Patching CRDs
 
-Patch custom resources the same way:
+Patch custom resources with JSON merge patch or JSON patch. Strategic merge patch is not supported for custom resources, so specify `--type='merge'` or `--type='json'` explicitly.
 
 ```bash
 # Patch an ArgoCD Application
-kubectl patch application my-app -n argocd \
+kubectl patch application my-app -n argocd --type='merge' \
   -p '{"spec":{"source":{"targetRevision":"v2.0.0"}}}'
 
 # Patch a Prometheus ServiceMonitor
-kubectl patch servicemonitor api-metrics -n monitoring \
+kubectl patch servicemonitor api-metrics -n monitoring --type='merge' \
   -p '{"spec":{"endpoints":[{"port":"metrics","interval":"15s"}]}}'
 ```
 
@@ -325,7 +331,7 @@ kubectl patch deployment web-app -n production \
 
 ## Best Practices
 
-1. **Use strategic merge for most cases**: It handles Kubernetes resources intelligently.
+1. **Use strategic merge for most built-in resources**: It handles Kubernetes resource schemas intelligently.
 
 2. **Test with dry-run first**: Verify patches before applying to production.
 
@@ -337,4 +343,4 @@ kubectl patch deployment web-app -n production \
 
 ---
 
-kubectl patch is a powerful tool for making targeted updates to Kubernetes resources. Strategic merge patch handles most use cases with intelligent merging, while JSON patch provides precise control when needed. Use patches for automation scripts, quick fixes, and situations where updating a full manifest would be overkill. Combined with dry-run validation, patches become a safe and efficient way to manage your cluster.
+kubectl patch is a powerful tool for making targeted updates to Kubernetes resources. Strategic merge patch handles many built-in resource use cases with intelligent merging, while JSON patch provides precise control when needed. Use patches for automation scripts, quick fixes, and situations where updating a full manifest would be overkill. Combined with dry-run validation, patches become a safe and efficient way to manage your cluster.
