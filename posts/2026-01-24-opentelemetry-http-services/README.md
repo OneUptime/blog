@@ -50,9 +50,11 @@ For Node.js applications using Express, OpenTelemetry provides automatic instrum
 # Install core OpenTelemetry packages
 
 npm install @opentelemetry/sdk-node \
+  @opentelemetry/api \
   @opentelemetry/auto-instrumentations-node \
   @opentelemetry/exporter-trace-otlp-http \
   @opentelemetry/exporter-metrics-otlp-http \
+  @opentelemetry/sdk-metrics \
   @opentelemetry/resources \
   @opentelemetry/semantic-conventions
 ```
@@ -69,23 +71,27 @@ import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentation
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
 import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 import {
   ATTR_SERVICE_NAME,
   ATTR_SERVICE_VERSION,
-  ATTR_DEPLOYMENT_ENVIRONMENT,
+  ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
 } from '@opentelemetry/semantic-conventions';
 
 // Define resource attributes that identify your service
-const resource = new Resource({
+const resource = resourceFromAttributes({
   [ATTR_SERVICE_NAME]: process.env.OTEL_SERVICE_NAME || 'my-http-service',
   [ATTR_SERVICE_VERSION]: process.env.npm_package_version || '1.0.0',
-  [ATTR_DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV || 'development',
+  [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: process.env.NODE_ENV || 'development',
 });
+
+const otlpEndpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT?.replace(/\/$/, '');
 
 // Configure the trace exporter to send data to your collector
 const traceExporter = new OTLPTraceExporter({
-  url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4318/v1/traces',
+  url:
+    process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT ||
+    (otlpEndpoint ? `${otlpEndpoint}/v1/traces` : 'http://localhost:4318/v1/traces'),
   headers: {
     // Add authentication headers if required
     'x-oneuptime-token': process.env.ONEUPTIME_TOKEN || '',
@@ -94,7 +100,9 @@ const traceExporter = new OTLPTraceExporter({
 
 // Configure the metric exporter
 const metricExporter = new OTLPMetricExporter({
-  url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4318/v1/metrics',
+  url:
+    process.env.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT ||
+    (otlpEndpoint ? `${otlpEndpoint}/v1/metrics` : 'http://localhost:4318/v1/metrics'),
   headers: {
     'x-oneuptime-token': process.env.ONEUPTIME_TOKEN || '',
   },
@@ -218,7 +226,7 @@ Load the instrumentation file before your application:
 
 ```bash
 # Using ts-node
-node -r ts-node/register instrumentation.ts & node -r ts-node/register app.ts
+node -r ts-node/register -r ./instrumentation.ts app.ts
 
 # Or use the --require flag
 node --require ./instrumentation.js app.js
@@ -235,7 +243,10 @@ Python applications using FastAPI can leverage OpenTelemetry's automatic instrum
 pip install opentelemetry-sdk \
   opentelemetry-instrumentation-fastapi \
   opentelemetry-instrumentation-httpx \
-  opentelemetry-exporter-otlp-proto-http
+  opentelemetry-exporter-otlp-proto-http \
+  fastapi \
+  uvicorn \
+  httpx
 ```
 
 ### Instrumentation Setup
@@ -249,7 +260,6 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import Resource
-from opentelemetry.semconv.resource import ResourceAttributes
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 import os
@@ -263,17 +273,23 @@ def configure_opentelemetry(app):
     """
     # Define resource attributes
     resource = Resource.create({
-        ResourceAttributes.SERVICE_NAME: os.getenv("OTEL_SERVICE_NAME", "fastapi-service"),
-        ResourceAttributes.SERVICE_VERSION: os.getenv("SERVICE_VERSION", "1.0.0"),
-        ResourceAttributes.DEPLOYMENT_ENVIRONMENT: os.getenv("ENVIRONMENT", "development"),
+        "service.name": os.getenv("OTEL_SERVICE_NAME", "fastapi-service"),
+        "service.version": os.getenv("SERVICE_VERSION", "1.0.0"),
+        "deployment.environment.name": os.getenv("ENVIRONMENT", "development"),
     })
 
     # Create and configure the tracer provider
     provider = TracerProvider(resource=resource)
 
     # Configure the OTLP exporter
+    otlp_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+    traces_endpoint = os.getenv(
+        "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT",
+        f"{otlp_endpoint.rstrip('/')}/v1/traces" if otlp_endpoint else "http://localhost:4318/v1/traces",
+    )
+
     otlp_exporter = OTLPSpanExporter(
-        endpoint=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318/v1/traces"),
+        endpoint=traces_endpoint,
         headers={
             "x-oneuptime-token": os.getenv("ONEUPTIME_TOKEN", ""),
         },
@@ -301,12 +317,19 @@ def configure_opentelemetry(app):
 
 ```python
 # main.py
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request
 from opentelemetry import trace
 from instrumentation import configure_opentelemetry
 import httpx
 
-app = FastAPI(title="User Service")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
+    provider.shutdown()
+
+
+app = FastAPI(title="User Service", lifespan=lifespan)
 
 # Configure OpenTelemetry before the app starts handling requests
 provider = configure_opentelemetry(app)
@@ -359,10 +382,6 @@ async def fetch_user_from_database(user_id: str):
     return {"id": user_id, "name": "Jane Doe", "email": "jane@example.com"}
 
 
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Clean up OpenTelemetry resources on shutdown."""
-    provider.shutdown()
 ```
 
 ## Go with net/http
@@ -387,36 +406,49 @@ package main
 import (
 	"context"
 	"os"
+	"strings"
 	"time"
 
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
+	semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
 )
 
 // InitTracer initializes the OpenTelemetry tracer provider
 func InitTracer(ctx context.Context) (*sdktrace.TracerProvider, error) {
-	// Get configuration from environment variables
-	endpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
-	if endpoint == "" {
-		endpoint = "localhost:4318"
-	}
-
 	serviceName := os.Getenv("OTEL_SERVICE_NAME")
 	if serviceName == "" {
 		serviceName = "go-http-service"
 	}
 
 	// Create the OTLP HTTP exporter
-	exporter, err := otlptracehttp.New(ctx,
-		otlptracehttp.WithEndpoint(endpoint),
+	exporterOptions := []otlptracehttp.Option{
 		otlptracehttp.WithHeaders(map[string]string{
 			"x-oneuptime-token": os.Getenv("ONEUPTIME_TOKEN"),
 		}),
+	}
+
+	tracesEndpoint := os.Getenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT")
+	baseEndpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+	switch {
+	case tracesEndpoint != "":
+		exporterOptions = append(exporterOptions, otlptracehttp.WithEndpointURL(tracesEndpoint))
+	case strings.HasPrefix(baseEndpoint, "http://") || strings.HasPrefix(baseEndpoint, "https://"):
+		exporterOptions = append(exporterOptions, otlptracehttp.WithEndpointURL(strings.TrimRight(baseEndpoint, "/")+"/v1/traces"))
+	case baseEndpoint != "":
+		exporterOptions = append(exporterOptions, otlptracehttp.WithEndpoint(baseEndpoint))
+	} else {
+		exporterOptions = append(exporterOptions,
+			otlptracehttp.WithEndpoint("localhost:4318"),
+			otlptracehttp.WithInsecure(),
+		)
+	}
+
+	exporter, err := otlptracehttp.New(ctx,
+		exporterOptions...,
 	)
 	if err != nil {
 		return nil, err
@@ -429,7 +461,7 @@ func InitTracer(ctx context.Context) (*sdktrace.TracerProvider, error) {
 			semconv.SchemaURL,
 			semconv.ServiceName(serviceName),
 			semconv.ServiceVersion("1.0.0"),
-			attribute.String("deployment.environment", os.Getenv("ENVIRONMENT")),
+			semconv.DeploymentEnvironmentName(os.Getenv("ENVIRONMENT")),
 		),
 	)
 	if err != nil {
@@ -626,13 +658,11 @@ processors:
 
   # Filter out noisy spans
   filter:
-    spans:
-      exclude:
-        match_type: regexp
-        span_names:
-          - "health.*"
-          - "healthz.*"
-          - "metrics.*"
+    error_mode: ignore
+    trace_conditions:
+      - IsMatch(span.name, "health.*")
+      - IsMatch(span.name, "healthz.*")
+      - IsMatch(span.name, "metrics.*")
 
   # Limit memory usage
   memory_limiter:
@@ -650,7 +680,7 @@ exporters:
       "x-oneuptime-token": "${ONEUPTIME_TOKEN}"
 
   # Debug logging (disable in production)
-  logging:
+  debug:
     verbosity: detailed
 
 service:
@@ -658,7 +688,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, batch, attributes, filter]
-      exporters: [otlphttp, logging]
+      exporters: [otlphttp, debug]
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, batch]
@@ -755,7 +785,7 @@ try {
   const result = await riskyOperation();
   span.setStatus({ code: SpanStatusCode.OK });
   return result;
-} catch (error) {
+} catch (error: any) {
   span.recordException(error);
   span.setStatus({
     code: SpanStatusCode.ERROR,
