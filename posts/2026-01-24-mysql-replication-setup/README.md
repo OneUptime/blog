@@ -70,13 +70,13 @@ log_bin = /var/log/mysql/mysql-bin.log
 # Recommended: Use row-based replication for consistency
 binlog_format = ROW
 
-# How long to keep binary logs (days)
-expire_logs_days = 7
+# How long to keep binary logs (seconds; 7 days shown)
+binlog_expire_logs_seconds = 604800
 
 # Sync binary log to disk after each write for durability
 sync_binlog = 1
 
-# For GTID-based replication (recommended for MySQL 5.6+)
+# For GTID-based replication
 gtid_mode = ON
 enforce_gtid_consistency = ON
 
@@ -125,7 +125,7 @@ If not using GTID, you need to record the binary log position.
 FLUSH TABLES WITH READ LOCK;
 
 -- Get current binary log position
-SHOW MASTER STATUS;
+SHOW BINARY LOG STATUS;
 -- Note the File and Position values:
 -- +------------------+----------+
 -- | File             | Position |
@@ -181,7 +181,7 @@ gtid_mode = ON
 enforce_gtid_consistency = ON
 
 # Preserve GTID information in relay log
-log_slave_updates = ON
+log_replica_updates = ON
 
 # Binary logging on replica (useful for chained replication)
 log_bin = /var/log/mysql/mysql-bin.log
@@ -255,7 +255,7 @@ SHOW REPLICA STATUS\G
 -- Replica_IO_Running: Yes
 -- Replica_SQL_Running: Yes
 -- Seconds_Behind_Source: 0 (or low number)
--- Last_Error: (should be empty)
+-- Last_IO_Error / Last_SQL_Error: (should be empty)
 
 -- Verify data is replicating
 -- On source:
@@ -293,9 +293,9 @@ SELECT
     CHANNEL_NAME,
     SERVICE_STATE AS sql_thread_state,
     LAST_ERROR_MESSAGE AS sql_error,
-    LAST_PROCESSED_TRANSACTION,
+    LAST_APPLIED_TRANSACTION,
     LAST_APPLIED_TRANSACTION_IMMEDIATE_COMMIT_TIMESTAMP,
-    LAST_QUEUED_TRANSACTION_IMMEDIATE_COMMIT_TIMESTAMP
+    APPLYING_TRANSACTION
 FROM performance_schema.replication_applier_status_by_worker;
 ```
 
@@ -344,7 +344,7 @@ SHOW REPLICA STATUS\G
 -- Example error: Duplicate entry for key
 -- Option 1: Skip the problematic transaction (use with caution!)
 STOP REPLICA;
-SET GLOBAL SQL_SLAVE_SKIP_COUNTER = 1;
+SET GLOBAL sql_replica_skip_counter = 1;
 START REPLICA;
 
 -- Option 2: For GTID, skip specific transaction
@@ -364,13 +364,16 @@ START REPLICA;
 -- Check what's causing lag
 SHOW PROCESSLIST;
 
--- Check for large transactions
-SELECT * FROM information_schema.innodb_trx
-WHERE trx_mysql_thread_id IN (
-    SELECT thread_id FROM performance_schema.replication_applier_status_by_worker
-);
+-- Check transactions currently being applied by worker threads
+SELECT
+    CHANNEL_NAME,
+    WORKER_ID,
+    APPLYING_TRANSACTION,
+    APPLYING_TRANSACTION_START_APPLY_TIMESTAMP
+FROM performance_schema.replication_applier_status_by_worker
+WHERE APPLYING_TRANSACTION IS NOT NULL;
 
--- Enable parallel replication (MySQL 5.7+)
+-- Enable parallel replication (MySQL 8.0.26+ terminology)
 STOP REPLICA;
 SET GLOBAL replica_parallel_workers = 4;
 SET GLOBAL replica_parallel_type = 'LOGICAL_CLOCK';
@@ -460,7 +463,7 @@ SELECT * FROM performance_schema.replication_group_members;
 | enforce_gtid_consistency | ON | ON | Required for GTID |
 | relay_log | - | Required | Relay log location |
 | read_only | OFF | ON | Prevent writes on replica |
-| log_slave_updates | Optional | Recommended | Log replicated events |
+| log_replica_updates | Optional | Recommended | Log replicated events |
 | sync_binlog | 1 | 1 | Sync binlog to disk |
 
 ## Quick Reference
@@ -470,9 +473,9 @@ SELECT * FROM performance_schema.replication_group_members;
 | Check replication status | `SHOW REPLICA STATUS\G` |
 | Start replication | `START REPLICA;` |
 | Stop replication | `STOP REPLICA;` |
-| Skip one transaction | `SET GLOBAL SQL_SLAVE_SKIP_COUNTER = 1;` |
+| Skip one transaction | `SET GLOBAL sql_replica_skip_counter = 1;` |
 | Reset replica | `RESET REPLICA ALL;` |
-| Check binary log position | `SHOW MASTER STATUS;` |
+| Check binary log position | `SHOW BINARY LOG STATUS;` |
 | List binary logs | `SHOW BINARY LOGS;` |
 
 MySQL replication is a fundamental tool for scaling reads and providing high availability. Start with GTID-based replication for easier management, implement proper monitoring for lag and errors, and have a tested failover procedure ready before you need it.
