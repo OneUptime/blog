@@ -180,15 +180,15 @@ jobs:
   diff:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up kubectl
-        uses: azure/setup-kubectl@v3
+        uses: azure/setup-kubectl@v4
 
       - name: Configure kubeconfig
         run: |
-          echo "${{ secrets.KUBECONFIG }}" | base64 -d > kubeconfig
-          export KUBECONFIG=kubeconfig
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG }}" | base64 -d > ~/.kube/config
 
       - name: Preview changes
         run: |
@@ -196,7 +196,7 @@ jobs:
 
       - name: Comment PR with diff
         if: github.event_name == 'pull_request'
-        uses: actions/github-script@v6
+        uses: actions/github-script@v9
         with:
           script: |
             const fs = require('fs');
@@ -213,7 +213,15 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Configure kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG }}" | base64 -d > ~/.kube/config
 
       - name: Apply changes
         run: kubectl apply -f ./k8s/
@@ -237,7 +245,7 @@ diff:
 deploy:
   stage: deploy
   script:
-    - kubectl diff -f ./k8s/
+    - kubectl diff -f ./k8s/ || test $? -eq 1
     - kubectl apply -f ./k8s/
   rules:
     - if: '$CI_COMMIT_BRANCH == "main"'
@@ -338,7 +346,7 @@ kubectl diff -f deployment.yaml
 Secrets are base64 encoded, making diffs hard to read:
 
 ```bash
-# Decode and diff secrets manually
+# Fetch and diff encoded secret manifests manually
 kubectl get secret my-secret -o yaml > current-secret.yaml
 # Edit or compare with your new secret file
 diff current-secret.yaml new-secret.yaml
@@ -416,7 +424,7 @@ $ kubectl diff -f new-deployment.yaml
 ```bash
 # Full validation workflow
 kubectl apply --dry-run=server -f deployment.yaml && \
-kubectl diff -f deployment.yaml && \
+(kubectl diff -f deployment.yaml || test $? -eq 1) && \
 kubectl apply -f deployment.yaml
 ```
 
