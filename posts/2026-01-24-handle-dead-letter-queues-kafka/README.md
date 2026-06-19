@@ -103,6 +103,7 @@ import org.apache.kafka.clients.producer.*;
 import org.apache.kafka.common.header.internals.RecordHeader;
 import java.time.Duration;
 import java.util.*;
+import java.util.concurrent.ExecutionException;
 
 public class DLQConsumer {
 
@@ -225,18 +226,20 @@ public class DLQConsumer {
                 headers
             );
 
-            dlqProducer.send(dlqRecord, (metadata, error) -> {
-                if (error != null) {
-                    System.err.printf("Failed to send to DLQ: %s%n", error.getMessage());
-                } else {
-                    System.out.printf("Sent to DLQ: topic=%s, partition=%d, offset=%d%n",
-                        metadata.topic(), metadata.partition(), metadata.offset());
-                }
-            });
+            RecordMetadata metadata = dlqProducer.send(dlqRecord).get();
+            System.out.printf("Sent to DLQ: topic=%s, partition=%d, offset=%d%n",
+                metadata.topic(), metadata.partition(), metadata.offset());
 
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            System.err.printf("Critical: Interrupted while sending to DLQ: %s%n", e.getMessage());
+            throw new RuntimeException("Interrupted while sending to DLQ", e);
+        } catch (ExecutionException e) {
+            System.err.printf("Critical: Failed to send to DLQ: %s%n", e.getCause().getMessage());
+            throw new RuntimeException("Failed to send to DLQ", e.getCause());
         } catch (Exception e) {
             System.err.printf("Critical: Failed to send to DLQ: %s%n", e.getMessage());
-            // Consider alerting or alternative error handling
+            throw new RuntimeException("Failed to send to DLQ", e);
         }
     }
 
@@ -262,7 +265,7 @@ from kafka import KafkaConsumer, KafkaProducer
 import json
 import time
 import traceback
-from datetime import datetime
+from datetime import datetime, timezone
 
 class DLQConsumer:
     def __init__(self, source_topic, bootstrap_servers, group_id, max_retries=3):
@@ -341,7 +344,8 @@ class DLQConsumer:
             'error': {
                 'message': str(error),
                 'type': type(error).__name__,
-                'traceback': traceback.format_exc()
+                'traceback': ''.join(traceback.format_exception(
+                    type(error), error, error.__traceback__))
             },
             'metadata': {
                 'original_topic': message.topic,
@@ -349,7 +353,7 @@ class DLQConsumer:
                 'original_offset': message.offset,
                 'original_timestamp': message.timestamp,
                 'retry_count': attempts,
-                'dlq_timestamp': datetime.utcnow().isoformat()
+                'dlq_timestamp': datetime.now(timezone.utc).isoformat()
             }
         }
 
@@ -368,6 +372,7 @@ class DLQConsumer:
                   f"offset={record_metadata.offset}")
         except Exception as e:
             print(f"Failed to send to DLQ: {e}")
+            raise
 
     def close(self):
         """Clean up resources."""
@@ -393,14 +398,18 @@ Spring Kafka provides built-in DLQ support:
 
 ```java
 import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.common.TopicPartition;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.listener.DeadLetterPublishingRecoverer;
 import org.springframework.kafka.listener.DefaultErrorHandler;
 import org.springframework.kafka.support.Acknowledgment;
-import org.springframework.util.backoff.FixedBackOff;
+import org.springframework.stereotype.Service;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.util.backoff.FixedBackOff;
 
 @Configuration
 public class KafkaDLQConfig {
@@ -410,7 +419,7 @@ public class KafkaDLQConfig {
      */
     @Bean
     public DefaultErrorHandler errorHandler(KafkaTemplate<String, String> template) {
-        // Create DLQ recoverer - sends to original-topic.DLT
+        // Create DLQ recoverer
         DeadLetterPublishingRecoverer recoverer = new DeadLetterPublishingRecoverer(
             template,
             // Custom topic naming: original-topic -> original-topic.dlq
@@ -508,7 +517,13 @@ spring:
 Implement multiple retry topics with increasing delays:
 
 ```java
+import org.apache.kafka.clients.consumer.*;
+import org.apache.kafka.clients.producer.*;
+import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.header.internals.RecordHeader;
+import java.time.Duration;
 import java.util.*;
+import java.util.concurrent.ExecutionException;
 
 public class TieredRetryConsumer {
 
@@ -554,15 +569,24 @@ public class TieredRetryConsumer {
     public void process() {
         while (true) {
             ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(100));
+            boolean delayedRecordFound = false;
 
             for (ConsumerRecord<String, String> record : records) {
                 // Check if message is ready for processing (delay expired)
                 if (isReadyForProcessing(record)) {
                     processWithTieredRetry(record);
+                } else {
+                    TopicPartition partition = new TopicPartition(record.topic(), record.partition());
+                    consumer.seek(partition, record.offset());
+                    sleepUntilReady(record);
+                    delayedRecordFound = true;
+                    break;
                 }
             }
 
-            consumer.commitSync();
+            if (!delayedRecordFound) {
+                consumer.commitSync();
+            }
         }
     }
 
@@ -579,6 +603,23 @@ public class TieredRetryConsumer {
 
         long processAfter = Long.parseLong(new String(delayHeader.value()));
         return System.currentTimeMillis() >= processAfter;
+    }
+
+    /**
+     * Avoid committing delayed retry records before they are eligible.
+     */
+    private void sleepUntilReady(ConsumerRecord<String, String> record) {
+        org.apache.kafka.common.header.Header delayHeader =
+            record.headers().lastHeader("retry.process.after");
+        long processAfter = Long.parseLong(new String(delayHeader.value()));
+        long sleepMs = Math.min(processAfter - System.currentTimeMillis(), 1000L);
+        if (sleepMs > 0) {
+            try {
+                Thread.sleep(sleepMs);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
     }
 
     /**
@@ -643,8 +684,16 @@ public class TieredRetryConsumer {
             retryTopic, null, record.key(), record.value(), headers
         );
 
-        producer.send(retryRecord);
-        System.out.printf("Sent to retry tier %d: %s%n", currentTier + 1, retryTopic);
+        try {
+            RecordMetadata metadata = producer.send(retryRecord).get();
+            System.out.printf("Sent to retry tier %d: %s offset=%d%n",
+                currentTier + 1, retryTopic, metadata.offset());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("Interrupted while sending to retry topic", e);
+        } catch (ExecutionException e) {
+            throw new RuntimeException("Failed to send to retry topic", e.getCause());
+        }
     }
 
     private void processMessage(ConsumerRecord<String, String> record) throws Exception {
@@ -662,6 +711,10 @@ public class TieredRetryConsumer {
 Build a service to reprocess DLQ messages:
 
 ```java
+import org.apache.kafka.clients.consumer.*;
+import org.apache.kafka.clients.producer.*;
+import org.apache.kafka.common.header.internals.RecordHeader;
+import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
 
@@ -711,7 +764,7 @@ public class DLQReprocessor {
             consumer.commitSync();
         }
 
-        return new ReprocessResult(processed, failed);
+        return new ReprocessResult(processed, 0, failed);
     }
 
     /**
@@ -720,6 +773,7 @@ public class DLQReprocessor {
     public ReprocessResult reprocessFiltered(MessageFilter filter) {
         int processed = 0;
         int skipped = 0;
+        int failed = 0;
 
         consumer.poll(Duration.ofMillis(100));
         consumer.seekToBeginning(consumer.assignment());
@@ -733,8 +787,13 @@ public class DLQReprocessor {
 
             for (ConsumerRecord<String, String> record : records) {
                 if (filter.matches(record)) {
-                    reprocessMessage(record);
-                    processed++;
+                    try {
+                        reprocessMessage(record);
+                        processed++;
+                    } catch (Exception e) {
+                        System.err.printf("Failed to reprocess: %s%n", e.getMessage());
+                        failed++;
+                    }
                 } else {
                     skipped++;
                 }
@@ -743,13 +802,14 @@ public class DLQReprocessor {
             consumer.commitSync();
         }
 
-        return new ReprocessResult(processed, skipped);
+        return new ReprocessResult(processed, skipped, failed);
     }
 
     /**
      * Reprocess a single message back to its original topic.
      */
-    private void reprocessMessage(ConsumerRecord<String, String> record) {
+    private void reprocessMessage(ConsumerRecord<String, String> record)
+            throws ExecutionException, InterruptedException {
         // Extract original topic from headers
         String originalTopic = getHeader(record, "dlq.original.topic");
 
@@ -786,10 +846,16 @@ public class DLQReprocessor {
     static class ReprocessResult {
         final int processed;
         final int skipped;
+        final int failed;
 
         ReprocessResult(int processed, int skipped) {
+            this(processed, skipped, 0);
+        }
+
+        ReprocessResult(int processed, int skipped, int failed) {
             this.processed = processed;
             this.skipped = skipped;
+            this.failed = failed;
         }
     }
 }
