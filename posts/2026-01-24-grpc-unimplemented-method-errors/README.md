@@ -8,7 +8,7 @@ Description: Learn how to diagnose and fix gRPC UNIMPLEMENTED status errors caus
 
 ---
 
-The gRPC UNIMPLEMENTED status code (code 12) indicates that the method being called is not implemented by the server. This error commonly occurs due to proto file mismatches, incorrect service registration, or version incompatibilities. This guide covers how to diagnose and fix these issues.
+The gRPC UNIMPLEMENTED status code (code 12) indicates that the operation is not implemented or is not supported/enabled in the service. This error commonly occurs due to proto file mismatches, incorrect service registration, or version incompatibilities. This guide covers how to diagnose and fix these issues.
 
 ## Understanding UNIMPLEMENTED Errors
 
@@ -95,7 +95,7 @@ func correctSetup() {
 
     // Register all services
     pb.RegisterMyServiceServer(server, &myServiceImpl{})
-    pb.RegisterHealthServer(server, health.NewServer())
+    healthpb.RegisterHealthServer(server, health.NewServer())
 
     // Log registered services for debugging
     for service := range server.GetServiceInfo() {
@@ -193,6 +193,7 @@ func createServerWithReflection() *grpc.Server {
 grpcurl -plaintext localhost:50051 list
 
 # Output:
+# grpc.reflection.v1.ServerReflection
 # grpc.reflection.v1alpha.ServerReflection
 # myservice.MyService
 
@@ -254,12 +255,8 @@ func checkServerFeatures(client pb.MyServiceClient) map[string]bool {
         {
             name: "streaming",
             check: func() error {
-                stream, err := client.StreamData(ctx, &pb.StreamRequest{})
-                if err != nil {
-                    return err
-                }
-                stream.CloseSend()
-                return nil
+                _, err := client.StreamData(ctx, &pb.StreamRequest{})
+                return err
             },
         },
         {
@@ -301,7 +298,7 @@ message GetUserRequest {
     string user_id = 1;
 
     // New optional fields - old clients will not send these
-    optional string include_metadata = 2;
+    optional bool include_metadata = 2;
     optional bool include_activity = 3;
 }
 
@@ -323,23 +320,28 @@ package main
 import (
     "context"
 
+    "google.golang.org/grpc"
     pb "myservice/pb/v2"
     pbLegacy "myservice/pb/v1"
 )
 
 type compatibleServer struct {
     pb.UnimplementedMyServiceV2Server
+}
+
+type legacyServer struct {
     pbLegacy.UnimplementedMyServiceV1Server
+    current *compatibleServer
 }
 
 // V2 implementation
 func (s *compatibleServer) GetUser(ctx context.Context, req *pb.GetUserRequest) (*pb.GetUserResponse, error) {
-    return s.getUserInternal(ctx, req.UserId, req.IncludeMetadata, req.IncludeActivity)
+    return s.getUserInternal(ctx, req.UserId, req.GetIncludeMetadata(), req.GetIncludeActivity())
 }
 
 // V1 legacy support - calls same internal logic
-func (s *compatibleServer) GetUserLegacy(ctx context.Context, req *pbLegacy.GetUserRequest) (*pbLegacy.GetUserResponse, error) {
-    resp, err := s.getUserInternal(ctx, req.UserId, false, false)
+func (s *legacyServer) GetUser(ctx context.Context, req *pbLegacy.GetUserRequest) (*pbLegacy.GetUserResponse, error) {
+    resp, err := s.current.getUserInternal(ctx, req.UserId, false, false)
     if err != nil {
         return nil, err
     }
@@ -370,7 +372,7 @@ func setupServer() *grpc.Server {
     impl := &compatibleServer{}
 
     pb.RegisterMyServiceV2Server(server, impl)
-    pbLegacy.RegisterMyServiceV1Server(server, impl)
+    pbLegacy.RegisterMyServiceV1Server(server, &legacyServer{current: impl})
 
     return server
 }
@@ -418,7 +420,8 @@ import (
     "google.golang.org/grpc/status"
 )
 
-// UnimplementedInterceptor logs when clients call unimplemented methods
+// UnimplementedInterceptor logs UNIMPLEMENTED errors returned by registered handlers.
+// Unknown services or methods can fail before this interceptor is invoked.
 func UnimplementedInterceptor() grpc.UnaryServerInterceptor {
     return func(
         ctx context.Context,
