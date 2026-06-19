@@ -58,7 +58,7 @@ When a container exceeds its CPU limit, Kubernetes throttles it. The container k
 kubectl top pod web-app
 
 # View throttling metrics
-kubectl exec -it web-app -- cat /sys/fs/cgroup/cpu/cpu.stat
+kubectl exec -it web-app -- sh -c 'cat /sys/fs/cgroup/cpu.stat 2>/dev/null || cat /sys/fs/cgroup/cpu/cpu.stat 2>/dev/null || cat /sys/fs/cgroup/cpu,cpuacct/cpu.stat'
 ```
 
 ### CPU Request Guidelines
@@ -84,7 +84,7 @@ resources:
 
 ### Memory Behavior
 
-When a container exceeds its memory limit, Kubernetes terminates it with an OOMKilled error. Unlike CPU, there is no throttling for memory.
+When a container exceeds its memory limit, the kernel may terminate it with an OOMKilled error when memory pressure is detected. Unlike CPU, memory limits are enforced reactively rather than by steady throttling.
 
 ```bash
 # Check memory usage
@@ -268,11 +268,11 @@ Solution: Increase memory limit or fix memory leak.
 
 ```bash
 # Check CPU throttling
-kubectl exec -it web-app -- cat /sys/fs/cgroup/cpu/cpu.stat | grep throttled
+kubectl exec -it web-app -- sh -c 'cat /sys/fs/cgroup/cpu.stat 2>/dev/null || cat /sys/fs/cgroup/cpu/cpu.stat 2>/dev/null || cat /sys/fs/cgroup/cpu,cpuacct/cpu.stat' | grep throttled
 
 # Output:
 # nr_throttled 1234
-# throttled_time 567890123456
+# throttled_usec 567890123
 ```
 
 Solution: Increase CPU limit.
