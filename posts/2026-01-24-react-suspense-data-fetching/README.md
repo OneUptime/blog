@@ -12,7 +12,7 @@ React Suspense allows you to declaratively handle loading states in your applica
 
 ## Understanding Suspense
 
-Suspense works by catching promises thrown during render. When a component needs data that is not yet available, it throws a promise. Suspense catches this promise, shows a fallback, and re-renders when the data is ready.
+Suspense works with Suspense-enabled data sources that signal pending work during render. When a component needs data that is not yet available, React switches the closest Suspense boundary to its fallback and retries rendering when the data is ready.
 
 ## Suspense Flow
 
@@ -20,8 +20,8 @@ Suspense works by catching promises thrown during render. When a component needs
 flowchart TB
     A[Component Renders] --> B{Data Ready?}
 
-    B -->|No| C[Throw Promise]
-    C --> D[Suspense Catches]
+    B -->|No| C[Signal Pending Work]
+    C --> D[Suspense Boundary Handles It]
     D --> E[Show Fallback]
     E --> F[Promise Resolves]
     F --> A
@@ -86,6 +86,7 @@ export function useUser(userId: string) {
 // components/UserProfile.tsx
 import { Suspense } from 'react';
 import { useUser } from '../hooks/useUser';
+import { QueryErrorResetBoundary } from '@tanstack/react-query';
 import { ErrorBoundary } from 'react-error-boundary';
 
 function UserProfileContent({ userId }: { userId: string }) {
@@ -111,11 +112,15 @@ function ErrorFallback({ error, resetErrorBoundary }: { error: Error; resetError
 
 export function UserProfile({ userId }: { userId: string }) {
   return (
-    <ErrorBoundary FallbackComponent={ErrorFallback}>
-      <Suspense fallback={<div>Loading user...</div>}>
-        <UserProfileContent userId={userId} />
-      </Suspense>
-    </ErrorBoundary>
+    <QueryErrorResetBoundary>
+      {({ reset }) => (
+        <ErrorBoundary onReset={reset} FallbackComponent={ErrorFallback}>
+          <Suspense fallback={<div>Loading user...</div>}>
+            <UserProfileContent userId={userId} />
+          </Suspense>
+        </ErrorBoundary>
+      )}
+    </QueryErrorResetBoundary>
   );
 }
 ```
@@ -129,10 +134,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      // Suspense-specific settings
-      suspense: true,
-
-      // Prevent refetching on mount when data exists
+      // Prevent immediate refetching when cached data exists
       staleTime: 5 * 60 * 1000, // 5 minutes
 
       // Retry configuration
@@ -220,40 +222,34 @@ flowchart TB
     class E,F,G component
 ```
 
-## Using SuspenseList for Coordinated Loading
+## Coordinating Reveal with Suspense Boundaries
 
-Control the reveal order of multiple suspended components:
+React's stable API does not include `SuspenseList`. Coordinate loading by grouping content in the same Suspense boundary when it should reveal together, or by using separate boundaries when sections should reveal independently:
 
 ```tsx
-import { Suspense, SuspenseList } from 'react';
+import { Suspense } from 'react';
 
 function ProfilePage() {
   return (
-    <SuspenseList revealOrder="forwards" tail="collapsed">
-      <Suspense fallback={<HeaderSkeleton />}>
+    <>
+      <Suspense fallback={<ProfileSkeleton />}>
         <ProfileHeader />
-      </Suspense>
-
-      <Suspense fallback={<DetailsSkeleton />}>
         <ProfileDetails />
       </Suspense>
 
       <Suspense fallback={<PostsSkeleton />}>
         <ProfilePosts />
       </Suspense>
-    </SuspenseList>
+    </>
   );
 }
 ```
 
-`revealOrder` options:
-- `forwards` - Reveal in DOM order, top to bottom
-- `backwards` - Reveal in reverse order
-- `together` - Reveal all at once when all are ready
+In this example, the header and details reveal together, while posts can reveal independently.
 
 ## Parallel Data Fetching
 
-Fetch multiple resources in parallel for better performance:
+Fetch multiple resources in parallel with `useSuspenseQueries` for better performance:
 
 ```tsx
 // hooks/useDashboardData.ts
@@ -310,7 +306,7 @@ flowchart LR
         E1 --> F1[Render]
     end
 
-    subgraph "Parallel with Suspense"
+    subgraph "Parallel with useSuspenseQueries"
         A2[Fetch User] --> F2[Render]
         B2[Fetch Posts] --> F2
         C2[Fetch Comments] --> F2
@@ -597,7 +593,7 @@ function UpdateButton({ userId }: { userId: string }) {
 |---------|----------|
 | Single Suspense | Simple pages with one data source |
 | Nested Suspense | Independent sections loading separately |
-| SuspenseList | Coordinated reveal order |
+| Grouped Suspense | Coordinated reveal for related content |
 | useSuspenseQuery | React Query data fetching |
 | useTransition | Keep old UI while loading new data |
 | Error Boundary | Handle fetch failures gracefully |
