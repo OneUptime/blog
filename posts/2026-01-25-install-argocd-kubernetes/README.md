@@ -14,7 +14,7 @@ ArgoCD is the de facto standard for GitOps in Kubernetes. It watches your Git re
 
 Before you start, make sure you have:
 
-- A running Kubernetes cluster (v1.22 or later)
+- A compatible Kubernetes cluster (check the ArgoCD tested Kubernetes versions for your ArgoCD release)
 - kubectl installed and configured
 - Helm v3 (for Helm-based installation)
 - At least 2GB of available memory in your cluster
@@ -57,7 +57,8 @@ The simplest way to get ArgoCD running is using the official manifests.
 kubectl create namespace argocd
 
 # Apply the installation manifests
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+kubectl apply -n argocd --server-side --force-conflicts \
+  -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 ```
 
 Wait for all pods to become ready:
@@ -101,12 +102,8 @@ server:
   ingress:
     enabled: true
     ingressClassName: nginx
-    hosts:
-      - argocd.example.com
-    tls:
-      - secretName: argocd-tls
-        hosts:
-          - argocd.example.com
+    hostname: argocd.example.com
+    tls: true
 
   # Resource limits
   resources:
@@ -116,9 +113,13 @@ server:
     limits:
       cpu: 500m
       memory: 512Mi
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
 
 controller:
-  # HA mode for the application controller
+  # Number of application controller replicas
   replicas: 1
   resources:
     requests:
@@ -127,6 +128,10 @@ controller:
     limits:
       cpu: 1000m
       memory: 1Gi
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
 
 repoServer:
   replicas: 2
@@ -137,6 +142,10 @@ repoServer:
     limits:
       cpu: 500m
       memory: 512Mi
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
 
 redis:
   resources:
@@ -146,12 +155,10 @@ redis:
     limits:
       cpu: 200m
       memory: 256Mi
-
-# Enable metrics for monitoring
-metrics:
-  enabled: true
-  serviceMonitor:
+  metrics:
     enabled: true
+    serviceMonitor:
+      enabled: true
 ```
 
 Install with custom values:
@@ -171,14 +178,14 @@ For production environments, use the HA manifests that include multiple replicas
 kubectl create namespace argocd
 
 # Install HA version
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/ha/install.yaml
+kubectl apply -n argocd --server-side --force-conflicts \
+  -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/ha/install.yaml
 ```
 
 The HA installation includes:
-- 3 replicas of the API server
-- 3 replicas of the repo server
-- 3 replicas of Redis (using Redis HA)
-- Application controller with leader election
+- Multiple replicas of the API server and repo server
+- Redis HA with multiple Redis and HAProxy replicas
+- Application controller support for sharding managed clusters across replicas when scaled
 
 ## Accessing the ArgoCD UI
 
@@ -227,16 +234,18 @@ spec:
               service:
                 name: argocd-server
                 port:
-                  number: 443
+                  name: https
   tls:
     - hosts:
         - argocd.example.com
-      secretName: argocd-tls
+      secretName: argocd-server-tls
 ```
 
 ```bash
 kubectl apply -f argocd-ingress.yaml
 ```
+
+For NGINX SSL passthrough, make sure the ingress-nginx controller is started with `--enable-ssl-passthrough`.
 
 ## Getting the Admin Password
 
@@ -363,7 +372,7 @@ helm upgrade argocd argo/argo-cd \
 # Or upgrade to specific version
 helm upgrade argocd argo/argo-cd \
   --namespace argocd \
-  --version 5.51.0 \
+  --version <chart-version> \
   -f argocd-values.yaml
 ```
 
@@ -371,7 +380,8 @@ helm upgrade argocd argo/argo-cd \
 
 ```bash
 # Apply the new version manifests
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/v2.9.0/manifests/install.yaml
+kubectl apply -n argocd --server-side --force-conflicts \
+  -f https://raw.githubusercontent.com/argoproj/argo-cd/<argocd-version>/manifests/install.yaml
 ```
 
 ## Uninstalling ArgoCD
