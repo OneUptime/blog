@@ -59,7 +59,7 @@ Error: Failed to detect AWS EC2 metadata: connect ETIMEDOUT 169.254.169.254:80
 ```typescript
 // instrumentation.ts
 import { NodeSDK } from '@opentelemetry/sdk-node';
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 import {
   ATTR_SERVICE_NAME,
   ATTR_SERVICE_VERSION
@@ -70,7 +70,7 @@ import {
 } from '@opentelemetry/resource-detector-aws';
 
 // Create a base resource with required attributes
-const baseResource = new Resource({
+const baseResource = resourceFromAttributes({
   [ATTR_SERVICE_NAME]: process.env.OTEL_SERVICE_NAME || 'my-service',
   [ATTR_SERVICE_VERSION]: process.env.SERVICE_VERSION || '1.0.0',
 });
@@ -134,11 +134,11 @@ Error: Failed to detect GCP metadata: request to http://metadata.google.internal
 ```typescript
 // gcp-instrumentation.ts
 import { NodeSDK } from '@opentelemetry/sdk-node';
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 import { ATTR_SERVICE_NAME } from '@opentelemetry/semantic-conventions';
 import { gcpDetector } from '@opentelemetry/resource-detector-gcp';
 
-const baseResource = new Resource({
+const baseResource = resourceFromAttributes({
   [ATTR_SERVICE_NAME]: process.env.OTEL_SERVICE_NAME || 'my-service',
 });
 
@@ -160,20 +160,23 @@ const sdk = new NodeSDK({
 sdk.start();
 ```
 
-For GKE, ensure Workload Identity is properly configured:
+For GKE, ensure Workload Identity Federation is enabled on the cluster or node pool and the Kubernetes service account is configured:
 
 ```yaml
 # GKE deployment with metadata access
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: my-gcp-sa
+  annotations:
+    iam.gke.io/gcp-service-account: my-google-sa@my-project-id.iam.gserviceaccount.com
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: my-service
 spec:
   template:
-    metadata:
-      annotations:
-        # Enable GKE metadata server access
-        gke-metadata-server: "true"
     spec:
       serviceAccountName: my-gcp-sa
       containers:
@@ -195,21 +198,27 @@ Error: Failed to detect Azure metadata: ECONNREFUSED 169.254.169.254:80
 ```typescript
 // azure-instrumentation.ts
 import { NodeSDK } from '@opentelemetry/sdk-node';
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 import { ATTR_SERVICE_NAME } from '@opentelemetry/semantic-conventions';
-import { azureAppServiceDetector } from '@opentelemetry/resource-detector-azure';
+import {
+  azureAppServiceDetector,
+  azureFunctionsDetector,
+  azureVmDetector,
+} from '@opentelemetry/resource-detector-azure';
 
-const baseResource = new Resource({
+const baseResource = resourceFromAttributes({
   [ATTR_SERVICE_NAME]: process.env.OTEL_SERVICE_NAME || 'my-service',
 });
 
-// Detect if running on Azure
-const isRunningOnAzure = process.env.WEBSITE_SITE_NAME ||  // App Service
-                         process.env.AZURE_FUNCTIONS_ENVIRONMENT;  // Functions
-
 const resourceDetectors = [];
-if (isRunningOnAzure) {
+if (process.env.WEBSITE_SITE_NAME) {
   resourceDetectors.push(azureAppServiceDetector);
+}
+if (process.env.AZURE_FUNCTIONS_ENVIRONMENT) {
+  resourceDetectors.push(azureFunctionsDetector);
+}
+if (process.env.AZURE_VM_METADATA === 'true') {
+  resourceDetectors.push(azureVmDetector);
 }
 
 const sdk = new NodeSDK({
@@ -245,9 +254,6 @@ spec:
       containers:
         - name: app
           env:
-            # Pass pod information via downward API
-            - name: OTEL_RESOURCE_ATTRIBUTES
-              value: "k8s.pod.name=$(POD_NAME),k8s.namespace.name=$(POD_NAMESPACE),k8s.node.name=$(NODE_NAME)"
             - name: POD_NAME
               valueFrom:
                 fieldRef:
@@ -260,12 +266,15 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
+            # Pass pod information via downward API
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: "k8s.pod.name=$(POD_NAME),k8s.namespace.name=$(POD_NAMESPACE),k8s.node.name=$(NODE_NAME)"
 ```
 
 ```typescript
 // kubernetes-instrumentation.ts
 import { NodeSDK } from '@opentelemetry/sdk-node';
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 import { ATTR_SERVICE_NAME } from '@opentelemetry/semantic-conventions';
 import {
   envDetector,
@@ -292,7 +301,7 @@ function parseResourceAttributes(): Record<string, string> {
 
 const resourceAttributes = parseResourceAttributes();
 
-const baseResource = new Resource({
+const baseResource = resourceFromAttributes({
   [ATTR_SERVICE_NAME]: process.env.OTEL_SERVICE_NAME || 'my-service',
   ...resourceAttributes,
 });
@@ -333,7 +342,7 @@ services:
 
 ```typescript
 // container-detection.ts
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 import * as fs from 'fs';
 
 function detectContainerId(): string | undefined {
@@ -363,7 +372,7 @@ function detectContainerId(): string | undefined {
 
 const containerId = detectContainerId();
 
-const resource = new Resource({
+const resource = resourceFromAttributes({
   'service.name': process.env.OTEL_SERVICE_NAME || 'my-service',
   ...(containerId && { 'container.id': containerId }),
 });
@@ -380,7 +389,7 @@ Error: Failed to detect process information: permission denied reading /proc/sel
 
 ```typescript
 // process-detection.ts
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 import * as os from 'os';
 
 // Manually build process resource when automatic detection fails
@@ -412,7 +421,7 @@ function buildProcessResource(): Record<string, string | number> {
   return attrs;
 }
 
-const resource = new Resource({
+const resource = resourceFromAttributes({
   'service.name': process.env.OTEL_SERVICE_NAME || 'my-service',
   ...buildProcessResource(),
 });
@@ -425,13 +434,14 @@ Create a robust detection setup that handles failures gracefully:
 ```typescript
 // robust-resource-detection.ts
 import { NodeSDK } from '@opentelemetry/sdk-node';
-import { Resource, ResourceDetectionConfig } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 import {
   ATTR_SERVICE_NAME,
   ATTR_SERVICE_VERSION,
-  ATTR_DEPLOYMENT_ENVIRONMENT,
+  ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
 } from '@opentelemetry/semantic-conventions';
 import { diag, DiagConsoleLogger, DiagLogLevel } from '@opentelemetry/api';
+import * as fs from 'fs';
 
 // Enable diagnostics for debugging
 diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.INFO);
@@ -444,7 +454,9 @@ function detectEnvironment(): string {
   if (process.env.GOOGLE_CLOUD_PROJECT || process.env.GCLOUD_PROJECT) {
     return 'gcp';
   }
-  if (process.env.WEBSITE_SITE_NAME || process.env.AZURE_FUNCTIONS_ENVIRONMENT) {
+  if (process.env.WEBSITE_SITE_NAME ||
+      process.env.AZURE_FUNCTIONS_ENVIRONMENT ||
+      process.env.AZURE_VM_METADATA === 'true') {
     return 'azure';
   }
   if (process.env.KUBERNETES_SERVICE_HOST) {
@@ -478,10 +490,22 @@ async function buildResourceDetectors(): Promise<any[]> {
         break;
 
       case 'azure':
-        const { azureAppServiceDetector } = await import(
+        const {
+          azureAppServiceDetector,
+          azureFunctionsDetector,
+          azureVmDetector,
+        } = await import(
           '@opentelemetry/resource-detector-azure'
         );
-        detectors.push(azureAppServiceDetector);
+        if (process.env.WEBSITE_SITE_NAME) {
+          detectors.push(azureAppServiceDetector);
+        }
+        if (process.env.AZURE_FUNCTIONS_ENVIRONMENT) {
+          detectors.push(azureFunctionsDetector);
+        }
+        if (process.env.AZURE_VM_METADATA === 'true') {
+          detectors.push(azureVmDetector);
+        }
         break;
     }
   } catch (error) {
@@ -500,10 +524,10 @@ async function buildResourceDetectors(): Promise<any[]> {
 // Main initialization
 async function initializeOpenTelemetry() {
   // Build base resource with required attributes
-  const baseResource = new Resource({
+  const baseResource = resourceFromAttributes({
     [ATTR_SERVICE_NAME]: process.env.OTEL_SERVICE_NAME || 'my-service',
     [ATTR_SERVICE_VERSION]: process.env.SERVICE_VERSION || '1.0.0',
-    [ATTR_DEPLOYMENT_ENVIRONMENT]: process.env.ENVIRONMENT || 'development',
+    [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: process.env.ENVIRONMENT || 'development',
     'detected.environment': detectEnvironment(),
   });
 
@@ -551,9 +575,9 @@ flowchart TD
     B --> |Kubernetes| F[Check SA mounting]
     B --> |Container| G[Check /proc access]
 
-    C --> C1[curl http://169.254.169.254/latest/meta-data/]
-    D --> D1[curl http://metadata.google.internal/]
-    E --> E1[curl http://169.254.169.254/metadata/instance]
+    C --> C1[Use IMDSv2 token, then curl metadata]
+    D --> D1[curl with Metadata-Flavor: Google]
+    E --> E1[curl with Metadata: true]
     F --> F1[ls /var/run/secrets/kubernetes.io/]
     G --> G1[cat /proc/self/cgroup]
 
@@ -577,17 +601,22 @@ Create a diagnostic script to test resource detection:
 ```typescript
 // debug-resource-detection.ts
 import { diag, DiagConsoleLogger, DiagLogLevel } from '@opentelemetry/api';
-import { Resource, detectResourcesSync, envDetector, processDetector, hostDetector } from '@opentelemetry/resources';
+import { detectResources, envDetector, processDetector, hostDetector } from '@opentelemetry/resources';
 import * as http from 'http';
 import * as fs from 'fs';
 
 // Enable verbose logging
 diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.DEBUG);
 
-async function checkMetadataService(url: string, name: string): Promise<boolean> {
+async function checkMetadataService(
+  url: string,
+  name: string,
+  headers: Record<string, string> = {}
+): Promise<boolean> {
   return new Promise((resolve) => {
-    const req = http.get(url, { timeout: 2000 }, (res) => {
+    const req = http.get(url, { timeout: 2000, headers }, (res) => {
       console.log(`[${name}] Status: ${res.statusCode}`);
+      res.resume();
       resolve(res.statusCode === 200);
     });
 
@@ -627,21 +656,47 @@ async function runDiagnostics() {
   console.log('\n--- Metadata Service Checks ---');
 
   // Check AWS IMDS
-  const awsAvailable = await checkMetadataService(
+  const awsToken = await new Promise<string | undefined>((resolve) => {
+    const req = http.request(
+      'http://169.254.169.254/latest/api/token',
+      {
+        method: 'PUT',
+        timeout: 2000,
+        headers: { 'X-aws-ec2-metadata-token-ttl-seconds': '21600' },
+      },
+      (res) => {
+        let data = '';
+        res.on('data', (chunk) => { data += chunk; });
+        res.on('end', () => resolve(res.statusCode === 200 ? data : undefined));
+      }
+    );
+
+    req.on('error', () => resolve(undefined));
+    req.on('timeout', () => {
+      req.destroy();
+      resolve(undefined);
+    });
+    req.end();
+  });
+
+  await checkMetadataService(
     'http://169.254.169.254/latest/meta-data/',
-    'AWS IMDS'
+    'AWS IMDS',
+    awsToken ? { 'X-aws-ec2-metadata-token': awsToken } : {}
   );
 
   // Check GCP metadata
-  const gcpAvailable = await checkMetadataService(
+  await checkMetadataService(
     'http://metadata.google.internal/computeMetadata/v1/',
-    'GCP Metadata'
+    'GCP Metadata',
+    { 'Metadata-Flavor': 'Google' }
   );
 
   // Check Azure IMDS
-  const azureAvailable = await checkMetadataService(
+  await checkMetadataService(
     'http://169.254.169.254/metadata/instance?api-version=2021-02-01',
-    'Azure IMDS'
+    'Azure IMDS',
+    { Metadata: 'true' }
   );
 
   console.log('\n--- Filesystem Checks ---');
@@ -676,7 +731,7 @@ async function runDiagnostics() {
   console.log('\n--- Running Basic Detectors ---');
 
   // Run basic detectors
-  const detectedResource = detectResourcesSync({
+  const detectedResource = await detectResources({
     detectors: [envDetector, processDetector, hostDetector],
   });
 
@@ -710,7 +765,7 @@ services:
     image: my-service:latest
     environment:
       - OTEL_SERVICE_NAME=my-service
-      - OTEL_RESOURCE_ATTRIBUTES=deployment.environment=docker,container.runtime=docker
+      - OTEL_RESOURCE_ATTRIBUTES=deployment.environment.name=docker,container.runtime=docker
     volumes:
       # Enable container ID detection
       - /proc:/host/proc:ro
@@ -762,7 +817,7 @@ spec:
         },
         {
           "name": "OTEL_RESOURCE_ATTRIBUTES",
-          "value": "deployment.environment=ecs"
+          "value": "deployment.environment.name=ecs"
         }
       ]
     }
