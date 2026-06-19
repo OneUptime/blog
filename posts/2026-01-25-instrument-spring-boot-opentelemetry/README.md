@@ -37,6 +37,7 @@ curl -L -o opentelemetry-javaagent.jar \
 java -javaagent:opentelemetry-javaagent.jar \
   -Dotel.service.name=my-spring-app \
   -Dotel.exporter.otlp.endpoint=http://localhost:4317 \
+  -Dotel.exporter.otlp.protocol=grpc \
   -jar my-spring-app.jar
 ```
 
@@ -49,6 +50,7 @@ For production deployments, environment variables are cleaner than command-line 
 ```bash
 export OTEL_SERVICE_NAME=order-service
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+export OTEL_EXPORTER_OTLP_PROTOCOL=grpc
 export OTEL_RESOURCE_ATTRIBUTES=deployment.environment=production,service.version=1.2.3
 
 java -javaagent:opentelemetry-javaagent.jar -jar my-spring-app.jar
@@ -66,9 +68,9 @@ Add these dependencies to your `pom.xml`:
 <dependencyManagement>
     <dependencies>
         <dependency>
-            <groupId>io.opentelemetry</groupId>
-            <artifactId>opentelemetry-bom</artifactId>
-            <version>1.35.0</version>
+            <groupId>io.opentelemetry.instrumentation</groupId>
+            <artifactId>opentelemetry-instrumentation-bom</artifactId>
+            <version>2.29.0</version>
             <type>pom</type>
             <scope>import</scope>
         </dependency>
@@ -98,7 +100,10 @@ Add these dependencies to your `pom.xml`:
     <dependency>
         <groupId>io.opentelemetry.instrumentation</groupId>
         <artifactId>opentelemetry-spring-boot-starter</artifactId>
-        <version>2.1.0</version>
+    </dependency>
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-aop</artifactId>
     </dependency>
 </dependencies>
 ```
@@ -112,6 +117,7 @@ otel:
   exporter:
     otlp:
       endpoint: http://localhost:4317
+      protocol: grpc
   resource:
     attributes:
       deployment.environment: ${ENVIRONMENT:development}
@@ -153,6 +159,7 @@ Auto-instrumentation captures HTTP requests and database calls, but your busines
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.context.Scope;
+import java.util.List;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -253,6 +260,7 @@ The OpenTelemetry Spring Boot starter supports annotations that reduce boilerpla
 ```java
 import io.opentelemetry.instrumentation.annotations.SpanAttribute;
 import io.opentelemetry.instrumentation.annotations.WithSpan;
+import java.util.List;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -285,6 +293,7 @@ import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.client.RestTemplate;
+import java.time.Duration;
 
 @Configuration
 public class HttpClientConfig {
@@ -389,12 +398,12 @@ In production, you probably do not want to capture every single trace. Sampling 
 ```yaml
 otel:
   traces:
-    sampler:
-      # Sample 10% of traces
-      probability: 0.1
+    # Sample 10% of root traces, while respecting upstream sampling decisions
+    sampler: parentbased_traceidratio
+    sampler.arg: 0.1
 ```
 
-For more sophisticated sampling, you can sample all errors and a percentage of successful requests:
+For more control over the sampler, configure it programmatically:
 
 ```java
 import io.opentelemetry.sdk.trace.samplers.Sampler;
@@ -425,23 +434,17 @@ otel:
 
 ## Testing Your Instrumentation
 
-Before deploying, verify your instrumentation works locally. Run an OpenTelemetry Collector and Jaeger for visualization:
+Before deploying, verify your instrumentation works locally. Run Jaeger with its OTLP receiver enabled for visualization:
 
 ```yaml
 # docker-compose.yml
 services:
-  otel-collector:
-    image: otel/opentelemetry-collector:latest
-    ports:
-      - "4317:4317"    # OTLP gRPC
-      - "4318:4318"    # OTLP HTTP
-    volumes:
-      - ./otel-config.yaml:/etc/otelcol/config.yaml
-
   jaeger:
-    image: jaegertracing/all-in-one:latest
+    image: jaegertracing/all-in-one:1.76.0
     ports:
       - "16686:16686"  # Jaeger UI
+      - "4317:4317"    # OTLP gRPC
+      - "4318:4318"    # OTLP HTTP
 ```
 
 Hit your endpoints and watch traces appear in the Jaeger UI at `http://localhost:16686`.
