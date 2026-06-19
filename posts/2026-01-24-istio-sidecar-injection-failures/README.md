@@ -33,7 +33,7 @@ sequenceDiagram
 
 ## Common Cause 1: Missing Namespace Label
 
-The most frequent reason for sidecar injection failures is a missing or incorrect namespace label. By default, Istio only injects sidecars into namespaces that have the `istio-injection=enabled` label.
+The most frequent reason for sidecar injection failures is a missing or incorrect namespace label. By default, Istio only injects sidecars into namespaces that have the `istio-injection=enabled` label or a matching `istio.io/rev` revision label.
 
 Check if your namespace has the correct label:
 
@@ -57,11 +57,11 @@ For existing pods, you need to restart them to trigger injection. The label only
 kubectl rollout restart deployment -n your-namespace
 ```
 
-## Common Cause 2: Conflicting Pod Annotations
+## Common Cause 2: Conflicting Pod Labels
 
-Individual pods can override namespace-level injection settings using annotations. If a pod has `sidecar.istio.io/inject: "false"`, the sidecar won't be injected even if the namespace has injection enabled.
+Individual pods can override namespace-level injection settings using labels. If a pod has `sidecar.istio.io/inject: "false"`, the sidecar won't be injected even if the namespace has injection enabled.
 
-Check your pod or deployment for injection annotations:
+Check your pod or deployment for injection labels:
 
 ```yaml
 # Example deployment with injection disabled (problematic)
@@ -70,9 +70,13 @@ kind: Deployment
 metadata:
   name: my-app
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
     metadata:
-      annotations:
+      labels:
+        app: my-app
         sidecar.istio.io/inject: "false"  # This prevents injection
     spec:
       containers:
@@ -80,7 +84,7 @@ spec:
         image: my-app:latest
 ```
 
-Remove or change this annotation to allow injection:
+Remove or change this label to allow injection:
 
 ```yaml
 # Fixed deployment with injection enabled
@@ -89,9 +93,13 @@ kind: Deployment
 metadata:
   name: my-app
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
     metadata:
-      annotations:
+      labels:
+        app: my-app
         sidecar.istio.io/inject: "true"  # Explicitly enable injection
     spec:
       containers:
@@ -101,7 +109,7 @@ spec:
 
 ## Common Cause 3: Webhook Not Running
 
-If the Istio sidecar injector webhook is not running or unhealthy, injection will fail silently. Your pods will be created without sidecars.
+If the Istio sidecar injector webhook is not running or unhealthy, pods may fail to be created or may be created without sidecars, depending on the webhook configuration.
 
 Verify the injector pod is running:
 
@@ -153,8 +161,13 @@ kind: Deployment
 metadata:
   name: my-app
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
     metadata:
+      labels:
+        app: my-app
       annotations:
         # Reduce sidecar CPU request
         sidecar.istio.io/proxyCPU: "50m"
@@ -172,7 +185,7 @@ spec:
 
 ## Common Cause 5: Init Container Failures
 
-Istio uses an init container (`istio-init`) to set up iptables rules for traffic interception. If this init container fails, the pod won't start properly.
+When the Istio CNI node agent is not installed, Istio uses an init container (`istio-init`) to set up iptables rules for traffic interception. If this init container fails, the pod won't start properly.
 
 Check for init container failures:
 
@@ -186,30 +199,25 @@ kubectl logs your-pod-name -n your-namespace -c istio-init
 
 Common reasons for init container failures include:
 
-1. Missing NET_ADMIN capability (required for iptables)
+1. Missing NET_ADMIN or NET_RAW capabilities (required for iptables setup)
 2. Security policies blocking privileged operations
-3. CNI plugin conflicts
+3. Istio CNI installation or readiness issues
 
-If you're using a restrictive PodSecurityPolicy or OPA Gatekeeper, you may need to allow the required capabilities:
+If you're using Kubernetes Pod Security Admission or OPA Gatekeeper, you may need to allow the required capabilities for namespaces that use `istio-init`, or install the Istio CNI node agent so application pods do not need privileged init containers:
 
 ```yaml
-# Example PodSecurityPolicy allowing Istio init containers
-apiVersion: policy/v1beta1
-kind: PodSecurityPolicy
-metadata:
-  name: istio-sidecar
+# istio-cni.yaml
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
 spec:
-  allowedCapabilities:
-    - NET_ADMIN
-    - NET_RAW
-  runAsUser:
-    rule: RunAsAny
-  seLinux:
-    rule: RunAsAny
-  fsGroup:
-    rule: RunAsAny
-  volumes:
-    - '*'
+  components:
+    cni:
+      namespace: istio-system
+      enabled: true
+```
+
+```bash
+istioctl install -f istio-cni.yaml -y
 ```
 
 ## Common Cause 6: Revision Labels Mismatch
@@ -256,8 +264,8 @@ istioctl proxy-config bootstrap your-pod-name.your-namespace
 Before deploying to an Istio-enabled cluster, verify:
 
 1. The target namespace has `istio-injection=enabled` or the correct revision label
-2. Your deployment doesn't have `sidecar.istio.io/inject: "false"` annotations
-3. The Istio control plane is healthy (`istioctl verify-install`)
+2. Your deployment doesn't have `sidecar.istio.io/inject: "false"` labels
+3. The Istio control plane is healthy (`kubectl get pods -n istio-system -l app=istiod` and `istioctl analyze`)
 4. Your pods have sufficient resource requests for the sidecar overhead
 5. Security policies allow the required capabilities for init containers
 
