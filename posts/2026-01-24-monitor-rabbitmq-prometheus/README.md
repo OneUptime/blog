@@ -62,7 +62,7 @@ curl http://localhost:15692/metrics
 # rabbitmq.conf
 # Note: rabbitmq.conf uses # for comments (not Erlang %% style)
 
-# Enable Prometheus plugin
+# Configure Prometheus metrics
 prometheus.return_per_object_metrics = true
 prometheus.path = /metrics
 
@@ -80,7 +80,7 @@ curl -s http://localhost:15692/metrics | head -50
 curl -s http://localhost:15692/metrics | grep "rabbitmq_queue_messages"
 
 # Get metrics in different formats
-curl -s http://localhost:15692/metrics/detailed
+curl -s "http://localhost:15692/metrics/detailed?family=queue_coarse_metrics&family=queue_consumer_count"
 curl -s http://localhost:15692/metrics/per-object
 ```
 
@@ -177,7 +177,7 @@ services:
       RABBITMQ_DEFAULT_USER: admin
       RABBITMQ_DEFAULT_PASS: admin
     command: >
-      bash -c "rabbitmq-plugins enable rabbitmq_prometheus &&
+      bash -c "rabbitmq-plugins enable --offline rabbitmq_prometheus &&
                rabbitmq-server"
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
@@ -270,9 +270,9 @@ rabbitmq_queue_messages
 
 # Message rates (per second)
 rabbitmq_queue_messages_published_total
-rabbitmq_queue_messages_delivered_total
-rabbitmq_queue_messages_acknowledged_total
-rabbitmq_queue_messages_redelivered_total
+rabbitmq_global_messages_delivered_total
+rabbitmq_global_messages_acknowledged_total
+rabbitmq_global_messages_redelivered_total
 
 # Connection metrics
 rabbitmq_connections
@@ -324,7 +324,7 @@ groups:
 
       # Alert on memory alarm
       - alert: RabbitMQMemoryAlarm
-        expr: rabbitmq_alarms_memory_used_watermark == 1
+        expr: rabbitmq_process_resident_memory_bytes >= rabbitmq_resident_memory_limit_bytes
         for: 0m
         labels:
           severity: critical
@@ -334,7 +334,7 @@ groups:
 
       # Alert on disk alarm
       - alert: RabbitMQDiskAlarm
-        expr: rabbitmq_alarms_free_disk_space_watermark == 1
+        expr: rabbitmq_disk_space_available_bytes <= rabbitmq_disk_space_available_limit_bytes
         for: 0m
         labels:
           severity: critical
@@ -357,7 +357,7 @@ groups:
       # Alert on queue growing rapidly
       - alert: RabbitMQQueueGrowing
         expr: |
-          rate(rabbitmq_queue_messages[5m]) > 100
+          deriv(rabbitmq_queue_messages[5m]) > 100
           and
           rabbitmq_queue_messages > 1000
         for: 10m
@@ -392,22 +392,25 @@ groups:
           summary: "Too many connections on {{ $labels.instance }}"
           description: "Current connections: {{ $value }}"
 
-      # Alert on blocked connections
-      - alert: RabbitMQConnectionsBlocked
-        expr: rabbitmq_connections_state{state="blocked"} > 0
+      # Alert when publishers may be blocked
+      - alert: RabbitMQPublishersBlocked
+        expr: |
+          rabbitmq_process_resident_memory_bytes >= rabbitmq_resident_memory_limit_bytes
+          or
+          rabbitmq_disk_space_available_bytes <= rabbitmq_disk_space_available_limit_bytes
         for: 2m
         labels:
           severity: critical
         annotations:
-          summary: "Blocked connections on {{ $labels.instance }}"
-          description: "{{ $value }} connections are blocked"
+          summary: "Publishers may be blocked on {{ $labels.instance }}"
+          description: "RabbitMQ has reached a memory or disk alarm threshold that can block publishers."
 
   - name: rabbitmq_performance
     rules:
       # Alert on high message rate
       - alert: RabbitMQHighPublishRate
         expr: |
-          sum(rate(rabbitmq_queue_messages_published_total[1m])) by (instance) > 10000
+          sum by (instance) (rate(rabbitmq_queue_messages_published_total[1m])) > 10000
         for: 5m
         labels:
           severity: info
@@ -417,12 +420,7 @@ groups:
 
       # Alert on consumer lag
       - alert: RabbitMQConsumerLag
-        expr: |
-          (
-            rate(rabbitmq_queue_messages_published_total[5m])
-            -
-            rate(rabbitmq_queue_messages_acknowledged_total[5m])
-          ) > 100
+        expr: deriv(rabbitmq_queue_messages[5m]) > 100
         for: 10m
         labels:
           severity: warning
@@ -502,7 +500,7 @@ groups:
       },
       {
         "title": "Message Rate",
-        "type": "graph",
+        "type": "timeseries",
         "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
         "targets": [
           {
@@ -510,18 +508,18 @@ groups:
             "legendFormat": "Published/s"
           },
           {
-            "expr": "sum(rate(rabbitmq_queue_messages_delivered_total[1m]))",
+            "expr": "sum(rate(rabbitmq_global_messages_delivered_total[1m]))",
             "legendFormat": "Delivered/s"
           },
           {
-            "expr": "sum(rate(rabbitmq_queue_messages_acknowledged_total[1m]))",
+            "expr": "sum(rate(rabbitmq_global_messages_acknowledged_total[1m]))",
             "legendFormat": "Acknowledged/s"
           }
         ]
       },
       {
         "title": "Queue Depth by Queue",
-        "type": "graph",
+        "type": "timeseries",
         "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
         "targets": [
           {
@@ -606,10 +604,10 @@ rabbitmq_queue_messages > 0 and rabbitmq_queue_consumers == 0
 avg_over_time(rabbitmq_queue_messages[5m])
 
 # Message accumulation rate
-rate(rabbitmq_queue_messages[5m])
+deriv(rabbitmq_queue_messages[5m])
 
 # Consumer utilization (messages delivered per consumer)
-rate(rabbitmq_queue_messages_delivered_total[5m]) / rabbitmq_queue_consumers
+sum(rate(rabbitmq_global_messages_delivered_total[5m])) / sum(rabbitmq_consumers)
 ```
 
 ### Performance Queries
@@ -621,7 +619,7 @@ sum(rate(rabbitmq_queue_messages_published_total[1m]))
 # Publish vs consume rate (positive = growing)
 sum(rate(rabbitmq_queue_messages_published_total[5m]))
 -
-sum(rate(rabbitmq_queue_messages_acknowledged_total[5m]))
+sum(rate(rabbitmq_global_messages_acknowledged_total[5m]))
 
 # Average message latency (requires application-level metrics)
 histogram_quantile(0.95,
@@ -629,7 +627,7 @@ histogram_quantile(0.95,
 )
 
 # Redelivery rate (indicates consumer failures)
-rate(rabbitmq_queue_messages_redelivered_total[5m])
+rate(rabbitmq_global_messages_redelivered_total[5m])
 ```
 
 ### Cluster Health Queries
@@ -645,7 +643,7 @@ max(rabbitmq_process_resident_memory_bytes / rabbitmq_resident_memory_limit_byte
 min(rabbitmq_disk_space_available_bytes)
 
 # Connection distribution across nodes
-rabbitmq_connections by (instance)
+sum by (instance) (rabbitmq_connections)
 
 # Erlang process count (high values may indicate issues)
 rabbitmq_erlang_processes_used
@@ -871,17 +869,10 @@ flowchart TD
 
 ### Retention and Sampling
 
-```yaml
-# prometheus.yml - Storage configuration
-global:
-  scrape_interval: 15s
-
-storage:
-  tsdb:
-    # Retain metrics for 30 days
-    retention.time: 30d
-    # Limit storage size
-    retention.size: 50GB
+```bash
+# Prometheus startup flags
+--storage.tsdb.retention.time=30d
+--storage.tsdb.retention.size=50GB
 ```
 
 ### Recording Rules for Performance
@@ -905,7 +896,7 @@ groups:
         expr: |
           sum(rate(rabbitmq_queue_messages_published_total[5m]))
           -
-          sum(rate(rabbitmq_queue_messages_acknowledged_total[5m]))
+          sum(rate(rabbitmq_global_messages_acknowledged_total[5m]))
 ```
 
 ---
