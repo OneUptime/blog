@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: TypeScript, JavaScript, Error Handling, Type Safety, Function, Debugging
 
-Description: A practical guide to understanding and fixing 'Cannot invoke an expression whose type lacks a call signature' errors in TypeScript.
+Description: A practical guide to understanding and fixing TypeScript errors for expressions that lack a call signature.
 
 ---
 
-If you have worked with TypeScript for any amount of time, you have probably encountered the frustrating error: "Cannot invoke an expression whose type lacks a call signature." This error occurs when TypeScript cannot determine that something is callable. Let's dive into why this happens and how to fix it.
+If you have worked with TypeScript for any amount of time, you have probably encountered the frustrating error: "Cannot invoke an expression whose type lacks a call signature" or the current wording, "This expression is not callable." This error occurs when TypeScript cannot determine that something is callable. Let's dive into why this happens and how to fix it.
 
 ## Understanding the Error
 
@@ -30,8 +30,8 @@ Here is a simple example that triggers the error:
 
 ```typescript
 // This will cause an error
-const handler: Function | string = getHandler();
-handler(); // Error: Cannot invoke an expression whose type lacks a call signature
+const handler: (() => void) | string = getHandler();
+handler(); // Error: This expression is not callable; type 'string' has no call signatures
 ```
 
 TypeScript cannot call `handler` because it might be a `string`, and strings are not callable.
@@ -50,7 +50,7 @@ interface Config {
 }
 
 function processData(config: Config) {
-    // Error: Cannot invoke an expression whose type lacks a call signature
+    // Error: Cannot invoke an object which is possibly 'undefined'
     // config.onSuccess();  // This would fail
 
     // Solution: Check if the function exists first
@@ -79,7 +79,7 @@ function executeCallable<T extends (...args: any[]) => any>(action: T) {
 }
 
 // Solution 2: Use a specific function type
-type AnyFunction = (...args: unknown[]) => unknown;
+type AnyFunction = (...args: any[]) => unknown;
 
 function executeFunction<T extends AnyFunction>(action: T): ReturnType<T> {
     return action() as ReturnType<T>;
@@ -243,13 +243,13 @@ async function handleAction(action: Action) {
 When using libraries without proper type definitions, you might encounter this error.
 
 ```typescript
-// Problem: Library returns unknown type
+// Problem: Library returns an unhelpful type
 import { getPlugin } from 'untyped-library';
 
 const plugin = getPlugin('formatter');
 // plugin(); // Error if plugin type is unknown
 
-// Solution 1: Create a local type declaration
+// Solution 1: Create a local type declaration in untyped-library.d.ts
 declare module 'untyped-library' {
     export function getPlugin(name: string): () => void;
 }
@@ -273,17 +273,17 @@ if (isFunction(dynamicPlugin)) {
 
 This error commonly appears in React when event handlers are not properly typed.
 
-```typescript
-import React from 'react';
+```tsx
+import type { MouseEventHandler } from 'react';
 
 // Problem: onClick might not be defined
 interface ButtonProps {
-    onClick?: React.MouseEventHandler<HTMLButtonElement>;
+    onClick?: MouseEventHandler<HTMLButtonElement>;
     label: string;
 }
 
 function Button({ onClick, label }: ButtonProps) {
-    const handleClick: React.MouseEventHandler<HTMLButtonElement> = (event) => {
+    const handleClick: MouseEventHandler<HTMLButtonElement> = (event) => {
         // onClick(event); // Error: onClick might be undefined
 
         // Solution: Check before calling
@@ -332,7 +332,7 @@ function safeCall(fn: unknown) {
 For complex scenarios, assertion functions help narrow types.
 
 ```typescript
-function assertIsFunction(value: unknown): asserts value is Function {
+function assertIsFunction(value: unknown): asserts value is (...args: unknown[]) => unknown {
     if (typeof value !== 'function') {
         throw new TypeError(`Expected function, got ${typeof value}`);
     }
