@@ -41,7 +41,6 @@ The most basic cause is that the server process is not running or the client can
 package main
 
 import (
-    "context"
     "log"
     "net"
     "os"
@@ -76,6 +75,7 @@ func main() {
     grpc_health_v1.RegisterHealthServer(s, healthServer)
 
     // Set service as healthy
+    healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
     healthServer.SetServingStatus("myservice", grpc_health_v1.HealthCheckResponse_SERVING)
 
     // Graceful shutdown handling
@@ -86,6 +86,7 @@ func main() {
 
         log.Println("Shutting down gracefully...")
         // Mark service as not serving before shutdown
+        healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_NOT_SERVING)
         healthServer.SetServingStatus("myservice", grpc_health_v1.HealthCheckResponse_NOT_SERVING)
         s.GracefulStop()
     }()
@@ -111,10 +112,24 @@ import (
     "time"
 
     "google.golang.org/grpc"
+    "google.golang.org/grpc/connectivity"
     "google.golang.org/grpc/credentials/insecure"
     "google.golang.org/grpc/keepalive"
     pb "myservice/proto"
 )
+
+func waitForReady(ctx context.Context, conn *grpc.ClientConn) error {
+    conn.Connect()
+    for {
+        state := conn.GetState()
+        if state == connectivity.Ready {
+            return nil
+        }
+        if !conn.WaitForStateChange(ctx, state) {
+            return ctx.Err()
+        }
+    }
+}
 
 func createClient() (pb.MyServiceClient, *grpc.ClientConn, error) {
     // Configure keepalive parameters to detect dead connections
@@ -131,19 +146,22 @@ func createClient() (pb.MyServiceClient, *grpc.ClientConn, error) {
     opts := []grpc.DialOption{
         grpc.WithTransportCredentials(insecure.NewCredentials()),
         grpc.WithKeepaliveParams(keepaliveParams),
-        // Block until connection is ready (with timeout)
-        grpc.WithBlock(),
         // Set initial connection window size
         grpc.WithInitialWindowSize(1 << 20), // 1 MB
         grpc.WithInitialConnWindowSize(1 << 20),
     }
 
-    // Create connection with timeout
+    // Create the channel, then wait for it to become ready with a timeout
+    conn, err := grpc.NewClient("localhost:50051", opts...)
+    if err != nil {
+        return nil, nil, err
+    }
+
     ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
     defer cancel()
 
-    conn, err := grpc.DialContext(ctx, "localhost:50051", opts...)
-    if err != nil {
+    if err := waitForReady(ctx, conn); err != nil {
+        conn.Close()
         return nil, nil, err
     }
 
@@ -187,6 +205,7 @@ import (
 
     "google.golang.org/grpc"
     "google.golang.org/grpc/codes"
+    "google.golang.org/grpc/credentials/insecure"
     "google.golang.org/grpc/status"
 )
 
@@ -296,7 +315,7 @@ func UnaryRetryInterceptor(config RetryConfig) grpc.UnaryClientInterceptor {
 func createClientWithRetry() (*grpc.ClientConn, error) {
     retryConfig := DefaultRetryConfig()
 
-    conn, err := grpc.Dial(
+    conn, err := grpc.NewClient(
         "localhost:50051",
         grpc.WithTransportCredentials(insecure.NewCredentials()),
         grpc.WithUnaryInterceptor(UnaryRetryInterceptor(retryConfig)),
@@ -315,13 +334,10 @@ Configure the server to handle connections properly and avoid overload.
 package main
 
 import (
-    "log"
-    "net"
     "time"
 
     "google.golang.org/grpc"
     "google.golang.org/grpc/keepalive"
-    pb "myservice/proto"
 )
 
 func createConfiguredServer() *grpc.Server {
@@ -382,7 +398,8 @@ upstream grpc_servers {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name grpc.example.com;
 
     ssl_certificate /etc/ssl/certs/server.crt;
@@ -397,7 +414,12 @@ server {
         grpc_read_timeout 300s;
         grpc_send_timeout 300s;
 
-        # Error handling - retry on UNAVAILABLE
+        # Retry/select the next upstream for connection and HTTP gateway failures
+        grpc_next_upstream error timeout http_502 http_503 http_504;
+        grpc_next_upstream_tries 3;
+
+        # Map upstream HTTP gateway errors to gRPC UNAVAILABLE
+        grpc_intercept_errors on;
         error_page 502 = @grpc_error;
         error_page 503 = @grpc_error;
         error_page 504 = @grpc_error;
@@ -448,13 +470,19 @@ static_resources:
                                 max_interval: 10s
                 http_filters:
                   - name: envoy.filters.http.router
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
 
   clusters:
     - name: grpc_backend
       connect_timeout: 5s
       type: STRICT_DNS
       lb_policy: ROUND_ROBIN
-      http2_protocol_options: {}
+      typed_extension_protocol_options:
+        envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+          "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+          explicit_http_config:
+            http2_protocol_options: {}
       health_checks:
         - timeout: 5s
           interval: 10s
@@ -578,7 +606,7 @@ func waitForReady(conn *grpc.ClientConn, timeout time.Duration) error {
 }
 
 func main() {
-    conn, err := grpc.Dial(
+    conn, err := grpc.NewClient(
         "localhost:50051",
         grpc.WithTransportCredentials(insecure.NewCredentials()),
     )
@@ -589,6 +617,7 @@ func main() {
 
     // Start monitoring
     monitorConnection(conn)
+    conn.Connect()
 
     // Wait for connection to be ready
     if err := waitForReady(conn, 10*time.Second); err != nil {
