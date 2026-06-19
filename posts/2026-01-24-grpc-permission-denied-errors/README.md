@@ -10,7 +10,7 @@ Description: A practical guide to diagnosing and fixing 'Permission Denied' erro
 
 > gRPC returns a "Permission Denied" status code (PERMISSION_DENIED) when the caller does not have permission to execute the specified operation. This guide covers the most common causes and how to fix them in production environments.
 
-Permission denied errors in gRPC can stem from authentication failures, authorization policy violations, or TLS misconfiguration. Understanding the difference between these causes is crucial for quick resolution.
+Permission denied errors in gRPC can stem from authentication failures, authorization policy violations, or TLS/mTLS identity mismatches. Understanding the difference between these causes is crucial for quick resolution.
 
 ---
 
@@ -66,13 +66,23 @@ flowchart LR
 
 ```python
 import grpc
+from collections import namedtuple
+
+class _ClientCallDetails(
+    namedtuple(
+        '_ClientCallDetails',
+        ('method', 'timeout', 'metadata', 'credentials', 'wait_for_ready', 'compression'),
+    ),
+    grpc.ClientCallDetails,
+):
+    pass
 
 # BAD: No authentication credentials
 
-# This will result in PERMISSION_DENIED if server requires auth
+# This will usually result in UNAUTHENTICATED if server requires auth
 channel = grpc.insecure_channel('localhost:50051')
 stub = service_pb2_grpc.MyServiceStub(channel)
-response = stub.GetData(request)  # Permission Denied!
+response = stub.GetData(request)  # UNAUTHENTICATED
 
 # GOOD: Include authentication token in metadata
 class TokenAuthInterceptor(grpc.UnaryUnaryClientInterceptor):
@@ -87,12 +97,13 @@ class TokenAuthInterceptor(grpc.UnaryUnaryClientInterceptor):
         metadata.append(('authorization', f'Bearer {self.token}'))
 
         # Create new call details with updated metadata
-        new_details = grpc.ClientCallDetails(
+        new_details = _ClientCallDetails(
             method=client_call_details.method,
             timeout=client_call_details.timeout,
             metadata=metadata,
             credentials=client_call_details.credentials,
             wait_for_ready=client_call_details.wait_for_ready,
+            compression=client_call_details.compression,
         )
 
         return continuation(new_details, request)
@@ -145,7 +156,7 @@ func createAuthenticatedChannel(address, token string) (*grpc.ClientConn, error)
     }
 
     // Create connection with both transport and per-RPC credentials
-    conn, err := grpc.Dial(
+    conn, err := grpc.NewClient(
         address,
         grpc.WithTransportCredentials(creds),
         grpc.WithPerRPCCredentials(TokenAuth{Token: token}),
@@ -170,7 +181,7 @@ func createOAuthChannel(address string) (*grpc.ClientConn, error) {
         return nil, err
     }
 
-    conn, err := grpc.Dial(
+    conn, err := grpc.NewClient(
         address,
         grpc.WithTransportCredentials(creds),
         grpc.WithPerRPCCredentials(perRPC),
@@ -189,7 +200,17 @@ func createOAuthChannel(address string) (*grpc.ClientConn, error) {
 ```python
 import grpc
 import time
+from collections import namedtuple
 from threading import Lock
+
+class _ClientCallDetails(
+    namedtuple(
+        '_ClientCallDetails',
+        ('method', 'timeout', 'metadata', 'credentials', 'wait_for_ready', 'compression'),
+    ),
+    grpc.ClientCallDetails,
+):
+    pass
 
 class RefreshableTokenInterceptor(grpc.UnaryUnaryClientInterceptor):
     """Interceptor that automatically refreshes expired tokens"""
@@ -215,12 +236,13 @@ class RefreshableTokenInterceptor(grpc.UnaryUnaryClientInterceptor):
         metadata = list(client_call_details.metadata or [])
         metadata.append(('authorization', f'Bearer {token}'))
 
-        new_details = grpc.ClientCallDetails(
+        new_details = _ClientCallDetails(
             method=client_call_details.method,
             timeout=client_call_details.timeout,
             metadata=metadata,
             credentials=client_call_details.credentials,
             wait_for_ready=client_call_details.wait_for_ready,
+            compression=client_call_details.compression,
         )
 
         try:
@@ -234,12 +256,13 @@ class RefreshableTokenInterceptor(grpc.UnaryUnaryClientInterceptor):
                 token = self._get_valid_token()
                 metadata = list(client_call_details.metadata or [])
                 metadata.append(('authorization', f'Bearer {token}'))
-                new_details = grpc.ClientCallDetails(
+                new_details = _ClientCallDetails(
                     method=client_call_details.method,
                     timeout=client_call_details.timeout,
                     metadata=metadata,
                     credentials=client_call_details.credentials,
                     wait_for_ready=client_call_details.wait_for_ready,
+                    compression=client_call_details.compression,
                 )
                 return continuation(new_details, request)
             raise
@@ -262,7 +285,7 @@ sequenceDiagram
     Server->>Client: ServerHello + Certificate
     Client->>Client: Verify certificate against CA
     Client--xServer: Certificate verification failed
-    Note over Client: PERMISSION_DENIED or UNAVAILABLE
+    Note over Client: TLS handshake fails, typically surfaced as UNAVAILABLE
 ```
 
 ### Solution: Configure Proper TLS Credentials
@@ -271,7 +294,7 @@ sequenceDiagram
 import grpc
 
 # BAD: Using insecure channel when server requires TLS
-# This can cause permission denied or connection issues
+# This can cause connection issues before the RPC reaches the service
 channel = grpc.insecure_channel('secure-server:50051')
 
 # GOOD: Configure TLS with proper CA certificate
@@ -319,7 +342,8 @@ package main
 import (
     "crypto/tls"
     "crypto/x509"
-    "io/ioutil"
+    "fmt"
+    "os"
 
     "google.golang.org/grpc"
     "google.golang.org/grpc/credentials"
@@ -333,7 +357,7 @@ func createMTLSChannel(address string) (*grpc.ClientConn, error) {
     }
 
     // Load CA certificate
-    caCert, err := ioutil.ReadFile("ca.crt")
+    caCert, err := os.ReadFile("ca.crt")
     if err != nil {
         return nil, err
     }
@@ -356,7 +380,7 @@ func createMTLSChannel(address string) (*grpc.ClientConn, error) {
     creds := credentials.NewTLS(tlsConfig)
 
     // Create connection
-    conn, err := grpc.Dial(
+    conn, err := grpc.NewClient(
         address,
         grpc.WithTransportCredentials(creds),
     )
@@ -374,7 +398,7 @@ func createMTLSChannel(address string) (*grpc.ClientConn, error) {
 ```python
 # Server-side authorization interceptor
 import grpc
-from functools import wraps
+from concurrent import futures
 
 class AuthorizationInterceptor(grpc.ServerInterceptor):
     """Server interceptor for role-based access control"""
@@ -399,7 +423,8 @@ class AuthorizationInterceptor(grpc.ServerInterceptor):
 
         # Get token from metadata
         metadata = dict(handler_call_details.invocation_metadata)
-        token = metadata.get('authorization', '').replace('Bearer ', '')
+        auth_header = metadata.get('authorization', '')
+        token = auth_header.removeprefix('Bearer ') if auth_header.startswith('Bearer ') else ''
 
         if not token:
             return self._abort_handler(
@@ -482,6 +507,7 @@ package main
 
 import (
     "context"
+    "strings"
 
     "google.golang.org/grpc"
     "google.golang.org/grpc/codes"

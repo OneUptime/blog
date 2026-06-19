@@ -108,7 +108,9 @@ except grpc.RpcError as e:
 import grpc
 import time
 from collections import defaultdict
+from concurrent import futures
 from threading import Lock
+from grpc_status import rpc_status
 
 class RateLimiter:
     """
@@ -324,8 +326,8 @@ flowchart TD
 ```python
 import grpc
 
-# Default limits are quite small (4MB)
-# Increase for large payloads
+# The default receive limit is 4MB
+# Increase limits deliberately for large payloads
 MAX_MESSAGE_SIZE = 100 * 1024 * 1024  # 100MB
 
 # Server configuration
@@ -357,6 +359,7 @@ channel = grpc.insecure_channel('localhost:50051', options=channel_options)
 
 ```python
 import grpc
+import os
 
 class LargeDataService(service_pb2_grpc.DataServiceServicer):
     """
@@ -368,21 +371,35 @@ class LargeDataService(service_pb2_grpc.DataServiceServicer):
         """
         Receive large file in chunks via client streaming.
         """
-        file_data = bytearray()
         filename = None
+        upload = None
+        total_size = 0
 
         for chunk in request_iterator:
             if chunk.HasField('metadata'):
                 filename = chunk.metadata.filename
+                upload = self._open_upload(filename)
             else:
-                file_data.extend(chunk.data)
+                if upload is None:
+                    context.abort(
+                        grpc.StatusCode.INVALID_ARGUMENT,
+                        'File metadata must be sent before data chunks'
+                    )
+                self._write_chunk(upload, chunk.data)
+                total_size += len(chunk.data)
 
-        # Process the complete file
-        file_id = self._save_file(filename, bytes(file_data))
+        if upload is None:
+            context.abort(
+                grpc.StatusCode.INVALID_ARGUMENT,
+                'File metadata is required'
+            )
+
+        # Finalize the streamed upload without buffering the full file in memory
+        file_id = self._finish_upload(upload)
 
         return service_pb2.UploadResponse(
             file_id=file_id,
-            size=len(file_data)
+            size=total_size
         )
 
     def DownloadLargeFile(self, request, context):
@@ -444,10 +461,10 @@ package main
 import (
     "context"
     "sync"
-    "time"
 
     "google.golang.org/grpc"
     "google.golang.org/grpc/codes"
+    "google.golang.org/grpc/connectivity"
     "google.golang.org/grpc/status"
 )
 
@@ -496,7 +513,7 @@ func (m *ConnectionManager) GetConnection(ctx context.Context, addr string) (*gr
     }
 
     // Create new connection
-    conn, err := grpc.DialContext(ctx, addr, m.dialOpts...)
+    conn, err := grpc.NewClient(addr, m.dialOpts...)
     if err != nil {
         return nil, err
     }
@@ -625,6 +642,7 @@ server = grpc.server(
 import grpc
 import queue
 import threading
+import logging
 
 class BackpressureAwareStreaming(service_pb2_grpc.StreamServiceServicer):
     """
@@ -763,6 +781,10 @@ class MonitoringInterceptor(grpc.ServerInterceptor):
 
     def intercept_service(self, continuation, handler_call_details):
         method = handler_call_details.method
+        handler = continuation(handler_call_details)
+
+        if handler is None or handler.unary_unary is None:
+            return handler
 
         def monitored_handler(request, context):
             # Track request size
@@ -774,7 +796,7 @@ class MonitoringInterceptor(grpc.ServerInterceptor):
             memory_usage_percent.set(psutil.virtual_memory().percent)
 
             try:
-                return continuation(handler_call_details)(request, context)
+                return handler.unary_unary(request, context)
             except grpc.RpcError as e:
                 if e.code() == grpc.StatusCode.RESOURCE_EXHAUSTED:
                     # Track which resource was exhausted
@@ -785,7 +807,11 @@ class MonitoringInterceptor(grpc.ServerInterceptor):
                     ).inc()
                 raise
 
-        return grpc.unary_unary_rpc_method_handler(monitored_handler)
+        return grpc.unary_unary_rpc_method_handler(
+            monitored_handler,
+            request_deserializer=handler.request_deserializer,
+            response_serializer=handler.response_serializer
+        )
 
     def _extract_reason(self, error):
         details = error.details()
@@ -816,7 +842,7 @@ class MonitoringInterceptor(grpc.ServerInterceptor):
 
 6. **Implement backpressure** - Use bounded queues in streaming to prevent memory exhaustion
 
-7. **Handle retries intelligently** - Respect retry-after headers and use exponential backoff
+7. **Handle retries intelligently** - Respect RetryInfo details and use exponential backoff
 
 ---
 
