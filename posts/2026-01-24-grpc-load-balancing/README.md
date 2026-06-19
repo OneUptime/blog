@@ -52,7 +52,6 @@ import (
 
     "google.golang.org/grpc"
     "google.golang.org/grpc/credentials/insecure"
-    "google.golang.org/grpc/resolver"
     pb "myservice/pb"
 )
 
@@ -63,11 +62,11 @@ func main() {
 
     // Configure load balancing policy
     // round_robin distributes requests evenly across backends
-    conn, err := grpc.Dial(
+    conn, err := grpc.NewClient(
         target,
         grpc.WithTransportCredentials(insecure.NewCredentials()),
         // Enable round-robin load balancing
-        grpc.WithDefaultServiceConfig(`{"loadBalancingPolicy":"round_robin"}`),
+        grpc.WithDefaultServiceConfig(`{"loadBalancingConfig":[{"round_robin":{}}]}`),
     )
     if err != nil {
         log.Fatalf("Failed to connect: %v", err)
@@ -104,10 +103,14 @@ import (
     "sync"
     "time"
 
+    "google.golang.org/grpc"
+    "google.golang.org/grpc/attributes"
+    "google.golang.org/grpc/credentials/insecure"
     "google.golang.org/grpc/resolver"
 )
 
 const scheme = "custom"
+const weightKey = "weight"
 
 // CustomResolverBuilder implements resolver.Builder
 type CustomResolverBuilder struct {
@@ -181,8 +184,8 @@ func (r *customResolver) resolve() {
     for _, ep := range endpoints {
         addrs = append(addrs, resolver.Address{
             Addr: fmt.Sprintf("%s:%d", ep.Host, ep.Port),
-            // Optional: add metadata for weighted load balancing
-            Attributes: nil,
+            // Optional: add metadata for weighted load balancing.
+            Attributes: attributes.New(weightKey, ep.Weight),
         })
     }
 
@@ -209,10 +212,10 @@ func init() {
 
 // Usage
 func createClientWithCustomResolver() (*grpc.ClientConn, error) {
-    return grpc.Dial(
+    return grpc.NewClient(
         "custom:///myservice",
-        grpc.WithInsecure(),
-        grpc.WithDefaultServiceConfig(`{"loadBalancingPolicy":"round_robin"}`),
+        grpc.WithTransportCredentials(insecure.NewCredentials()),
+        grpc.WithDefaultServiceConfig(`{"loadBalancingConfig":[{"round_robin":{}}]}`),
     )
 }
 ```
@@ -226,15 +229,14 @@ For backends with different capacities, implement weighted load balancing:
 package main
 
 import (
-    "math/rand"
     "sync"
-    "sync/atomic"
 
     "google.golang.org/grpc/balancer"
     "google.golang.org/grpc/balancer/base"
 )
 
 const weightedRoundRobinName = "weighted_round_robin"
+const weightKey = "weight"
 
 func init() {
     balancer.Register(newWeightedRoundRobinBuilder())
@@ -262,8 +264,10 @@ func (b *weightedPickerBuilder) Build(info base.PickerBuildInfo) balancer.Picker
     for sc, scInfo := range info.ReadySCs {
         weight := 1
         // Get weight from address attributes if available
-        if w := scInfo.Address.Attributes.Value("weight"); w != nil {
-            weight = w.(int)
+        if attrs := scInfo.Address.Attributes; attrs != nil {
+            if w, ok := attrs.Value(weightKey).(int); ok && w > 0 {
+                weight = w
+            }
         }
 
         weightedSCs = append(weightedSCs, weightedSubConn{
@@ -288,12 +292,16 @@ type weightedPicker struct {
     subConns    []weightedSubConn
     totalWeight int
     mu          sync.Mutex
-    current     int64
+    next        int
 }
 
 func (p *weightedPicker) Pick(balancer.PickInfo) (balancer.PickResult, error) {
-    // Weighted random selection
-    target := rand.Intn(p.totalWeight)
+    // Weighted round-robin selection
+    p.mu.Lock()
+    target := p.next % p.totalWeight
+    p.next = (p.next + 1) % p.totalWeight
+    p.mu.Unlock()
+
     cumulative := 0
 
     for _, wsc := range p.subConns {
@@ -356,7 +364,11 @@ static_resources:
       connect_timeout: 5s
       type: STRICT_DNS
       lb_policy: ROUND_ROBIN
-      http2_protocol_options: {}
+      typed_extension_protocol_options:
+        envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+          "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+          explicit_http_config:
+            http2_protocol_options: {}
       health_checks:
         - timeout: 5s
           interval: 10s
@@ -469,11 +481,13 @@ spec:
           readinessProbe:
             grpc:
               port: 50051
+              service: myservice
             initialDelaySeconds: 5
             periodSeconds: 10
           livenessProbe:
             grpc:
               port: 50051
+              service: myservice
             initialDelaySeconds: 10
             periodSeconds: 20
 ```
@@ -492,11 +506,11 @@ func createKubernetesClient() (*grpc.ClientConn, error) {
     // The headless service returns all pod IPs
     target := "dns:///myservice-headless.default.svc.cluster.local:50051"
 
-    return grpc.Dial(
+    return grpc.NewClient(
         target,
         grpc.WithTransportCredentials(insecure.NewCredentials()),
         grpc.WithDefaultServiceConfig(`{
-            "loadBalancingPolicy": "round_robin",
+            "loadBalancingConfig": [{"round_robin": {}}],
             "healthCheckConfig": {
                 "serviceName": "myservice"
             }
@@ -509,7 +523,7 @@ func createKubernetesClient() (*grpc.ClientConn, error) {
 
 ```yaml
 # istio/destination-rule.yaml
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: myservice-lb
@@ -531,7 +545,7 @@ spec:
       baseEjectionTime: 30s
       maxEjectionPercent: 50
 ---
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: myservice
