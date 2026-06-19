@@ -48,7 +48,7 @@ Start by measuring current build times to establish a baseline.
 time npm run build
 
 # Enable verbose build output
-NEXT_VERBOSE=true npm run build
+next build --debug
 
 # Analyze bundle size
 ANALYZE=true npm run build
@@ -61,7 +61,7 @@ Add build timing to package.json:
   "scripts": {
     "build": "next build",
     "build:analyze": "ANALYZE=true next build",
-    "build:profile": "NEXT_TELEMETRY_DEBUG=1 next build",
+    "build:profile": "next build --profile",
     "build:time": "time next build 2>&1 | tee build.log"
   }
 }
@@ -75,13 +75,7 @@ Next.js has built-in caching that significantly improves rebuild times.
 // next.config.js
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Enable persistent caching
-  experimental: {
-    // Cache build output
-    incrementalCacheHandlerPath: undefined,
-  },
-
-  // Configure cache directory
+  // Keep the default build output directory so .next/cache can be reused
   distDir: '.next',
 
   // Disable source maps in production for faster builds
@@ -275,7 +269,7 @@ Run type checking separately from the build process.
   "scripts": {
     "build": "next build",
     "type-check": "tsc --noEmit",
-    "lint": "eslint . --ext .ts,.tsx",
+    "lint": "eslint .",
     "build:fast": "next build",
     "build:full": "npm run type-check && npm run lint && next build"
   }
@@ -291,11 +285,6 @@ const nextConfig = {
   // Skip type checking during build (run separately)
   typescript: {
     ignoreBuildErrors: process.env.SKIP_TYPE_CHECK === 'true',
-  },
-
-  // Skip ESLint during build (run separately)
-  eslint: {
-    ignoreDuringBuilds: process.env.SKIP_LINT === 'true',
   },
 };
 
@@ -338,7 +327,7 @@ jobs:
           node-version: '20'
           cache: 'npm'
       - run: npm ci
-      - run: SKIP_TYPE_CHECK=true SKIP_LINT=true npm run build
+      - run: SKIP_TYPE_CHECK=true npm run build
 ```
 
 ## Optimize Static Generation
@@ -356,7 +345,7 @@ interface BlogPost {
 // Only generate popular posts at build time
 export async function generateStaticParams() {
   // Limit static generation to reduce build time
-  const popularPosts = await getPopularPosts(50); // Only top 50
+  const popularPosts: BlogPost[] = await getPopularPosts(50); // Only top 50
 
   return popularPosts.map((post) => ({
     slug: post.slug,
@@ -372,9 +361,10 @@ export const revalidate = 3600;
 export default async function BlogPost({
   params
 }: {
-  params: { slug: string }
+  params: Promise<{ slug: string }>
 }) {
-  const post = await getPost(params.slug);
+  const { slug } = await params;
+  const post = await getPost(slug);
 
   return (
     <article>
@@ -391,11 +381,8 @@ export default async function BlogPost({
 // next.config.js
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  experimental: {
-    // Limit concurrent static page generation
-    workerThreads: false,
-    cpus: 2, // Limit CPU usage
-  },
+  // Limit the number of pages processed concurrently by each static generation worker
+  staticGenerationMaxConcurrency: 2,
 };
 
 module.exports = nextConfig;
@@ -453,6 +440,8 @@ Custom image loader:
 
 ```typescript
 // src/lib/imageLoader.ts
+'use client';
+
 interface ImageLoaderProps {
   src: string;
   width: number;
@@ -480,19 +469,9 @@ Smaller bundles mean faster builds and better performance.
 // next.config.js
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Ensure proper tree shaking
-  modularizeImports: {
-    // Tree shake lodash
-    'lodash': {
-      transform: 'lodash/{{member}}',
-    },
-    // Tree shake Material UI
-    '@mui/material': {
-      transform: '@mui/material/{{member}}',
-    },
-    '@mui/icons-material': {
-      transform: '@mui/icons-material/{{member}}',
-    },
+  // Optimize named imports from packages with many exports
+  experimental: {
+    optimizePackageImports: ['lodash-es', '@mui/material', '@mui/icons-material'],
   },
 };
 
@@ -503,6 +482,8 @@ module.exports = nextConfig;
 
 ```typescript
 // src/app/dashboard/page.tsx
+'use client';
+
 import dynamic from 'next/dynamic';
 
 // Split large components
@@ -591,9 +572,6 @@ Optimize development experience with Turbopack.
 const nextConfig = {
   // Optimize for development
   reactStrictMode: true,
-
-  // Faster development builds
-  swcMinify: true,
 };
 
 module.exports = nextConfig;
