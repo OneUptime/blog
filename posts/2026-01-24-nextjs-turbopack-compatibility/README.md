@@ -26,7 +26,7 @@ flowchart TB
     end
 
     subgraph Partial["Partial Support"]
-        G[Custom Webpack Config]
+        G[Webpack Loaders via turbopack.rules]
         H[Some Plugins]
         I[Legacy Features]
     end
@@ -40,34 +40,35 @@ flowchart TB
 
 ## Enabling Turbopack
 
-Enable Turbopack in development mode.
+In Next.js 16, Turbopack is used by default for both development and production builds.
 
 ```json
 {
   "scripts": {
-    "dev": "next dev --turbo",
-    "dev:webpack": "next dev",
+    "dev": "next dev",
+    "dev:webpack": "NEXT_USE_WEBPACK=true next dev --webpack",
     "build": "next build",
+    "build:webpack": "NEXT_USE_WEBPACK=true next build --webpack",
     "start": "next start"
   }
 }
 ```
 
-Or in next.config.js for programmatic control:
+In older Next.js versions, enable it with `next dev --turbopack` or `next dev --turbo`.
+
+Configure Turbopack in next.config.js:
 
 ```javascript
 // next.config.js
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Turbopack configuration (experimental)
-  experimental: {
-    turbo: {
-      // Turbopack-specific options
-      rules: {
-        '*.svg': {
-          loaders: ['@svgr/webpack'],
-          as: '*.js',
-        },
+  // Turbopack configuration
+  turbopack: {
+    // Turbopack-specific options
+    rules: {
+      '*.svg': {
+        loaders: ['@svgr/webpack'],
+        as: '*.js',
       },
     },
   },
@@ -92,19 +93,19 @@ Create a configuration that works with both bundlers.
 
 ```javascript
 // next.config.js
-const useTurbopack = process.argv.includes('--turbo');
+const useWebpack = process.env.NEXT_USE_WEBPACK === 'true';
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // Common configuration for both bundlers
   reactStrictMode: true,
   images: {
-    domains: ['example.com'],
+    remotePatterns: [new URL('https://example.com/**')],
   },
 };
 
-// Only add webpack config when not using Turbopack
-if (!useTurbopack) {
+// Only add webpack config when explicitly using Webpack
+if (useWebpack) {
   nextConfig.webpack = (config, { isServer }) => {
     // Custom webpack configuration
     config.module.rules.push({
@@ -134,13 +135,11 @@ let nextConfig = {
 
 if (isTurbopack) {
   // Turbopack configuration
-  nextConfig.experimental = {
-    turbo: {
-      rules: {
-        '*.svg': {
-          loaders: ['@svgr/webpack'],
-          as: '*.js',
-        },
+  nextConfig.turbopack = {
+    rules: {
+      '*.svg': {
+        loaders: ['@svgr/webpack'],
+        as: '*.js',
       },
     },
   };
@@ -163,9 +162,10 @@ Package.json scripts:
 ```json
 {
   "scripts": {
-    "dev": "TURBOPACK=true next dev --turbo",
-    "dev:webpack": "next dev",
-    "build": "next build"
+    "dev": "TURBOPACK=true next dev",
+    "dev:webpack": "NEXT_USE_WEBPACK=true next dev --webpack",
+    "build": "TURBOPACK=true next build",
+    "build:webpack": "NEXT_USE_WEBPACK=true next build --webpack"
   }
 }
 ```
@@ -180,13 +180,11 @@ SVG handling differs between Turbopack and Webpack.
 // next.config.js
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  experimental: {
-    turbo: {
-      rules: {
-        '*.svg': {
-          loaders: ['@svgr/webpack'],
-          as: '*.js',
-        },
+  turbopack: {
+    rules: {
+      '*.svg': {
+        loaders: ['@svgr/webpack'],
+        as: '*.js',
       },
     },
   },
@@ -381,8 +379,8 @@ const nextConfig = {
   // base config
 };
 
-// Only use plugins with webpack
-if (!process.argv.includes('--turbo')) {
+// Only use plugins with Webpack
+if (process.env.NEXT_USE_WEBPACK === 'true') {
   module.exports = withBundleAnalyzer({
     enabled: process.env.ANALYZE === 'true',
   })(nextConfig);
@@ -396,12 +394,11 @@ if (!process.argv.includes('--turbo')) {
 Use built-in Next.js analysis:
 
 ```bash
-# Analyze bundle without plugin
+# Analyze a Turbopack build without the Webpack plugin
+npx next experimental-analyze
 
-ANALYZE=true next build
-
-# Or use the built-in analysis
-npx @next/bundle-analyzer
+# Or write the analyzer output to disk
+npx next experimental-analyze --output
 ```
 
 ## Environment Variable Handling
@@ -415,10 +412,6 @@ const nextConfig = {
   env: {
     // These work with both bundlers
     CUSTOM_VAR: process.env.CUSTOM_VAR,
-  },
-  // Public runtime config works with both
-  publicRuntimeConfig: {
-    apiUrl: process.env.NEXT_PUBLIC_API_URL,
   },
 };
 
@@ -457,17 +450,17 @@ module.exports = nextConfig;
 
 ## Development vs Production
 
-Turbopack is primarily for development. Production builds use Webpack.
+Turbopack started as a development-only bundler, but it now powers production builds too. In Next.js 16, Turbopack is stable and the default bundler for both `next dev` and `next build`; in Next.js 15 you can opt into production builds with `next build --turbopack`. You can still fall back to Webpack with `next dev --webpack` or `next build --webpack`.
 
 ```mermaid
 flowchart LR
     subgraph Development
-        A[next dev --turbo] --> B[Turbopack]
-        C[next dev] --> D[Webpack]
+        A[next dev --turbopack] --> B[Turbopack]
+        C[next dev --webpack] --> D[Webpack]
     end
 
     subgraph Production
-        E[next build] --> F[Webpack]
+        E[next build --turbopack] --> F[Turbopack]
         F --> G[Optimized Bundle]
     end
 
@@ -481,8 +474,6 @@ Follow this approach when encountering issues.
 
 ```javascript
 // scripts/check-turbopack.js
-const { execSync } = require('child_process');
-
 function checkTurbopackCompatibility() {
   console.log('Checking Turbopack compatibility...\n');
 
@@ -518,7 +509,7 @@ function checkTurbopackCompatibility() {
     }
   });
 
-  console.log('\nTry running: npm run dev -- --turbo');
+  console.log('\nTry running: npm run dev');
 }
 
 checkTurbopackCompatibility();
@@ -526,14 +517,13 @@ checkTurbopackCompatibility();
 
 ## Feature Detection
 
-Create utilities to detect the current bundler.
+Create utilities to detect the selected bundler when you control bundler selection with environment variables.
 
 ```typescript
 // src/lib/bundler.ts
 export function isTurbopack(): boolean {
   // Check if running with Turbopack
-  return process.env.TURBOPACK === 'true' ||
-         process.argv?.includes('--turbo');
+  return process.env.NEXT_USE_WEBPACK !== 'true';
 }
 
 export function getBundlerName(): 'turbopack' | 'webpack' {
@@ -580,7 +570,7 @@ const checklist: ChecklistItem[] = [
   {
     name: 'SVG handling configured',
     check: () => true,
-    fix: 'Use turbo.rules for SVG or alternative approach',
+    fix: 'Use turbopack.rules for SVG or alternative approach',
   },
 ];
 
@@ -607,10 +597,10 @@ Key points for fixing Turbopack compatibility issues:
 
 1. Use conditional configuration to support both bundlers
 2. Move path aliases from webpack to tsconfig.json
-3. Handle SVGs using turbo.rules or alternative methods
+3. Handle SVGs using turbopack.rules or alternative methods
 4. Import global CSS only in layout.tsx or _app.tsx
 5. Remove or conditionally apply incompatible plugins
 6. Use transpilePackages for third-party package issues
-7. Remember Turbopack is primarily for development
+7. Turbopack now supports both development and production builds (default in Next.js 16)
 
 As Turbopack matures, more features will become available. Check the Next.js documentation for the latest compatibility information.
