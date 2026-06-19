@@ -8,11 +8,11 @@ Description: A comprehensive guide to implementing error boundaries in React app
 
 ---
 
-Error boundaries are React components that catch JavaScript errors anywhere in their child component tree, log those errors, and display a fallback UI instead of crashing the entire application. This guide covers everything from basic implementation to advanced patterns.
+Error boundaries are React components that catch JavaScript errors anywhere in their child component tree during rendering, lifecycle methods, and constructors, log those errors, and display a fallback UI instead of crashing the entire application. They do not catch errors in event handlers, most asynchronous callbacks, server-side rendering, or errors thrown by the error boundary itself. This guide covers everything from basic implementation to advanced patterns.
 
 ## Why Error Boundaries Matter
 
-Without error boundaries, a JavaScript error in one component can crash your entire React application:
+Without error boundaries, a JavaScript error during rendering in one component can crash your entire React application:
 
 ```mermaid
 flowchart TD
@@ -54,6 +54,10 @@ class ErrorBoundary extends React.Component {
   // Log error information
   componentDidCatch(error, errorInfo) {
     this.setState({ errorInfo });
+
+    if (this.props.onError) {
+      this.props.onError(error, errorInfo);
+    }
 
     // Log to your error reporting service
     console.error('Error caught by boundary:', error);
@@ -356,7 +360,7 @@ export function useErrorBoundary() {
   const handleAsyncError = useCallback((promise) => {
     return promise.catch((error) => {
       setError(error);
-      throw error; // Re-throw to trigger error boundary if nested
+      throw error; // Re-throw so callers can handle the returned rejection
     });
   }, []);
 
@@ -404,13 +408,13 @@ function DataFetcher() {
 }
 ```
 
-## Error Boundary with React Query/SWR Integration
+## Error Boundary with TanStack Query Integration
 
 Integrate error boundaries with data fetching libraries:
 
 ```javascript
 // With React Query
-import { QueryErrorResetBoundary } from '@tanstack/react-query';
+import { QueryErrorResetBoundary, useQuery } from '@tanstack/react-query';
 import { ErrorBoundary } from 'react-error-boundary';
 
 function App() {
@@ -438,7 +442,7 @@ function DataComponent() {
   const { data } = useQuery({
     queryKey: ['data'],
     queryFn: fetchData,
-    useErrorBoundary: true, // This throws errors to the boundary
+    throwOnError: true, // This throws errors to the boundary
   });
 
   return <div>{data}</div>;
@@ -512,15 +516,14 @@ describe('ErrorBoundary', () => {
     // Error should be displayed
     expect(screen.getByText('Something went wrong')).toBeInTheDocument();
 
-    // Click retry button
-    fireEvent.click(screen.getByText('Try again'));
-
-    // Rerender with non-throwing component
+    // Rerender with non-throwing component, then click retry
     rerender(
       <ErrorBoundary>
         <BuggyComponent shouldThrow={false} />
       </ErrorBoundary>
     );
+
+    fireEvent.click(screen.getByText('Try again'));
 
     expect(screen.getByText('No error')).toBeInTheDocument();
   });
