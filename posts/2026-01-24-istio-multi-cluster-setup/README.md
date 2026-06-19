@@ -34,14 +34,14 @@ flowchart TB
 
 **Multi-Primary:** Each cluster has its own control plane. Control planes share configuration. More resilient but more complex.
 
-**Shared Control Plane (Deprecated):** Single external control plane for all clusters. Replaced by primary-remote in newer Istio versions.
+**External Control Plane:** Control plane runs outside the workload clusters and manages one or more remote clusters. Useful for separating control plane and data plane operations, but more advanced to operate.
 
 ## Prerequisites
 
 Before setting up multi-cluster Istio, ensure:
 
 1. **Network connectivity** between clusters (either flat network or through gateways)
-2. **Root CA certificates** that can be shared or a common trust domain
+2. **Shared root of trust** across clusters, such as certificates issued from the same root CA
 3. **Similar Istio versions** across all clusters
 4. **Unique cluster and network names**
 
@@ -71,13 +71,13 @@ Both clusters need certificates from the same root CA. Generate and distribute c
 mkdir -p certs && cd certs
 
 # Generate root CA (do this once)
-make -f istio-*/tools/certs/Makefile.selfsigned.mk root-ca
+make -f ../tools/certs/Makefile.selfsigned.mk root-ca
 
 # Generate intermediate CA for cluster1
-make -f istio-*/tools/certs/Makefile.selfsigned.mk cluster1-cacerts
+make -f ../tools/certs/Makefile.selfsigned.mk cluster1-cacerts
 
 # Generate intermediate CA for cluster2
-make -f istio-*/tools/certs/Makefile.selfsigned.mk cluster2-cacerts
+make -f ../tools/certs/Makefile.selfsigned.mk cluster2-cacerts
 ```
 
 Create the cacerts secret in each cluster:
@@ -151,6 +151,7 @@ Install Istio on cluster 1:
 
 ```bash
 # Install Istio with multi-cluster configuration
+kubectl --context=cluster1 label namespace istio-system topology.istio.io/network=network1
 istioctl install --context=cluster1 -f cluster1-config.yaml -y
 
 # Verify installation
@@ -162,8 +163,8 @@ kubectl --context=cluster1 get pods -n istio-system
 Create a Gateway to expose services to other clusters:
 
 ```yaml
-# expose-services-cluster1.yaml
-apiVersion: networking.istio.io/v1beta1
+# expose-services.yaml
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: cross-network-gateway
@@ -186,7 +187,7 @@ spec:
 Apply the gateway:
 
 ```bash
-kubectl --context=cluster1 apply -f expose-services-cluster1.yaml
+kubectl --context=cluster1 apply -f expose-services.yaml
 ```
 
 ### Step 4: Install Istio on Cluster 2
@@ -237,10 +238,11 @@ Install and expose services:
 
 ```bash
 # Install Istio on cluster 2
+kubectl --context=cluster2 label namespace istio-system topology.istio.io/network=network2
 istioctl install --context=cluster2 -f cluster2-config.yaml -y
 
 # Apply the cross-network gateway
-kubectl --context=cluster2 apply -f expose-services-cluster2.yaml
+kubectl --context=cluster2 apply -f expose-services.yaml
 ```
 
 ### Step 5: Enable Endpoint Discovery
@@ -291,7 +293,7 @@ spec:
     spec:
       containers:
         - name: helloworld
-          image: docker.io/istio/examples-helloworld-v1
+          image: docker.io/istio/examples-helloworld-v1:1.0
           ports:
             - containerPort: 5000
 ---
@@ -303,7 +305,8 @@ spec:
   selector:
     app: helloworld
   ports:
-    - port: 5000
+    - name: http
+      port: 5000
       targetPort: 5000
 ```
 
@@ -378,7 +381,7 @@ Configure locality load balancing to prefer local instances:
 
 ```yaml
 # locality-load-balancing.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: helloworld-locality
