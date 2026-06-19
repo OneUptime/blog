@@ -8,17 +8,17 @@ Description: Learn how to create, manage, and optimize MySQL stored procedures w
 
 ---
 
-Stored procedures are precompiled SQL programs stored in the database. They encapsulate business logic, improve performance, and provide a security layer between applications and data. This guide covers everything you need to know about working with stored procedures in MySQL.
+Stored procedures are SQL programs stored in the database. MySQL converts and caches stored program bodies per session, and reparses affected statements when referenced metadata changes. They encapsulate business logic, can reduce client/server round trips, and provide a security layer between applications and data. This guide covers everything you need to know about working with stored procedures in MySQL.
 
 ## Understanding Stored Procedures
 
 ```mermaid
 flowchart TD
     A[Application] -->|Call Procedure| B[MySQL Server]
-    B --> C[Procedure Cache]
-    C -->|First Call| D[Parse & Compile]
+    B --> C[Stored Program Cache]
+    C -->|First Use in Session| D[Convert & Cache]
     D --> E[Execute]
-    C -->|Subsequent Calls| E
+    C -->|Reusable Cached Form| E
     E --> F[Return Results]
     F --> A
 ```
@@ -26,7 +26,7 @@ flowchart TD
 Stored procedures offer several advantages:
 
 - **Reduced network traffic** - Execute multiple SQL statements with a single call
-- **Improved performance** - Procedures are parsed and compiled once
+- **Improved performance** - Procedures can reduce round trips and MySQL caches stored program bodies per session
 - **Code reusability** - Write once, call from anywhere
 - **Enhanced security** - Grant procedure access without table access
 - **Encapsulated logic** - Keep business rules in the database
@@ -76,15 +76,15 @@ MySQL supports three parameter types:
 DELIMITER //
 
 CREATE PROCEDURE DemoParameters(
-    IN input_param INT,      -- Read-only, passed in
-    OUT output_param INT,    -- Write-only, returned to caller
+    IN input_param INT,      -- Passed in; changes are not visible to caller
+    OUT output_param INT,    -- Returned to caller; initial value is NULL
     INOUT both_param INT     -- Read and write
 )
 BEGIN
-    -- IN: Can read, cannot modify
+    -- IN: Can read and modify locally, but changes are not returned
     SELECT input_param;
 
-    -- OUT: Can write, initial value is NULL
+    -- OUT: Initial value is NULL and final value is returned
     SET output_param = input_param * 2;
 
     -- INOUT: Can read initial value and modify
@@ -115,7 +115,7 @@ BEGIN
     DECLARE shipping DECIMAL(10,2) DEFAULT 0;
 
     -- Calculate subtotal
-    SELECT SUM(quantity * price) INTO subtotal
+    SELECT COALESCE(SUM(quantity * price), 0) INTO subtotal
     FROM order_items
     WHERE order_id = p_order_id;
 
@@ -241,10 +241,11 @@ BEGIN
     DECLARE done INT DEFAULT FALSE;
     DECLARE sub_id INT;
     DECLARE user_email VARCHAR(255);
+    DECLARE processed_count INT DEFAULT 0;
 
     -- Declare cursor
     DECLARE expired_cursor CURSOR FOR
-        SELECT id, email
+        SELECT s.id, u.email
         FROM subscriptions s
         JOIN users u ON s.user_id = u.id
         WHERE s.expires_at < NOW() AND s.status = 'active';
@@ -269,12 +270,14 @@ BEGIN
         -- Log the expiration
         INSERT INTO subscription_logs (subscription_id, action, email, created_at)
         VALUES (sub_id, 'expired', user_email, NOW());
+
+        SET processed_count = processed_count + 1;
     END LOOP;
 
     CLOSE expired_cursor;
 
     -- Return count of processed subscriptions
-    SELECT ROW_COUNT() AS processed_count;
+    SELECT processed_count;
 END //
 
 DELIMITER ;
@@ -406,12 +409,8 @@ def call_procedure_with_out_param():
 
     # Call procedure with OUT parameter
     args = [42, 0]  # IN user_id, OUT discount
-    cursor.callproc('GetCustomerDiscount', args)
-
-    # Get OUT parameter value
-    cursor.execute('SELECT @_GetCustomerDiscount_1')
-    result = cursor.fetchone()
-    print(f"Discount: {result[0]}%")
+    result_args = cursor.callproc('GetCustomerDiscount', args)
+    print(f"Discount: {result_args[1]}%")
 
     cursor.close()
     conn.close()
@@ -426,13 +425,16 @@ def call_procedure_with_results():
     cursor = conn.cursor(dictionary=True)
 
     # Call procedure that returns result set
-    cursor.callproc('GetUserById', [42])
+    cursor.execute('CALL GetUserById(%s)', (42,))
 
     # Fetch results
-    for result in cursor.stored_results():
-        users = result.fetchall()
-        for user in users:
-            print(user)
+    users = cursor.fetchall()
+    for user in users:
+        print(user)
+
+    # Consume any remaining result sets from CALL
+    while cursor.nextset():
+        pass
 
     cursor.close()
     conn.close()
@@ -459,7 +461,7 @@ async function callProcedure() {
 
     // Call procedure returning result set
     const [results] = await conn.query('CALL GetUserById(?)', [42]);
-    console.log('User:', results[0]);
+    console.log('User:', results[0][0]);
 
     await conn.end();
 }
