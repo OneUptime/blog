@@ -8,7 +8,7 @@ Description: Learn how to configure dead letter exchanges in RabbitMQ to handle 
 
 ---
 
-Dead Letter Exchanges (DLX) are a powerful RabbitMQ feature that routes messages that cannot be processed to a separate exchange. This allows you to handle failures gracefully, implement retry patterns, and ensure no message is ever lost.
+Dead Letter Exchanges (DLX) are a powerful RabbitMQ feature that routes messages that cannot be processed to a separate exchange. This allows you to handle failures gracefully, implement retry patterns, and reduce the risk of message loss.
 
 ## What Are Dead Letter Exchanges?
 
@@ -17,6 +17,7 @@ A message becomes "dead lettered" when:
 1. The message is rejected (basic.reject or basic.nack) with requeue=false
 2. The message TTL expires
 3. The queue length limit is exceeded
+4. A quorum queue delivery limit is exceeded
 
 ```mermaid
 flowchart TD
@@ -149,7 +150,8 @@ class DeadLetterSetup:
             arguments={
                 # After 60 seconds, messages go back to main exchange for retry
                 'x-message-ttl': 60000,
-                'x-dead-letter-exchange': 'main.exchange'
+                'x-dead-letter-exchange': 'main.exchange',
+                'x-dead-letter-routing-key': 'orders'
             }
         )
 
@@ -216,7 +218,8 @@ sequenceDiagram
 
     Note over C: Processing fails
 
-    C->>DX: nack(requeue=false)
+    C->>MQ: nack(requeue=false)
+    MQ->>DX: Dead-letter
     DX->>DQ: Route (retry_count=1)
 
     Note over DQ: Wait 60 seconds (TTL)
@@ -246,10 +249,14 @@ def get_retry_count(properties):
     """
     if properties.headers and 'x-death' in properties.headers:
         # x-death is a list of death records
-        # Each time a message is dead-lettered, a record is added
+        # RabbitMQ compresses records by queue and reason
         deaths = properties.headers['x-death']
-        # Count total times the message was dead-lettered
-        return sum(d.get('count', 0) for d in deaths)
+        # Count processing failures from the main queue, not retry queue TTL expirations
+        return sum(
+            d.get('count', 0)
+            for d in deaths
+            if d.get('queue') == 'orders.queue' and d.get('reason') == 'rejected'
+        )
     return 0
 
 def process_order(body):
@@ -344,7 +351,8 @@ async function setupDeadLetterQueues() {
         durable: true,
         arguments: {
             'x-message-ttl': 60000,  // Retry after 60 seconds
-            'x-dead-letter-exchange': 'main.exchange'
+            'x-dead-letter-exchange': 'main.exchange',
+            'x-dead-letter-routing-key': 'orders'
         }
     });
 
@@ -371,7 +379,12 @@ async function setupDeadLetterQueues() {
 function getRetryCount(msg) {
     // Extract retry count from x-death header
     const deaths = msg.properties.headers?.['x-death'] || [];
-    return deaths.reduce((sum, d) => sum + (d.count || 0), 0);
+    return deaths.reduce((sum, d) => {
+        if (d.queue === 'orders.queue' && d.reason === 'rejected') {
+            return sum + (d.count || 0);
+        }
+        return sum;
+    }, 0);
 }
 
 async function startConsumer() {
@@ -446,8 +459,9 @@ import pika
 
 def setup_exponential_backoff():
     """
-    Set up queues for exponential backoff retry pattern.
-    Each retry level has a different delay.
+    Set up queues for an exponential backoff retry pattern.
+    Each retry level has a different delay. Your consumer should publish
+    failed messages to retry.1, retry.2, etc. based on the retry count.
     """
     connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
     channel = connection.channel()
@@ -539,8 +553,8 @@ fi
 | x-message-ttl | Message expiration (ms) | 300000 (5 min) |
 | x-max-length | Queue length limit | 10000 |
 | x-max-length-bytes | Queue size limit | 104857600 (100MB) |
-| x-overflow | Behavior when full | 'reject-publish' or 'drop-head' |
+| x-overflow | Behavior when full | 'drop-head', 'reject-publish', or 'reject-publish-dlx' |
 
 ---
 
-Dead Letter Exchanges are essential for building resilient message-driven applications. They ensure that failed messages are not lost and provide a mechanism for implementing retry patterns. Combine DLX with monitoring and alerting to catch issues before they become problems, and always have a parking lot queue for messages that fail permanently.
+Dead Letter Exchanges are essential for building resilient message-driven applications. They help keep failed messages visible and provide a mechanism for implementing retry patterns. Combine DLX with monitoring and alerting to catch issues before they become problems, and always have a parking lot queue for messages that fail permanently.
