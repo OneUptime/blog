@@ -44,11 +44,13 @@ npm install -D @graphql-codegen/cli @graphql-codegen/typescript
 # For TypeScript operations (queries, mutations)
 npm install -D @graphql-codegen/typescript-operations
 
-# For React with Apollo Client
+# For React with Apollo Client 3
 npm install -D @graphql-codegen/typescript-react-apollo
+npm install @apollo/client
 
 # For React Query/TanStack Query
 npm install -D @graphql-codegen/typescript-react-query
+npm install @tanstack/react-query
 
 # For typed document nodes (recommended)
 npm install -D @graphql-codegen/typed-document-node
@@ -56,7 +58,20 @@ npm install -D @graphql-codegen/typed-document-node
 # For server-side resolvers
 npm install -D @graphql-codegen/typescript-resolvers
 
-# GraphQL tag for .graphql files
+# For urql
+npm install -D @graphql-codegen/typescript-urql
+npm install urql
+
+# For client preset and near-operation-file preset
+npm install -D @graphql-codegen/client-preset @graphql-codegen/near-operation-file-preset
+
+# For schema and introspection outputs
+npm install -D @graphql-codegen/schema-ast @graphql-codegen/introspection
+
+# For the dev script below
+npm install -D concurrently
+
+# GraphQL peer dependency
 npm install graphql
 ```
 
@@ -86,10 +101,10 @@ const config: CodegenConfig = {
       plugins: [
         'typescript',              // Base TypeScript types
         'typescript-operations',   // Types for operations
-        'typescript-react-apollo', // React hooks
+        'typescript-react-apollo', // React hooks for Apollo Client 3
       ],
       config: {
-        // Use TypeScript strict mode
+        // Require every custom scalar to be mapped
         strictScalars: true,
         // Custom scalar mappings
         scalars: {
@@ -231,28 +246,28 @@ The generator creates a file with all your types and hooks:
 
 // Scalar types
 export type Scalars = {
-  ID: string;
-  String: string;
-  Boolean: boolean;
-  Int: number;
-  Float: number;
-  DateTime: string;
-  JSON: Record<string, unknown>;
+  ID: { input: string; output: string };
+  String: { input: string; output: string };
+  Boolean: { input: boolean; output: boolean };
+  Int: { input: number; output: number };
+  Float: { input: number; output: number };
+  DateTime: { input: string; output: string };
+  JSON: { input: Record<string, unknown>; output: Record<string, unknown> };
 };
 
 // Types from schema
 export type User = {
   __typename?: 'User';
-  id: Scalars['ID'];
-  name: Scalars['String'];
-  email: Scalars['String'];
-  createdAt: Scalars['DateTime'];
+  id: Scalars['ID']['output'];
+  name: Scalars['String']['output'];
+  email: Scalars['String']['output'];
+  createdAt: Scalars['DateTime']['output'];
   posts?: Maybe<Array<Post>>;
 };
 
 // Query types
 export type GetUserQueryVariables = Exact<{
-  id: Scalars['ID'];
+  id: Scalars['ID']['input'];
 }>;
 
 export type GetUserQuery = {
@@ -268,7 +283,7 @@ export type GetUserQuery = {
 
 // Generated React hook
 export function useGetUserQuery(
-  baseOptions: Apollo.QueryHookOptions<GetUserQuery, GetUserQueryVariables>
+  baseOptions?: Apollo.QueryHookOptions<GetUserQuery, GetUserQueryVariables>
 ) {
   const options = { ...defaultOptions, ...baseOptions };
   return Apollo.useQuery<GetUserQuery, GetUserQueryVariables>(
@@ -405,12 +420,12 @@ const config: CodegenConfig = {
           func: './fetcher#customFetcher',
           isReactHook: false,
         },
+        // Use @tanstack/react-query instead of the legacy react-query package
+        legacyMode: false,
         // Expose query keys for cache invalidation
         exposeQueryKeys: true,
         // Expose mutation keys
         exposeMutationKeys: true,
-        // Add suffix to hooks
-        addSuspenseQuery: true,
       },
     },
   },
@@ -424,7 +439,6 @@ Use generated React Query hooks:
 import {
   useGetUsersQuery,
   useCreateUserMutation,
-  getGetUsersQueryKey,
 } from '../generated/graphql';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -439,7 +453,7 @@ function Users() {
     onSuccess: () => {
       // Invalidate and refetch
       queryClient.invalidateQueries({
-        queryKey: getGetUsersQueryKey({ first: 10 }),
+        queryKey: useGetUsersQuery.getKey({ first: 10 }),
       });
     },
   });
@@ -464,7 +478,7 @@ const config: CodegenConfig = {
       ],
       config: {
         withHooks: true,
-        urqlImportFrom: '@urql/core',
+        urqlImportFrom: 'urql',
       },
     },
   },
@@ -509,7 +523,7 @@ Use generated resolver types:
 
 ```typescript
 // src/resolvers/user.ts
-import { Resolvers, UserResolvers } from '../generated/resolvers-types';
+import { Resolvers } from '../generated/resolvers-types';
 import { Context } from '../context';
 
 // Fully typed resolver
@@ -562,7 +576,7 @@ const config: CodegenConfig = {
       preset: 'near-operation-file',
       presetConfig: {
         // Extension for generated files
-        extension: '.generated.ts',
+        extension: '.generated.tsx',
         // Base types location
         baseTypesPath: 'generated/base-types.ts',
       },
@@ -583,10 +597,10 @@ src/
   graphql/
     queries/
       users.graphql
-      users.generated.ts    # Generated types for users.graphql
+      users.generated.tsx   # Generated types for users.graphql
     mutations/
       posts.graphql
-      posts.generated.ts    # Generated types for posts.graphql
+      posts.generated.tsx   # Generated types for posts.graphql
   generated/
     base-types.ts           # Shared schema types
 ```
@@ -733,22 +747,24 @@ flowchart TB
 ```typescript
 // codegen.ts
 const config: CodegenConfig = {
+  // Choose one schema source:
+
   // Option 1: Use local schema file
   schema: 'src/schema.graphql',
 
   // Option 2: Use multiple schema files
-  schema: ['src/schema/**/*.graphql'],
+  // schema: ['src/schema/**/*.graphql'],
 
   // Option 3: Add headers for authenticated endpoints
-  schema: [
-    {
-      'http://localhost:4000/graphql': {
-        headers: {
-          Authorization: `Bearer ${process.env.API_TOKEN}`,
-        },
-      },
-    },
-  ],
+  // schema: [
+  //   {
+  //     'http://localhost:4000/graphql': {
+  //       headers: {
+  //         Authorization: `Bearer ${process.env.API_TOKEN}`,
+  //       },
+  //     },
+  //   },
+  // ],
 
   // ...
 };
@@ -842,15 +858,48 @@ fragment PostCard on Post {
 
 ```graphql
 # Good: Descriptive names that explain what the query does
-query GetUserById($id: ID!)
-query ListRecentPosts($limit: Int!)
-mutation CreateNewUser($input: CreateUserInput!)
-mutation UpdateUserProfile($id: ID!, $input: UpdateUserInput!)
+query GetUserById($id: ID!) {
+  user(id: $id) {
+    id
+  }
+}
+
+query ListRecentPosts($limit: Int!) {
+  posts(limit: $limit) {
+    id
+  }
+}
+
+mutation CreateNewUser($input: CreateUserInput!) {
+  createUser(input: $input) {
+    id
+  }
+}
+
+mutation UpdateUserProfile($id: ID!, $input: UpdateUserInput!) {
+  updateUser(id: $id, input: $input) {
+    id
+  }
+}
 
 # Bad: Vague or generic names
-query User($id: ID!)
-query Posts
-mutation Create($input: CreateUserInput!)
+query User($id: ID!) {
+  user(id: $id) {
+    id
+  }
+}
+
+query Posts {
+  posts {
+    id
+  }
+}
+
+mutation Create($input: CreateUserInput!) {
+  createUser(input: $input) {
+    id
+  }
+}
 ```
 
 ### 4. Add to CI Pipeline
