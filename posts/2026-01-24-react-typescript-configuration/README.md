@@ -26,8 +26,8 @@ flowchart TB
     C --> G[Fast dev server]
     C --> H[Modern bundling]
 
-    D --> I[Official React tool]
-    D --> J[Zero config]
+    D --> I[Deprecated for new apps]
+    D --> J[Maintenance mode]
 
     E --> K[Full-stack framework]
     E --> L[Server components]
@@ -72,6 +72,7 @@ npm run dev
     // Use ESNext modules with bundler resolution
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "noEmit": true,
 
     // Enable all strict type checking options
     "strict": true,
@@ -158,7 +159,7 @@ export default defineConfig({
 
 ```tsx
 // src/types/common.ts
-import { ReactNode, PropsWithChildren, ComponentPropsWithoutRef } from 'react';
+import type { ReactNode, PropsWithChildren, ComponentPropsWithoutRef } from 'react';
 
 // Props that include children
 export interface ContainerProps {
@@ -208,9 +209,7 @@ export function Button({
 import {
   ChangeEvent,
   FormEvent,
-  MouseEvent,
-  KeyboardEvent,
-  FocusEvent
+  KeyboardEvent
 } from 'react';
 
 interface FormProps {
@@ -238,7 +237,7 @@ export function LoginForm({ onSubmit }: FormProps) {
     });
   };
 
-  const handleKeyPress = (e: KeyboardEvent<HTMLInputElement>) => {
+  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       console.log('Enter pressed');
     }
@@ -250,7 +249,7 @@ export function LoginForm({ onSubmit }: FormProps) {
         type="email"
         name="email"
         onChange={handleInputChange}
-        onKeyPress={handleKeyPress}
+        onKeyDown={handleKeyDown}
       />
       <input
         type="password"
@@ -267,7 +266,7 @@ export function LoginForm({ onSubmit }: FormProps) {
 
 ```tsx
 // src/hooks/useLocalStorage.ts
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 
 // Generic hook for type-safe localStorage
 export function useLocalStorage<T>(
@@ -321,9 +320,9 @@ import {
   createContext,
   useContext,
   useState,
-  useCallback,
-  ReactNode
+  useCallback
 } from 'react';
+import type { ReactNode } from 'react';
 
 // Define the shape of user data
 interface User {
@@ -410,7 +409,7 @@ export function useAuth(): AuthContextType {
 
 ```tsx
 // src/components/DataList.tsx
-import { ReactNode } from 'react';
+import type { ReactNode } from 'react';
 
 // Generic list component that works with any data type
 interface DataListProps<T> {
@@ -452,7 +451,7 @@ interface Product {
   price: number;
 }
 
-function ProductList({ products }: { products: Product[] }) {
+export function ProductList({ products }: { products: Product[] }) {
   return (
     <DataList
       items={products}
@@ -471,36 +470,34 @@ function ProductList({ products }: { products: Product[] }) {
 
 ## ESLint Configuration for TypeScript
 
-```json
-// .eslintrc.json
-{
-  "env": {
-    "browser": true,
-    "es2021": true
+```javascript
+// eslint.config.js
+import js from '@eslint/js';
+import globals from 'globals';
+import reactHooks from 'eslint-plugin-react-hooks';
+import reactRefresh from 'eslint-plugin-react-refresh';
+import tseslint from 'typescript-eslint';
+import { defineConfig, globalIgnores } from 'eslint/config';
+
+export default defineConfig([
+  globalIgnores(['dist']),
+  {
+    files: ['**/*.{ts,tsx}'],
+    extends: [
+      js.configs.recommended,
+      tseslint.configs.recommended,
+      reactHooks.configs.flat.recommended,
+      reactRefresh.configs.vite,
+    ],
+    languageOptions: {
+      globals: globals.browser,
+    },
+    rules: {
+      '@typescript-eslint/explicit-function-return-type': 'off',
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+    },
   },
-  "extends": [
-    "eslint:recommended",
-    "plugin:react/recommended",
-    "plugin:react-hooks/recommended",
-    "plugin:@typescript-eslint/recommended"
-  ],
-  "parser": "@typescript-eslint/parser",
-  "parserOptions": {
-    "ecmaFeatures": { "jsx": true },
-    "ecmaVersion": "latest",
-    "sourceType": "module",
-    "project": "./tsconfig.json"
-  },
-  "plugins": ["react", "@typescript-eslint"],
-  "rules": {
-    "react/react-in-jsx-scope": "off",
-    "@typescript-eslint/explicit-function-return-type": "off",
-    "@typescript-eslint/no-unused-vars": ["error", { "argsIgnorePattern": "^_" }]
-  },
-  "settings": {
-    "react": { "version": "detect" }
-  }
-}
+]);
 ```
 
 ## Quick Reference
