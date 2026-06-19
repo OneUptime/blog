@@ -35,7 +35,7 @@ flowchart TD
 | Challenge | Description | Solution |
 |-----------|-------------|----------|
 | Connection stickiness | HTTP/2 connections persist | Client-side LB or service mesh |
-| Binary protocol | Cannot use HTTP path routing | gRPC-aware ingress |
+| Binary protocol | Cannot rely on REST-style path routing | gRPC-aware ingress |
 | Health checks | HTTP/1.1 health checks fail | gRPC health protocol |
 | TLS termination | Complex with HTTP/2 | End-to-end TLS or proper termination |
 
@@ -210,6 +210,8 @@ COPY . .
 
 # Build
 RUN CGO_ENABLED=0 GOOS=linux go build -o /server ./cmd/server
+
+FROM ghcr.io/grpc-ecosystem/grpc-health-probe:v0.4.45 AS grpc-health-probe
 
 # Runtime image
 FROM alpine:3.19
@@ -395,12 +397,14 @@ package client
 
 import (
     "context"
+    "fmt"
     "time"
 
     "google.golang.org/grpc"
-    "google.golang.org/grpc/balancer/roundrobin"
+    "google.golang.org/grpc/connectivity"
     "google.golang.org/grpc/credentials/insecure"
     "google.golang.org/grpc/keepalive"
+    _ "google.golang.org/grpc/balancer/roundrobin"
     pb "github.com/example/user"
 )
 
@@ -413,27 +417,36 @@ func NewUserClient(target string) (pb.UserServiceClient, *grpc.ClientConn, error
     }
 
     // Connect with client-side load balancing
-    conn, err := grpc.Dial(
+    conn, err := grpc.NewClient(
         // Use dns:/// prefix for DNS-based discovery with headless service
         "dns:///user-service-headless:50051",
         grpc.WithTransportCredentials(insecure.NewCredentials()),
         grpc.WithDefaultServiceConfig(`{"loadBalancingPolicy":"round_robin"}`),
         grpc.WithKeepaliveParams(kacp),
-        grpc.WithBlock(),
-        grpc.WithTimeout(10*time.Second),
     )
     if err != nil {
         return nil, nil, err
     }
 
+    ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+    defer cancel()
+
+    conn.Connect()
+    for state := conn.GetState(); state != connectivity.Ready; state = conn.GetState() {
+        if !conn.WaitForStateChange(ctx, state) {
+            conn.Close()
+            return nil, nil, ctx.Err()
+        }
+    }
+
     return pb.NewUserServiceClient(conn), conn, nil
 }
 
-// With custom resolver for Kubernetes
+// With custom resolver for Kubernetes. This requires a registered Kubernetes resolver implementation.
 func NewUserClientWithKubeResolver(namespace, serviceName string) (pb.UserServiceClient, *grpc.ClientConn, error) {
     target := fmt.Sprintf("kubernetes:///%s.%s:50051", serviceName, namespace)
 
-    conn, err := grpc.Dial(
+    conn, err := grpc.NewClient(
         target,
         grpc.WithTransportCredentials(insecure.NewCredentials()),
         grpc.WithDefaultServiceConfig(`{
@@ -517,7 +530,7 @@ metadata:
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
-    nginx.ingress.kubernetes.io/server-snippets: |
+    nginx.ingress.kubernetes.io/server-snippet: |
       grpc_read_timeout 3600s;
       grpc_send_timeout 3600s;
 spec:
@@ -542,7 +555,7 @@ spec:
 
 ```yaml
 # ingress-traefik.yaml
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: user-service-grpc
@@ -561,7 +574,7 @@ spec:
 
 ---
 # Traefik middleware for gRPC
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
   name: grpc-retry
@@ -607,9 +620,7 @@ package main
 import (
     "crypto/tls"
     "crypto/x509"
-    "io/ioutil"
-    "log"
-    "net"
+    "os"
 
     "google.golang.org/grpc"
     "google.golang.org/grpc/credentials"
@@ -626,7 +637,7 @@ func createTLSServer() (*grpc.Server, error) {
     }
 
     // Load CA certificate for client verification (mTLS)
-    caCert, err := ioutil.ReadFile("/etc/certs/ca.crt")
+    caCert, err := os.ReadFile("/etc/certs/ca.crt")
     if err != nil {
         return nil, err
     }
@@ -656,7 +667,7 @@ package client
 import (
     "crypto/tls"
     "crypto/x509"
-    "io/ioutil"
+    "os"
 
     "google.golang.org/grpc"
     "google.golang.org/grpc/credentials"
@@ -673,7 +684,7 @@ func NewTLSClient(target string) (*grpc.ClientConn, error) {
     }
 
     // Load CA certificate
-    caCert, err := ioutil.ReadFile("/etc/certs/ca.crt")
+    caCert, err := os.ReadFile("/etc/certs/ca.crt")
     if err != nil {
         return nil, err
     }
@@ -684,13 +695,13 @@ func NewTLSClient(target string) (*grpc.ClientConn, error) {
     tlsConfig := &tls.Config{
         Certificates:       []tls.Certificate{cert},
         RootCAs:            caCertPool,
-        ServerName:         "user-service",  // Must match certificate
+        ServerName:         "user-service.default.svc.cluster.local",  // Must match certificate
         InsecureSkipVerify: false,
     }
 
     creds := credentials.NewTLS(tlsConfig)
 
-    return grpc.Dial(
+    return grpc.NewClient(
         target,
         grpc.WithTransportCredentials(creds),
         grpc.WithDefaultServiceConfig(`{"loadBalancingPolicy":"round_robin"}`),
