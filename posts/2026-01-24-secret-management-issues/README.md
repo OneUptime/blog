@@ -119,7 +119,7 @@ kubectl get externalsecret myapp-secrets -n myapp -o jsonpath='{.status.conditio
 
 ```yaml
 # secretstore.yaml - Configure provider authentication
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: aws-secrets-manager
@@ -156,7 +156,7 @@ kubectl create secret generic aws-credentials \
 
 ```yaml
 # externalsecret.yaml - Correct configuration
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: myapp-secrets
@@ -266,7 +266,7 @@ spec:
         - name: myapp
           image: myapp:latest
           command: ["/bin/sh", "-c"]
-          args: ["source /vault/secrets/db-creds && ./app"]
+          args: [". /vault/secrets/db-creds && ./app"]
 ```
 
 ## Fixing Secret Rotation Issues
@@ -276,8 +276,9 @@ Secrets need rotation, but applications may not pick up changes automatically.
 ### Detect Stale Secrets
 
 ```bash
-# Check when the secret was last modified
-kubectl get secret myapp-secrets -n myapp -o jsonpath='{.metadata.creationTimestamp}'
+# Check when the secret was created and its current resource version
+kubectl get secret myapp-secrets -n myapp \
+  -o jsonpath='{.metadata.creationTimestamp}{" resourceVersion="}{.metadata.resourceVersion}{"\n"}'
 
 # For External Secrets, check last sync time
 kubectl get externalsecret myapp-secrets -n myapp \
@@ -321,7 +322,7 @@ metadata:
 
 ## Fixing Secret Encryption Issues
 
-Kubernetes secrets are base64 encoded, not encrypted. Enable encryption at rest for security.
+Kubernetes Secret values are base64 encoded and stored unencrypted in etcd by default. Enable encryption at rest for security.
 
 ### Check Encryption Configuration
 
@@ -403,14 +404,14 @@ jobs:
           fetch-depth: 0
 
       - name: Scan for secrets with gitleaks
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Scan for secrets with trufflehog
         uses: trufflesecurity/trufflehog@main
         with:
-          extra_args: --only-verified
+          extra_args: --results=verified
 ```
 
 ### Monitor Secret Access
