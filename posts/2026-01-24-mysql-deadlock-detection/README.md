@@ -156,22 +156,35 @@ CREATE PROCEDURE process_inventory_batch(IN batch_size INT)
 BEGIN
     DECLARE done INT DEFAULT 0;
 
+    CREATE TEMPORARY TABLE IF NOT EXISTS batch_products (
+        product_id INT PRIMARY KEY
+    ) ENGINE=MEMORY;
+
     WHILE done = 0 DO
-        START TRANSACTION;
+        DELETE FROM batch_products;
 
-        -- Process a small batch
-        UPDATE inventory
-        SET quantity = quantity - 1
-        WHERE product_id IN (
-            SELECT product_id FROM pending_orders LIMIT batch_size
-        );
+        INSERT INTO batch_products (product_id)
+        SELECT product_id
+        FROM pending_orders
+        ORDER BY product_id
+        LIMIT batch_size;
 
-        -- Check if more work remains
         IF ROW_COUNT() = 0 THEN
             SET done = 1;
-        END IF;
+        ELSE
+            START TRANSACTION;
 
-        COMMIT;
+            -- Process a small batch
+            UPDATE inventory i
+            JOIN batch_products b ON b.product_id = i.product_id
+            SET i.quantity = i.quantity - 1;
+
+            DELETE p
+            FROM pending_orders p
+            JOIN batch_products b ON b.product_id = p.product_id;
+
+            COMMIT;
+        END IF;
     END WHILE;
 END //
 DELIMITER ;
