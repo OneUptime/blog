@@ -114,6 +114,9 @@ jobs:
 # .github/workflows/deploy-oidc.yml
 name: Deploy with OIDC
 
+on:
+  workflow_dispatch:
+
 # Required for OIDC token generation
 permissions:
   id-token: write
@@ -181,16 +184,20 @@ deploy:
 # .gitlab-ci.yml
 deploy:
   stage: deploy
-  image: hashicorp/vault:latest
+  id_tokens:
+    VAULT_ID_TOKEN:
+      aud: https://vault.example.com
+  secrets:
+    DATABASE_PASSWORD:
+      vault: production/database/password@secret
+      token: $VAULT_ID_TOKEN
+      file: false
+    API_KEY:
+      vault: production/api/key@secret
+      token: $VAULT_ID_TOKEN
+      file: false
   script:
-    # Authenticate with Vault using CI job JWT
-    - export VAULT_TOKEN=$(vault write -field=token auth/jwt/login role=gitlab-ci jwt=$CI_JOB_JWT)
-
-    # Fetch secrets from Vault
-    - export DATABASE_PASSWORD=$(vault kv get -field=password secret/production/database)
-    - export API_KEY=$(vault kv get -field=key secret/production/api)
-
-    # Use secrets for deployment
+    # GitLab authenticates to Vault with the ID token and injects secrets
     - ./deploy.sh
 ```
 
@@ -288,6 +295,9 @@ pipeline {
 # GitHub Actions with AWS Secrets Manager
 name: Deploy with AWS Secrets Manager
 
+on:
+  workflow_dispatch:
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -330,9 +340,15 @@ jobs:
 # GitHub Actions with HashiCorp Vault
 name: Deploy with Vault
 
+on:
+  workflow_dispatch:
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
 
     steps:
       - uses: actions/checkout@v4
@@ -473,17 +489,17 @@ jobs:
       - name: Rotate database password
         run: |
           # Generate new password
-          NEW_PASSWORD=$(openssl rand -base64 32)
-
-          # Update in Secrets Manager
-          aws secretsmanager put-secret-value \
-            --secret-id production/database \
-            --secret-string "{\"password\":\"$NEW_PASSWORD\"}"
+          NEW_PASSWORD=$(openssl rand -base64 48 | tr -dc 'A-Za-z0-9' | head -c 32)
 
           # Update database user password
           aws rds modify-db-cluster \
             --db-cluster-identifier production \
             --master-user-password "$NEW_PASSWORD"
+
+          # Update in Secrets Manager
+          aws secretsmanager put-secret-value \
+            --secret-id production/database \
+            --secret-string "{\"password\":\"$NEW_PASSWORD\"}"
 
       - name: Trigger application redeployment
         run: |
@@ -529,12 +545,12 @@ CMD ["node", "dist/index.js"]
 ```yaml
 # GitHub Actions - Build with secrets
 - name: Build Docker image
+  env:
+    NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
   run: |
-    echo "${{ secrets.NPM_TOKEN }}" > npm_token.txt
     docker build \
-      --secret id=npm_token,src=npm_token.txt \
+      --secret id=npm_token,env=NPM_TOKEN \
       -t myapp:${{ github.sha }} .
-    rm npm_token.txt
 ```
 
 ### Kubernetes Secrets in CI/CD
