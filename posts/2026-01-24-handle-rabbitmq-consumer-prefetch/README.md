@@ -38,6 +38,7 @@ flowchart LR
 
 ```python
 import pika
+import time
 
 connection = pika.BlockingConnection(
     pika.ConnectionParameters('localhost')
@@ -185,6 +186,7 @@ Best for:
 
 ```python
 import pika
+import random
 import time
 
 def setup_fair_worker():
@@ -287,22 +289,44 @@ def setup_high_throughput_worker():
 
     batch = []
     batch_size = 100
+    batch_timeout = 1.0
+    batch_marker = None
+
+    def flush_batch(expected_marker=None):
+        nonlocal batch, batch_marker
+
+        if expected_marker is not None and expected_marker is not batch_marker:
+            return
+
+        if not batch:
+            batch_marker = None
+            return
+
+        # Batch process
+        for tag, msg in batch:
+            # Fast processing (< 1ms)
+            pass
+
+        # Acknowledge all at once
+        channel.basic_ack(delivery_tag=batch[-1][0], multiple=True)
+        batch = []
+        batch_marker = None
 
     def process_fast_task(ch, method, properties, body):
-        nonlocal batch
+        nonlocal batch, batch_marker
+
+        if not batch:
+            batch_marker = object()
+            connection.call_later(
+                batch_timeout,
+                lambda marker=batch_marker: flush_batch(marker)
+            )
 
         batch.append((method.delivery_tag, body))
 
         # Process in batches for efficiency
         if len(batch) >= batch_size:
-            # Batch process
-            for tag, msg in batch:
-                # Fast processing (< 1ms)
-                pass
-
-            # Acknowledge all at once
-            ch.basic_ack(delivery_tag=batch[-1][0], multiple=True)
-            batch = []
+            flush_batch()
 
     channel.basic_consume(
         queue='fast_tasks',
@@ -392,7 +416,7 @@ class AdaptivePrefetchConsumer:
             while True:
                 time.sleep(self.adjustment_interval)
                 try:
-                    self.adjust_prefetch()
+                    self.connection.add_callback_threadsafe(self.adjust_prefetch)
                 except Exception as e:
                     print(f"Adjustment error: {e}")
 
@@ -453,7 +477,8 @@ flowchart LR
 
 ```python
 import pika
-import os
+import random
+import time
 
 def create_fair_worker(worker_id):
     """
@@ -475,7 +500,6 @@ def create_fair_worker(worker_id):
         print(f"Worker {worker_id}: Processing {task}")
 
         # Variable processing time
-        import random
         time.sleep(random.uniform(0.5, 2.0))
 
         print(f"Worker {worker_id}: Completed {task}")
@@ -507,6 +531,7 @@ class BatchConsumer:
         self.batch_timeout = batch_timeout
         self.batch = []
         self.batch_start = None
+        self.batch_marker = None
 
     def connect(self):
         self.connection = pika.BlockingConnection(
@@ -518,9 +543,21 @@ class BatchConsumer:
         # High prefetch to accumulate batch
         self.channel.basic_qos(prefetch_count=self.batch_size * 2)
 
-    def process_batch(self):
+    def schedule_batch_timeout(self):
+        """Schedule a timeout callback to flush a partial batch."""
+        self.batch_marker = object()
+        self.connection.call_later(
+            self.batch_timeout,
+            lambda marker=self.batch_marker: self.process_batch(marker)
+        )
+
+    def process_batch(self, expected_marker=None):
         """Process accumulated batch of messages."""
+        if expected_marker is not None and expected_marker is not self.batch_marker:
+            return
+
         if not self.batch:
+            self.batch_marker = None
             return
 
         print(f"Processing batch of {len(self.batch)} messages")
@@ -536,6 +573,7 @@ class BatchConsumer:
 
         self.batch = []
         self.batch_start = None
+        self.batch_marker = None
 
     def bulk_insert(self, messages):
         """Override with actual bulk processing logic."""
@@ -547,6 +585,7 @@ class BatchConsumer:
         """Accumulate messages into batch."""
         if self.batch_start is None:
             self.batch_start = time.time()
+            self.schedule_batch_timeout()
 
         self.batch.append((method.delivery_tag, body.decode()))
 
@@ -621,10 +660,10 @@ def create_priority_consumer(priority_level):
 
 ```bash
 # Check unacknowledged message count per consumer
-rabbitmqctl list_consumers queue_name consumer_tag prefetch_count
+rabbitmqctl list_consumers
 
 # Check channel details including prefetch
-rabbitmqctl list_channels name prefetch_count unacked_message_count
+rabbitmqctl list_channels name prefetch_count messages_unacknowledged
 
 # Via Management API
 curl -u guest:guest \
@@ -636,11 +675,10 @@ curl -u guest:guest \
 
 ```promql
 # Unacknowledged messages (should be close to prefetch * consumers)
-rabbitmq_channel_messages_unacknowledged
+rabbitmq_channel_messages_unacked
 
-# Consumer utilization (higher is better)
-rate(rabbitmq_channel_messages_delivered_total[5m]) /
-rate(rabbitmq_channel_messages_published_total[5m])
+# Consumer utilisation (higher is better)
+rabbitmq_queue_consumer_utilisation
 
 # Queue message ready (should stay low with proper prefetch)
 rabbitmq_queue_messages_ready
