@@ -69,8 +69,7 @@ flowchart TB
 package monitoring
 
 import (
-    "context"
-    "time"
+    "net/http"
 
     "github.com/prometheus/client_golang/prometheus"
     "github.com/prometheus/client_golang/prometheus/promauto"
@@ -98,17 +97,16 @@ var (
 
 // InstrumentedClient wraps an HTTP client with metrics
 type InstrumentedClient struct {
-    client  HTTPClient
+    client  *http.Client
     service string
 }
 
 // Do executes the request with instrumentation
-func (c *InstrumentedClient) Do(ctx context.Context, req *Request) (*Response, error) {
+func (c *InstrumentedClient) Do(req *http.Request) (*http.Response, error) {
     concurrentRequests.WithLabelValues(c.service).Inc()
     defer concurrentRequests.WithLabelValues(c.service).Dec()
 
-    start := time.Now()
-    resp, err := c.client.Do(ctx, req)
+    resp, err := c.client.Do(req)
 
     status := "success"
     if err != nil {
@@ -319,10 +317,11 @@ type CircuitBreaker struct {
     timeout          time.Duration
 
     // State
-    state           State
-    failures        int
-    successes       int
-    lastFailureTime time.Time
+    state            State
+    failures         int
+    successes        int
+    halfOpenInFlight bool
+    lastFailureTime  time.Time
 
     // Callbacks
     onStateChange func(from, to State)
@@ -377,12 +376,17 @@ func (cb *CircuitBreaker) allowRequest() bool {
         // Check if timeout has passed
         if time.Since(cb.lastFailureTime) > cb.timeout {
             cb.setState(StateHalfOpen)
+            cb.halfOpenInFlight = true
             return true
         }
         return false
 
     case StateHalfOpen:
-        // Allow limited requests in half-open state
+        // Allow one test request in half-open state
+        if cb.halfOpenInFlight {
+            return false
+        }
+        cb.halfOpenInFlight = true
         return true
     }
 
@@ -406,6 +410,7 @@ func (cb *CircuitBreaker) recordResult(success bool) {
         }
 
     case StateHalfOpen:
+        cb.halfOpenInFlight = false
         if success {
             cb.successes++
             if cb.successes >= cb.successThreshold {
@@ -427,6 +432,7 @@ func (cb *CircuitBreaker) setState(newState State) {
     cb.state = newState
     cb.failures = 0
     cb.successes = 0
+    cb.halfOpenInFlight = false
 
     if cb.onStateChange != nil {
         go cb.onStateChange(oldState, newState)
@@ -633,7 +639,7 @@ package hedging
 
 import (
     "context"
-    "sync"
+    "errors"
     "time"
 )
 
@@ -668,50 +674,54 @@ func (h *Hedger) Do(ctx context.Context, fn func(context.Context) (interface{}, 
     // Channel to receive results
     results := make(chan Result, h.maxHedges+1)
 
-    // WaitGroup to track goroutines
-    var wg sync.WaitGroup
+    sendRequest := func() {
+        go func() {
+            value, err := fn(ctx)
+            select {
+            case results <- Result{Value: value, Err: err}:
+            case <-ctx.Done():
+            }
+        }()
+    }
 
     // Send initial request
-    wg.Add(1)
-    go func() {
-        defer wg.Done()
-        value, err := fn(ctx)
-        select {
-        case results <- Result{Value: value, Err: err}:
-        case <-ctx.Done():
-        }
-    }()
+    sendRequest()
 
     // Timer for hedge requests
     hedgeTimer := time.NewTimer(h.hedgeDelay)
     defer hedgeTimer.Stop()
 
-    hedgeCount := 0
+    attemptsStarted := 1
+    resultsReceived := 0
+    totalAttempts := h.maxHedges + 1
+    var lastErr error
 
     for {
         select {
         case result := <-results:
+            resultsReceived++
             if result.Err == nil {
                 // Success - cancel other requests and return
                 cancel()
                 return result.Value, nil
             }
+            lastErr = result.Err
+            if attemptsStarted == totalAttempts && resultsReceived == totalAttempts {
+                return nil, lastErr
+            }
             // Error - wait for other results or send hedge
 
         case <-hedgeTimer.C:
             // Send hedge request
-            if hedgeCount < h.maxHedges {
-                hedgeCount++
-                wg.Add(1)
-                go func() {
-                    defer wg.Done()
-                    value, err := fn(ctx)
-                    select {
-                    case results <- Result{Value: value, Err: err}:
-                    case <-ctx.Done():
-                    }
-                }()
+            if attemptsStarted < totalAttempts {
+                attemptsStarted++
+                sendRequest()
                 hedgeTimer.Reset(h.hedgeDelay)
+            } else if resultsReceived == totalAttempts {
+                if lastErr != nil {
+                    return nil, lastErr
+                }
+                return nil, errors.New("hedged request failed")
             }
 
         case <-ctx.Done():
@@ -746,6 +756,7 @@ package loadshed
 
 import (
     "errors"
+    "net/http"
     "sync/atomic"
     "time"
 )
@@ -863,7 +874,7 @@ groups:
 
       # Detect circuit breaker opening
       - alert: CircuitBreakerOpen
-        expr: circuit_breaker_state == 2
+        expr: circuit_breaker_state == 1
         for: 1m
         labels:
           severity: critical
