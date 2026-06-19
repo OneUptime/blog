@@ -34,7 +34,7 @@ flowchart TD
 
 ## Partition Types
 
-MySQL supports four partition types:
+MySQL supports several partitioning strategies, including these common types:
 
 | Type | Use Case | Example |
 |------|----------|---------|
@@ -42,6 +42,8 @@ MySQL supports four partition types:
 | LIST | Discrete categories | Data by region or status |
 | HASH | Even distribution | Load balancing |
 | KEY | Similar to HASH, uses MySQL's hashing | When no obvious partition key |
+
+MySQL also supports `RANGE COLUMNS` and `LIST COLUMNS` variants for partitioning directly on column values.
 
 ## Range Partitioning
 
@@ -167,8 +169,8 @@ PARTITIONS 16;
 **Add new partitions:**
 
 ```sql
--- Add partition for 2027
-ALTER TABLE orders
+-- Add partition for 2027 to a RANGE table that does not already have MAXVALUE
+ALTER TABLE orders_without_maxvalue
 ADD PARTITION (PARTITION p2027 VALUES LESS THAN (2028));
 
 -- For tables with MAXVALUE, reorganize instead
@@ -315,25 +317,25 @@ DELIMITER //
 CREATE PROCEDURE maintain_order_partitions()
 BEGIN
     DECLARE next_year INT;
-    DECLARE partition_name VARCHAR(20);
+    DECLARE v_partition_name VARCHAR(20);
     DECLARE partition_exists INT;
 
     -- Calculate next year
     SET next_year = YEAR(CURDATE()) + 1;
-    SET partition_name = CONCAT('p', next_year);
+    SET v_partition_name = CONCAT('p', next_year);
 
     -- Check if partition exists
     SELECT COUNT(*) INTO partition_exists
     FROM INFORMATION_SCHEMA.PARTITIONS
     WHERE TABLE_SCHEMA = DATABASE()
       AND TABLE_NAME = 'orders'
-      AND PARTITION_NAME = partition_name;
+      AND PARTITION_NAME = v_partition_name;
 
     -- Create if not exists
     IF partition_exists = 0 THEN
         SET @sql = CONCAT(
             'ALTER TABLE orders REORGANIZE PARTITION pmax INTO (',
-            'PARTITION ', partition_name, ' VALUES LESS THAN (', next_year + 1, '),',
+            'PARTITION ', v_partition_name, ' VALUES LESS THAN (', next_year + 1, '),',
             'PARTITION pmax VALUES LESS THAN MAXVALUE)'
         );
         PREPARE stmt FROM @sql;
@@ -357,9 +359,9 @@ DO CALL maintain_order_partitions();
 ## Common Pitfalls
 
 1. **Partition key not in primary key** - MySQL requires the partition column to be part of all unique keys
-2. **Too many partitions** - Stick to fewer than 100 partitions per table
-3. **Foreign keys** - Partitioned tables cannot have foreign key constraints
+2. **Too many partitions** - MySQL supports up to 8192 partitions for non-NDB tables, including subpartitions, but keep the count low enough for your workload
+3. **Foreign keys** - InnoDB tables using user-defined partitioning cannot have foreign key constraints
 4. **Wrong partition type** - Use RANGE for time data, not HASH
-5. **Forgetting MAXVALUE** - Always include a catchall partition
+5. **Forgetting MAXVALUE** - For RANGE partitioning, include a catchall partition when future values should continue to be accepted
 
 Partitioning is a powerful tool when used correctly. Start with RANGE partitioning on date columns for time-series data, and monitor query plans to verify partition pruning is working. The biggest wins come from instant partition drops for data lifecycle management and reduced scan sizes for analytical queries.
