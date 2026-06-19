@@ -299,7 +299,7 @@ public class CustomerAwarePartitioner implements Partitioner {
         int numPartitions = partitions.size();
 
         if (keyBytes == null) {
-            // Without a key, use round-robin (no ordering guarantee)
+            // Without a key, choose a partition without an ordering guarantee
             return (int) (Math.random() * numPartitions);
         }
 
@@ -310,7 +310,7 @@ public class CustomerAwarePartitioner implements Partitioner {
 
         // Use consistent hashing on customer ID
         // All orders from the same customer go to the same partition
-        return Math.abs(customerId.hashCode()) % numPartitions;
+        return Math.floorMod(customerId.hashCode(), numPartitions);
     }
 
     private String extractCustomerId(String key) {
@@ -360,7 +360,7 @@ public class IdempotentOrderedProducer {
         props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG,
             "org.apache.kafka.common.serialization.StringSerializer");
 
-        // CRITICAL: Enable idempotence for exactly-once semantics
+        // CRITICAL: Enable idempotence to prevent duplicate producer writes
         // This automatically sets:
         // - acks=all
         // - retries=Integer.MAX_VALUE
@@ -539,6 +539,7 @@ public class ConcurrentOrderedConsumer {
     private final ExecutorService executorService;
     private final Map<Integer, BlockingQueue<ConsumerRecord<String, String>>> partitionQueues;
     private final Map<Integer, Future<?>> partitionWorkers;
+    private final Map<TopicPartition, Long> processedOffsets;
 
     public ConcurrentOrderedConsumer(String bootstrapServers, String groupId, int numPartitions) {
         Properties props = new Properties();
@@ -556,6 +557,7 @@ public class ConcurrentOrderedConsumer {
         this.executorService = Executors.newFixedThreadPool(numPartitions);
         this.partitionQueues = new ConcurrentHashMap<>();
         this.partitionWorkers = new ConcurrentHashMap<>();
+        this.processedOffsets = new ConcurrentHashMap<>();
     }
 
     /**
@@ -611,6 +613,10 @@ public class ConcurrentOrderedConsumer {
                 if (record != null) {
                     // Process sequentially within this partition
                     processRecord(record);
+
+                    TopicPartition tp =
+                        new TopicPartition(record.topic(), record.partition());
+                    processedOffsets.put(tp, record.offset());
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -637,8 +643,20 @@ public class ConcurrentOrderedConsumer {
     }
 
     private void commitOffsets() {
-        // Implement offset tracking and commit logic
-        consumer.commitAsync();
+        Map<TopicPartition, OffsetAndMetadata> offsets = new HashMap<>();
+
+        for (Map.Entry<TopicPartition, Long> entry : processedOffsets.entrySet()) {
+            // Commit offset + 1 because committed offset is the next message to read
+            offsets.put(entry.getKey(), new OffsetAndMetadata(entry.getValue() + 1));
+        }
+
+        if (!offsets.isEmpty()) {
+            consumer.commitAsync(offsets, (committedOffsets, exception) -> {
+                if (exception != null) {
+                    System.err.println("Failed to commit offsets: " + exception.getMessage());
+                }
+            });
+        }
     }
 
     public void shutdown() {
