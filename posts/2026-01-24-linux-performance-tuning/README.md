@@ -212,7 +212,8 @@ cat > /etc/sysctl.d/99-memory-tuning.conf << 'EOF'
 vm.swappiness = 10
 
 # How aggressively to reclaim memory used for caching
-# Higher values favor keeping files in cache
+# Lower values favor keeping inode and dentry caches
+# Higher values reclaim those caches more aggressively
 vm.vfs_cache_pressure = 50
 
 # Percentage of memory for dirty pages before writes start
@@ -227,7 +228,7 @@ vm.dirty_background_ratio = 5
 # 3000 = 30 seconds
 vm.dirty_expire_centisecs = 3000
 
-# How often pdflush wakes to write dirty pages
+# How often kernel flusher threads wake to write dirty pages
 vm.dirty_writeback_centisecs = 500
 
 # Memory overcommit settings
@@ -237,8 +238,8 @@ vm.dirty_writeback_centisecs = 500
 vm.overcommit_memory = 0
 vm.overcommit_ratio = 50
 
-# Enable memory compaction for huge pages
-vm.compact_memory = 1
+# Optional one-time memory compaction trigger; not a persistent setting
+# vm.compact_memory = 1
 
 # Zone reclaim mode (for NUMA systems)
 # 0 = disabled (generally better for most workloads)
@@ -418,8 +419,9 @@ net.ipv4.tcp_sack = 1
 # Increase ephemeral port range
 net.ipv4.ip_local_port_range = 1024 65535
 
-# Reduce TIME_WAIT connections
+# Allow safe reuse of TIME_WAIT sockets for new outbound connections
 net.ipv4.tcp_tw_reuse = 1
+# Shorten the FIN-WAIT-2 timeout
 net.ipv4.tcp_fin_timeout = 15
 
 # Increase max connection tracking
@@ -540,8 +542,9 @@ net.core.somaxconn = 65535
 net.core.netdev_max_backlog = 65536
 net.ipv4.tcp_max_syn_backlog = 65536
 
-# Fast connection recycling
+# Allow safe reuse of TIME_WAIT sockets for new outbound connections
 net.ipv4.tcp_tw_reuse = 1
+# Shorten the FIN-WAIT-2 timeout
 net.ipv4.tcp_fin_timeout = 10
 
 # Enable TCP Fast Open
@@ -570,7 +573,7 @@ sysctl -p /etc/sysctl.d/99-webserver.conf
 cat > /etc/sysctl.d/99-low-latency.conf << 'EOF'
 # Low-Latency Tuning
 
-# Disable swap completely
+# Minimize swapping; use swapoff separately to disable swap completely
 vm.swappiness = 0
 
 # Minimize dirty page writeback delays
@@ -580,16 +583,14 @@ vm.dirty_expire_centisecs = 10
 vm.dirty_writeback_centisecs = 10
 
 # Network - minimize latency
-net.ipv4.tcp_low_latency = 1
 net.core.busy_read = 50
 net.core.busy_poll = 50
 
-# Disable delayed ACKs
-net.ipv4.tcp_quickack = 1
+# TCP_QUICKACK is a per-socket option, not a sysctl; set it in the application when appropriate
 EOF
 
 # CPU settings for low latency
-# Disable CPU frequency scaling
+# Use the performance CPU frequency governor
 for cpu in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
     echo "performance" > "$cpu"
 done
