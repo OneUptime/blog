@@ -8,7 +8,7 @@ Description: A complete guide to setting up observability in Istio with metrics,
 
 ---
 
-One of the biggest advantages of running Istio is the built-in observability you get for free. Every request flowing through the mesh generates metrics, traces, and logs without changing your application code. Setting this up correctly makes debugging production issues much easier.
+One of the biggest advantages of running Istio is the built-in observability you get for free. Traffic flowing through the mesh generates metrics, and can generate sampled traces and access logs without changing your application code once the relevant telemetry providers are configured. Setting this up correctly makes debugging production issues much easier.
 
 ## Istio Observability Architecture
 
@@ -51,7 +51,7 @@ The quickest way to get started is using the sample addons that come with Istio.
 ```bash
 # Navigate to your Istio installation directory
 
-cd istio-1.20.0
+cd istio-1.30.1
 
 # Install all observability addons
 kubectl apply -f samples/addons/
@@ -85,14 +85,14 @@ data:
       # Scrape Istio control plane
       - job_name: 'istiod'
         kubernetes_sd_configs:
-          - role: pod
+          - role: endpoints
             namespaces:
               names:
                 - istio-system
         relabel_configs:
-          - source_labels: [__meta_kubernetes_pod_label_app]
+          - source_labels: [__meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
             action: keep
-            regex: istiod
+            regex: istiod;http-monitoring
 
       # Scrape Envoy sidecars
       - job_name: 'envoy-stats'
@@ -103,11 +103,6 @@ data:
           - source_labels: [__meta_kubernetes_pod_container_port_name]
             action: keep
             regex: '.*-envoy-prom'
-          - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
-            action: replace
-            regex: ([^:]+)(?::\d+)?;(\d+)
-            replacement: $1:15090
-            target_label: __address__
 ```
 
 ## Configuring Metrics Collection
@@ -164,7 +159,7 @@ istio_tcp_connections_closed_total
 Define custom metrics using the Telemetry resource.
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: custom-metrics
@@ -201,10 +196,23 @@ spec:
   meshConfig:
     enableTracing: true
     defaultConfig:
-      tracing:
-        sampling: 10.0  # 10% of requests
-        zipkin:
-          address: jaeger-collector.istio-system:9411
+      tracing: {} # disable legacy MeshConfig tracing options
+    extensionProviders:
+      - name: jaeger
+        opentelemetry:
+          service: jaeger-collector.istio-system.svc.cluster.local
+          port: 4317
+---
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
+metadata:
+  name: mesh-default
+  namespace: istio-system
+spec:
+  tracing:
+    - providers:
+        - name: jaeger
+      randomSamplingPercentage: 10
 ```
 
 For production, use a lower sampling rate (1-10%) to reduce overhead.
@@ -231,12 +239,16 @@ spec:
     spec:
       containers:
         - name: jaeger
-          image: jaegertracing/all-in-one:1.50
+          image: jaegertracing/all-in-one:1.76.0
           ports:
             - containerPort: 16686  # UI
+            - containerPort: 4317   # OTLP gRPC collector
+            - containerPort: 4318   # OTLP HTTP collector
             - containerPort: 9411   # Zipkin collector
             - containerPort: 14268  # Jaeger collector
           env:
+            - name: COLLECTOR_OTLP_ENABLED
+              value: "true"
             - name: COLLECTOR_ZIPKIN_HOST_PORT
               value: ":9411"
             - name: SPAN_STORAGE_TYPE
@@ -251,6 +263,10 @@ metadata:
   namespace: istio-system
 spec:
   ports:
+    - name: otlp-grpc
+      port: 4317
+    - name: otlp-http
+      port: 4318
     - name: zipkin
       port: 9411
     - name: jaeger
@@ -305,66 +321,24 @@ Kiali provides a visual representation of your service mesh.
 
 ### Install Kiali
 
-```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: kiali
-  namespace: istio-system
-type: Opaque
-data:
-  username: YWRtaW4=  # admin
-  passphrase: YWRtaW4=  # admin
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: kiali
-  namespace: istio-system
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: kiali
-  template:
-    metadata:
-      labels:
-        app: kiali
-    spec:
-      containers:
-        - name: kiali
-          image: quay.io/kiali/kiali:v1.76
-          ports:
-            - containerPort: 20001
-          env:
-            - name: AUTH_STRATEGY
-              value: "token"
-          volumeMounts:
-            - name: kiali-config
-              mountPath: /kiali-configuration
-      volumes:
-        - name: kiali-config
-          configMap:
-            name: kiali
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: kiali
-  namespace: istio-system
-data:
-  config.yaml: |
-    server:
-      port: 20001
-    external_services:
-      prometheus:
-        url: http://prometheus:9090
-      tracing:
-        url: http://tracing:80
-      grafana:
-        url: http://grafana:3000
-    auth:
-      strategy: token
+For production, install Kiali with the Kiali Operator instead of hand-writing the Deployment, ServiceAccount, RBAC, and Service resources.
+
+```bash
+helm repo add kiali https://kiali.org/helm-charts
+helm repo update
+
+helm install \
+  --set cr.create=true \
+  --set cr.namespace=istio-system \
+  --set cr.spec.auth.strategy="token" \
+  --set cr.spec.external_services.prometheus.url="http://prometheus:9090" \
+  --set cr.spec.external_services.tracing.internal_url="http://tracing:80" \
+  --set cr.spec.external_services.tracing.use_grpc=false \
+  --set cr.spec.external_services.grafana.internal_url="http://grafana:3000" \
+  --namespace kiali-operator \
+  --create-namespace \
+  kiali-operator \
+  kiali/kiali-operator
 ```
 
 ### Access Kiali Dashboard
@@ -419,7 +393,7 @@ sum(rate(istio_requests_total[5m])) by (destination_service)
 Enable access logs for detailed request information.
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: mesh-logging
@@ -429,7 +403,7 @@ spec:
     - providers:
         - name: envoy
       filter:
-        expression: response.code >= 400
+        expression: "!has(response.code) || response.code >= 400"
 ```
 
 View logs from the sidecar.
@@ -439,7 +413,7 @@ View logs from the sidecar.
 kubectl logs <pod-name> -c istio-proxy -f
 
 # Filter for errors
-kubectl logs <pod-name> -c istio-proxy | grep "response_code\":5"
+kubectl logs <pod-name> -c istio-proxy | grep -E ' 5[0-9][0-9] '
 ```
 
 ## Production Checklist
@@ -461,7 +435,7 @@ istioctl dashboard kiali
 
 # Test metrics are being collected
 kubectl exec -it <any-pod> -c istio-proxy -- \
-  curl -s localhost:15000/stats/prometheus | head -50
+  pilot-agent request GET stats/prometheus | head -50
 ```
 
 Resource Considerations
