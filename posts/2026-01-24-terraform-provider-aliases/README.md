@@ -325,9 +325,85 @@ resource "aws_s3_bucket" "destination" {
   bucket   = "${var.bucket_prefix}-destination"
 }
 
+resource "aws_s3_bucket_versioning" "source" {
+  provider = aws.source
+  bucket   = aws_s3_bucket.source.id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_versioning" "destination" {
+  provider = aws.destination
+  bucket   = aws_s3_bucket.destination.id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_iam_role" "replication" {
+  provider = aws.source
+  name     = "${var.bucket_prefix}-replication"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = {
+        Service = "s3.amazonaws.com"
+      }
+      Action = "sts:AssumeRole"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "replication" {
+  provider = aws.source
+  name     = "${var.bucket_prefix}-replication"
+  role     = aws_iam_role.replication.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:GetReplicationConfiguration",
+          "s3:ListBucket"
+        ]
+        Resource = aws_s3_bucket.source.arn
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:GetObjectVersionForReplication",
+          "s3:GetObjectVersionAcl",
+          "s3:GetObjectVersionTagging"
+        ]
+        Resource = "${aws_s3_bucket.source.arn}/*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:ReplicateObject",
+          "s3:ReplicateDelete",
+          "s3:ReplicateTags"
+        ]
+        Resource = "${aws_s3_bucket.destination.arn}/*"
+      }
+    ]
+  })
+}
+
 resource "aws_s3_bucket_replication_configuration" "replication" {
   provider   = aws.source
-  depends_on = [aws_s3_bucket_versioning.source]
+  depends_on = [
+    aws_s3_bucket_versioning.source,
+    aws_s3_bucket_versioning.destination,
+    aws_iam_role_policy.replication
+  ]
 
   role   = aws_iam_role.replication.arn
   bucket = aws_s3_bucket.source.id
@@ -335,6 +411,10 @@ resource "aws_s3_bucket_replication_configuration" "replication" {
   rule {
     id     = "replicate-all"
     status = "Enabled"
+
+    filter {
+      prefix = ""
+    }
 
     destination {
       bucket        = aws_s3_bucket.destination.arn
@@ -443,7 +523,7 @@ output "ami_ids" {
 
 ## Dynamic Provider Selection
 
-While you cannot dynamically select providers at runtime, you can use for_each with modules to deploy to multiple regions.
+While you cannot dynamically select providers at runtime, you can define separate module blocks for each provider configuration to deploy to multiple regions.
 
 ```hcl
 locals {
@@ -510,7 +590,7 @@ module "vpc_eu_west_1" {
 
 4. **Keep provider configurations in root module** - Child modules should receive providers, not define them.
 
-5. **Test multi-region deployments carefully** - Resources in different regions cannot reference each other directly.
+5. **Test multi-region deployments carefully** - Cross-region relationships often need service-specific configuration.
 
 ---
 
