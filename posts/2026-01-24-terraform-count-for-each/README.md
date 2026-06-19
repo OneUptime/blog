@@ -157,7 +157,7 @@ Now removing `public-2` only destroys that specific subnet. The keys `public-1` 
 
 ## Converting Lists to Sets for for_each
 
-For_each requires a map or set. Use `toset()` to convert lists.
+`for_each` requires a map or set of strings. Use `toset()` to convert lists of strings.
 
 ```hcl
 variable "security_group_names" {
