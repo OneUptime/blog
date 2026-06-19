@@ -61,8 +61,7 @@ flowchart TD
 ```python
 import jwt
 import json
-import base64
-from typing import Optional, Dict, Any
+from typing import Dict, Any
 
 def inspect_jwt_header(token: str) -> Dict[str, Any]:
     """
@@ -83,7 +82,7 @@ def inspect_jwt_header(token: str) -> Dict[str, Any]:
         return {'error': f'Failed to decode header: {str(e)}'}
 
 
-def analyze_header(header: Dict[str, Any]) -> Dict[str, str]:
+def analyze_header(header: Dict[str, Any]) -> Dict[str, list[str]]:
     """
     Analyze JWT header for potential issues.
     """
@@ -100,7 +99,11 @@ def analyze_header(header: Dict[str, Any]) -> Dict[str, str]:
         recommendations.append(
             "Symmetric algorithm - ensure same secret used for sign/verify"
         )
-    elif alg in ['RS256', 'RS384', 'RS512', 'ES256', 'ES384', 'ES512']:
+    elif alg in [
+        'RS256', 'RS384', 'RS512',
+        'ES256', 'ES384', 'ES512',
+        'PS256', 'PS384', 'PS512'
+    ]:
         recommendations.append(
             "Asymmetric algorithm - need public key for verification"
         )
@@ -222,7 +225,6 @@ import asyncio
 import httpx
 from datetime import datetime, timedelta
 from typing import Dict, Optional, Any
-from cryptography.hazmat.primitives import serialization
 from jwt.algorithms import RSAAlgorithm, ECAlgorithm
 import logging
 
@@ -409,7 +411,8 @@ class JWTVerifier:
         self.jwks_client = jwks_client
         self.allowed_algorithms = allowed_algorithms or [
             'RS256', 'RS384', 'RS512',
-            'ES256', 'ES384', 'ES512'
+            'ES256', 'ES384', 'ES512',
+            'PS256', 'PS384', 'PS512'
         ]
         self.required_claims = required_claims or ['sub', 'exp', 'iat']
         self.audience = audience
@@ -454,7 +457,7 @@ class JWTVerifier:
             payload = jwt.decode(
                 token,
                 key,
-                algorithms=[alg],
+                algorithms=self.allowed_algorithms,
                 audience=self.audience,
                 issuer=self.issuer,
                 options={
@@ -535,7 +538,12 @@ sequenceDiagram
 ```python
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
+from jwt.algorithms import RSAAlgorithm
+import json
+import logging
 import uuid
+
+logger = logging.getLogger(__name__)
 
 class KeyRotationManager:
     """
@@ -672,6 +680,12 @@ class MultiAlgorithmVerifier:
     def __init__(self):
         self._symmetric_secrets: Dict[str, str] = {}
         self._jwks_clients: Dict[str, JWKSClient] = {}
+        self._symmetric_algorithms = ['HS256', 'HS384', 'HS512']
+        self._asymmetric_algorithms = [
+            'RS256', 'RS384', 'RS512',
+            'ES256', 'ES384', 'ES512',
+            'PS256', 'PS384', 'PS512'
+        ]
 
     def add_symmetric_key(self, kid: str, secret: str):
         """Add a symmetric key for HS256/384/512."""
@@ -690,7 +704,7 @@ class MultiAlgorithmVerifier:
         kid = header.get('kid')
 
         # Determine key type needed
-        if alg in ['HS256', 'HS384', 'HS512']:
+        if alg in self._symmetric_algorithms:
             # Symmetric algorithm
             if not kid:
                 raise InvalidTokenError(
@@ -703,10 +717,19 @@ class MultiAlgorithmVerifier:
                     f"Unknown symmetric key: {kid}"
                 )
 
-            return jwt.decode(token, secret, algorithms=[alg])
+            return jwt.decode(
+                token,
+                secret,
+                algorithms=self._symmetric_algorithms
+            )
 
-        elif alg in ['RS256', 'RS384', 'RS512', 'ES256', 'ES384', 'ES512']:
+        elif alg in self._asymmetric_algorithms:
             # Asymmetric algorithm - need to find right JWKS
+            if not kid:
+                raise InvalidTokenError(
+                    "Asymmetric tokens must include 'kid' header"
+                )
+
             unverified_payload = jwt.decode(
                 token,
                 options={"verify_signature": False}
@@ -729,7 +752,7 @@ class MultiAlgorithmVerifier:
             return jwt.decode(
                 token,
                 key,
-                algorithms=[alg],
+                algorithms=self._asymmetric_algorithms,
                 issuer=issuer
             )
 
@@ -821,7 +844,7 @@ def create_key_not_found_error(
 
 ```python
 import pytest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import Mock, patch
 
 class TestJWKSClient:
     """Tests for JWKS client."""
@@ -852,14 +875,16 @@ class TestJWKSClient:
     @pytest.mark.asyncio
     async def test_get_key_found(self, mock_jwks_response):
         """Test successful key retrieval."""
+        mock_key = object()
         with patch('httpx.AsyncClient') as mock_client:
-            mock_response = AsyncMock()
+            mock_response = Mock()
             mock_response.status_code = 200
             mock_response.json.return_value = mock_jwks_response
             mock_client.return_value.__aenter__.return_value.get.return_value = mock_response
 
             client = JWKSClient("https://auth.example.com/.well-known/jwks.json")
-            key = await client.get_key("key-1")
+            with patch.object(client, '_jwk_to_key', return_value=mock_key):
+                key = await client.get_key("key-1")
 
             assert key is not None
 
@@ -867,13 +892,14 @@ class TestJWKSClient:
     async def test_get_key_not_found(self, mock_jwks_response):
         """Test key not found scenario."""
         with patch('httpx.AsyncClient') as mock_client:
-            mock_response = AsyncMock()
+            mock_response = Mock()
             mock_response.status_code = 200
             mock_response.json.return_value = mock_jwks_response
             mock_client.return_value.__aenter__.return_value.get.return_value = mock_response
 
             client = JWKSClient("https://auth.example.com/.well-known/jwks.json")
-            key = await client.get_key("nonexistent-key")
+            with patch.object(client, '_jwk_to_key', return_value=object()):
+                key = await client.get_key("nonexistent-key")
 
             assert key is None
 
@@ -885,7 +911,7 @@ class TestJWKSClient:
         async def mock_get(*args, **kwargs):
             nonlocal call_count
             call_count += 1
-            mock_response = AsyncMock()
+            mock_response = Mock()
             mock_response.status_code = 200
             # Add new key on second call
             if call_count > 1:
@@ -907,10 +933,12 @@ class TestJWKSClient:
 
             # First call - key not in initial JWKS
             # Should trigger refresh
-            key = await client.get_key("new-key")
+            with patch.object(client, '_jwk_to_key', return_value=object()):
+                key = await client.get_key("new-key")
 
             # Should have made 2 calls (initial + refresh)
             assert call_count == 2
+            assert key is not None
 ```
 
 ---
