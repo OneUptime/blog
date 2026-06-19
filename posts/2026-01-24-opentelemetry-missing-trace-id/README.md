@@ -440,7 +440,7 @@ Trace context must be manually propagated through message queues.
 
 ```javascript
 // Producer: Inject context into message headers
-const { trace, context, propagation } = require('@opentelemetry/api');
+const { trace, context, propagation, SpanStatusCode } = require('@opentelemetry/api');
 
 async function publishMessage(queue, payload) {
   const tracer = trace.getTracer('message-producer');
@@ -476,7 +476,7 @@ async function publishMessage(queue, payload) {
 
 ```javascript
 // Consumer: Extract context from message headers
-const { trace, context, propagation, SpanKind } = require('@opentelemetry/api');
+const { trace, context, propagation, SpanKind, SpanStatusCode } = require('@opentelemetry/api');
 
 async function consumeMessage(message) {
   const tracer = trace.getTracer('message-consumer');
