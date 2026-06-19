@@ -20,7 +20,7 @@ This guide covers the essential configurations for running gRPC services in Isti
 flowchart TD
     A[HTTP/1.1 vs HTTP/2] --> B[Connection Behavior]
 
-    B --> C["HTTP/1.1<br/>One request per connection<br/>L4 load balancing works"]
+    B --> C["HTTP/1.1<br/>One in-flight request per connection<br/>Connection-level load balancing works"]
     B --> D["HTTP/2 (gRPC)<br/>Multiplexed requests<br/>Requires L7 load balancing"]
 
     D --> E[Without Service Mesh]
@@ -114,7 +114,7 @@ spec:
 
 ```yaml
 # destination-rule.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: grpc-service-destination
@@ -163,7 +163,7 @@ spec:
 
 ```yaml
 # virtual-service.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: grpc-service-routing
@@ -209,7 +209,7 @@ spec:
 
 ```yaml
 # gateway.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: grpc-gateway
@@ -228,7 +228,7 @@ spec:
         - "grpc.example.com"
 ---
 # External virtual service
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: grpc-external-routing
@@ -381,7 +381,7 @@ sequenceDiagram
 
 ```yaml
 # peer-authentication.yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: grpc-service-mtls
@@ -394,7 +394,7 @@ spec:
     mode: STRICT
 ---
 # Destination rule to enforce mTLS
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: grpc-service-mtls
@@ -414,7 +414,7 @@ spec:
 
 ```yaml
 # telemetry.yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: grpc-service-telemetry
@@ -447,12 +447,12 @@ package main
 
 import (
     "context"
-    "log"
 
     "go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/propagation"
     "google.golang.org/grpc"
+    "google.golang.org/grpc/credentials/insecure"
     "google.golang.org/grpc/metadata"
 )
 
@@ -467,13 +467,12 @@ func CreateMeshAwareClient(address string) (*grpc.ClientConn, error) {
         ),
     )
 
-    return grpc.Dial(
+    return grpc.NewClient(
         address,
         // Plain text since mesh handles mTLS
-        grpc.WithInsecure(),
-        // Add tracing interceptor
-        grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor()),
-        grpc.WithStreamInterceptor(otelgrpc.StreamClientInterceptor()),
+        grpc.WithTransportCredentials(insecure.NewCredentials()),
+        // Add OpenTelemetry instrumentation
+        grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
         // Set default call options
         grpc.WithDefaultCallOptions(
             // Let mesh handle retries
@@ -500,7 +499,7 @@ func PropagateHeaders(ctx context.Context) context.Context {
 
 ```python
 import grpc
-from opentelemetry import trace
+from collections import namedtuple
 from opentelemetry.instrumentation.grpc import GrpcInstrumentorClient
 from opentelemetry.propagate import inject
 
@@ -527,13 +526,20 @@ def create_mesh_aware_channel(address: str) -> grpc.Channel:
     return channel
 
 
+class _ClientCallDetails(
+    namedtuple(
+        "_ClientCallDetails",
+        ("method", "timeout", "metadata", "credentials", "wait_for_ready", "compression"),
+    ),
+    grpc.ClientCallDetails,
+):
+    pass
+
+
 class MeshAwareInterceptor(grpc.UnaryUnaryClientInterceptor):
     """Interceptor to add mesh-compatible headers."""
 
     def intercept_unary_unary(self, continuation, client_call_details, request):
-        # Get current span context
-        ctx = trace.get_current_span().get_span_context()
-
         # Add trace headers that mesh will propagate
         metadata = list(client_call_details.metadata or [])
 
@@ -610,7 +616,7 @@ spec:
     spec:
       containers:
         - name: grpc-service
-          # Option 2: Use gRPC health check (Kubernetes 1.24+)
+          # Option 2: Use gRPC health check (stable in Kubernetes 1.27+; beta in 1.24+)
           readinessProbe:
             grpc:
               port: 50051
@@ -621,7 +627,7 @@ spec:
 
 ```yaml
 # Fix: Configure appropriate timeouts for streaming
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: grpc-streaming
@@ -649,15 +655,16 @@ package main
 
 import (
     "google.golang.org/grpc"
+    "google.golang.org/grpc/credentials/insecure"
     "google.golang.org/grpc/keepalive"
     "time"
 )
 
 // OptimizedMeshClient creates client optimized for service mesh
 func OptimizedMeshClient(address string) (*grpc.ClientConn, error) {
-    return grpc.Dial(
+    return grpc.NewClient(
         address,
-        grpc.WithInsecure(), // Mesh handles TLS
+        grpc.WithTransportCredentials(insecure.NewCredentials()), // Mesh handles TLS
         // Keepalive to match mesh proxy settings
         grpc.WithKeepaliveParams(keepalive.ClientParameters{
             // Match Envoy's default idle timeout
