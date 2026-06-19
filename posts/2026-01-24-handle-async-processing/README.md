@@ -74,25 +74,25 @@ BullMQ is a robust job queue for Node.js backed by Redis.
 
 ```typescript
 // queue.ts
-import { Queue, Worker, Job } from 'bullmq';
+import { Queue } from 'bullmq';
 import Redis from 'ioredis';
 
 // Create Redis connection
-const connection = new Redis({
+export const connection = new Redis({
     host: process.env.REDIS_HOST || 'localhost',
     port: parseInt(process.env.REDIS_PORT || '6379'),
     maxRetriesPerRequest: null,  // Required for BullMQ
 });
 
 // Define job types for type safety
-interface EmailJob {
+export interface EmailJob {
     to: string;
     subject: string;
     body: string;
     attachments?: string[];
 }
 
-interface ReportJob {
+export interface ReportJob {
     userId: string;
     reportType: 'daily' | 'weekly' | 'monthly';
     dateRange: { start: Date; end: Date };
@@ -108,6 +108,7 @@ export const reportQueue = new Queue<ReportJob>('reports', { connection });
 ```typescript
 // workers/email-worker.ts
 import { Worker, Job } from 'bullmq';
+import { connection, EmailJob } from '../queue';
 import { sendEmail } from '../services/email';
 
 const emailWorker = new Worker<EmailJob>(
@@ -166,7 +167,7 @@ export default emailWorker;
 ```typescript
 // routes/orders.ts
 import express from 'express';
-import { emailQueue, reportQueue } from '../queue';
+import { emailQueue } from '../queue';
 
 const router = express.Router();
 
@@ -283,7 +284,6 @@ class MessagePublisher:
 # worker.py
 import pika
 import json
-import time
 from email_service import send_email
 
 def process_email(ch, method, properties, body):
@@ -369,7 +369,6 @@ package main
 import (
     "context"
     "encoding/json"
-    "log"
     "time"
 
     "github.com/segmentio/kafka-go"
@@ -392,7 +391,7 @@ func NewEventProducer(brokers []string, topic string) *EventProducer {
         writer: &kafka.Writer{
             Addr:         kafka.TCP(brokers...),
             Topic:        topic,
-            Balancer:     &kafka.LeastBytes{},
+            Balancer:     &kafka.Hash{},
             BatchTimeout: 10 * time.Millisecond,
             RequiredAcks: kafka.RequireAll,  // Wait for all replicas
         },
@@ -406,7 +405,7 @@ func (p *EventProducer) PublishOrderEvent(ctx context.Context, event OrderEvent)
     }
 
     return p.writer.WriteMessages(ctx, kafka.Message{
-        Key:   []byte(event.OrderID),  // Ensures ordering per order
+        Key:   []byte(event.OrderID),  // Hash balancer keeps each order on one partition
         Value: data,
         Headers: []kafka.Header{
             {Key: "event_type", Value: []byte(event.EventType)},
@@ -443,8 +442,6 @@ func NewEventConsumer(brokers []string, topic, groupID string) *EventConsumer {
             GroupID:        groupID,
             MinBytes:       10e3,  // 10KB
             MaxBytes:       10e6,  // 10MB
-            CommitInterval: time.Second,
-            StartOffset:    kafka.FirstOffset,
         }),
     }
 }
@@ -511,15 +508,11 @@ def process_payment(order_id, idempotency_key):
 
 Don't lose failed messages:
 
-```yaml
-# RabbitMQ dead letter configuration
-# rabbitmq.conf
-queues:
-  email_tasks:
-    arguments:
-      x-dead-letter-exchange: "dlx"
-      x-dead-letter-routing-key: "email_tasks.dead"
-      x-message-ttl: 86400000  # 24 hours
+```bash
+# RabbitMQ dead letter policy
+rabbitmqctl set_policy DLX "^email_tasks$" \
+  '{"dead-letter-exchange":"dlx","dead-letter-routing-key":"email_tasks.dead"}' \
+  --apply-to queues --priority 7
 ```
 
 ### 3. Monitor Queue Health
@@ -549,19 +542,35 @@ groups:
 ### 4. Set Appropriate Timeouts and Retries
 
 ```typescript
-// Configure per job type
+// Configure retries per job type
 const jobOptions = {
-    // Quick jobs (emails)
     email: {
         attempts: 3,
-        backoff: { type: 'exponential', delay: 1000 },
-        timeout: 30000  // 30 seconds
+        backoff: { type: 'exponential', delay: 1000 }
     },
-    // Long jobs (reports)
     report: {
         attempts: 2,
-        backoff: { type: 'fixed', delay: 60000 },
-        timeout: 300000  // 5 minutes
+        backoff: { type: 'fixed', delay: 60000 }
+    }
+};
+
+// Enforce processing timeouts inside the worker
+async function withTimeout<T>(
+    timeoutMs: number,
+    work: (signal: AbortSignal) => Promise<T>
+): Promise<T> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+        return await work(controller.signal);
+    } catch (err) {
+        if ((err as { name?: string }).name === 'AbortError') {
+            throw new Error('Job timed out');
+        }
+        throw err;
+    } finally {
+        clearTimeout(timer);
     }
 };
 ```
