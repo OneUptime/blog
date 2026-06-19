@@ -117,7 +117,7 @@ Apply default deny to all namespaces:
 ```bash
 # Apply to multiple namespaces
 for ns in production staging development; do
-  kubectl apply -f default-deny-all.yaml -n $ns
+  sed "s/namespace: production/namespace: $ns/" default-deny-all.yaml | kubectl apply -f -
 done
 ```
 
@@ -170,14 +170,15 @@ spec:
   egress:
     - to:
         - ipBlock:
-            # Replace with your API server IP
+            # Replace with your API server endpoint IP, or your Kubernetes
+            # Service cluster IP if your CNI enforces NetworkPolicy before Service DNAT
             cidr: 10.96.0.1/32
       ports:
         - protocol: TCP
           port: 443
 ```
 
-Find your API server IP:
+Find your Kubernetes Service cluster IP:
 
 ```bash
 kubectl get svc kubernetes -n default -o jsonpath='{.spec.clusterIP}'
@@ -351,6 +352,7 @@ spec:
             matchLabels:
               app: prometheus
       ports:
+        # Replace with the metrics port exposed by the selected pods
         - protocol: TCP
           port: 9090
 ```
@@ -427,9 +429,9 @@ spec:
     - Egress
 EOF
 
-# Test after policy (should timeout)
+# Test after policy (should fail because both DNS and pod traffic are denied)
 kubectl exec -n netpol-test client -- curl -s --max-time 5 http://server
-# Expected: command terminated with exit code 28 (timeout)
+# Expected: timeout or DNS resolution failure
 ```
 
 ### Verify Policy Application
