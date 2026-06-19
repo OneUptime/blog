@@ -10,7 +10,7 @@ Description: A practical guide to diagnosing and fixing 'Connection Refused' err
 
 > "Connection Refused" errors in gRPC indicate that the client cannot establish a TCP connection to the server. This guide covers systematic debugging approaches and common fixes for these frustrating connectivity issues.
 
-Connection refused errors are among the most common issues when deploying gRPC services. They can stem from misconfigured ports, DNS resolution failures, firewall rules, or service deployment problems.
+Connection refused errors are among the most common issues when deploying gRPC services. They usually mean the TCP connection was actively rejected because nothing is listening or a network device rejected the connection. Similar connection failures can also stem from DNS resolution failures, firewall rules, or service deployment problems.
 
 ---
 
@@ -21,7 +21,7 @@ flowchart TD
     A[gRPC Client] -->|TCP SYN| B{Server Listening?}
     B -->|No| C[Connection Refused]
     B -->|Yes| D{Firewall Allows?}
-    D -->|No| C
+    D -->|No, rejects traffic| C
     D -->|Yes| E{Correct Port?}
     E -->|No| C
     E -->|Yes| F[Connection Established]
@@ -41,7 +41,7 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-    A[Connection Refused] --> B[Server Issues]
+    A[Connection Refused or Connection Failure] --> B[Server Issues]
     A --> C[Network Issues]
     A --> D[Configuration Issues]
     A --> E[DNS Issues]
@@ -50,12 +50,12 @@ flowchart LR
     B --> B2[Wrong port binding]
     B --> B3[Server crashed]
 
-    C --> C1[Firewall blocking]
+    C --> C1[Firewall rejecting/blocking]
     C --> C2[Network policy]
     C --> C3[Wrong network/subnet]
 
     D --> D1[Wrong address in client]
-    D --> D2[TLS mismatch]
+    D --> D2[TLS/handshake mismatch]
     D --> D3[Load balancer config]
 
     E --> E1[DNS not resolving]
@@ -245,14 +245,15 @@ def diagnose_connection(address):
     print("\n3. gRPC Connection:")
     try:
         channel = grpc.insecure_channel(f'{host}:{port}')
-        # Try to get channel state
-        state = channel.check_connectivity_state(True)
-        print(f"   Channel state: {state}")
+        states = []
+        channel.subscribe(states.append, try_to_connect=True)
 
         # Wait for connection
         channel_ready = grpc.channel_ready_future(channel)
         channel_ready.result(timeout=5)
         print("   gRPC channel ready")
+        if states:
+            print(f"   Channel state: {states[-1]}")
         channel.close()
         return True
     except grpc.FutureTimeoutError:
@@ -303,7 +304,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      app: grpc-service
+      app: grpc-server
   policyTypes:
     - Ingress
   ingress:
@@ -313,7 +314,7 @@ spec:
         # Or allow from specific namespace
         - namespaceSelector:
             matchLabels:
-              name: client-namespace
+              kubernetes.io/metadata.name: client-namespace
       ports:
         - protocol: TCP
           port: 50051
@@ -334,10 +335,10 @@ spec:
     - to:
         - namespaceSelector:
             matchLabels:
-              name: default
+              kubernetes.io/metadata.name: default
           podSelector:
             matchLabels:
-              app: grpc-service
+              app: grpc-server
       ports:
         - protocol: TCP
           port: 50051
@@ -494,23 +495,18 @@ import (
     "time"
 
     "google.golang.org/grpc"
-    "google.golang.org/grpc/codes"
     "google.golang.org/grpc/connectivity"
-    "google.golang.org/grpc/status"
+    "google.golang.org/grpc/credentials/insecure"
 )
 
 func createResilientConnection(address string) (*grpc.ClientConn, error) {
     // Connection options
     opts := []grpc.DialOption{
-        grpc.WithInsecure(),
-        // Wait for connection to be established
-        grpc.WithBlock(),
-        // Set connection timeout
-        grpc.WithTimeout(10 * time.Second),
+        grpc.WithTransportCredentials(insecure.NewCredentials()),
         // Enable automatic retry
         grpc.WithDefaultServiceConfig(`{
             "methodConfig": [{
-                "name": [{"service": ""}],
+                "name": [{}],
                 "waitForReady": true,
                 "retryPolicy": {
                     "maxAttempts": 3,
@@ -525,23 +521,38 @@ func createResilientConnection(address string) (*grpc.ClientConn, error) {
 
     // Try to connect with retry
     var conn *grpc.ClientConn
-    var err error
+    var lastErr error
 
     for attempt := 0; attempt < 3; attempt++ {
+        conn, lastErr = grpc.NewClient(address, opts...)
+        if lastErr != nil {
+            log.Printf("Connection setup attempt %d failed: %v", attempt+1, lastErr)
+            time.Sleep(time.Duration(1<<attempt) * time.Second)
+            continue
+        }
+
         ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-        conn, err = grpc.DialContext(ctx, address, opts...)
+        conn.Connect()
+        for state := conn.GetState(); state != connectivity.Ready; state = conn.GetState() {
+            if !conn.WaitForStateChange(ctx, state) {
+                break
+            }
+        }
+        ready := conn.GetState() == connectivity.Ready
         cancel()
 
-        if err == nil {
+        if ready {
             log.Printf("Connected to %s", address)
             return conn, nil
         }
 
-        log.Printf("Connection attempt %d failed: %v", attempt+1, err)
+        conn.Close()
+        lastErr = context.DeadlineExceeded
+        log.Printf("Connection attempt %d timed out", attempt+1)
         time.Sleep(time.Duration(1<<attempt) * time.Second)
     }
 
-    return nil, err
+    return nil, lastErr
 }
 
 func monitorConnection(conn *grpc.ClientConn) {
@@ -569,7 +580,6 @@ func monitorConnection(conn *grpc.ClientConn) {
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
 services:
   grpc-server:
     image: my-grpc-server:latest
@@ -664,6 +674,7 @@ metadata:
     alb.ingress.kubernetes.io/healthcheck-protocol: HTTP
     alb.ingress.kubernetes.io/healthcheck-port: "50051"
     alb.ingress.kubernetes.io/healthcheck-path: /grpc.health.v1.Health/Check
+    alb.ingress.kubernetes.io/success-codes: "0"
 spec:
   rules:
     - host: grpc.example.com
