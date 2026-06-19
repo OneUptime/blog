@@ -91,7 +91,7 @@ Here is how to implement depth limiting with popular GraphQL libraries.
 
 ### Using graphql-depth-limit
 
-The most common approach is using the `graphql-depth-limit` package.
+One common approach is using the `graphql-depth-limit` package.
 
 ```bash
 # Install the depth limit validation package
@@ -133,19 +133,18 @@ const depthLimitRule = depthLimit(
   // Maximum allowed depth
   5,
   // Options object
-  {
-    // Callback function for logging or monitoring
-    // Called whenever a query exceeds the depth limit
-    callback: (depths) => {
-      // depths is an object mapping field names to their depths
-      console.log('Query depths:', depths);
+  {},
+  // Callback function for logging or monitoring
+  // Called whenever validation runs
+  (depths) => {
+    // depths is an object mapping operation names to their depths
+    console.log('Query depths:', depths);
 
-      // Example: Log queries that are close to the limit
-      const maxDepth = Math.max(...Object.values(depths));
-      if (maxDepth >= 4) {
-        console.warn(`Query approaching depth limit: ${maxDepth}/5`);
-      }
-    },
+    // Example: Log queries that are close to the limit
+    const maxDepth = Math.max(...Object.values(depths));
+    if (maxDepth >= 4) {
+      console.warn(`Query approaching depth limit: ${maxDepth}/5`);
+    }
   }
 );
 
@@ -195,8 +194,7 @@ When a query exceeds the depth limit, the server returns a validation error.
         "code": "GRAPHQL_VALIDATION_FAILED"
       }
     }
-  ],
-  "data": null
+  ]
 }
 ```
 
@@ -205,45 +203,38 @@ When a query exceeds the depth limit, the server returns a validation error.
 You can provide more helpful error messages for clients.
 
 ```javascript
-// custom-error.js - Custom depth limit error handling
-import { GraphQLError } from 'graphql';
+// custom-error.js - Custom depth limit error formatting with Apollo Server
+import { ApolloServer } from '@apollo/server';
 import depthLimit from 'graphql-depth-limit';
+import { typeDefs, resolvers } from './schema.js';
 
-// Create a wrapper that provides custom error messages
-function createDepthLimitRule(maxDepth) {
-  return (context) => {
-    // Get the original depth limit rule
-    const originalRule = depthLimit(maxDepth)(context);
+const maxDepth = 5;
 
-    return {
-      ...originalRule,
-      // Override the error handling
-      Document: {
-        leave: (node) => {
-          try {
-            // Run original validation
-            originalRule.Document?.leave?.(node);
-          } catch (error) {
-            // Throw a custom error with more context
-            throw new GraphQLError(
-              `Query is too complex. Maximum nesting depth is ${maxDepth} levels. ` +
-              `Please simplify your query by reducing nested fields.`,
-              {
-                extensions: {
-                  code: 'QUERY_TOO_DEEP',
-                  maxDepth,
-                  documentation: 'https://api.example.com/docs/query-limits',
-                },
-              }
-            );
-          }
+const server = new ApolloServer({
+  typeDefs,
+  resolvers,
+  validationRules: [depthLimit(maxDepth)],
+  formatError: (formattedError) => {
+    if (formattedError.message.includes('exceeds maximum operation depth')) {
+      return {
+        ...formattedError,
+        message:
+          `Query is too complex. Maximum nesting depth is ${maxDepth} levels. ` +
+          'Please simplify your query by reducing nested fields.',
+        extensions: {
+          ...formattedError.extensions,
+          code: 'QUERY_TOO_DEEP',
+          maxDepth,
+          documentation: 'https://api.example.com/docs/query-limits',
         },
-      },
-    };
-  };
-}
+      };
+    }
 
-export { createDepthLimitRule };
+    return formattedError;
+  },
+});
+
+export { server };
 ```
 
 ## Query Complexity Analysis Flow
@@ -358,14 +349,14 @@ async function getUserData(userId) {
 
 ### Strategy 2: Use DataLoader for Batching
 
-Implement DataLoader to efficiently batch related queries.
+Implement DataLoader to efficiently batch resolver data fetching.
 
 ```javascript
-// dataloader-solution.js - Using DataLoader to reduce query depth
+// dataloader-solution.js - Using DataLoader to reduce resolver load
 import DataLoader from 'dataloader';
 
 // Create a DataLoader for batch loading users
-// This allows fetching related data without deep nesting
+// This reduces repeated backend requests for related data
 const userLoader = new DataLoader(async (userIds) => {
   // Batch load all users in a single database query
   const users = await db.users.findMany({
@@ -388,18 +379,18 @@ const resolvers = {
 };
 ```
 
-### Strategy 3: Create Dedicated Endpoints
+### Strategy 3: Create Dedicated Query Fields
 
 For common deep query patterns, create dedicated query fields.
 
 ```graphql
-# schema.graphql - Adding flattened query endpoints
+# schema.graphql - Adding flattened query fields
 
 type Query {
   # Original nested approach (may hit depth limits)
   user(id: ID!): User
 
-  # Dedicated endpoint that returns flattened data
+  # Dedicated query field that returns flattened data
   # This keeps the query depth minimal while returning rich data
   userDashboard(userId: ID!): UserDashboard
 }
@@ -416,10 +407,10 @@ type UserDashboard {
 ```
 
 ```javascript
-// dashboard-resolver.js - Resolver for flattened endpoint
+// dashboard-resolver.js - Resolver for flattened query field
 const resolvers = {
   Query: {
-    // Single resolver that fetches all needed data
+    // Single query-field resolver that fetches all needed data
     // Avoids deep nesting by aggregating at the server
     userDashboard: async (_, { userId }, { db }) => {
       // Parallel database queries for efficiency
@@ -541,7 +532,7 @@ Maximum query depth errors are security features that protect your GraphQL API. 
 1. Understand why depth limits exist and how they protect your server
 2. Configure appropriate depth limits for your schema complexity
 3. Refactor deep queries by flattening or splitting them
-4. Create dedicated endpoints for common data aggregation patterns
+4. Create dedicated query fields for common data aggregation patterns
 5. Combine depth limits with query cost analysis for comprehensive protection
 
 By following these practices, you can maintain API security while providing a good developer experience for legitimate API consumers.
