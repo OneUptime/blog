@@ -215,7 +215,7 @@ binary_digits = list(product([0, 1], repeat=3))
 ```python
 # terminating_iterators.py
 # Tools for combining and filtering iterables
-from itertools import chain, chain.from_iterable
+from itertools import chain
 
 # chain() combines multiple iterables into one
 list1 = [1, 2, 3]
@@ -404,7 +404,7 @@ changes = [b - a for a, b in pairwise(prices)]
 def pairwise_compat(iterable):
     """Return successive overlapping pairs."""
     iterator = iter(iterable)
-    prev = next(iterator)
+    prev = next(iterator, None)
     for current in iterator:
         yield prev, current
         prev = current
@@ -427,4 +427,3 @@ These tools help you write cleaner, more Pythonic code while maintaining perform
 ---
 
 *Building Python applications with complex data processing? [OneUptime](https://oneuptime.com) helps you monitor performance and catch bottlenecks in your iteration-heavy code.*
-
