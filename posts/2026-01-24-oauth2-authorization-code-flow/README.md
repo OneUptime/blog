@@ -77,7 +77,10 @@ def login():
     session['oauth_state'] = state
 
     # Store the return URL for post-login redirect
-    session['return_to'] = request.args.get('return_to', '/')
+    return_to = request.args.get('return_to', '/')
+    if not return_to.startswith('/') or return_to.startswith('//'):
+        return_to = '/'
+    session['return_to'] = return_to
 
     # Build the authorization URL
     params = {
@@ -131,7 +134,7 @@ def callback():
         response.raise_for_status()
         tokens = response.json()
 
-        # Store tokens securely
+        # Store tokens in a server-side session in production
         session['access_token'] = tokens['access_token']
         session['refresh_token'] = tokens.get('refresh_token')
         session['token_expires_at'] = time.time() + tokens.get('expires_in', 3600)
@@ -237,7 +240,10 @@ def login():
     session['code_verifier'] = code_verifier
 
     # Store return URL
-    session['return_to'] = request.args.get('return_to', '/')
+    return_to = request.args.get('return_to', '/')
+    if not return_to.startswith('/') or return_to.startswith('//'):
+        return_to = '/'
+    session['return_to'] = return_to
 
     # Build authorization URL with PKCE parameters
     params = {
@@ -360,9 +366,12 @@ router.get('/login', (req, res) => {
     const codeChallenge = generateCodeChallenge(codeVerifier);
 
     // Store in session
+    const returnTo = req.query.return_to || '/';
     req.session.oauthState = state;
     req.session.codeVerifier = codeVerifier;
-    req.session.returnTo = req.query.return_to || '/';
+    req.session.returnTo = typeof returnTo === 'string' && returnTo.startsWith('/') && !returnTo.startsWith('//')
+        ? returnTo
+        : '/';
 
     // Build authorization URL
     const params = querystring.stringify({
@@ -405,16 +414,21 @@ router.get('/callback', async (req, res) => {
 
     try {
         // Exchange code for tokens
+        const tokenParams = {
+            grant_type: 'authorization_code',
+            code: code,
+            redirect_uri: config.redirectUri,
+            client_id: config.clientId,
+            code_verifier: codeVerifier
+        };
+
+        if (config.clientSecret) {
+            tokenParams.client_secret = config.clientSecret;
+        }
+
         const tokenResponse = await axios.post(
             config.tokenEndpoint,
-            querystring.stringify({
-                grant_type: 'authorization_code',
-                code: code,
-                redirect_uri: config.redirectUri,
-                client_id: config.clientId,
-                client_secret: config.clientSecret,
-                code_verifier: codeVerifier
-            }),
+            querystring.stringify(tokenParams),
             {
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded'
@@ -424,11 +438,11 @@ router.get('/callback', async (req, res) => {
 
         const tokens = tokenResponse.data;
 
-        // Store tokens in session
+        // Store tokens in a server-side session in production
         req.session.accessToken = tokens.access_token;
         req.session.refreshToken = tokens.refresh_token;
         req.session.idToken = tokens.id_token;
-        req.session.tokenExpiresAt = Date.now() + (tokens.expires_in * 1000);
+        req.session.tokenExpiresAt = Date.now() + ((tokens.expires_in || 3600) * 1000);
 
         // Redirect to original destination
         const returnTo = req.session.returnTo || '/';
@@ -485,7 +499,7 @@ sequenceDiagram
 # token_manager.py - Token Refresh Management
 import time
 import threading
-from flask import session
+from flask import session, redirect, request, jsonify
 import requests
 
 class TokenManager:
@@ -682,6 +696,8 @@ def create_auth_request(use_pkce=True):
 ### 2. Validate All Parameters
 
 ```python
+import secrets
+
 def validate_callback_params(request, session):
     """Thoroughly validate callback parameters."""
     errors = []
@@ -724,6 +740,7 @@ def validate_callback_params(request, session):
 
 from flask import Flask
 from flask_session import Session
+import os
 import redis
 
 app = Flask(__name__)
@@ -741,6 +758,10 @@ Session(app)
 ### 4. Implement Token Binding
 
 ```python
+import hashlib
+import secrets
+from flask import session
+
 def store_tokens_with_binding(tokens, request):
     """Store tokens with additional binding for security."""
     session['access_token'] = tokens['access_token']
@@ -753,6 +774,9 @@ def verify_token_binding(request):
     """Verify the token is being used by the same client."""
     stored_fingerprint = session.get('token_fingerprint')
     current_fingerprint = generate_fingerprint(request)
+
+    if not stored_fingerprint:
+        return False
 
     return secrets.compare_digest(stored_fingerprint, current_fingerprint)
 
@@ -788,6 +812,7 @@ flowchart TD
 
 ```python
 # error_handling.py - Comprehensive OAuth2 Error Handling
+from flask import current_app, redirect, render_template
 
 class OAuth2ErrorHandler:
     """Handle OAuth2 errors with appropriate responses."""
@@ -820,7 +845,7 @@ class OAuth2ErrorHandler:
                 can_retry=True)
 
         # Log the actual error for debugging
-        app.logger.error(f'OAuth2 error: {error} - {error_description}')
+        current_app.logger.error(f'OAuth2 error: {error} - {error_description}')
 
         return render_template('error.html', message=user_message)
 
@@ -833,7 +858,7 @@ class OAuth2ErrorHandler:
 
         if error == 'invalid_client':
             # Configuration error - log and show generic message
-            app.logger.critical(f'Invalid client configuration: {error_description}')
+            current_app.logger.critical(f'Invalid client configuration: {error_description}')
             return render_template('error.html',
                 message='Authentication configuration error.')
 
