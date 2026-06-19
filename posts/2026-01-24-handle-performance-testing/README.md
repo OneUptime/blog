@@ -48,6 +48,8 @@ k6 is a modern load testing tool that uses JavaScript for test scripts:
 brew install k6
 
 # Install on Ubuntu/Debian
+curl -fsSL https://dl.k6.io/key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/k6-archive-keyring.gpg
+echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
 sudo apt-get update
 sudo apt-get install k6
 
@@ -343,9 +345,18 @@ config:
       arrivalRate: 50
       name: "Sustained load"
 
-  defaults:
-    headers:
-      Content-Type: "application/json"
+  http:
+    defaults:
+      headers:
+        Content-Type: "application/json"
+
+  variables:
+    productId:
+      - 1
+      - 25
+      - 50
+      - 75
+      - 100
 
   # Load test data from CSV
   payload:
@@ -372,7 +383,7 @@ scenarios:
             Authorization: "Bearer {{ authToken }}"
       - think: 3
       - get:
-          url: "/products/{{ $randomNumber(1, 100) }}"
+          url: "/products/{{ productId }}"
           headers:
             Authorization: "Bearer {{ authToken }}"
 
@@ -392,7 +403,7 @@ scenarios:
           headers:
             Authorization: "Bearer {{ authToken }}"
           json:
-            productId: "{{ $randomNumber(1, 100) }}"
+            productId: "{{ productId }}"
             quantity: 1
       - think: 2
       - post:
@@ -428,29 +439,20 @@ jobs:
 
       - name: Install k6
         run: |
-          sudo gpg -k
-          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          curl -fsSL https://dl.k6.io/key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/k6-archive-keyring.gpg
           echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
           sudo apt-get update
           sudo apt-get install k6
 
       - name: Run load tests
-        run: k6 run tests/performance/load-test.js --out json=results.json
-        env:
-          K6_CLOUD_TOKEN: ${{ secrets.K6_CLOUD_TOKEN }}
+        run: k6 run --out json=results.json tests/performance/load-test.js
 
       - name: Upload results
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: k6-results
           path: results.json
-
-      - name: Check thresholds
-        run: |
-          if grep -q '"thresholds":{".*":"fail"' results.json; then
-            echo "Performance thresholds failed!"
-            exit 1
-          fi
 ```
 
 ## Key Metrics to Track
