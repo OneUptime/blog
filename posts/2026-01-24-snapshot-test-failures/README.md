@@ -167,7 +167,7 @@ Snapshots may differ between operating systems or Node versions:
 // Custom serializer for consistent output
 expect.addSnapshotSerializer({
   test: (val) => typeof val === 'string',
-  print: (val) => {
+  serialize: (val) => {
     return val
       .replace(/\r\n/g, '\n')           // Normalize line endings
       .replace(/\\/g, '/')               // Normalize path separators
@@ -226,7 +226,7 @@ Ask these questions:
 jest --updateSnapshot
 
 # Update specific test file snapshots
-jest --updateSnapshot --testPathPattern="Button.test.js"
+jest --updateSnapshot --testPathPatterns="Button.test.js"
 ```
 
 ## Writing Better Snapshot Tests
@@ -332,11 +332,11 @@ Treat snapshot files as code:
 ### 3. Clean Up Obsolete Snapshots
 
 ```bash
-# Remove unused snapshots
-jest --updateSnapshot --coverage
+# Remove unused snapshots while updating snapshots
+jest --updateSnapshot
 
-# Or run with the flag
-jest --detectOpenHandles --forceExit --ci
+# Remove unused snapshots for one test file
+jest --updateSnapshot --testPathPatterns="Button.test.js"
 ```
 
 ### 4. Use Descriptive Test Names
