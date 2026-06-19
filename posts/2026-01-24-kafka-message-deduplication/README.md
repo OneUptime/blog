@@ -220,15 +220,15 @@ public class DeduplicatingConsumer {
 
     public DeduplicatingConsumer(Properties props, int maxCacheSize) {
         this.consumer = new KafkaConsumer<>(props);
-        // Use LinkedHashSet to maintain insertion order for LRU eviction
+        // Use a LinkedHashMap-backed Set to evict the oldest entry
         this.processedIds = Collections.synchronizedSet(
-            new LinkedHashSet<String>() {
+            Collections.newSetFromMap(new LinkedHashMap<String, Boolean>() {
                 @Override
-                protected boolean removeEldestEntry(Map.Entry<String, ?> eldest) {
+                protected boolean removeEldestEntry(Map.Entry<String, Boolean> eldest) {
                     // Remove oldest entry when cache exceeds max size
                     return size() > maxCacheSize;
                 }
-            }
+            })
         );
         this.maxCacheSize = maxCacheSize;
     }
@@ -259,8 +259,9 @@ public class DeduplicatingConsumer {
 
                 } catch (Exception e) {
                     // Do not mark as processed if processing fails
-                    // Message will be reprocessed on next poll
+                    // Re-throw so offsets are not committed for the failed record
                     System.err.println("Processing failed for: " + messageId);
+                    throw new RuntimeException("Processing failed for: " + messageId, e);
                 }
             }
 
@@ -319,8 +320,8 @@ public class DatabaseDeduplicatingConsumer {
                     conn.setAutoCommit(false);
 
                     try {
-                        // Check if message was already processed
-                        if (isMessageProcessed(conn, messageId)) {
+                        // Atomically claim the message ID before processing
+                        if (!tryMarkMessageProcessing(conn, messageId)) {
                             System.out.println("Skipping duplicate: " + messageId);
                             conn.rollback();
                             continue;
@@ -328,9 +329,6 @@ public class DatabaseDeduplicatingConsumer {
 
                         // Process the message and update database
                         processPayment(conn, record);
-
-                        // Mark message as processed
-                        markMessageProcessed(conn, messageId);
 
                         // Commit database transaction
                         conn.commit();
@@ -348,24 +346,11 @@ public class DatabaseDeduplicatingConsumer {
         }
     }
 
-    private boolean isMessageProcessed(Connection conn, String messageId)
+    private boolean tryMarkMessageProcessing(Connection conn, String messageId)
             throws SQLException {
 
-        // Check if message ID exists in processed messages table
-        String sql = "SELECT 1 FROM processed_messages WHERE message_id = ?";
-
-        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
-            stmt.setString(1, messageId);
-            try (ResultSet rs = stmt.executeQuery()) {
-                return rs.next();
-            }
-        }
-    }
-
-    private void markMessageProcessed(Connection conn, String messageId)
-            throws SQLException {
-
-        // Insert message ID into processed messages table
+        // Insert message ID into processed messages table.
+        // A unique constraint on message_id makes this an atomic deduplication check.
         String sql = """
             INSERT INTO processed_messages (message_id, processed_at)
             VALUES (?, NOW())
@@ -374,7 +359,7 @@ public class DatabaseDeduplicatingConsumer {
 
         try (PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setString(1, messageId);
-            stmt.executeUpdate();
+            return stmt.executeUpdate() == 1;
         }
     }
 
@@ -412,6 +397,7 @@ Use Redis for fast, distributed deduplication:
 // Provides fast lookups and automatic expiration
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.JedisPool;
+import redis.clients.jedis.params.SetParams;
 
 public class RedisDeduplicatingConsumer {
 
@@ -436,18 +422,19 @@ public class RedisDeduplicatingConsumer {
                 String redisKey = keyPrefix + messageId;
 
                 try (Jedis jedis = jedisPool.getResource()) {
-                    // Use SETNX (SET if Not eXists) for atomic check-and-set
-                    // Returns 1 if the key was set, 0 if it already existed
-                    Long result = jedis.setnx(redisKey, "1");
+                    // Use SET with NX and EX for atomic check-and-set with expiration
+                    // Returns OK if the key was set, null if it already existed
+                    String result = jedis.set(
+                        redisKey,
+                        "1",
+                        SetParams.setParams().nx().ex(ttlSeconds)
+                    );
 
-                    if (result == 0) {
+                    if (!"OK".equals(result)) {
                         // Key already exists - duplicate message
                         System.out.println("Skipping duplicate: " + messageId);
                         continue;
                     }
-
-                    // Set TTL for automatic cleanup of old entries
-                    jedis.expire(redisKey, ttlSeconds);
 
                     try {
                         // Process the message
@@ -465,7 +452,7 @@ public class RedisDeduplicatingConsumer {
         }
     }
 
-    // Batch deduplication for better performance
+    // Batch polling with per-record atomic deduplication
     public void processMessagesWithBatch() {
         consumer.subscribe(Collections.singletonList("events"));
 
@@ -477,36 +464,29 @@ public class RedisDeduplicatingConsumer {
             }
 
             try (Jedis jedis = jedisPool.getResource()) {
-                // Collect all message IDs
-                List<String> messageIds = new ArrayList<>();
-                Map<String, ConsumerRecord<String, String>> recordMap = new HashMap<>();
-
                 for (ConsumerRecord<String, String> record : records) {
                     String messageId = extractMessageId(record);
-                    messageIds.add(keyPrefix + messageId);
-                    recordMap.put(messageId, record);
-                }
+                    String redisKey = keyPrefix + messageId;
 
-                // Batch check for existing keys using MGET
-                List<String> existingValues = jedis.mget(
-                    messageIds.toArray(new String[0])
-                );
+                    // Atomically claim each message ID with a TTL
+                    String result = jedis.set(
+                        redisKey,
+                        "1",
+                        SetParams.setParams().nx().ex(ttlSeconds)
+                    );
 
-                // Process only new messages
-                for (int i = 0; i < messageIds.size(); i++) {
-                    if (existingValues.get(i) != null) {
-                        // Already processed - skip
+                    if (!"OK".equals(result)) {
                         continue;
                     }
 
-                    String messageId = messageIds.get(i).substring(keyPrefix.length());
-                    ConsumerRecord<String, String> record = recordMap.get(messageId);
-
-                    // Mark as processing and set TTL
-                    jedis.setex(messageIds.get(i), ttlSeconds, "1");
-
-                    // Process the message
-                    processEvent(record);
+                    try {
+                        // Process the message
+                        processEvent(record);
+                    } catch (Exception e) {
+                        // Processing failed - remove the key so message can be reprocessed
+                        jedis.del(redisKey);
+                        throw e;
+                    }
                 }
             }
 
@@ -535,6 +515,7 @@ flowchart LR
 // Provides exactly-once deduplication with windowing
 import org.apache.kafka.streams.*;
 import org.apache.kafka.streams.kstream.*;
+import org.apache.kafka.streams.processor.api.*;
 import org.apache.kafka.streams.state.*;
 
 public class KafkaStreamsDeduplication {
@@ -573,15 +554,10 @@ public class KafkaStreamsDeduplication {
         // Read from input topic
         KStream<String, String> input = builder.stream("events-input");
 
-        // Transform with deduplication
-        KStream<String, String> deduplicated = input.transformValues(
-            () -> new DeduplicationTransformer(windowSize),
+        // Process with deduplication
+        KStream<String, String> output = input.processValues(
+            () -> new DeduplicationProcessor(windowSize),
             "dedup-store"
-        );
-
-        // Filter out nulls (duplicates)
-        KStream<String, String> output = deduplicated.filter(
-            (key, value) -> value != null
         );
 
         // Write to output topic
@@ -596,29 +572,29 @@ public class KafkaStreamsDeduplication {
     }
 }
 
-// Custom transformer for deduplication logic
-class DeduplicationTransformer
-        implements ValueTransformerWithKey<String, String, String> {
+// Custom processor for deduplication logic
+class DeduplicationProcessor
+        implements FixedKeyProcessor<String, String, String> {
 
     private final Duration windowSize;
-    private ProcessorContext context;
+    private FixedKeyProcessorContext<String, String> context;
     private WindowStore<String, Long> store;
 
-    public DeduplicationTransformer(Duration windowSize) {
+    public DeduplicationProcessor(Duration windowSize) {
         this.windowSize = windowSize;
     }
 
     @Override
-    public void init(ProcessorContext context) {
+    public void init(FixedKeyProcessorContext<String, String> context) {
         this.context = context;
         this.store = context.getStateStore("dedup-store");
     }
 
     @Override
-    public String transform(String key, String value) {
+    public void process(FixedKeyRecord<String, String> record) {
         // Extract message ID from value (or use key)
-        String messageId = extractMessageId(value);
-        long timestamp = context.timestamp();
+        String messageId = extractMessageId(record.value());
+        long timestamp = record.timestamp();
 
         // Calculate window start time
         long windowStart = timestamp - (timestamp % windowSize.toMillis());
@@ -632,8 +608,8 @@ class DeduplicationTransformer
 
         try {
             if (iterator.hasNext()) {
-                // Duplicate found - return null to filter out
-                return null;
+                // Duplicate found - do not forward the record
+                return;
             }
         } finally {
             iterator.close();
@@ -642,8 +618,8 @@ class DeduplicationTransformer
         // Store the message ID with timestamp
         store.put(messageId, timestamp, timestamp);
 
-        // Return original value for non-duplicates
-        return value;
+        // Forward original record for non-duplicates
+        context.forward(record);
     }
 
     @Override
