@@ -43,6 +43,8 @@ Each arrow in this diagram represents potential latency. A single user request m
 ### Problem: Excessive Network Calls
 
 ```python
+import asyncio
+
 # BAD: Multiple sequential service calls
 
 # Total latency = sum of all individual call latencies
@@ -127,25 +129,29 @@ flowchart LR
 
 ```python
 import asyncio
-from functools import lru_cache
-from datetime import timedelta
+from typing import Awaitable, Callable, Any
 import redis.asyncio as redis
 
 class MultiLayerCache:
     def __init__(self, redis_url: str):
         self.redis = redis.from_url(redis_url)
-        # L1: In-memory cache with LRU eviction
+        # L1: In-memory cache with TTL and size-based eviction
         self._local_cache = {}
         self._local_cache_ttl = {}
 
-    async def get(self, key: str, fetch_func, ttl_seconds: int = 300):
+    async def get(
+        self,
+        key: str,
+        fetch_func: Callable[[], Awaitable[Any]],
+        ttl_seconds: int = 300
+    ):
         """
         Get value from cache with fallback to fetch function.
         Uses multi-layer caching: memory -> redis -> fetch
         """
         # L1: Check local memory cache first (fastest)
         if key in self._local_cache:
-            if self._local_cache_ttl[key] > asyncio.get_event_loop().time():
+            if self._local_cache_ttl[key] > asyncio.get_running_loop().time():
                 return self._local_cache[key]
             else:
                 # Expired, remove from local cache
@@ -154,7 +160,7 @@ class MultiLayerCache:
 
         # L2: Check Redis (shared across instances)
         cached = await self.redis.get(key)
-        if cached:
+        if cached is not None:
             value = deserialize(cached)
             # Populate L1 cache
             self._set_local(key, value, ttl_seconds)
@@ -172,7 +178,7 @@ class MultiLayerCache:
     def _set_local(self, key: str, value, ttl_seconds: int):
         """Update local in-memory cache"""
         self._local_cache[key] = value
-        self._local_cache_ttl[key] = asyncio.get_event_loop().time() + ttl_seconds
+        self._local_cache_ttl[key] = asyncio.get_running_loop().time() + ttl_seconds
 
         # Limit local cache size
         if len(self._local_cache) > 10000:
@@ -198,11 +204,11 @@ async def get_user(user_id: str):
 ```python
 import asyncio
 from dataclasses import dataclass
-from typing import Callable
+from typing import Any, Awaitable, Callable
 
 @dataclass
 class CacheEntry:
-    value: any
+    value: Any
     expires_at: float
     version: int
 
@@ -213,7 +219,12 @@ class VersionedCache:
         self.redis = redis_client
         self.local_cache = {}
 
-    async def get_with_version(self, key: str, fetch_func: Callable, ttl: int = 300):
+    async def get_with_version(
+        self,
+        key: str,
+        fetch_func: Callable[[], Awaitable[Any]],
+        ttl: int = 300
+    ):
         """Get cached value, checking version for consistency"""
 
         # Get current version from Redis (source of truth)
@@ -224,7 +235,7 @@ class VersionedCache:
         # Check local cache with version
         if key in self.local_cache:
             entry = self.local_cache[key]
-            if entry.version == current_version and entry.expires_at > asyncio.get_event_loop().time():
+            if entry.version == current_version and entry.expires_at > asyncio.get_running_loop().time():
                 return entry.value
 
         # Fetch fresh data
@@ -233,7 +244,7 @@ class VersionedCache:
         # Store with version
         self.local_cache[key] = CacheEntry(
             value=value,
-            expires_at=asyncio.get_event_loop().time() + ttl,
+            expires_at=asyncio.get_running_loop().time() + ttl,
             version=current_version
         )
 
@@ -252,11 +263,19 @@ class VersionedCache:
         """Invalidate all keys matching pattern"""
         # This is useful for invalidating related caches
         # e.g., invalidate_pattern("user:123:*")
-        keys = await self.redis.keys(f"{pattern}:version")
-        if keys:
-            pipe = self.redis.pipeline()
-            for key in keys:
-                pipe.incr(key)
+        pipe = self.redis.pipeline()
+        pending = 0
+
+        async for key in self.redis.scan_iter(match=f"{pattern}:version"):
+            pipe.incr(key)
+            pending += 1
+
+            if pending >= 100:
+                await pipe.execute()
+                pipe = self.redis.pipeline()
+                pending = 0
+
+        if pending:
             await pipe.execute()
 ```
 
@@ -466,9 +485,13 @@ class DatabasePool:
         await self._pool.close()
 
 # Usage
-db = DatabasePool("postgresql://user:pass@localhost/db")
-await db.initialize()
-users = await db.fetch("SELECT * FROM users WHERE active = $1", True)
+async def main():
+    db = DatabasePool("postgresql://user:pass@localhost/db")
+    await db.initialize()
+    try:
+        users = await db.fetch("SELECT * FROM users WHERE active = $1", True)
+    finally:
+        await db.close()
 ```
 
 ---
@@ -552,13 +575,13 @@ async def tracing_middleware(request: Request, call_next):
 
 ```python
 import asyncio
-from typing import TypeVar, Callable
+from typing import Awaitable, Callable, TypeVar
 import random
 
 T = TypeVar('T')
 
 async def with_retry(
-    func: Callable[[], T],
+    func: Callable[[], Awaitable[T]],
     max_attempts: int = 3,
     base_delay: float = 0.1,
     max_delay: float = 10.0,
@@ -600,7 +623,7 @@ async def with_retry(
     raise last_exception
 
 async def with_timeout(
-    func: Callable[[], T],
+    func: Callable[[], Awaitable[T]],
     timeout_seconds: float
 ) -> T:
     """Execute function with timeout"""
