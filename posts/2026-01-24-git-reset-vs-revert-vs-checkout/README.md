@@ -119,14 +119,14 @@ git reset --hard HEAD~1
 # Reset to a specific commit
 git reset --hard abc1234
 
-# Reset to match remote exactly
+# Reset tracked files to match remote
 git reset --hard origin/main
 ```
 
-Use hard reset when you want to completely discard local changes.
+Use hard reset when you want to completely discard tracked local changes.
 
 ```bash
-# Discard all local changes and match remote
+# Discard tracked local changes and match remote
 git fetch origin
 git reset --hard origin/main
 ```
@@ -240,7 +240,7 @@ git checkout -- filename.txt
 # Restore a file from a specific commit
 git checkout abc1234 -- filename.txt
 
-# Restore all files from a commit
+# Restore all files under the current directory from a commit
 git checkout abc1234 -- .
 ```
 
@@ -341,9 +341,10 @@ git checkout -- filename.txt
 # or
 git restore filename.txt
 
-# Discard all uncommitted changes
+# Discard all staged and unstaged changes to tracked files
 git reset --hard HEAD
 # or
+# Discard unstaged changes to tracked files under the current directory
 git checkout -- .
 ```
 
@@ -374,7 +375,7 @@ git checkout main
 2. **Use soft reset for commit message fixes**: Redo the commit with the right message
 3. **Prefer restore/switch over checkout**: More explicit and less error-prone
 4. **Always check status before reset --hard**: You cannot recover uncommitted changes
-5. **Use reflog as safety net**: Even after hard reset, commits are recoverable for ~30 days
+5. **Use reflog as safety net**: Even after hard reset, commits are often recoverable until reflog entries expire
 
 ```bash
 # Check reflog before destructive operations
