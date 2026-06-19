@@ -8,11 +8,11 @@ Description: A practical guide to configuring and managing Kafka topic compactio
 
 ---
 
-Kafka topic compaction is a powerful feature that retains only the latest value for each key in a topic. Unlike time-based or size-based retention, compaction ensures you always have the most recent state while dramatically reducing storage requirements.
+Kafka topic compaction is a powerful feature that guarantees the latest value for each key is retained in a topic, while older values for the same key can be removed by the log cleaner. Unlike time-based or size-based retention, compaction preserves the most recent state while reducing storage requirements.
 
 ## Understanding Log Compaction
 
-Regular Kafka topics delete old segments based on time or size. Compacted topics keep the last value for every unique key, making them ideal for changelog-style data.
+Regular Kafka topics delete old segments based on time or size. Compacted topics eventually remove superseded values while keeping at least the last value for every unique key, making them ideal for changelog-style data.
 
 ```mermaid
 flowchart TB
@@ -62,7 +62,7 @@ kafka-topics.sh --create \
   --config delete.retention.ms=86400000
 ```
 
-### Using AdminClient (Java)
+### Using Admin API (Java)
 
 ```java
 import org.apache.kafka.clients.admin.*;
@@ -74,7 +74,7 @@ public class CompactedTopicCreator {
         Properties props = new Properties();
         props.put("bootstrap.servers", "localhost:9092");
 
-        try (AdminClient admin = AdminClient.create(props)) {
+        try (Admin admin = Admin.create(props)) {
             // Define topic configuration for compaction
             Map<String, String> configs = new HashMap<>();
 
@@ -121,7 +121,7 @@ cleanup.policy=compact,delete
 
 ### min.cleanable.dirty.ratio
 
-Determines when compaction triggers based on the ratio of dirty (uncompacted) to clean log.
+Determines when compaction triggers based on the ratio of dirty (uncompacted) log to total log.
 
 ```mermaid
 flowchart LR
@@ -239,7 +239,7 @@ sequenceDiagram
 ### Key Metrics to Track
 
 ```bash
-# Check compaction lag using kafka-consumer-groups
+# Check consumer lag for applications reading compacted topics
 kafka-consumer-groups.sh --bootstrap-server localhost:9092 \
   --describe --group compaction-monitor
 
@@ -324,7 +324,8 @@ grep -i "cleaner" /var/log/kafka/server.log
 
 **Solutions:**
 ```properties
-# Ensure log cleaner is enabled (broker config)
+# Kafka enables the log cleaner by default; on older clusters, verify it was not disabled.
+# In Kafka 4.x this broker config is deprecated and should not be set to false.
 log.cleaner.enable=true
 
 # Check minimum segment age
@@ -422,14 +423,13 @@ For data with both update patterns and retention requirements:
 
 ```bash
 # Compact for deduplication, delete after 30 days
-kafka-topics.sh --alter \
+kafka-configs.sh --alter \
   --bootstrap-server localhost:9092 \
-  --topic user-sessions \
-  --config cleanup.policy=compact,delete \
-  --config retention.ms=2592000000 \
-  --config min.cleanable.dirty.ratio=0.5
+  --entity-type topics \
+  --entity-name user-sessions \
+  --add-config cleanup.policy=[compact,delete],retention.ms=2592000000,min.cleanable.dirty.ratio=0.5
 ```
 
 ---
 
-Topic compaction transforms Kafka from a pure event log into a queryable state store. Configure it properly based on your access patterns, monitor the compaction metrics, and your storage costs will thank you while maintaining fast access to current state.
+Topic compaction transforms Kafka from a pure event log into a durable source for reconstructing current state. Configure it properly based on your access patterns, monitor the compaction metrics, and your storage costs will thank you while maintaining fast access to current state.
