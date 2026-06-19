@@ -112,27 +112,31 @@ function isValidTraceContext(traceparent) {
 }
 ```
 
-### 3. Unsupported Version Number
+### 3. Invalid or Future Version Number
 
-Currently, only version `00` is supported:
+The current W3C Trace Context specification defines version `00` and forbids version `ff`. Higher version numbers are reserved for future versions and should be parsed when the core fields are still valid:
 
 ```javascript
-// INVALID: Unsupported version
-const unsupportedVersion = "01-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
+// FUTURE VERSION: Parse the core fields if they are valid
+const futureVersion = "01-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
 
 // INVALID: Invalid version format
 const invalidVersion = "ff-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
 
 // Version validation
 function validateVersion(version) {
+  if (!/^[0-9a-f]{2}$/.test(version)) {
+    throw new Error('Invalid trace context: version must be 2 lowercase hex characters');
+  }
+
   // According to W3C spec, version ff is invalid
   if (version === 'ff') {
     throw new Error('Invalid trace context: version ff is not allowed');
   }
 
-  // Currently only version 00 is defined
+  // Version 00 is currently defined; higher versions are reserved for future use
   if (version !== '00') {
-    console.warn(`Unknown trace context version: ${version}, treating as version 00`);
+    console.warn(`Future trace context version: ${version}, parsing known fields only`);
   }
 
   return true;
@@ -192,9 +196,9 @@ function validateTraceparent(traceparent) {
 
   const parts = traceparent.split('-');
 
-  // Must have exactly 4 parts
-  if (parts.length !== 4) {
-    errors.push(`Expected 4 parts separated by dashes, got ${parts.length}`);
+  // Version 00 must have exactly 4 parts. Future versions can add fields.
+  if (parts.length < 4) {
+    errors.push(`Expected at least 4 parts separated by dashes, got ${parts.length}`);
     return { valid: false, errors };
   }
 
@@ -206,6 +210,9 @@ function validateTraceparent(traceparent) {
   }
   if (version === 'ff') {
     errors.push('Version ff is not allowed');
+  }
+  if (version === '00' && parts.length !== 4) {
+    errors.push('Version 00 traceparent must have exactly 4 parts');
   }
 
   // Validate trace-id (32 lowercase hex chars, not all zeros)
@@ -289,9 +296,10 @@ function convertLegacyTraceContext(req, res, next) {
   const xB3TraceId = req.headers['x-b3-traceid'];
   const xB3SpanId = req.headers['x-b3-spanid'];
   const xB3Sampled = req.headers['x-b3-sampled'];
+  const xB3Flags = req.headers['x-b3-flags'];
 
   if (xB3TraceId && xB3SpanId && !req.headers['traceparent']) {
-    const converted = convertB3HeadersToW3C(xB3TraceId, xB3SpanId, xB3Sampled);
+    const converted = convertB3HeadersToW3C(xB3TraceId, xB3SpanId, xB3Sampled, xB3Flags);
     if (converted) {
       req.headers['traceparent'] = converted;
     }
@@ -305,9 +313,14 @@ function convertB3ToW3C(b3Header) {
   // B3 format: {traceId}-{spanId}-{sampled}-{parentSpanId}
   // or: {traceId}-{spanId}-{sampled}
   // or: {traceId}-{spanId}
+  // or only a sampling decision: 0, 1, or d (not enough to create traceparent)
+  if (b3Header === '0' || b3Header === '1' || b3Header === 'd') {
+    return null;
+  }
+
   const parts = b3Header.split('-');
 
-  if (parts.length < 2) return null;
+  if (parts.length < 2 || parts.length > 4) return null;
 
   let traceId = parts[0].toLowerCase();
   const spanId = parts[1].toLowerCase();
@@ -318,8 +331,11 @@ function convertB3ToW3C(b3Header) {
     traceId = '0000000000000000' + traceId;
   }
 
-  // Validate lengths
-  if (traceId.length !== 32 || spanId.length !== 16) {
+  // Validate lower-hex IDs and W3C all-zero restrictions
+  if (!/^[0-9a-f]{32}$/.test(traceId) ||
+      traceId === '00000000000000000000000000000000' ||
+      !/^[0-9a-f]{16}$/.test(spanId) ||
+      spanId === '0000000000000000') {
     return null;
   }
 
@@ -327,7 +343,7 @@ function convertB3ToW3C(b3Header) {
 }
 
 // Convert B3 multi-headers to W3C traceparent
-function convertB3HeadersToW3C(traceId, spanId, sampled) {
+function convertB3HeadersToW3C(traceId, spanId, sampled, flags) {
   traceId = traceId.toLowerCase();
   spanId = spanId.toLowerCase();
 
@@ -336,13 +352,16 @@ function convertB3HeadersToW3C(traceId, spanId, sampled) {
     traceId = '0000000000000000' + traceId;
   }
 
-  const flags = sampled === '1' ? '01' : '00';
+  const traceFlags = flags === '1' || sampled === '1' || sampled === 'true' ? '01' : '00';
 
-  if (traceId.length !== 32 || spanId.length !== 16) {
+  if (!/^[0-9a-f]{32}$/.test(traceId) ||
+      traceId === '00000000000000000000000000000000' ||
+      !/^[0-9a-f]{16}$/.test(spanId) ||
+      spanId === '0000000000000000') {
     return null;
   }
 
-  return `00-${traceId}-${spanId}-${flags}`;
+  return `00-${traceId}-${spanId}-${traceFlags}`;
 }
 ```
 
