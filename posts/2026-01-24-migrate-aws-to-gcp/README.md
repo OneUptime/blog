@@ -170,18 +170,27 @@ gcloud compute firewall-rules create allow-https \
 
 ```bash
 # Option 1: VPN for initial migration
+gcloud compute routers create production-router \
+    --network=production-vpc \
+    --region=us-central1 \
+    --asn=64512
+
 gcloud compute vpn-gateways create aws-vpn-gateway \
     --network=production-vpc \
     --region=us-central1
 
+gcloud compute external-vpn-gateways create aws-external-gateway \
+    --interfaces=0=AWS_VPN_PUBLIC_IP
+
 gcloud compute vpn-tunnels create aws-tunnel-1 \
     --vpn-gateway=aws-vpn-gateway \
-    --peer-gcp-gateway=projects/peer-project/regions/us-central1/vpnGateways/peer-gateway \
+    --peer-external-gateway=aws-external-gateway \
+    --peer-external-gateway-interface=0 \
     --region=us-central1 \
     --ike-version=2 \
     --shared-secret=YOUR_SHARED_SECRET \
     --router=production-router \
-    --vpn-gateway-interface=0
+    --interface=0
 
 # Option 2: Dedicated Interconnect for production
 gcloud compute interconnects attachments dedicated create aws-interconnect \
@@ -208,35 +217,34 @@ gsutil -m cp -r s3://source-bucket/* gs://destination-bucket/
 # For large transfers, use Storage Transfer Service
 gcloud transfer jobs create s3://source-bucket gs://destination-bucket \
     --source-creds-file=aws-creds.json \
-    --name=s3-to-gcs-migration \
-    --schedule-starts=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
-    --schedule-repeats-every=0  # One-time transfer
+    --name=s3-to-gcs-migration
 ```
 
 ### Migrate RDS to Cloud SQL
 
 ```bash
-# Export from RDS
-aws rds create-db-snapshot \
-    --db-instance-identifier source-database \
-    --db-snapshot-identifier migration-snapshot
+# Export from RDS PostgreSQL as a SQL dump
+pg_dump \
+    --host=source-database.abcdefghijkl.us-east-1.rds.amazonaws.com \
+    --username=myuser \
+    --dbname=myapp \
+    --format=plain \
+    --no-owner \
+    --no-acl \
+    --file=export.sql
 
-# Export snapshot to S3
-aws rds start-export-task \
-    --export-task-identifier export-migration \
-    --source-arn arn:aws:rds:region:account:snapshot:migration-snapshot \
-    --s3-bucket-name rds-exports \
-    --iam-role-arn arn:aws:iam::account:role/rds-export-role \
-    --kms-key-id your-kms-key
+# Stage the dump in Cloud Storage
+gsutil cp export.sql gs://migration-bucket/export.sql
 
 # Create Cloud SQL instance
 gcloud sql instances create production-db \
     --database-version=POSTGRES_14 \
-    --tier=db-custom-4-16384 \
+    --cpu=4 \
+    --memory=16GiB \
     --region=us-central1 \
     --availability-type=REGIONAL \
     --storage-type=SSD \
-    --storage-size=100GB
+    --storage-size=100
 
 # Import to Cloud SQL
 gcloud sql import sql production-db \
@@ -412,19 +420,23 @@ gcloud dns record-sets create api.example.com \
     --type=A \
     --ttl=60 \
     --routing-policy-type=WRR \
-    --routing-policy-data="AWS_IP=0.9;GCP_IP=0.1"
+    --routing-policy-item=weight=90,rrdatas=203.0.113.10 \
+    --routing-policy-item=weight=10,rrdatas=198.51.100.10
 
 # Gradually shift traffic
 gcloud dns record-sets update api.example.com \
     --zone=my-zone \
     --type=A \
-    --routing-policy-data="AWS_IP=0.5;GCP_IP=0.5"
+    --routing-policy-type=WRR \
+    --routing-policy-item=weight=50,rrdatas=203.0.113.10 \
+    --routing-policy-item=weight=50,rrdatas=198.51.100.10
 
 # Complete migration
 gcloud dns record-sets update api.example.com \
     --zone=my-zone \
     --type=A \
-    --routing-policy-data="GCP_IP=1.0"
+    --routing-policy-type=WRR \
+    --routing-policy-item=weight=100,rrdatas=198.51.100.10
 ```
 
 ## Post-Migration Checklist
@@ -459,12 +471,13 @@ gcloud monitoring dashboards list
 
 ```bash
 # Create uptime checks
-gcloud monitoring uptime-check-configs create api-health-check \
-    --display-name="API Health Check" \
+gcloud monitoring uptime create "API Health Check" \
     --resource-type=uptime-url \
-    --hostname=api.example.com \
+    --resource-labels=host=api.example.com,project_id=PROJECT_ID \
+    --protocol=https \
+    --port=443 \
     --path=/health \
-    --check-interval=60s
+    --period=60
 
 # Set up alert policies
 gcloud monitoring policies create \
