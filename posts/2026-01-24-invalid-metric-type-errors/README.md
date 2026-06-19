@@ -57,7 +57,7 @@ const requestLatency = meter.createHistogram('http.request.count');  // ERROR!
 ```typescript
 // metrics-registry.ts
 // Centralized metric definitions to prevent type conflicts
-import { metrics, Counter, Histogram, UpDownCounter } from '@opentelemetry/api';
+import { metrics } from '@opentelemetry/api';
 
 // Create a single meter instance for the service
 const meter = metrics.getMeter('my-service', '1.0.0');
@@ -121,15 +121,17 @@ const exporter = new PrometheusExporter({
 
 ```typescript
 // For OTLP with delta temporality preference
-import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
 import {
-  PeriodicExportingMetricReader,
-  AggregationTemporality
+  AggregationTemporalityPreference,
+  OTLPMetricExporter
+} from '@opentelemetry/exporter-metrics-otlp-http';
+import {
+  PeriodicExportingMetricReader
 } from '@opentelemetry/sdk-metrics';
 
 const exporter = new OTLPMetricExporter({
   url: 'http://localhost:4318/v1/metrics',
-  temporalityPreference: AggregationTemporality.DELTA,
+  temporalityPreference: AggregationTemporalityPreference.DELTA,
 });
 
 const reader = new PeriodicExportingMetricReader({
@@ -141,14 +143,17 @@ const reader = new PeriodicExportingMetricReader({
 ```typescript
 // For backends that require cumulative
 import {
-  PeriodicExportingMetricReader,
-  AggregationTemporality
+  AggregationTemporalityPreference,
+  OTLPMetricExporter
+} from '@opentelemetry/exporter-metrics-otlp-http';
+import {
+  PeriodicExportingMetricReader
 } from '@opentelemetry/sdk-metrics';
 
 const reader = new PeriodicExportingMetricReader({
   exporter: new OTLPMetricExporter({
     url: 'http://localhost:4318/v1/metrics',
-    temporalityPreference: AggregationTemporality.CUMULATIVE,
+    temporalityPreference: AggregationTemporalityPreference.CUMULATIVE,
   }),
   exportIntervalMillis: 15000,
 });
@@ -156,24 +161,28 @@ const reader = new PeriodicExportingMetricReader({
 
 ### 3. Histogram Boundary Mismatches
 
-When using custom histogram boundaries, mismatches between definition and backend expectations can cause errors.
+When using custom histogram boundaries, mismatches between definition and backend expectations can cause invalid or misleading bucket layouts.
 
 **Error Message:**
 ```text
 Error: Histogram boundaries must be monotonically increasing
 ```
 
-**Cause:** Histogram bucket boundaries are not properly ordered or contain duplicates.
+**Cause:** Histogram bucket boundaries are not properly ordered or contain duplicates. OpenTelemetry defines explicit bucket boundaries as increasing values; some SDKs may normalize them, but it is still best to provide a sorted, unique list.
 
 ```typescript
 // WRONG: Boundaries are not in ascending order
 const histogram = meter.createHistogram('request.duration', {
-  boundaries: [100, 50, 200, 25],  // ERROR!
+  advice: {
+    explicitBucketBoundaries: [100, 50, 200, 25],  // Bad configuration
+  },
 });
 
 // WRONG: Contains duplicates
 const histogram = meter.createHistogram('request.duration', {
-  boundaries: [25, 50, 50, 100],  // ERROR!
+  advice: {
+    explicitBucketBoundaries: [25, 50, 50, 100],  // Bad configuration
+  },
 });
 ```
 
@@ -185,7 +194,7 @@ const histogram = meter.createHistogram('http.server.request.duration', {
   description: 'HTTP request duration',
   unit: 'ms',
   // Boundaries must be strictly ascending with no duplicates
-  // These boundaries create buckets: [0-25), [25-50), [50-100), [100-250), [250-500), [500-1000), [1000+)
+  // These boundaries create buckets: <=25, <=50, <=100, <=250, <=500, <=1000, and >1000
   advice: {
     explicitBucketBoundaries: [25, 50, 100, 250, 500, 1000],
   },
@@ -223,58 +232,68 @@ const requestDuration = meter.createHistogram('http.request.duration', {
 
 ### 5. View Configuration Conflicts
 
-Views can transform metrics, but incorrect configuration leads to type errors.
+Views can transform metrics, but overly broad or conflicting configuration can lead to errors or unexpected streams.
 
 **Error Message:**
 ```text
-Error: Cannot apply Sum aggregation to Histogram instrument
+Error: Views with a specified name must be declared with an instrument selector that selects at most one instrument per meter.
 ```
 
-**Cause:** A view is configured with an incompatible aggregation for the instrument type.
+**Cause:** A view renames multiple instruments to the same metric stream name.
 
 ```typescript
-// WRONG: Applying Sum aggregation to a Histogram
-import { View, Aggregation } from '@opentelemetry/sdk-metrics';
+// WRONG: A wildcard selector with a fixed name can match multiple instruments
+import { MeterProvider } from '@opentelemetry/sdk-metrics';
 
-const invalidView = new View({
-  instrumentName: 'http.request.duration',  // This is a Histogram
-  aggregation: Aggregation.Sum(),  // Sum is incompatible with Histogram!
+const meterProvider = new MeterProvider({
+  views: [
+    {
+      instrumentName: 'http.request.*',
+      name: 'http.request',
+    },
+  ],
 });
 ```
 
-**Solution:** Use compatible aggregations for each instrument type:
+**Solution:** Use specific selectors and the current OpenTelemetry JS view aggregation options:
 
 ```typescript
 import {
   MeterProvider,
-  View,
-  Aggregation,
+  AggregationType,
   InstrumentType
 } from '@opentelemetry/sdk-metrics';
 
 // Create views with compatible aggregations
 const views = [
-  // Histogram instrument - use Histogram or ExplicitBucketHistogram aggregation
-  new View({
+  // Histogram instrument - use Explicit Bucket Histogram aggregation
+  {
     instrumentName: 'http.request.duration',
     instrumentType: InstrumentType.HISTOGRAM,
-    aggregation: Aggregation.ExplicitBucketHistogram({
-      boundaries: [10, 25, 50, 100, 250, 500, 1000],
-    }),
-  }),
+    aggregation: {
+      type: AggregationType.EXPLICIT_BUCKET_HISTOGRAM,
+      options: {
+        boundaries: [10, 25, 50, 100, 250, 500, 1000],
+      },
+    },
+  },
 
   // Counter instrument - use Sum aggregation
-  new View({
+  {
     instrumentName: 'http.request.count',
     instrumentType: InstrumentType.COUNTER,
-    aggregation: Aggregation.Sum(),
-  }),
+    aggregation: {
+      type: AggregationType.SUM,
+    },
+  },
 
   // Drop a metric you don't need
-  new View({
+  {
     instrumentName: 'internal.debug.*',
-    aggregation: Aggregation.Drop(),
-  }),
+    aggregation: {
+      type: AggregationType.DROP,
+    },
+  },
 ];
 
 const meterProvider = new MeterProvider({
@@ -300,10 +319,10 @@ flowchart LR
 
 **Error Message:**
 ```text
-Error: Prometheus does not support negative values for Counter type
+Error: Counter instruments cannot record negative increments
 ```
 
-**Cause:** Using a Counter (which maps to Prometheus counter) with negative values.
+**Cause:** Using a Counter, which maps to a monotonic sum and is exported as a Prometheus counter, with negative values.
 
 **Solution:** Use the correct instrument type:
 
@@ -372,7 +391,7 @@ Create a validation helper to catch issues early:
 
 ```typescript
 // metric-validator.ts
-import { metrics, ValueType } from '@opentelemetry/api';
+import { metrics } from '@opentelemetry/api';
 
 interface MetricDefinition {
   name: string;
