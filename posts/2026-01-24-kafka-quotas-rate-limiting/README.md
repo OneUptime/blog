@@ -56,7 +56,7 @@ flowchart TD
 |------------|-------------|------|
 | **producer_byte_rate** | Maximum bytes/second a producer can send | bytes/sec |
 | **consumer_byte_rate** | Maximum bytes/second a consumer can fetch | bytes/sec |
-| **request_percentage** | Maximum CPU time for request handling | percentage |
+| **request_percentage** | Maximum network and I/O thread time for request handling | percentage |
 | **controller_mutation_rate** | Maximum partition mutations per second | mutations/sec |
 
 ## Configuring User Quotas
@@ -91,7 +91,7 @@ kafka-configs.sh --bootstrap-server $BOOTSTRAP \
     --entity-type users \
     --entity-name batch-processor
 
-# Set request percentage quota (limit CPU usage to 25% per broker)
+# Set request percentage quota (limit usage to 25% of one network/I/O thread per broker)
 kafka-configs.sh --bootstrap-server $BOOTSTRAP \
     --alter \
     --add-config 'request_percentage=25' \
@@ -186,44 +186,47 @@ kafka-configs.sh --bootstrap-server $BOOTSTRAP \
 ```mermaid
 flowchart TD
     A[Client Request] --> B{User + Client ID Match?}
-    B --> |Yes| C[Use User+ClientID Quota]
-    B --> |No| D{User Match?}
+    B --> |Yes| C[Use User + Client ID Quota]
+    B --> |No| D{User + Default Client ID Match?}
 
-    D --> |Yes| E{User Default ClientID?}
-    D --> |No| F{Client ID Match?}
+    D --> |Yes| E[Use User + Default Client ID Quota]
+    D --> |No| F{User Match?}
 
-    E --> |Yes| G[Use User + Default ClientID Quota]
-    E --> |No| H[Use User Quota]
+    F --> |Yes| G[Use User Quota]
+    F --> |No| H{Default User + Client ID Match?}
 
-    F --> |Yes| I{Default User + ClientID?}
-    F --> |No| J{Default User?}
+    H --> |Yes| I[Use Default User + Client ID Quota]
+    H --> |No| J{Default User + Default Client ID Match?}
 
-    I --> |Yes| K[Use Default User + ClientID Quota]
-    I --> |No| L[Use ClientID Quota]
+    J --> |Yes| K[Use Default User + Default Client ID Quota]
+    J --> |No| L{Default User Match?}
 
-    J --> |Yes| M{Default User + Default ClientID?}
-    J --> |No| N[No Quota Applied]
+    L --> |Yes| M[Use Default User Quota]
+    L --> |No| N{Client ID Match?}
 
-    M --> |Yes| O[Use Default User + Default ClientID]
-    M --> |No| P[Use Default User Quota]
+    N --> |Yes| O[Use Client ID Quota]
+    N --> |No| P{Default Client ID Match?}
+
+    P --> |Yes| Q[Use Default Client ID Quota]
+    P --> |No| R[No Quota Applied]
 
     style C fill:#c8e6c9
-    style H fill:#c8e6c9
-    style L fill:#c8e6c9
+    style E fill:#c8e6c9
+    style G fill:#c8e6c9
 ```
 
 ## Programmatic Quota Management
 
 ```java
-// Manage quotas programmatically using AdminClient
+// Manage quotas programmatically using the Admin API
 public class KafkaQuotaManager {
 
-    private final AdminClient adminClient;
+    private final Admin adminClient;
 
     public KafkaQuotaManager(String bootstrapServers) {
         Properties props = new Properties();
         props.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
-        this.adminClient = AdminClient.create(props);
+        this.adminClient = Admin.create(props);
     }
 
     // Set quota for a user
@@ -492,7 +495,7 @@ class TenantQuotaConfig {
 ## Monitoring Quota Usage
 
 ```java
-// Monitor quota metrics via JMX
+// Monitor quota metrics via Kafka client metrics
 public class QuotaMetricsCollector {
 
     private final MeterRegistry registry;
@@ -580,16 +583,10 @@ public class QuotaMetricsCollector {
 ## Broker-Side Quota Configuration
 
 ```properties
-# server.properties - broker-level quota defaults
+# server.properties - broker-level quota window settings
 
-# Default quotas (can be overridden per user/client)
-# These are per-broker limits
-
-# Default producer byte rate (10 MB/s)
-quota.producer.default=10485760
-
-# Default consumer byte rate (20 MB/s)
-quota.consumer.default=20971520
+# Configure default client quotas dynamically with kafka-configs.sh
+# as shown in the Default Quotas section.
 
 # Quota window settings
 # Number of samples to retain for calculating averages
@@ -611,7 +608,7 @@ controller.quota.window.size.seconds=1
 public class DynamicQuotaAdjuster {
 
     private final KafkaQuotaManager quotaManager;
-    private final AdminClient adminClient;
+    private final Admin adminClient;
     private final Map<String, UsageTracker> usageTrackers;
     private final ScheduledExecutorService scheduler;
 
@@ -620,7 +617,7 @@ public class DynamicQuotaAdjuster {
 
         Properties props = new Properties();
         props.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
-        this.adminClient = AdminClient.create(props);
+        this.adminClient = Admin.create(props);
 
         this.usageTrackers = new ConcurrentHashMap<>();
         this.scheduler = Executors.newScheduledThreadPool(1);
@@ -731,7 +728,7 @@ public class DynamicQuotaAdjuster {
 ## Handling Quota Violations
 
 ```java
-// Producer with quota violation handling
+// Producer with throttle-aware backoff
 public class QuotaAwareProducer {
 
     private final KafkaProducer<String, String> producer;
@@ -756,17 +753,13 @@ public class QuotaAwareProducer {
             long elapsed = System.nanoTime() - startTime;
 
             if (exception != null) {
-                if (exception.getMessage().contains("throttl")) {
-                    // Record was throttled
+                System.err.println("Producer send failed: " + exception.getMessage());
+            } else {
+                // Byte and request quotas normally throttle by delaying responses.
+                if (elapsed > TimeUnit.SECONDS.toNanos(1)) {
                     throttleCounter.increment();
                     throttleTimer.record(elapsed, TimeUnit.NANOSECONDS);
-
-                    System.out.println("Producer throttled, consider reducing rate");
-                }
-            } else {
-                // Check if send took too long (possible throttling)
-                if (elapsed > TimeUnit.SECONDS.toNanos(1)) {
-                    System.out.println("Slow send detected, possible throttling");
+                    System.out.println("Slow send detected, check throttle metrics");
                 }
             }
         });
