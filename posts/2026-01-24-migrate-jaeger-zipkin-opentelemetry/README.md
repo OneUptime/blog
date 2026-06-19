@@ -121,20 +121,29 @@ processors:
         value: parallel
         action: upsert
 
-  # Transform to add migration metadata
-  transform:
-    trace_statements:
-      - context: span
-        statements:
-          # Track which receiver the span came from
-          - set(attributes["telemetry.source"], "jaeger") where attributes["jaeger.version"] != nil
-          - set(attributes["telemetry.source"], "zipkin") where attributes["zipkin.version"] != nil
-          - set(attributes["telemetry.source"], "otlp") where attributes["telemetry.source"] == nil
+  # Add source metadata per receiver pipeline
+  resource/jaeger:
+    attributes:
+      - key: telemetry.source
+        value: jaeger
+        action: upsert
+
+  resource/zipkin:
+    attributes:
+      - key: telemetry.source
+        value: zipkin
+        action: upsert
+
+  resource/otlp:
+    attributes:
+      - key: telemetry.source
+        value: otlp
+        action: upsert
 
 exporters:
-  # Export to existing Jaeger backend (for comparison)
-  jaeger:
-    endpoint: jaeger-collector:14250
+  # Export to existing Jaeger backend over OTLP (for comparison)
+  otlp/jaeger:
+    endpoint: jaeger-collector:4317
     tls:
       insecure: true
 
@@ -145,17 +154,25 @@ exporters:
       insecure: true
 
   # Debug exporter for verification
-  logging:
+  debug:
     verbosity: detailed
     sampling_initial: 5
     sampling_thereafter: 200
 
 service:
   pipelines:
-    traces:
-      receivers: [otlp, jaeger, zipkin]
-      processors: [batch, resource, transform]
-      exporters: [jaeger, otlp, logging]
+    traces/jaeger:
+      receivers: [jaeger]
+      processors: [resource, resource/jaeger, batch]
+      exporters: [otlp/jaeger, otlp, debug]
+    traces/zipkin:
+      receivers: [zipkin]
+      processors: [resource, resource/zipkin, batch]
+      exporters: [otlp/jaeger, otlp, debug]
+    traces/otlp:
+      receivers: [otlp]
+      processors: [resource, resource/otlp, batch]
+      exporters: [otlp/jaeger, otlp, debug]
 ```
 
 ### Deploy the Collector
@@ -179,7 +196,7 @@ spec:
     spec:
       containers:
         - name: collector
-          image: otel/opentelemetry-collector-contrib:0.92.0
+          image: otel/opentelemetry-collector-contrib:0.154.0
           args:
             - --config=/etc/otel-collector/config.yaml
           ports:
@@ -292,9 +309,10 @@ span.finish();
 const { NodeTracerProvider } = require('@opentelemetry/sdk-trace-node');
 const { BatchSpanProcessor } = require('@opentelemetry/sdk-trace-base');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 const {
-  SemanticResourceAttributes,
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
 } = require('@opentelemetry/semantic-conventions');
 const { trace, SpanStatusCode } = require('@opentelemetry/api');
 const { registerInstrumentations } = require('@opentelemetry/instrumentation');
@@ -304,9 +322,9 @@ const {
 } = require('@opentelemetry/instrumentation-express');
 
 // Create resource with service information
-const resource = new Resource({
-  [SemanticResourceAttributes.SERVICE_NAME]: 'my-service',
-  [SemanticResourceAttributes.SERVICE_VERSION]: '1.0.0',
+const resource = resourceFromAttributes({
+  [ATTR_SERVICE_NAME]: 'my-service',
+  [ATTR_SERVICE_VERSION]: '1.0.0',
   // Migration tracking attribute
   'migration.source': 'jaeger',
 });
@@ -314,22 +332,21 @@ const resource = new Resource({
 // Configure OTLP exporter
 // During migration, point to the OTel Collector
 const exporter = new OTLPTraceExporter({
-  url: 'grpc://otel-collector:4317',
+  url: 'http://otel-collector:4317',
 });
 
 // Create and configure the tracer provider
 const provider = new NodeTracerProvider({
   resource: resource,
+  // Add batch processor for efficient export
+  spanProcessors: [
+    new BatchSpanProcessor(exporter, {
+      maxExportBatchSize: 512,
+      maxQueueSize: 2048,
+      scheduledDelayMillis: 5000,
+    }),
+  ],
 });
-
-// Add batch processor for efficient export
-provider.addSpanProcessor(
-  new BatchSpanProcessor(exporter, {
-    maxExportBatchSize: 512,
-    maxQueueSize: 2048,
-    scheduledDelayMillis: 5000,
-  })
-);
 
 // Register as global tracer provider
 provider.register();
@@ -339,7 +356,8 @@ registerInstrumentations({
   instrumentations: [
     new HttpInstrumentation({
       // Ignore health check endpoints
-      ignoreIncomingPaths: ['/health', '/ready'],
+      ignoreIncomingRequestHook: (request) =>
+        ['/health', '/ready'].includes(request.url),
     }),
     new ExpressInstrumentation(),
   ],
@@ -350,7 +368,7 @@ const tracer = trace.getTracer('my-service');
 
 // Create a span (OpenTelemetry style)
 const span = tracer.startSpan('operation-name');
-span.setAttribute('http.method', 'GET');
+span.setAttribute('http.request.method', 'GET');
 span.addEvent('request-started');
 span.setStatus({ code: SpanStatusCode.OK });
 span.end();
@@ -444,7 +462,7 @@ tracer = trace.get_tracer("my-service")
 
 # Create a span (OpenTelemetry style)
 with tracer.start_as_current_span("operation-name") as span:
-    span.set_attribute("http.method", "GET")
+    span.set_attribute("http.request.method", "GET")
     span.add_event("request-started")
     # Do work
     span.set_status(Status(StatusCode.OK))
@@ -517,23 +535,15 @@ import (
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
-	"go.opentelemetry.io/otel/trace"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
+	semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
 )
 
 func initTracer(ctx context.Context) (*sdktrace.TracerProvider, error) {
 	// Create OTLP exporter
-	conn, err := grpc.DialContext(ctx, "otel-collector:4317",
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithBlock(),
+	exporter, err := otlptracegrpc.New(ctx,
+		otlptracegrpc.WithEndpoint("otel-collector:4317"),
+		otlptracegrpc.WithInsecure(),
 	)
-	if err != nil {
-		return nil, err
-	}
-
-	exporter, err := otlptracegrpc.New(ctx, otlptracegrpc.WithGRPCConn(conn))
 	if err != nil {
 		return nil, err
 	}
@@ -584,7 +594,7 @@ func main() {
 
 	// Create a span
 	ctx, span := tracer.Start(ctx, "operation-name")
-	span.SetAttributes(attribute.String("http.method", "GET"))
+	span.SetAttributes(attribute.String("http.request.method", "GET"))
 	span.AddEvent("request-started")
 	// Do work
 	span.End()
@@ -671,9 +681,7 @@ def validate_span_attributes():
     new_traces = get_new_backend_traces(SERVICE_NAME)
 
     required_attributes = [
-        "service.name",
-        "http.method",
-        "http.status_code",
+        "http.request.method",
     ]
 
     missing_attributes = []
