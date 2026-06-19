@@ -8,9 +8,9 @@ Description: Learn how to diagnose and fix checkpoint failures in Spark Streamin
 
 ---
 
-> Checkpointing is the backbone of fault tolerance in Spark Streaming. When checkpoints fail, your streaming application loses its ability to recover from failures and maintain exactly-once processing guarantees.
+> Checkpointing is the backbone of fault tolerance in Spark Streaming. When checkpoints fail, your streaming application loses its ability to recover from driver failures and stateful operation lineage.
 
-Checkpoint failures can bring down production streaming pipelines, causing data loss or duplicate processing. This guide covers the most common checkpoint issues and their solutions.
+Checkpoint failures can bring down production streaming pipelines, causing data loss, long recovery times, or duplicate output writes depending on the input source and sink semantics. This guide covers the most common checkpoint issues and their solutions.
 
 ---
 
@@ -360,65 +360,71 @@ at java.io.ObjectOutputStream.writeObject
 
 **Solution:**
 
-```python
-# memory_optimized_checkpoint.py
-# Optimize memory usage for checkpointing
+```scala
+// MemoryOptimizedStreaming.scala
+// Optimize memory usage for checkpointing
 
-from pyspark.sql import SparkSession
-from pyspark import StorageLevel
+import org.apache.spark.SparkConf
+import org.apache.spark.storage.StorageLevel
+import org.apache.spark.streaming.{Minutes, Seconds, State, StateSpec, StreamingContext}
+import org.apache.spark.streaming.dstream.DStream
 
-def create_memory_optimized_context():
-    """
-    Configure Spark for memory-efficient checkpointing.
-    """
-    spark = SparkSession.builder \
-        .appName("MemoryOptimizedStreaming") \
-        .config("spark.executor.memory", "4g") \
-        .config("spark.driver.memory", "2g") \
-        .config("spark.memory.fraction", "0.6") \
-        .config("spark.memory.storageFraction", "0.3") \
-        .config("spark.cleaner.referenceTracking.cleanCheckpoints", "true") \
-        .config("spark.streaming.unpersist", "true") \
-        .getOrCreate()
+object MemoryOptimizedStreaming {
+  case class Event(key: String, value: Int)
 
-    return spark
+  def createMemoryOptimizedContext(checkpointDir: String): StreamingContext = {
+    val conf = new SparkConf()
+      .setAppName("MemoryOptimizedStreaming")
+      .set("spark.executor.memory", "4g")
+      .set("spark.driver.memory", "2g")
+      .set("spark.memory.fraction", "0.6")
+      .set("spark.memory.storageFraction", "0.3")
+      .set("spark.cleaner.referenceTracking.cleanCheckpoints", "true")
+      .set("spark.streaming.unpersist", "true")
 
+    val ssc = new StreamingContext(conf, Seconds(30))
+    ssc.checkpoint(checkpointDir)
+    ssc
+  }
 
-def configure_efficient_state_management(dstream):
-    """
-    Use mapWithState instead of updateStateByKey for better memory efficiency.
-    mapWithState allows state expiration and uses less memory.
-    """
-    from pyspark.streaming import StateSpec
+  def configureEfficientStateManagement(
+      dstream: DStream[Event]
+  ): DStream[(String, Int, String)] = {
+    /*
+     * Use mapWithState instead of updateStateByKey for better memory efficiency.
+     * mapWithState allows state expiration and uses less memory.
+     */
+    def stateMappingFunction(
+        key: String,
+        value: Option[Int],
+        state: State[Int]
+    ): (String, Int, String) = {
+      if (state.isTimingOut()) {
+        // State is expiring - emit final value
+        (key, state.get(), "expired")
+      } else {
+        // Update state
+        val current = state.getOption().getOrElse(0)
+        val newValue = current + value.getOrElse(0)
+        state.update(newValue)
 
-    def state_mapping_function(key, value, state):
-        """
-        State mapping function with timeout.
-        States that haven't been updated expire automatically.
-        """
-        if state.isTimingOut():
-            # State is expiring - emit final value
-            return (key, state.get(), "expired")
+        (key, newValue, "active")
+      }
+    }
 
-        # Update state
-        current = state.getOption() or 0
-        new_value = current + (value or 0)
-        state.update(new_value)
+    // Configure state spec with timeout
+    val stateSpec = StateSpec.function(stateMappingFunction _)
+      .timeout(Minutes(30)) // State expires after 30 minutes of inactivity
 
-        return (key, new_value, "active")
+    val statefulStream = dstream
+      .map(event => (event.key, event.value))
+      .mapWithState(stateSpec)
 
-    # Configure state spec with timeout
-    state_spec = StateSpec.function(state_mapping_function) \
-        .timeout(minutes=30)  # State expires after 30 minutes of inactivity
-
-    stateful_stream = dstream \
-        .map(lambda x: (x.key, x.value)) \
-        .mapWithState(state_spec)
-
-    # Use MEMORY_AND_DISK to avoid OOM during checkpointing
-    stateful_stream.persist(StorageLevel.MEMORY_AND_DISK_SER)
-
-    return stateful_stream
+    // Use MEMORY_AND_DISK to avoid OOM during checkpointing
+    statefulStream.persist(StorageLevel.MEMORY_AND_DISK_SER)
+    statefulStream
+  }
+}
 ```
 
 ---
