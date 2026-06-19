@@ -46,8 +46,7 @@ Create the GitHub OIDC provider in your AWS account:
 
 aws iam create-open-id-connect-provider \
   --url https://token.actions.githubusercontent.com \
-  --client-id-list sts.amazonaws.com \
-  --thumbprint-list 6938fd4d98bab03faadb97b34396831e3780aea1
+  --client-id-list sts.amazonaws.com
 ```
 
 Or with Terraform:
@@ -59,11 +58,6 @@ resource "aws_iam_openid_connect_provider" "github" {
 
   client_id_list = [
     "sts.amazonaws.com"
-  ]
-
-  # GitHub's thumbprint - verify this is current
-  thumbprint_list = [
-    "6938fd4d98bab03faadb97b34396831e3780aea1"
   ]
 }
 ```
@@ -267,7 +261,6 @@ Full infrastructure as code setup:
 resource "aws_iam_openid_connect_provider" "github" {
   url             = "https://token.actions.githubusercontent.com"
   client_id_list  = ["sts.amazonaws.com"]
-  thumbprint_list = ["6938fd4d98bab03faadb97b34396831e3780aea1"]
 }
 
 # Variables
@@ -278,6 +271,11 @@ variable "github_org" {
 
 variable "github_repo" {
   description = "GitHub repository name"
+  type        = string
+}
+
+variable "deployment_bucket" {
+  description = "S3 bucket used for deployments"
   type        = string
 }
 
@@ -404,7 +402,7 @@ Configure environment secrets:
 - `staging` environment: `AWS_ROLE_ARN = arn:aws:iam::123456789012:role/github-actions-staging`
 - `production` environment: `AWS_ROLE_ARN = arn:aws:iam::123456789012:role/github-actions-production`
 
-## Session Duration and Tags
+## Session Duration and Session Name
 
 Customize the assumed role session:
 
@@ -414,9 +412,9 @@ Customize the assumed role session:
   with:
     role-to-assume: arn:aws:iam::123456789012:role/github-actions-deploy
     aws-region: us-east-1
-    # Extend session duration (default: 1 hour, max: 12 hours)
+    # Extend session duration (default: 1 hour, up to the role's max session duration)
     role-duration-seconds: 3600
-    # Add session tags for tracking
+    # Add a session name for tracking in CloudTrail
     role-session-name: GitHubActions-${{ github.run_id }}
 ```
 
@@ -441,9 +439,13 @@ Check the subject claim format:
 - name: Debug OIDC token
   run: |
     # Print the token claims (without sensitive data)
-    OIDC_TOKEN=$(curl -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL" | jq -r '.value')
+    OIDC_TOKEN=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL" | jq -r '.value')
     echo "Token claims:"
-    echo $OIDC_TOKEN | cut -d'.' -f2 | base64 -d 2>/dev/null | jq '.sub, .aud, .iss'
+    node - "$OIDC_TOKEN" <<'NODE'
+    const token = process.argv[2];
+    const claims = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8'));
+    console.log(JSON.stringify({ sub: claims.sub, aud: claims.aud, iss: claims.iss }, null, 2));
+    NODE
 ```
 
 ### Role Cannot Be Assumed
@@ -498,12 +500,27 @@ Account B's role needs to trust account A's role:
 }
 ```
 
+Account A's role also needs permission to assume account B's role:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "sts:AssumeRole",
+      "Resource": "arn:aws:iam::222222222222:role/deployment-role"
+    }
+  ]
+}
+```
+
 ## Security Best Practices
 
 1. **Use environment-specific roles**: Different roles for staging vs production
 2. **Restrict by branch**: Only allow production deployments from main
 3. **Minimize permissions**: Grant only required permissions
-4. **Use session tags**: Track deployments in CloudTrail
+4. **Use session names**: Track deployments in CloudTrail
 5. **Set short session durations**: Default 1 hour is usually sufficient
 
 ```json
