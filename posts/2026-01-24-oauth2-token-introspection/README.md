@@ -171,16 +171,22 @@ const introspectionClient = new TokenIntrospectionClient({
 });
 
 // Introspect a token
-const tokenInfo = await introspectionClient.introspect('access-token-here');
+async function validateToken() {
+    const tokenInfo = await introspectionClient.introspect('access-token-here');
 
-if (tokenInfo.active) {
-    console.log('Token is valid');
-    console.log('Subject:', tokenInfo.sub);
-    console.log('Scope:', tokenInfo.scope);
-    console.log('Expires:', new Date(tokenInfo.exp * 1000));
-} else {
-    console.log('Token is not active');
+    if (tokenInfo.active) {
+        console.log('Token is valid');
+        console.log('Subject:', tokenInfo.sub);
+        console.log('Scope:', tokenInfo.scope);
+        if (tokenInfo.exp) {
+            console.log('Expires:', new Date(tokenInfo.exp * 1000));
+        }
+    } else {
+        console.log('Token is not active');
+    }
 }
+
+validateToken().catch(console.error);
 ```
 
 ### Express Middleware for Token Introspection
@@ -342,13 +348,20 @@ router.post('/introspect',
             client_id: tokenData.clientId,
             username: tokenData.username,
             token_type: tokenData.tokenType || 'Bearer',
-            exp: Math.floor(tokenData.expiresAt / 1000),
-            iat: Math.floor(tokenData.issuedAt / 1000),
-            nbf: Math.floor(tokenData.notBefore / 1000),
             sub: tokenData.subject,
             aud: tokenData.audience,
             iss: tokenData.issuer
         };
+
+        if (tokenData.expiresAt) {
+            response.exp = Math.floor(tokenData.expiresAt / 1000);
+        }
+        if (tokenData.issuedAt) {
+            response.iat = Math.floor(tokenData.issuedAt / 1000);
+        }
+        if (tokenData.notBefore) {
+            response.nbf = Math.floor(tokenData.notBefore / 1000);
+        }
 
         // Add custom claims if present
         if (tokenData.customClaims) {
@@ -431,6 +444,7 @@ module.exports = router;
 const express = require('express');
 const { Pool } = require('pg');
 const bcrypt = require('bcrypt');
+const { rateLimit } = require('express-rate-limit');
 
 const router = express.Router();
 const pool = new Pool();
@@ -966,7 +980,7 @@ flowchart TD
 // security-config.js
 // Security hardening for introspection
 
-const rateLimit = require('express-rate-limit');
+const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 const helmet = require('helmet');
 
 // 1. Rate limiting
@@ -976,7 +990,7 @@ const introspectionRateLimit = rateLimit({
     keyGenerator: (req) => {
         // Rate limit by client ID
         const clientId = extractClientId(req);
-        return clientId || req.ip;
+        return clientId || ipKeyGenerator(req.ip);
     },
     handler: (req, res) => {
         res.status(429).json({
