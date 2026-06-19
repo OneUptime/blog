@@ -33,7 +33,12 @@ This guide covers the major low-power protocols and implementation patterns for 
 ```python
 # lorawan_device.py
 
-# LoRaWAN device implementation
+# LoRaWAN radio power-management skeleton
+#
+# Production LoRaWAN devices should use a LoRaWAN MAC stack for OTAA
+# join-accept parsing, session-key derivation, payload encryption, MIC
+# calculation, frame-counter persistence, channel plans, and duty-cycle
+# enforcement. The code below focuses on radio setup and sleep handling.
 
 import time
 from machine import Pin, SPI, deepsleep
@@ -55,6 +60,7 @@ class LoRaWAN:
 
         self.joined = False
         self.frame_counter = 0
+        self.dev_nonce = 0  # Persist this across reboots in production.
 
     def reset_module(self):
         """Reset the LoRa module"""
@@ -66,7 +72,7 @@ class LoRaWAN:
     def configure_low_power(self):
         """Configure module for minimum power consumption"""
         # Set to sleep mode when not transmitting
-        self._write_register(0x01, 0x00)  # Sleep mode
+        self._write_register(0x01, 0x80)  # LoRa sleep mode
 
         # Configure low data rate optimization
         self._write_register(0x26, 0x0C)  # LowDataRateOptimize
@@ -111,9 +117,9 @@ class LoRaWAN:
         # DevEUI (reversed)
         dev_eui = bytes(reversed(self.dev_eui))
 
-        # DevNonce (random)
-        import urandom
-        dev_nonce = urandom.getrandbits(16).to_bytes(2, 'little')
+        # DevNonce (LoRaWAN 1.0.4 requires a counter, not a random value)
+        dev_nonce = self.dev_nonce.to_bytes(2, 'little')
+        self.dev_nonce = (self.dev_nonce + 1) & 0xFFFF
 
         # Combine payload
         payload = mhdr + app_eui + dev_eui + dev_nonce
@@ -133,7 +139,7 @@ class LoRaWAN:
         frame = self._build_data_frame(port, data, confirmed)
 
         # Wake up module
-        self._write_register(0x01, 0x01)  # Standby mode
+        self._write_register(0x01, 0x81)  # LoRa standby mode
 
         # Send
         success = self._send_packet(frame)
@@ -142,7 +148,7 @@ class LoRaWAN:
             self.frame_counter += 1
 
         # Return to sleep
-        self._write_register(0x01, 0x00)  # Sleep mode
+        self._write_register(0x01, 0x80)  # LoRa sleep mode
 
         return success
 
@@ -177,7 +183,7 @@ class LoRaWAN:
     def _send_packet(self, data: bytes) -> bool:
         """Send raw packet over LoRa"""
         # Write to FIFO
-        self._write_register(0x00, 0x00)  # FIFO addr
+        self._write_register(0x0D, 0x00)  # FIFO address pointer
         for byte in data:
             self._write_register(0x00, byte)
 
@@ -185,7 +191,7 @@ class LoRaWAN:
         self._write_register(0x22, len(data))
 
         # Start transmission
-        self._write_register(0x01, 0x03)  # TX mode
+        self._write_register(0x01, 0x83)  # LoRa TX mode
 
         # Wait for TX done
         timeout = 5000  # ms
@@ -211,9 +217,21 @@ class LoRaWAN:
         self.cs.value(1)
         return result[0]
 
+    def _calculate_mic(self, payload: bytes) -> bytes:
+        """Calculate LoRaWAN MIC using the active LoRaWAN session keys"""
+        raise NotImplementedError("Use a LoRaWAN MAC stack for MIC calculation")
+
+    def _encrypt_payload(self, data: bytes) -> bytes:
+        """Encrypt FRMPayload using the active LoRaWAN session keys"""
+        raise NotImplementedError("Use a LoRaWAN MAC stack for payload encryption")
+
+    def _wait_for_join_accept(self, timeout: int) -> bool:
+        """Receive and process the join-accept with a LoRaWAN MAC stack"""
+        raise NotImplementedError("Use a LoRaWAN MAC stack for join-accept handling")
+
 
 class LowPowerSensor:
-    """Low power sensor using LoRaWAN"""
+    """Low power sensor using a complete LoRaWAN stack"""
 
     def __init__(self, lora: LoRaWAN):
         self.lora = lora
@@ -247,9 +265,9 @@ class LowPowerSensor:
             # Read and send
             self.read_and_send()
 
-            # Deep sleep (in microseconds)
-            sleep_us = interval_minutes * 60 * 1000000
-            deepsleep(sleep_us)
+            # Deep sleep timeout is in milliseconds
+            sleep_ms = interval_minutes * 60 * 1000
+            deepsleep(sleep_ms)
 
     def _read_temperature(self) -> float:
         """Read temperature sensor"""
@@ -275,7 +293,7 @@ class LowPowerSensor:
 # ble_sensor.py
 # BLE sensor with low power optimization
 
-from machine import Pin, ADC, deepsleep
+from machine import Pin, ADC, lightsleep
 import bluetooth
 import struct
 import time
@@ -294,10 +312,10 @@ class BLESensor:
         self.conn_handle = None
 
         # Service UUIDs
-        self.SENSOR_SERVICE = bluetooth.UUID("181A")  # Environmental sensing
-        self.TEMP_CHAR = bluetooth.UUID("2A6E")       # Temperature
-        self.HUMIDITY_CHAR = bluetooth.UUID("2A6F")   # Humidity
-        self.BATTERY_CHAR = bluetooth.UUID("2A19")    # Battery level
+        self.SENSOR_SERVICE = bluetooth.UUID(0x181A)  # Environmental sensing
+        self.TEMP_CHAR = bluetooth.UUID(0x2A6E)       # Temperature
+        self.HUMIDITY_CHAR = bluetooth.UUID(0x2A6F)   # Humidity
+        self.BATTERY_CHAR = bluetooth.UUID(0x2A19)    # Battery level
 
         self._setup_services()
 
@@ -314,7 +332,7 @@ class BLESensor:
 
         # Battery service
         BATTERY_SERVICE = (
-            bluetooth.UUID("180F"),
+            bluetooth.UUID(0x180F),
             (
                 (self.BATTERY_CHAR, bluetooth.FLAG_READ | bluetooth.FLAG_NOTIFY),
             ),
@@ -402,8 +420,8 @@ class BLESensor:
             # Update BLE values
             self.update_values(temp, humidity, battery)
 
-            # Light sleep (maintains BLE connection)
-            time.sleep(update_interval)
+            # Light sleep retains RAM; BLE retention depends on the board/port
+            lightsleep(update_interval * 1000)
 
     def _read_temperature(self) -> float:
         return 22.5
@@ -442,10 +460,7 @@ class PowerManager:
         # Disable peripherals
         self._disable_peripherals()
 
-        # Configure wake source
-        self._configure_wake_timer(seconds)
-
-        # Enter deep sleep
+        # Enter deep sleep; timeout is in milliseconds
         deepsleep(seconds * 1000)
 
     def light_sleep(self, seconds: int):
@@ -470,24 +485,16 @@ class PowerManager:
         except:
             pass
 
-    def _configure_wake_timer(self, seconds: int):
-        """Configure RTC wake timer"""
-        from machine import RTC
-        rtc = RTC()
-        rtc.alarm(RTC.ALARM0, seconds * 1000)
-
     def get_wake_reason(self) -> str:
         """Get reason for last wake"""
-        from machine import wake_reason
+        import machine
         reasons = {
-            0: "power_on",
-            2: "ext0",
-            3: "ext1",
-            4: "timer",
-            5: "touchpad",
-            6: "ulp"
+            getattr(machine, "PWRON_WAKE", -1): "power_on",
+            getattr(machine, "PIN_WAKE", -2): "pin",
+            getattr(machine, "RTC_WAKE", -3): "timer",
+            getattr(machine, "ULP_WAKE", -4): "ulp"
         }
-        return reasons.get(wake_reason(), "unknown")
+        return reasons.get(machine.wake_reason(), "unknown")
 
 
 class DutyCycleScheduler:
@@ -529,9 +536,10 @@ class DutyCycleScheduler:
                 time_until = task["interval"] - time_since
                 next_wake = min(next_wake, time_until)
 
-            # Sleep until next task
+            # Sleep until next task. Use light sleep because this scheduler keeps
+            # task state in RAM; deep sleep restarts the main script on wake.
             if next_wake > 0:
-                self.pm.deep_sleep(int(next_wake))
+                self.pm.light_sleep(int(next_wake))
 
 
 def calculate_battery_life(
