@@ -94,13 +94,13 @@ if os.path.exists(checkpoint_path):
 # hdfs dfs -rm -r /checkpoints/my-app
 ```
 
-**Better approach: Use state data source to recover**
+**Better approach: Use state data source to inspect existing state**
 
 ```python
-# Read existing state for debugging
+# Read existing state for debugging (Spark 4.0+ experimental data source)
 state_df = spark.read \
     .format("statestore") \
-    .option("path", "hdfs:///checkpoints/my-app/state/0/0") \
+    .option("path", "hdfs:///checkpoints/my-app") \
     .load()
 
 state_df.show(truncate=False)
@@ -115,16 +115,17 @@ at org.apache.spark.sql.execution.streaming.state.HDFSBackedStateStoreProvider
 
 This occurs when state grows too large for available memory.
 
-**Solution: Configure state store memory settings**
+**Solution: Bound state and move large state out of JVM memory**
 
 ```python
 spark = SparkSession.builder \
     .appName("StreamingApp") \
     .config("spark.sql.streaming.stateStore.providerClass",
-            "org.apache.spark.sql.execution.streaming.state.HDFSBackedStateStoreProvider") \
-    .config("spark.sql.streaming.stateStore.minDeltasForSnapshot", "10") \
-    .config("spark.sql.streaming.stateStore.maintenanceInterval", "30s") \
-    .config("spark.sql.streaming.stateStore.compression.codec", "lz4") \
+            "org.apache.spark.sql.execution.streaming.state.RocksDBStateStoreProvider") \
+    .config("spark.sql.streaming.stateStore.rocksdb.boundedMemoryUsage", "true") \
+    .config("spark.sql.streaming.stateStore.rocksdb.maxMemoryUsageMB", "1024") \
+    .config("spark.sql.streaming.stateStore.rocksdb.writeBufferCacheRatio", "0.5") \
+    .config("spark.sql.streaming.stateStore.rocksdb.highPriorityPoolRatio", "0.1") \
     .getOrCreate()
 ```
 
@@ -153,7 +154,7 @@ events = spark.readStream \
     .select("data.*")
 
 # Add watermark to expire old state
-# State older than 1 hour will be dropped
+# State can be evicted after the watermark passes each window's end time
 windowed_counts = events \
     .withWatermark("event_time", "1 hour") \
     .groupBy(
@@ -312,6 +313,9 @@ class StateStoreMonitor(StreamingQueryListener):
                 if op.numRowsTotal > 10000000:
                     print("WARNING: State store has over 10M rows!")
 
+    def onQueryIdle(self, event):
+        pass
+
     def onQueryTerminated(self, event):
         if event.exception:
             print(f"Query terminated with error: {event.exception}")
@@ -329,14 +333,13 @@ spark = SparkSession.builder \
     .config("spark.sql.streaming.stateStore.providerClass",
             "org.apache.spark.sql.execution.streaming.state.RocksDBStateStoreProvider") \
     .config("spark.sql.shuffle.partitions", "200") \
-    .config("spark.sql.streaming.stateStore.minDeltasForSnapshot", "10") \
-    .config("spark.sql.streaming.stateStore.maintenanceInterval", "30s") \
-    .config("spark.sql.streaming.minBatchesToRetain", "100") \
     .config("spark.sql.streaming.stateStore.rocksdb.compactOnCommit", "false") \
     .config("spark.sql.streaming.stateStore.rocksdb.blockSizeKB", "4") \
     .config("spark.sql.streaming.stateStore.rocksdb.blockCacheSizeMB", "256") \
     .config("spark.sql.streaming.stateStore.rocksdb.lockAcquireTimeoutMs", "60000") \
     .config("spark.sql.streaming.stateStore.rocksdb.resetStatsOnLoad", "true") \
+    .config("spark.sql.streaming.stateStore.rocksdb.boundedMemoryUsage", "true") \
+    .config("spark.sql.streaming.stateStore.rocksdb.maxMemoryUsageMB", "1024") \
     .getOrCreate()
 ```
 
