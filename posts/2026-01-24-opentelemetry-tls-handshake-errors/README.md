@@ -16,6 +16,8 @@ Understanding the TLS handshake process and common failure points is essential f
 
 ## Understanding the TLS Handshake
 
+The sequence below is a simplified TLS 1.2-style handshake. TLS 1.3 uses a shorter handshake and different message names, but the certificate trust checks are the same failure points for OpenTelemetry exporters.
+
 ```mermaid
 sequenceDiagram
     participant Client as OTLP Exporter
@@ -69,7 +71,7 @@ openssl s_client -connect collector.example.com:4317 -showcerts
 openssl s_client -connect collector.example.com:4317 -tls1_2
 openssl s_client -connect collector.example.com:4317 -tls1_3
 
-# Show full certificate chain
+# Show and inspect the leaf certificate
 openssl s_client -connect collector.example.com:4317 -showcerts 2>/dev/null | \
   openssl x509 -text -noout
 
@@ -86,13 +88,13 @@ openssl s_client -connect collector.example.com:4317 2>/dev/null | \
 
 ```python
 import logging
-import ssl
 
-# Enable SSL debugging
+# Enable application and OpenTelemetry debug logging
 logging.basicConfig(level=logging.DEBUG)
-ssl.SSLContext.verify_mode = ssl.CERT_REQUIRED
+logging.getLogger("opentelemetry").setLevel(logging.DEBUG)
+logging.getLogger("grpc").setLevel(logging.DEBUG)
 
-# For detailed SSL debugging in Python
+# For detailed HTTP debugging in Python
 import http.client
 http.client.HTTPConnection.debuglevel = 1
 ```
@@ -100,9 +102,9 @@ http.client.HTTPConnection.debuglevel = 1
 For gRPC connections:
 
 ```bash
-# Enable gRPC SSL debugging
-export GRPC_VERBOSITY=DEBUG
+# Enable gRPC SSL debugging for C-core based gRPC clients
 export GRPC_TRACE=secure_endpoint,transport_security
+# Some older gRPC runtimes may also require GRPC_VERBOSITY=DEBUG, but that setting is deprecated.
 
 # Run your application
 python your_app.py
@@ -113,7 +115,7 @@ python your_app.py
 ```bash
 # Download and inspect the server certificate
 echo | openssl s_client -connect collector.example.com:4317 2>/dev/null | \
-  openssl x509 -text > server-cert.txt
+  openssl x509 -text -noout > server-cert.crt
 
 # Key things to check:
 # - Validity period (Not Before / Not After)
@@ -121,8 +123,8 @@ echo | openssl s_client -connect collector.example.com:4317 2>/dev/null | \
 # - Issuer (who signed it)
 # - Key Usage and Extended Key Usage
 
-# Check if certificate is self-signed
-openssl verify -CAfile server-cert.pem server-cert.pem
+# Check if a certificate is self-signed
+openssl verify -CAfile server-cert.crt server-cert.crt
 ```
 
 ---
@@ -174,17 +176,16 @@ import (
     "context"
     "crypto/tls"
     "crypto/x509"
-    "io/ioutil"
     "log"
+    "os"
 
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
-    "google.golang.org/grpc"
     "google.golang.org/grpc/credentials"
 )
 
 func createExporter() (*otlptracegrpc.Exporter, error) {
     // Load CA certificate
-    caCert, err := ioutil.ReadFile("/path/to/ca-certificate.crt")
+    caCert, err := os.ReadFile("/path/to/ca-certificate.crt")
     if err != nil {
         return nil, err
     }
@@ -298,19 +299,16 @@ exporter = OTLPSpanExporter(
 )
 ```
 
-Better solution - Use HTTP exporter with custom SSL context:
+Alternative temporary workaround for OTLP/HTTP:
 
 ```python
-import ssl
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 
-# Create SSL context that ignores expiration (temporary debugging only)
-ssl_context = ssl.create_default_context()
-ssl_context.check_hostname = False
-ssl_context.verify_mode = ssl.CERT_NONE
-
-# Note: OTLPSpanExporter HTTP doesn't directly support ssl_context
-# You may need to use environment variables or a custom session
+# WARNING: This disables TLS entirely for the OTLP/HTTP exporter
+# Only use for debugging, NEVER in production
+exporter = OTLPSpanExporter(
+    endpoint="http://collector.example.com:4318/v1/traces",
+)
 ```
 
 ### Cause 4: Protocol Version Mismatch
@@ -353,8 +351,6 @@ receivers:
           cipher_suites:
             - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
             - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
-            - TLS_AES_128_GCM_SHA256
-            - TLS_AES_256_GCM_SHA384
 ```
 
 Client-side TLS configuration (Go):
@@ -365,14 +361,14 @@ package main
 import (
     "crypto/tls"
     "crypto/x509"
-    "io/ioutil"
+    "os"
 
     "google.golang.org/grpc/credentials"
 )
 
 func createTLSCredentials() (credentials.TransportCredentials, error) {
     // Load CA cert
-    caCert, err := ioutil.ReadFile("/path/to/ca.crt")
+    caCert, err := os.ReadFile("/path/to/ca.crt")
     if err != nil {
         return nil, err
     }
@@ -385,11 +381,10 @@ func createTLSCredentials() (credentials.TransportCredentials, error) {
         RootCAs:    certPool,
         MinVersion: tls.VersionTLS12,
         MaxVersion: tls.VersionTLS13,
+        // CipherSuites configures TLS 1.0-1.2 suites; TLS 1.3 suites are not configurable in Go.
         CipherSuites: []uint16{
             tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
             tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
-            tls.TLS_AES_128_GCM_SHA256,
-            tls.TLS_AES_256_GCM_SHA384,
         },
     }
 
@@ -451,14 +446,14 @@ package main
 import (
     "crypto/tls"
     "crypto/x509"
-    "io/ioutil"
+    "os"
 
     "google.golang.org/grpc/credentials"
 )
 
 func createMTLSCredentials() (credentials.TransportCredentials, error) {
     // Load CA certificate
-    caCert, err := ioutil.ReadFile("/path/to/ca.crt")
+    caCert, err := os.ReadFile("/path/to/ca.crt")
     if err != nil {
         return nil, err
     }
@@ -498,7 +493,6 @@ receivers:
         tls:
           cert_file: /certs/server.crt
           key_file: /certs/server.key
-          ca_file: /certs/ca.crt
           # Require client certificates
           client_ca_file: /certs/client-ca.crt
 ```
@@ -747,6 +741,8 @@ spec:
         env:
         - name: OTEL_EXPORTER_OTLP_ENDPOINT
           value: "https://otel-collector.observability:4317"
+        - name: OTEL_EXPORTER_OTLP_PROTOCOL
+          value: "grpc"
         - name: OTEL_EXPORTER_OTLP_CERTIFICATE
           value: "/certs/ca.crt"
         volumeMounts:
@@ -766,6 +762,7 @@ spec:
 ```bash
 # Basic TLS configuration via environment variables
 export OTEL_EXPORTER_OTLP_ENDPOINT="https://collector.example.com:4317"
+export OTEL_EXPORTER_OTLP_PROTOCOL="grpc"
 export OTEL_EXPORTER_OTLP_CERTIFICATE="/path/to/ca.crt"
 
 # For mTLS
@@ -824,7 +821,6 @@ flowchart TD
 
 ```python
 import os
-import ssl
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
