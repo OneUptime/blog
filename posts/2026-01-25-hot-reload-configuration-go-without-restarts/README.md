@@ -139,6 +139,7 @@ package main
 import (
     "log"
     "sync"
+    "strings"
     "time"
 
     "github.com/fsnotify/fsnotify"
@@ -185,6 +186,7 @@ func NewConfigService(configPath string) (*ConfigService, error) {
     // Allow environment variable overrides
     // CONFIG_SERVER_PORT will override server.port
     viper.SetEnvPrefix("CONFIG")
+    viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
     viper.AutomaticEnv()
 
     // Read initial config
@@ -237,7 +239,7 @@ func (cs *ConfigService) OnChange(callback func(AppConfig)) {
 func (cs *ConfigService) notifyCallbacks() {
     cs.mu.RLock()
     config := cs.config
-    callbacks := cs.callbacks
+    callbacks := append([]func(AppConfig){}, cs.callbacks...)
     cs.mu.RUnlock()
 
     for _, cb := range callbacks {
@@ -278,10 +280,12 @@ package main
 
 import (
     "context"
+    "fmt"
     "log"
     "net/http"
     "os"
     "os/signal"
+    "sync"
     "syscall"
     "time"
 
@@ -337,7 +341,7 @@ func main() {
     // Set up HTTP server with middleware
     mux := http.NewServeMux()
 
-    mux.HandleFunc("/api/data", func(w http.ResponseWriter, r *http.Request) {
+    apiHandler := func(w http.ResponseWriter, r *http.Request) {
         // Check rate limit
         if !rateLimiter.Allow() {
             http.Error(w, "Rate limit exceeded", http.StatusTooManyRequests)
@@ -352,10 +356,13 @@ func main() {
         }
 
         w.Write([]byte("OK"))
-    })
+    }
+
+    mux.HandleFunc("/api/data", apiHandler)
+    mux.HandleFunc("/api/beta", apiHandler)
 
     server := &http.Server{
-        Addr:         ":8080",
+        Addr:         fmt.Sprintf(":%d", config.Server.Port),
         Handler:      mux,
         ReadTimeout:  config.Server.ReadTimeout,
         WriteTimeout: config.Server.WriteTimeout,
@@ -441,7 +448,10 @@ viper.OnConfigChange(func(e fsnotify.Event) {
     }
 
     debounceTimer = time.AfterFunc(500*time.Millisecond, func() {
-        cs.updateConfig()
+        if err := cs.updateConfig(); err != nil {
+            log.Printf("Error updating config: %v", err)
+            return
+        }
         cs.notifyCallbacks()
     })
 })
