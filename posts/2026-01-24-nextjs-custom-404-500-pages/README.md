@@ -164,11 +164,12 @@ import { notFound } from 'next/navigation';
 import { getPostBySlug } from '@/lib/posts';
 
 interface PostPageProps {
-  params: { slug: string };
+  params: Promise<{ slug: string }>;
 }
 
 async function PostPage({ params }: PostPageProps) {
-  const post = await getPostBySlug(params.slug);
+  const { slug } = await params;
+  const post = await getPostBySlug(slug);
 
   // If post does not exist, show 404 page
   if (!post) {
@@ -188,7 +189,7 @@ export default PostPage;
 
 ## Route-Specific 404 Pages
 
-You can create different 404 pages for different sections of your app.
+You can create different 404 pages for different sections of your app. These route-specific pages are shown when `notFound()` is thrown from that route segment or one of its children. For unmatched URLs that do not resolve to a route, the root `app/not-found.tsx` handles the global 404 page.
 
 ```mermaid
 flowchart TD
@@ -199,9 +200,9 @@ flowchart TD
         SHOP[app/shop/not-found.tsx]
     end
 
-    R1[/blog/invalid] --> BLOG
-    R2[/docs/invalid] --> DOCS
-    R3[/shop/invalid] --> SHOP
+    R1[notFound() in /blog] --> BLOG
+    R2[notFound() in /docs] --> DOCS
+    R3[notFound() in /shop] --> SHOP
     R4[/other/invalid] --> ROOT
 ```
 
@@ -262,10 +263,10 @@ import { useEffect } from 'react';
 
 interface ErrorPageProps {
   error: Error & { digest?: string };
-  reset: () => void;
+  unstable_retry: () => void;
 }
 
-export default function Error({ error, reset }: ErrorPageProps) {
+export default function Error({ error, unstable_retry }: ErrorPageProps) {
   useEffect(() => {
     // Log the error to an error reporting service
     console.error('Application error:', error);
@@ -291,7 +292,7 @@ export default function Error({ error, reset }: ErrorPageProps) {
         )}
 
         <div className="error-actions">
-          <button onClick={reset} className="btn btn-primary">
+          <button onClick={unstable_retry} className="btn btn-primary">
             Try Again
           </button>
           <a href="/" className="btn btn-secondary">
@@ -314,10 +315,10 @@ For errors that occur in the root layout, you need a `global-error.tsx` file.
 
 interface GlobalErrorProps {
   error: Error & { digest?: string };
-  reset: () => void;
+  unstable_retry: () => void;
 }
 
-export default function GlobalError({ error, reset }: GlobalErrorProps) {
+export default function GlobalError({ error, unstable_retry }: GlobalErrorProps) {
   return (
     // global-error must include html and body tags
     <html>
@@ -326,7 +327,7 @@ export default function GlobalError({ error, reset }: GlobalErrorProps) {
           <h1>Critical Error</h1>
           <p>A critical error has occurred. Please refresh the page.</p>
 
-          <button onClick={reset}>
+          <button onClick={unstable_retry}>
             Refresh Page
           </button>
         </div>
@@ -365,16 +366,16 @@ flowchart TD
 
 export default function DashboardError({
   error,
-  reset,
+  unstable_retry,
 }: {
   error: Error;
-  reset: () => void;
+  unstable_retry: () => void;
 }) {
   return (
     <div className="dashboard-error">
       <h2>Dashboard Error</h2>
       <p>Failed to load dashboard data. Please try again.</p>
-      <button onClick={reset}>Reload Dashboard</button>
+      <button onClick={unstable_retry}>Reload Dashboard</button>
     </div>
   );
 }
@@ -386,16 +387,16 @@ export default function DashboardError({
 
 export default function AnalyticsError({
   error,
-  reset,
+  unstable_retry,
 }: {
   error: Error;
-  reset: () => void;
+  unstable_retry: () => void;
 }) {
   return (
     <div className="analytics-error">
       <h2>Analytics Unavailable</h2>
       <p>Could not load analytics data.</p>
-      <button onClick={reset}>Retry</button>
+      <button onClick={unstable_retry}>Retry</button>
     </div>
   );
 }
@@ -403,11 +404,24 @@ export default function AnalyticsError({
 
 ## Adding Metadata to Error Pages
 
-You can add metadata to improve SEO and user experience.
+If you use the experimental `global-not-found.tsx` convention for a routing-level global 404 page, you can add metadata to improve SEO and user experience.
 
 ```typescript
-// app/not-found.tsx
-import { Metadata } from 'next';
+// next.config.ts
+import type { NextConfig } from 'next';
+
+const nextConfig: NextConfig = {
+  experimental: {
+    globalNotFound: true,
+  },
+};
+
+export default nextConfig;
+```
+
+```typescript
+// app/global-not-found.tsx
+import type { Metadata } from 'next';
 import Link from 'next/link';
 
 export const metadata: Metadata = {
@@ -419,13 +433,17 @@ export const metadata: Metadata = {
   },
 };
 
-export default function NotFound() {
+export default function GlobalNotFound() {
   return (
-    <div className="not-found">
-      <h1>404 - Page Not Found</h1>
-      <p>Sorry, we could not find the page you are looking for.</p>
-      <Link href="/">Return Home</Link>
-    </div>
+    <html lang="en">
+      <body>
+        <div className="not-found">
+          <h1>404 - Page Not Found</h1>
+          <p>Sorry, we could not find the page you are looking for.</p>
+          <Link href="/">Return Home</Link>
+        </div>
+      </body>
+    </html>
   );
 }
 ```
@@ -478,10 +496,11 @@ import { getUserById } from '@/lib/users';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const user = await getUserById(params.id);
+    const { id } = await params;
+    const user = await getUserById(id);
 
     if (!user) {
       return NextResponse.json(
@@ -529,6 +548,7 @@ export default function TriggerError() {
 ```text
 app/
   not-found.tsx          # Global 404 page
+  global-not-found.tsx   # Optional routing-level global 404 page
   error.tsx              # Global error page
   global-error.tsx       # Root layout error handler
 
@@ -557,7 +577,7 @@ To configure custom error pages in Next.js:
 3. Create `global-error.tsx` for errors in the root layout
 4. Use `notFound()` to programmatically trigger 404 pages
 5. Create route-specific error pages by placing them in nested directories
-6. Add metadata to error pages for better SEO
+6. Add metadata to `global-not-found.tsx` when using the routing-level global 404 convention
 7. Return appropriate status codes from API routes
 
 Custom error pages help maintain a professional user experience even when things go wrong, and proper error boundaries prevent your entire application from crashing due to isolated component failures.
