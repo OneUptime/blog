@@ -49,7 +49,7 @@ flowchart LR
 
 ### Installing the Plugin
 
-The `rabbitmq_delayed_message_exchange` plugin is a **community plugin** that does not ship with RabbitMQ. You must download and install it manually before enabling it.
+The `rabbitmq_delayed_message_exchange` plugin is a **community plugin** that does not ship with RabbitMQ. As of 2026, RabbitMQ lists it as no longer maintained, so use a release that matches your RabbitMQ version and evaluate the limitations before using it in production. You must download and install it manually before enabling it.
 
 ```bash
 # Step 1: Download the plugin .ez file from the RabbitMQ community plugins page
@@ -58,7 +58,9 @@ The `rabbitmq_delayed_message_exchange` plugin is a **community plugin** that do
 # Choose the version matching your RabbitMQ installation, e.g.:
 wget https://github.com/rabbitmq/rabbitmq-delayed-message-exchange/releases/download/v3.13.0/rabbitmq_delayed_message_exchange-3.13.0.ez
 
-# Step 2: Copy the plugin to RabbitMQ's plugins directory
+# Step 2: Confirm RabbitMQ's plugins directories and copy the plugin
+rabbitmq-plugins directories -s
+mkdir -p /usr/lib/rabbitmq/plugins/
 cp rabbitmq_delayed_message_exchange-3.13.0.ez /usr/lib/rabbitmq/plugins/
 
 # Step 3: Enable the delayed message plugin
@@ -77,6 +79,9 @@ systemctl restart rabbitmq-server
 ```dockerfile
 # Dockerfile for RabbitMQ with delayed message plugin
 FROM rabbitmq:3.13-management
+
+# Download the plugin release that matches the RabbitMQ release series
+ADD https://github.com/rabbitmq/rabbitmq-delayed-message-exchange/releases/download/v3.13.0/rabbitmq_delayed_message_exchange-3.13.0.ez /plugins/
 
 # Enable the delayed message exchange plugin
 RUN rabbitmq-plugins enable --offline rabbitmq_delayed_message_exchange
@@ -104,6 +109,8 @@ volumes:
 ```
 
 ### Kubernetes Installation
+
+Mounting an `enabled_plugins` file only enables plugins already present in the container image or a mounted plugin directory. Build an image that contains the `.ez` file, or mount the plugin file into a configured plugins directory, before enabling it:
 
 ```yaml
 # rabbitmq-configmap.yaml
@@ -211,8 +218,9 @@ def consume_delayed_messages():
     channel = connection.channel()
 
     def callback(ch, method, properties, body):
-        # Check original delay from headers
-        original_delay = properties.headers.get('x-delay', 0) if properties.headers else 0
+        # The plugin keeps x-delay but negates it before delivery
+        delivered_delay = properties.headers.get('x-delay', 0) if properties.headers else 0
+        original_delay = abs(delivered_delay)
 
         print(f"Received message (was delayed {original_delay}ms): {body.decode()}")
 
@@ -613,7 +621,7 @@ publish_delayed_event('events.system.critical', {'alert': 'test'}, 5000)  # 5 se
 
 ## Monitoring Delayed Messages
 
-### Checking Delayed Message Count
+### Checking Delayed Exchange Activity
 
 ```python
 import requests
@@ -621,7 +629,8 @@ import requests
 def get_delayed_exchange_stats(exchange_name, host='localhost', port=15672):
     """
     Get statistics about a delayed exchange.
-    Note: Delayed messages are stored differently than regular messages.
+    Note: pending delayed messages are stored in the plugin's Mnesia table,
+    not in the destination queue, so this does not return a pending delayed count.
     """
     url = f'http://{host}:{port}/api/exchanges/%2F/{exchange_name}'
     response = requests.get(url, auth=('guest', 'guest'))
@@ -639,24 +648,24 @@ def get_delayed_exchange_stats(exchange_name, host='localhost', port=15672):
 
     return data
 
-# Check delayed exchange stats
+# Check delayed exchange activity
 get_delayed_exchange_stats('delayed-exchange')
 ```
 
 ### Prometheus Metrics
 
 ```yaml
-# Alert on delayed message backlog
+# Alert on messages that have already been released into the queue
 groups:
   - name: rabbitmq_delayed
     rules:
-      - alert: HighDelayedMessageCount
+      - alert: HighReleasedQueueBacklog
         expr: rabbitmq_queue_messages{queue="delayed-queue"} > 10000
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "High number of delayed messages pending"
+          summary: "High number of released messages waiting in delayed-queue"
 ```
 
 ---
@@ -665,19 +674,20 @@ groups:
 
 ### Maximum Delay
 
-The plugin stores delays using a 32-bit integer, limiting the maximum delay:
+The plugin uses Erlang timers for delays, limiting the maximum delay:
 
 ```python
-# Maximum delay is approximately 49 days
+# Maximum delay accepted by the plugin is approximately 49 days
 MAX_DELAY_MS = 2**32 - 1  # 4294967295 ms = ~49.7 days
 
-# For longer delays, use a different approach
+# For longer delays, or for production schedules longer than a day or two,
+# use a different approach.
 def schedule_long_delay(message, delay_days):
     """
-    For delays longer than 49 days, use a database scheduler
-    or break into multiple shorter delays.
+    For long-term schedules, use a database scheduler instead of chaining
+    delayed messages.
     """
-    if delay_days > 49:
+    if delay_days > 2:
         # Store in database with scheduled time
         # Use a separate scheduler to publish when ready
         store_scheduled_message(message, delay_days)
@@ -716,7 +726,7 @@ flowchart TD
 # 1. Use reasonable delays - avoid very long delays
 MAX_RECOMMENDED_DELAY_MS = 24 * 60 * 60 * 1000  # 24 hours
 
-# 2. Set message TTL as backup
+# 2. Set message TTL to expire messages that have been released but not consumed
 channel.queue_declare(
     queue='delayed-queue',
     durable=True,
