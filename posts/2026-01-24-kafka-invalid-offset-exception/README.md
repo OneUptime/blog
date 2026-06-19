@@ -8,7 +8,7 @@ Description: Learn how to diagnose and fix Kafka InvalidOffsetException errors, 
 
 ---
 
-The `InvalidOffsetException` (and its subclass `OffsetOutOfRangeException`) occurs when a Kafka consumer tries to fetch messages from an offset that does not exist in the partition's log. This guide covers the causes, diagnosis, and solutions for these offset-related errors.
+The `InvalidOffsetException` (and its subclass `OffsetOutOfRangeException`) occurs when a Kafka consumer tries to fetch messages from an offset outside the range the broker has for the partition. This guide covers the causes, diagnosis, and solutions for these offset-related errors.
 
 ## Understanding the Error
 
@@ -26,8 +26,8 @@ flowchart TD
     B -->|Yes| C[Return Messages]
     B -->|No| D{Why Not?}
 
-    D --> E[Log Truncation<br/>retention.ms exceeded]
-    D --> F[Log Compaction<br/>Deleted by policy]
+    D --> E[Log Retention<br/>retention.ms/bytes removed old data]
+    D --> F[Log Truncation<br/>leader or data-loss recovery]
     D --> G[Partition Corruption<br/>Data loss]
     D --> H[Stale Offset<br/>Consumer was offline too long]
 
@@ -45,7 +45,7 @@ flowchart TD
 ### Common Causes
 
 1. **Log retention**: Messages were deleted due to `retention.ms` or `retention.bytes`
-2. **Log compaction**: Messages were removed by compaction
+2. **Log truncation**: The log start offset advanced because of deletion or truncation
 3. **Consumer offline too long**: Committed offset no longer exists
 4. **Partition reassignment**: Offsets from old partitions do not apply
 5. **Cluster data loss**: Broker failure caused data loss
@@ -92,7 +92,8 @@ kafka-consumer-groups.sh --bootstrap-server localhost:9092 \
 
 ```bash
 # Compare committed offset with available range
-# If committed offset < earliest offset, it is invalid
+# If committed offset < earliest offset or > latest offset, it is invalid
+# The latest offset is the next offset that would be written, so committed == latest is valid
 
 # Get consumer group offset
 kafka-consumer-groups.sh --bootstrap-server localhost:9092 \
@@ -160,7 +161,7 @@ public class AutoResetConsumer {
 ```java
 import org.apache.kafka.clients.consumer.*;
 import org.apache.kafka.common.TopicPartition;
-import org.apache.kafka.common.errors.OffsetOutOfRangeException;
+import org.apache.kafka.clients.consumer.OffsetOutOfRangeException;
 
 import java.time.Duration;
 import java.util.*;
@@ -462,12 +463,17 @@ public class OffsetValidator {
 ## Python Solutions
 
 ```python
-from confluent_kafka import Consumer, KafkaException, TopicPartition
+from confluent_kafka import (
+    Consumer,
+    KafkaError,
+    KafkaException,
+    OFFSET_INVALID,
+    TopicPartition,
+)
 from confluent_kafka.admin import AdminClient
 from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, List, Optional, Callable
-import time
 
 
 class OffsetValidity(Enum):
@@ -492,7 +498,7 @@ class OffsetStatus:
 
 
 class OffsetExceptionHandler:
-    """Handles InvalidOffsetException and OffsetOutOfRangeException"""
+    """Handles offset out-of-range errors"""
 
     def __init__(self, bootstrap_servers: str, group_id: str):
         self.bootstrap_servers = bootstrap_servers
@@ -542,7 +548,7 @@ class OffsetExceptionHandler:
 
         statuses = []
         for tp in committed:
-            if tp is None:
+            if tp is None or tp.offset == OFFSET_INVALID:
                 continue
 
             partition_id = tp.partition
@@ -578,13 +584,20 @@ class OffsetExceptionHandler:
         partitions = [TopicPartition(topic, p) for p in range(partition_count)]
 
         self.consumer.assign(partitions)
+        offsets_to_commit = []
 
         if strategy == ResetStrategy.EARLIEST:
-            self.consumer.seek_to_beginning(partitions)
+            for tp in partitions:
+                low, _ = self.consumer.get_watermark_offsets(tp, timeout=10)
+                self.consumer.seek(TopicPartition(topic, tp.partition, low))
+                offsets_to_commit.append(TopicPartition(topic, tp.partition, low))
             print(f"Reset all partitions to earliest offset")
 
         elif strategy == ResetStrategy.LATEST:
-            self.consumer.seek_to_end(partitions)
+            for tp in partitions:
+                _, high = self.consumer.get_watermark_offsets(tp, timeout=10)
+                self.consumer.seek(TopicPartition(topic, tp.partition, high))
+                offsets_to_commit.append(TopicPartition(topic, tp.partition, high))
             print(f"Reset all partitions to latest offset")
 
         elif strategy == ResetStrategy.TIMESTAMP:
@@ -599,10 +612,17 @@ class OffsetExceptionHandler:
             for tp in offsets_for_times:
                 if tp.offset >= 0:
                     self.consumer.seek(tp)
+                    offsets_to_commit.append(tp)
                     print(f"Reset partition {tp.partition} to offset {tp.offset}")
+                else:
+                    _, high = self.consumer.get_watermark_offsets(
+                        TopicPartition(topic, tp.partition), timeout=10)
+                    self.consumer.seek(TopicPartition(topic, tp.partition, high))
+                    offsets_to_commit.append(TopicPartition(topic, tp.partition, high))
 
         # Commit the new positions
-        self.consumer.commit(asynchronous=False)
+        if offsets_to_commit:
+            self.consumer.commit(offsets=offsets_to_commit, asynchronous=False)
 
     def close(self):
         self.consumer.close()
@@ -646,7 +666,8 @@ class ResilientConsumer:
             except KafkaException as e:
                 error_code = e.args[0].code()
                 # Handle offset out of range
-                if error_code == -1:  # Check specific error code
+                if error_code in (KafkaError.OFFSET_OUT_OF_RANGE,
+                                  KafkaError._AUTO_OFFSET_RESET):
                     self._reset_offsets(topic)
                 else:
                     raise
@@ -655,8 +676,8 @@ class ResilientConsumer:
         """Handle consumer errors including offset errors"""
         error_code = error.code()
 
-        # Kafka error code for OFFSET_OUT_OF_RANGE
-        if error_code == 1:  # OFFSET_OUT_OF_RANGE
+        if error_code in (KafkaError.OFFSET_OUT_OF_RANGE,
+                          KafkaError._AUTO_OFFSET_RESET):
             print(f"Offset out of range, resetting with strategy: {self.reset_strategy}")
             self._reset_offsets(topic)
         else:
@@ -668,9 +689,13 @@ class ResilientConsumer:
         assignment = self.consumer.assignment()
 
         if self.reset_strategy == ResetStrategy.EARLIEST:
-            self.consumer.seek_to_beginning(assignment)
+            for tp in assignment:
+                low, _ = self.consumer.get_watermark_offsets(tp, timeout=10)
+                self.consumer.seek(TopicPartition(tp.topic, tp.partition, low))
         elif self.reset_strategy == ResetStrategy.LATEST:
-            self.consumer.seek_to_end(assignment)
+            for tp in assignment:
+                _, high = self.consumer.get_watermark_offsets(tp, timeout=10)
+                self.consumer.seek(TopicPartition(tp.topic, tp.partition, high))
 
         print(f"Reset offsets for {len(assignment)} partitions")
 
@@ -748,6 +773,8 @@ flowchart TD
 ### Reset Consumer Group Offsets
 
 ```bash
+# Make sure the consumer group is inactive before resetting offsets
+
 # Reset to earliest
 kafka-consumer-groups.sh --bootstrap-server localhost:9092 \
   --group my-consumer-group \
@@ -821,10 +848,10 @@ long committed = getCommittedOffset(partition);
 long earliest = getEarliestOffset(partition);
 long latest = getLatestOffset(partition);
 
+long retainedOffsets = latest - earliest;
 long lagFromEarliest = committed - earliest;
-double percentageOfLog = (double) lagFromEarliest / (latest - earliest);
 
-if (percentageOfLog < 0.1) {
+if (retainedOffsets > 0 && (double) lagFromEarliest / retainedOffsets < 0.1) {
     // Warning: committed offset is close to being deleted
     alertOffsetNearDeletion(partition, committed, earliest);
 }
