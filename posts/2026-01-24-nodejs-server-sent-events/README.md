@@ -37,6 +37,7 @@ sequenceDiagram
 ```typescript
 // sse-server.ts
 import express, { Request, Response } from 'express';
+import { randomUUID } from 'node:crypto';
 
 const app = express();
 
@@ -54,7 +55,7 @@ app.get('/events', (req: Request, res: Response) => {
   res.setHeader('X-Accel-Buffering', 'no');
 
   // Generate client ID
-  const clientId = crypto.randomUUID();
+  const clientId = randomUUID();
 
   // Store the connection
   clients.set(clientId, res);
@@ -119,8 +120,10 @@ eventSource.addEventListener('update', (event) => {
 eventSource.onerror = (error) => {
   console.error('SSE error:', error);
 
-  if (eventSource.readyState === EventSource.CLOSED) {
-    console.log('Connection closed, will auto-reconnect');
+  if (eventSource.readyState === EventSource.CONNECTING) {
+    console.log('Connection lost, reconnecting automatically');
+  } else if (eventSource.readyState === EventSource.CLOSED) {
+    console.log('Connection closed');
   }
 };
 ```
@@ -262,6 +265,7 @@ export class SSEManager {
 ```typescript
 // app.ts
 import express from 'express';
+import { randomUUID } from 'node:crypto';
 import { SSEManager } from './sse-manager';
 
 const app = express();
@@ -271,7 +275,7 @@ app.use(express.json());
 
 // SSE connection endpoint
 app.get('/events', (req, res) => {
-  const clientId = req.query.clientId as string || crypto.randomUUID();
+  const clientId = req.query.clientId as string || randomUUID();
   const channels = (req.query.channels as string || '').split(',').filter(Boolean);
 
   sseManager.addClient(clientId, res, channels);
@@ -311,6 +315,9 @@ SSE clients automatically reconnect when the connection drops. Use event IDs to 
 
 ```typescript
 // sse-with-history.ts
+import { Response } from 'express';
+import { randomUUID } from 'node:crypto';
+
 interface StoredEvent {
   id: number;
   event: string;
@@ -349,6 +356,10 @@ class SSEManagerWithHistory {
     return this.eventHistory.filter((event) => event.id > lastEventId);
   }
 
+  removeClient(clientId: string): void {
+    this.clients.delete(clientId);
+  }
+
   broadcast(event: string, data: any): void {
     const eventId = ++this.eventCounter;
 
@@ -380,9 +391,11 @@ class SSEManagerWithHistory {
   }
 }
 
+const sseManager = new SSEManagerWithHistory();
+
 // Express endpoint with reconnection support
 app.get('/events', (req, res) => {
-  const clientId = req.query.clientId as string || crypto.randomUUID();
+  const clientId = req.query.clientId as string || randomUUID();
   const lastEventId = req.headers['last-event-id'] as string;
 
   sseManager.addClient(clientId, res, lastEventId);
