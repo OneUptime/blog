@@ -29,10 +29,10 @@ flowchart TD
 
 MySQL enforces strict requirements for foreign keys:
 
-1. Both columns must have identical data types
-2. The referenced column must be indexed (primary key or explicit index)
-3. Both tables must use the InnoDB storage engine
-4. String columns must have matching character sets and collations
+1. Both columns must have compatible data types (for fixed-precision types, size and sign must match)
+2. The referenced column must be indexed as the first column in a primary, unique, or other suitable index
+3. Both tables must use the same storage engine that supports foreign keys, typically InnoDB
+4. Nonbinary string columns must have matching character sets and collations
 
 ## Problem 1: Data Type Mismatch
 
@@ -71,7 +71,7 @@ CREATE TABLE orders (
 -- Error: Cannot add foreign key constraint
 ```
 
-**Fix: Match the data types exactly:**
+**Fix: Match the data types correctly:**
 
 ```sql
 -- Correct version with matching UNSIGNED
@@ -97,7 +97,7 @@ FOREIGN KEY (user_id) REFERENCES users(id);
 
 ## Problem 2: Missing Index on Referenced Column
 
-The referenced column must have an index. Primary keys automatically have one, but other columns may not.
+The referenced column must have an index where it appears as the first column. Primary keys automatically have one, but other columns may not. In current MySQL versions, prefer a primary key or unique index for referenced columns; referencing non-unique keys is deprecated and may require `restrict_fk_on_non_standard_key` to be disabled.
 
 **Diagnose:**
 
@@ -116,7 +116,7 @@ WHERE TABLE_SCHEMA = 'your_database'
 **Example problem:**
 
 ```sql
--- Parent table with a unique column but no index
+-- Parent table with a sku column but no index
 CREATE TABLE products (
     id INT AUTO_INCREMENT PRIMARY KEY,
     sku VARCHAR(50),  -- No index on this column
@@ -133,12 +133,12 @@ CREATE TABLE inventory (
 -- Error: Cannot add foreign key constraint
 ```
 
-**Fix: Add an index to the referenced column:**
+**Fix: Add a unique index to the referenced column:**
 
 ```sql
--- Add index to the parent table
+-- Add unique index to the parent table
 ALTER TABLE products
-ADD INDEX idx_sku (sku);
+ADD UNIQUE INDEX idx_sku (sku);
 
 -- Now the foreign key will work
 CREATE TABLE inventory (
@@ -151,7 +151,7 @@ CREATE TABLE inventory (
 
 ## Problem 3: Storage Engine Mismatch
 
-Foreign keys only work with InnoDB. If either table uses MyISAM or another engine, the constraint fails silently or with an error.
+Foreign keys require both tables to use the same storage engine that supports them. In most MySQL installations that means InnoDB. If either table uses MyISAM or another engine that does not support foreign keys, the constraint may be ignored or fail with an error.
 
 **Diagnose:**
 
@@ -178,7 +178,7 @@ FOREIGN KEY (parent_id) REFERENCES parent_table(id);
 
 ## Problem 4: Character Set and Collation Mismatch
 
-For string columns (VARCHAR, CHAR, TEXT), both the character set and collation must match.
+For nonbinary string columns such as VARCHAR and CHAR, both the character set and collation must match. TEXT columns cannot be used in foreign keys because index prefixes are not supported for foreign key columns.
 
 **Diagnose:**
 
@@ -197,7 +197,8 @@ WHERE TABLE_SCHEMA = 'your_database'
 -- Parent with utf8mb4
 CREATE TABLE users (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    email VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+    email VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+    UNIQUE KEY uk_users_email (email)
 );
 
 -- Child with utf8 - WILL FAIL
@@ -233,7 +234,8 @@ If existing data violates the constraint, MySQL refuses to add the foreign key.
 SELECT c.*
 FROM child_table c
 LEFT JOIN parent_table p ON c.parent_id = p.id
-WHERE p.id IS NULL;
+WHERE c.parent_id IS NOT NULL
+  AND p.id IS NULL;
 ```
 
 **Fix: Clean up orphan records:**
@@ -242,20 +244,23 @@ WHERE p.id IS NULL;
 -- Option 1: Delete orphan records
 DELETE c FROM child_table c
 LEFT JOIN parent_table p ON c.parent_id = p.id
-WHERE p.id IS NULL;
+WHERE c.parent_id IS NOT NULL
+  AND p.id IS NULL;
 
 -- Option 2: Set orphan foreign keys to NULL (if column allows)
 UPDATE child_table c
 LEFT JOIN parent_table p ON c.parent_id = p.id
 SET c.parent_id = NULL
-WHERE p.id IS NULL;
+WHERE c.parent_id IS NOT NULL
+  AND p.id IS NULL;
 
 -- Option 3: Add missing parent records
 INSERT INTO parent_table (id, name)
 SELECT DISTINCT c.parent_id, 'Unknown'
 FROM child_table c
 LEFT JOIN parent_table p ON c.parent_id = p.id
-WHERE p.id IS NULL;
+WHERE c.parent_id IS NOT NULL
+  AND p.id IS NULL;
 ```
 
 ## Debugging with SHOW ENGINE INNODB STATUS
@@ -328,7 +333,8 @@ SELECT
 FROM INFORMATION_SCHEMA.STATISTICS
 WHERE TABLE_SCHEMA = @db
   AND TABLE_NAME = @parent_table
-  AND COLUMN_NAME = @parent_column;
+  AND COLUMN_NAME = @parent_column
+  AND SEQ_IN_INDEX = 1;
 ```
 
 ## Best Practices
