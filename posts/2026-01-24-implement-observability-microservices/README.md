@@ -61,7 +61,6 @@ from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExport
 from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
 from opentelemetry.sdk.resources import Resource, SERVICE_NAME, SERVICE_VERSION
 from opentelemetry.instrumentation.requests import RequestsInstrumentor
-from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 import logging
 
 def setup_observability(service_name: str, service_version: str = "1.0.0"):
@@ -340,9 +339,9 @@ class REDMetricsMiddleware(BaseHTTPMiddleware):
 
         # Common attributes
         attributes = {
-            "http.method": request.method,
-            "http.route": request.url.path,
-            "http.scheme": request.url.scheme
+            "method": request.method,
+            "route": request.url.path,
+            "scheme": request.url.scheme
         }
 
         try:
@@ -351,14 +350,14 @@ class REDMetricsMiddleware(BaseHTTPMiddleware):
             # Record rate
             http_requests_total.add(1, {
                 **attributes,
-                "http.status_code": str(response.status_code)
+                "status": str(response.status_code)
             })
 
             # Record errors (4xx and 5xx)
             if response.status_code >= 400:
                 http_request_errors_total.add(1, {
                     **attributes,
-                    "http.status_code": str(response.status_code)
+                    "status": str(response.status_code)
                 })
 
             return response
@@ -392,7 +391,7 @@ app.add_middleware(REDMetricsMiddleware)
 # structured_logging.py
 import logging
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 from opentelemetry import trace
 from contextvars import ContextVar
@@ -427,7 +426,7 @@ class StructuredLogger:
         """Build structured log entry"""
 
         entry = {
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "level": level,
             "logger": self.name,
             "message": message,
@@ -583,6 +582,7 @@ from opentelemetry import trace
 from opentelemetry.trace import SpanKind, Status, StatusCode
 from functools import wraps
 from typing import Optional, Dict, Any
+import asyncio
 
 tracer = trace.get_tracer(__name__)
 
@@ -696,8 +696,8 @@ async def process_order(order_id: str, order_data: dict):
 # trace_propagation.py
 import httpx
 from opentelemetry import trace
-from opentelemetry.propagate import inject, extract
-from opentelemetry.trace import SpanKind
+from opentelemetry.propagate import inject
+from opentelemetry.trace import SpanKind, Status, StatusCode
 
 tracer = trace.get_tracer(__name__)
 
@@ -724,8 +724,8 @@ class TracedHTTPClient:
             kind=SpanKind.CLIENT
         ) as span:
             # Set HTTP attributes
-            span.set_attribute("http.method", method)
-            span.set_attribute("http.url", url)
+            span.set_attribute("http.request.method", method)
+            span.set_attribute("url.full", url)
             span.set_attribute("peer.service", self.service_name)
 
             # Inject trace context into headers
@@ -740,7 +740,7 @@ class TracedHTTPClient:
                     **kwargs
                 )
 
-                span.set_attribute("http.status_code", response.status_code)
+                span.set_attribute("http.response.status_code", response.status_code)
 
                 if response.status_code >= 400:
                     span.set_status(Status(
@@ -1126,7 +1126,7 @@ slo_monitor.define_slo(SLO(
 
 ```python
 # correlation.py
-"""Always include trace context in logs and metrics"""
+"""Include trace context in logs and avoid high-cardinality metric attributes"""
 
 # In logs
 logger.info("Processing order", extra={
@@ -1136,8 +1136,9 @@ logger.info("Processing order", extra={
 
 # In metrics
 orders_processed.add(1, {
-    "trace_id": trace_id,  # Enables metric-to-trace drill-down
-    "status": "success"
+    "status": "success",
+    "payment_method": payment_method,
+    # Keep high-cardinality values like trace_id out of metric attributes
 })
 
 # In traces
@@ -1152,20 +1153,20 @@ span.set_attribute("metric.orders_processed", 1)
 """Use OpenTelemetry semantic conventions for consistency"""
 
 # HTTP
-span.set_attribute("http.method", "POST")
-span.set_attribute("http.url", "https://api.example.com/orders")
-span.set_attribute("http.status_code", 200)
+span.set_attribute("http.request.method", "POST")
+span.set_attribute("url.full", "https://api.example.com/orders")
+span.set_attribute("http.response.status_code", 200)
 
 # Database
-span.set_attribute("db.system", "postgresql")
-span.set_attribute("db.name", "orders")
-span.set_attribute("db.operation", "INSERT")
-span.set_attribute("db.statement", "INSERT INTO orders ...")
+span.set_attribute("db.system.name", "postgresql")
+span.set_attribute("db.namespace", "orders")
+span.set_attribute("db.operation.name", "INSERT")
+span.set_attribute("db.query.text", "INSERT INTO orders ...")
 
 # Messaging
 span.set_attribute("messaging.system", "kafka")
-span.set_attribute("messaging.destination", "orders-topic")
-span.set_attribute("messaging.operation", "publish")
+span.set_attribute("messaging.destination.name", "orders-topic")
+span.set_attribute("messaging.operation.type", "send")
 ```
 
 ### 3. Add Business Context
