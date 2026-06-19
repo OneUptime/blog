@@ -272,7 +272,7 @@ Argon2 is the winner of the Password Hashing Competition (2015) and is considere
 
 ```python
 from argon2 import PasswordHasher
-from argon2.exceptions import VerifyMismatchError
+from argon2.exceptions import InvalidHashError, VerificationError
 
 # Configure Argon2id with recommended parameters
 # time_cost: iterations, memory_cost: KB of memory, parallelism: threads
@@ -293,7 +293,7 @@ def verify_password(password: str, hash: str) -> bool:
     try:
         hasher.verify(hash, password)
         return True
-    except VerifyMismatchError:
+    except (VerificationError, InvalidHashError):
         return False
 
 def needs_rehash(hash: str) -> bool:
