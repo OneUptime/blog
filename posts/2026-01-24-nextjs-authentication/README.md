@@ -8,7 +8,7 @@ Description: Learn how to implement authentication in Next.js using various appr
 
 ---
 
-Authentication is a critical aspect of web applications. Next.js supports multiple authentication strategies including JWT tokens, session-based auth, and third-party providers. This guide covers practical implementations for both the App Router and Pages Router.
+Authentication is a critical aspect of web applications. Next.js supports multiple authentication strategies including JWT tokens, session-based auth, and third-party providers. This guide covers practical implementations for the App Router.
 
 ## Authentication Flow Overview
 
@@ -23,7 +23,7 @@ flowchart TD
     F --> G[Set Cookie]
     G --> H[Redirect to App]
 
-    B -->|Yes| I[Middleware Check]
+    B -->|Yes| I[Proxy Check]
     I -->|Valid| J[Access Protected Route]
     I -->|Invalid/Expired| K[Redirect to Login]
 
@@ -41,9 +41,11 @@ flowchart TD
 import { SignJWT, jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
 
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || 'your-secret-key-min-32-chars-long!'
-);
+if (!process.env.JWT_SECRET) {
+  throw new Error('JWT_SECRET is not set');
+}
+
+const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET);
 
 const COOKIE_NAME = 'auth-token';
 
@@ -245,22 +247,24 @@ export default async function DashboardPage() {
 }
 ```
 
-### Auth Middleware
+### Auth Proxy
 
 ```typescript
-// middleware.ts
+// proxy.ts
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { jwtVerify } from 'jose';
 
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || 'your-secret-key-min-32-chars-long!'
-);
+if (!process.env.JWT_SECRET) {
+  throw new Error('JWT_SECRET is not set');
+}
+
+const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET);
 
 const protectedRoutes = ['/dashboard', '/settings', '/profile'];
 const authRoutes = ['/login', '/register'];
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const token = request.cookies.get('auth-token')?.value;
 
@@ -311,14 +315,25 @@ npm install next-auth
 ```
 
 ```typescript
-// app/api/auth/[...nextauth]/route.ts
-import NextAuth from 'next-auth';
+// lib/nextauth.ts
+import type { NextAuthOptions } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import GoogleProvider from 'next-auth/providers/google';
 import GitHubProvider from 'next-auth/providers/github';
 import bcrypt from 'bcryptjs';
 
-const handler = NextAuth({
+// Replace this with your database lookup
+async function findUserByEmail(email: string) {
+  return null as null | {
+    id: string;
+    email: string;
+    name: string;
+    role: string;
+    passwordHash: string;
+  };
+}
+
+export const authOptions: NextAuthOptions = {
   providers: [
     // Credentials provider
     CredentialsProvider({
@@ -392,7 +407,13 @@ const handler = NextAuth({
     strategy: 'jwt',
     maxAge: 30 * 24 * 60 * 60, // 30 days
   },
-});
+};
+
+// app/api/auth/[...nextauth]/route.ts
+import NextAuth from 'next-auth';
+import { authOptions } from '@/lib/nextauth';
+
+const handler = NextAuth(authOptions);
 
 export { handler as GET, handler as POST };
 ```
@@ -401,7 +422,7 @@ export { handler as GET, handler as POST };
 
 ```typescript
 // types/next-auth.d.ts
-import 'next-auth';
+import { DefaultSession } from 'next-auth';
 
 declare module 'next-auth' {
   interface User {
@@ -412,10 +433,8 @@ declare module 'next-auth' {
   interface Session {
     user: {
       id: string;
-      email: string;
-      name: string;
       role: string;
-    };
+    } & DefaultSession['user'];
   }
 }
 
@@ -494,9 +513,9 @@ export function UserMenu() {
 
 ```typescript
 // app/dashboard/page.tsx
-import { getServerSession } from 'next-auth';
+import { getServerSession } from 'next-auth/next';
 import { redirect } from 'next/navigation';
-import { authOptions } from '@/app/api/auth/[...nextauth]/route';
+import { authOptions } from '@/lib/nextauth';
 
 export default async function DashboardPage() {
   const session = await getServerSession(authOptions);
@@ -526,7 +545,11 @@ import { useRouter, useSearchParams } from 'next/navigation';
 export function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const returnTo = searchParams.get('returnTo') || '/dashboard';
+  const returnToParam = searchParams.get('returnTo');
+  const returnTo =
+    returnToParam?.startsWith('/') && !returnToParam.startsWith('//')
+      ? returnToParam
+      : '/dashboard';
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -604,7 +627,7 @@ export function LoginForm() {
 
 ```mermaid
 flowchart TD
-    A[Request] --> B[Middleware]
+    A[Request] --> B[Proxy]
     B --> C{Authenticated?}
     C -->|No| D[Redirect to Login]
     C -->|Yes| E{Check Role}
@@ -616,15 +639,19 @@ flowchart TD
     E -->|User| I[Allow Access]
 ```
 
-### RBAC Middleware
+### RBAC Proxy
 
 ```typescript
-// middleware.ts
+// proxy.ts
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { jwtVerify } from 'jose';
 
-const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET!);
+if (!process.env.JWT_SECRET) {
+  throw new Error('JWT_SECRET is not set');
+}
+
+const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET);
 
 // Route permissions
 const routePermissions: Record<string, string[]> = {
@@ -634,7 +661,7 @@ const routePermissions: Record<string, string[]> = {
   '/reports': ['admin', 'manager'],
 };
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const token = request.cookies.get('auth-token')?.value;
 
@@ -704,11 +731,12 @@ export function withAuth<P extends object>(
 
       if (requiredRole) {
         const roles = Array.isArray(requiredRole) ? requiredRole : [requiredRole];
-        if (!roles.includes(session.user?.role)) {
+        const userRole = session.user?.role;
+        if (!userRole || !roles.includes(userRole)) {
           router.push('/unauthorized');
         }
       }
-    }, [session, status, router]);
+    }, [session, status, router, requiredRole, redirectTo]);
 
     if (status === 'loading') {
       return <div>Loading...</div>;
@@ -738,9 +766,14 @@ const AdminDashboard = withAuth(
 ```typescript
 // lib/tokens.ts
 import { SignJWT, jwtVerify } from 'jose';
+import type { UserPayload } from './auth';
 
-const ACCESS_SECRET = new TextEncoder().encode(process.env.ACCESS_TOKEN_SECRET!);
-const REFRESH_SECRET = new TextEncoder().encode(process.env.REFRESH_TOKEN_SECRET!);
+if (!process.env.ACCESS_TOKEN_SECRET || !process.env.REFRESH_TOKEN_SECRET) {
+  throw new Error('Token secrets are not set');
+}
+
+const ACCESS_SECRET = new TextEncoder().encode(process.env.ACCESS_TOKEN_SECRET);
+const REFRESH_SECRET = new TextEncoder().encode(process.env.REFRESH_TOKEN_SECRET);
 
 export async function createTokenPair(user: UserPayload) {
   const accessToken = await new SignJWT({ ...user })
@@ -782,6 +815,16 @@ export async function verifyRefreshToken(token: string) {
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyRefreshToken, createTokenPair } from '@/lib/tokens';
 
+// Replace this with your database lookup
+async function getUserById(id: string) {
+  return null as null | {
+    id: string;
+    email: string;
+    name: string;
+    role: 'user' | 'admin';
+  };
+}
+
 export async function POST(request: NextRequest) {
   const refreshToken = request.cookies.get('refresh-token')?.value;
 
@@ -816,6 +859,7 @@ export async function POST(request: NextRequest) {
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
     maxAge: 15 * 60, // 15 minutes
+    path: '/',
   });
 
   response.cookies.set('refresh-token', tokens.refreshToken, {
@@ -823,6 +867,7 @@ export async function POST(request: NextRequest) {
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
     maxAge: 7 * 24 * 60 * 60, // 7 days
+    path: '/',
   });
 
   return response;
@@ -831,9 +876,9 @@ export async function POST(request: NextRequest) {
 
 ## Security Best Practices
 
-1. **Use HTTP-only cookies** to prevent XSS attacks from accessing tokens
+1. **Use HTTP-only cookies** to reduce the risk of token theft through XSS
 2. **Set secure flag** on cookies in production
-3. **Use SameSite attribute** to prevent CSRF attacks
+3. **Use SameSite attribute** to help mitigate CSRF attacks
 4. **Hash passwords** with bcrypt or argon2
 5. **Validate input** on both client and server
 6. **Use HTTPS** in production
