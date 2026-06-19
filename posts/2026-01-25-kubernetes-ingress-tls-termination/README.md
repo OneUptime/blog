@@ -35,12 +35,12 @@ The Ingress controller terminates TLS, meaning it handles the encryption/decrypt
 
 ## Prerequisites
 
-Install an Ingress controller. nginx-ingress is the most common:
+Install an Ingress controller. This guide uses the community ingress-nginx controller; for new production deployments after its March 2026 retirement, evaluate a maintained controller before using it:
 
 ```bash
 # Install nginx Ingress controller
 
-kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.9.0/deploy/static/provider/cloud/deploy.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.15.1/deploy/static/provider/cloud/deploy.yaml
 
 # Wait for it to be ready
 kubectl wait --namespace ingress-nginx \
@@ -151,7 +151,7 @@ cert-manager automatically provisions and renews certificates from Let's Encrypt
 
 ```bash
 # Install cert-manager
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.0/cert-manager.yaml
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
 
 # Wait for pods to be ready
 kubectl wait --namespace cert-manager \
@@ -185,7 +185,7 @@ spec:
       # HTTP-01 challenge using Ingress
       - http01:
           ingress:
-            class: nginx
+            ingressClassName: nginx
 ```
 
 For staging (testing without rate limits):
@@ -205,7 +205,7 @@ spec:
     solvers:
       - http01:
           ingress:
-            class: nginx
+            ingressClassName: nginx
 ```
 
 Apply the issuers:
@@ -345,21 +345,29 @@ metadata:
 ### HSTS (HTTP Strict Transport Security)
 
 ```yaml
+apiVersion: v1
+kind: ConfigMap
 metadata:
-  annotations:
-    nginx.ingress.kubernetes.io/hsts: "true"
-    nginx.ingress.kubernetes.io/hsts-max-age: "31536000"
-    nginx.ingress.kubernetes.io/hsts-include-subdomains: "true"
-    nginx.ingress.kubernetes.io/hsts-preload: "true"
+  name: ingress-nginx-controller
+  namespace: ingress-nginx
+data:
+  hsts: "true"
+  hsts-max-age: "31536000"
+  hsts-include-subdomains: "true"
+  hsts-preload: "true"
 ```
 
 ### Custom TLS Protocols and Ciphers
 
 ```yaml
+apiVersion: v1
+kind: ConfigMap
 metadata:
-  annotations:
-    nginx.ingress.kubernetes.io/ssl-protocols: "TLSv1.2 TLSv1.3"
-    nginx.ingress.kubernetes.io/ssl-ciphers: "ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384"
+  name: ingress-nginx-controller
+  namespace: ingress-nginx
+data:
+  ssl-protocols: "TLSv1.2 TLSv1.3"
+  ssl-ciphers: "ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384"
 ```
 
 ### Backend HTTPS (End-to-End Encryption)
