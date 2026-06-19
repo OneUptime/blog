@@ -20,9 +20,9 @@ Prisma provides a type-safe database client that pairs excellently with GraphQL.
 npm init -y
 
 # Install dependencies
-npm install @apollo/server graphql express
-npm install prisma @prisma/client
-npm install typescript ts-node @types/node @types/express --save-dev
+npm install @apollo/server @as-integrations/express5 graphql express cors @graphql-tools/schema graphql-scalars
+npm install @prisma/client @prisma/adapter-pg pg dataloader bcrypt nexus dotenv
+npm install prisma typescript tsx @types/node @types/express @types/cors @types/pg @types/bcrypt --save-dev
 
 # Initialize Prisma
 npx prisma init
@@ -33,7 +33,7 @@ npx prisma init
 ```text
 src/
   generated/
-    prisma-client/     # Prisma client (auto-generated)
+    prisma/            # Prisma client (auto-generated)
   graphql/
     schema.graphql     # GraphQL schema
     resolvers/
@@ -41,10 +41,11 @@ src/
       user.ts
       post.ts
     context.ts
-  prisma/
-    schema.prisma      # Prisma schema
-    seed.ts            # Database seeding
   index.ts             # Server entry point
+prisma/
+  schema.prisma        # Prisma schema
+  seed.ts              # Database seeding
+prisma.config.ts       # Prisma CLI configuration
 ```
 
 ## Prisma Schema Definition
@@ -53,11 +54,11 @@ src/
 // prisma/schema.prisma
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 generator client {
-  provider = "prisma-client-js"
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
 }
 
 // User model
@@ -136,6 +137,25 @@ enum Role {
   ADMIN
   MODERATOR
 }
+```
+
+Configure Prisma's CLI to load the database URL from the environment:
+
+```typescript
+// prisma.config.ts
+import 'dotenv/config';
+import { defineConfig, env } from 'prisma/config';
+
+export default defineConfig({
+  schema: 'prisma/schema.prisma',
+  migrations: {
+    path: 'prisma/migrations',
+    seed: 'tsx prisma/seed.ts',
+  },
+  datasource: {
+    url: env('DATABASE_URL'),
+  },
+});
 ```
 
 Run migrations to create the database schema:
@@ -308,11 +328,18 @@ input StringFilter {
 
 ```typescript
 // src/graphql/context.ts
-import { PrismaClient, User } from '@prisma/client';
+import 'dotenv/config';
+import { PrismaPg } from '@prisma/adapter-pg';
 import { Request } from 'express';
+import { PrismaClient, User } from '../generated/prisma/client';
 
 // Single Prisma instance - reuse across requests
+const adapter = new PrismaPg({
+  connectionString: process.env.DATABASE_URL!,
+});
+
 const prisma = new PrismaClient({
+  adapter,
   log: process.env.NODE_ENV === 'development'
     ? ['query', 'info', 'warn', 'error']
     : ['error'],
@@ -354,7 +381,7 @@ export { prisma };
 ```typescript
 // src/graphql/resolvers/user.ts
 import { Context } from '../context';
-import { Prisma } from '@prisma/client';
+import { Prisma } from '../../generated/prisma/client';
 import bcrypt from 'bcrypt';
 
 export const userResolvers = {
@@ -380,8 +407,8 @@ export const userResolvers = {
         skip?: number;
         take?: number;
         where?: {
-          email?: { equals?: string; contains?: string };
-          name?: { contains?: string };
+          email?: { equals?: string; contains?: string; startsWith?: string; endsWith?: string };
+          name?: { equals?: string; contains?: string; startsWith?: string; endsWith?: string };
           role?: string;
         };
       },
@@ -487,7 +514,7 @@ export const userResolvers = {
 ```typescript
 // src/graphql/resolvers/post.ts
 import { Context } from '../context';
-import { Prisma } from '@prisma/client';
+import { Prisma } from '../../generated/prisma/client';
 
 export const postResolvers = {
   Query: {
@@ -503,13 +530,14 @@ export const postResolvers = {
         skip?: number;
         take?: number;
         where?: {
-          title?: { contains?: string };
+          title?: { equals?: string; contains?: string; startsWith?: string; endsWith?: string };
           published?: boolean;
           authorId?: string;
         };
         orderBy?: {
           createdAt?: 'asc' | 'desc';
           title?: 'asc' | 'desc';
+          publishedAt?: 'asc' | 'desc';
         };
       },
       context: Context
@@ -518,8 +546,8 @@ export const postResolvers = {
       const orderBy: Prisma.PostOrderByWithRelationInput = {};
 
       // Build where clause
-      if (args.where?.title?.contains) {
-        where.title = { contains: args.where.title.contains, mode: 'insensitive' };
+      if (args.where?.title) {
+        where.title = { ...args.where.title, mode: 'insensitive' };
       }
       if (args.where?.published !== undefined) {
         where.published = args.where.published;
@@ -534,6 +562,9 @@ export const postResolvers = {
       }
       if (args.orderBy?.title) {
         orderBy.title = args.orderBy.title;
+      }
+      if (args.orderBy?.publishedAt) {
+        orderBy.publishedAt = args.orderBy.publishedAt;
       }
 
       return context.prisma.post.findMany({
@@ -619,6 +650,30 @@ export const postResolvers = {
         where: { id: args.id },
       });
     },
+
+    createComment: async (
+      _: unknown,
+      args: { data: { content: string; postId: string } },
+      context: Context
+    ) => {
+      if (!context.user) {
+        throw new Error('Not authenticated');
+      }
+
+      return context.prisma.comment.create({
+        data: {
+          content: args.data.content,
+          postId: args.data.postId,
+          authorId: context.user.id,
+        },
+      });
+    },
+
+    deleteComment: async (_: unknown, args: { id: string }, context: Context) => {
+      return context.prisma.comment.delete({
+        where: { id: args.id },
+      });
+    },
   },
 
   // Field resolvers
@@ -674,7 +729,7 @@ flowchart LR
 ```typescript
 // src/graphql/loaders.ts
 import DataLoader from 'dataloader';
-import { PrismaClient, User, Post, Comment } from '@prisma/client';
+import { PrismaClient, User, Post, Comment } from '../generated/prisma/client';
 
 export function createLoaders(prisma: PrismaClient) {
   return {
@@ -744,10 +799,19 @@ export type Loaders = ReturnType<typeof createLoaders>;
 
 ```typescript
 // src/graphql/context.ts
-import { PrismaClient, User } from '@prisma/client';
+import 'dotenv/config';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { Request } from 'express';
+import { PrismaClient, User } from '../generated/prisma/client';
 import { createLoaders, Loaders } from './loaders';
 
-const prisma = new PrismaClient();
+const adapter = new PrismaPg({
+  connectionString: process.env.DATABASE_URL!,
+});
+
+const prisma = new PrismaClient({
+  adapter,
+});
 
 export interface Context {
   prisma: PrismaClient;
@@ -755,7 +819,7 @@ export interface Context {
   loaders: Loaders;
 }
 
-export async function createContext({ req }): Promise<Context> {
+export async function createContext({ req }: { req: Request }): Promise<Context> {
   // ... authentication logic ...
 
   return {
@@ -802,7 +866,12 @@ export const userResolvers = {
 
 ```typescript
 // src/schema/types/User.ts
-import { objectType, extendType, inputObjectType, nonNull, stringArg } from 'nexus';
+import { DateTimeResolver } from 'graphql-scalars';
+import { GraphQLScalarType } from 'graphql';
+import { arg, asNexusMethod, objectType, extendType, inputObjectType, nonNull } from 'nexus';
+import bcrypt from 'bcrypt';
+
+export const DateTime = asNexusMethod(DateTimeResolver as GraphQLScalarType, 'dateTime');
 
 export const User = objectType({
   name: 'User',
@@ -816,7 +885,7 @@ export const User = objectType({
     t.nonNull.list.nonNull.field('posts', {
       type: 'Post',
       args: {
-        published: 'Boolean',
+        published: arg({ type: 'Boolean' }),
       },
       resolve: (parent, args, ctx) => {
         return ctx.prisma.post.findMany({
@@ -852,8 +921,8 @@ export const UserQueries = extendType({
     t.nonNull.list.nonNull.field('users', {
       type: 'User',
       args: {
-        skip: 'Int',
-        take: 'Int',
+        skip: arg({ type: 'Int' }),
+        take: arg({ type: 'Int' }),
       },
       resolve: (_, args, ctx) => {
         return ctx.prisma.user.findMany({
@@ -902,12 +971,14 @@ export const CreateUserInput = inputObjectType({
 ```typescript
 // src/index.ts
 import { ApolloServer } from '@apollo/server';
-import { expressMiddleware } from '@apollo/server/express4';
+import { expressMiddleware } from '@as-integrations/express5';
+import cors from 'cors';
 import express from 'express';
 import { readFileSync } from 'fs';
 import { makeExecutableSchema } from '@graphql-tools/schema';
+import { DateTimeResolver } from 'graphql-scalars';
 import { createContext } from './graphql/context';
-import { resolvers } from './graphql/resolvers';
+import { resolvers as appResolvers } from './graphql/resolvers';
 
 const app = express();
 
@@ -917,7 +988,10 @@ const typeDefs = readFileSync('./src/graphql/schema.graphql', 'utf-8');
 // Create executable schema
 const schema = makeExecutableSchema({
   typeDefs,
-  resolvers,
+  resolvers: {
+    DateTime: DateTimeResolver,
+    ...appResolvers,
+  },
 });
 
 // Create Apollo Server
@@ -928,10 +1002,10 @@ const server = new ApolloServer({
 async function main() {
   await server.start();
 
-  app.use(express.json());
-
   app.use(
     '/graphql',
+    cors<cors.CorsRequest>(),
+    express.json(),
     expressMiddleware(server, {
       context: createContext,
     })
