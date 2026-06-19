@@ -73,7 +73,7 @@ def ingest_to_bronze(source_path, bronze_path, source_name):
     """
     # Read raw data without enforcing schema
     raw_df = spark.read \
-        .option("inferSchema", "true") \
+        .option("inferSchema", "false") \
         .option("header", "true") \
         .csv(source_path)
 
@@ -138,7 +138,7 @@ def ingest_json_to_bronze(kafka_df, bronze_path):
 The Silver layer is where data quality happens. Apply validations, deduplication, and schema enforcement here.
 
 ```python
-from pyspark.sql.functions import col, when, row_number, to_timestamp
+from pyspark.sql.functions import col, coalesce, lit, row_number, to_timestamp
 from pyspark.sql.window import Window
 from pyspark.sql.types import StructType, StructField, StringType, DoubleType, TimestampType
 
@@ -168,16 +168,22 @@ def bronze_to_silver(bronze_path, silver_path):
 
     # Data quality checks
     quality_df = parsed_df \
-        .withColumn("_is_valid",
+        .withColumn("_is_valid", coalesce(
             col("order_id").isNotNull() &
             col("customer_id").isNotNull() &
+            col("product_id").isNotNull() &
+            col("order_date").isNotNull() &
+            col("status").isNotNull() &
+            col("quantity").isNotNull() &
+            col("unit_price").isNotNull() &
             (col("quantity") > 0) &
-            (col("unit_price") > 0)
-        )
+            (col("unit_price") > 0),
+            lit(False)
+        ))
 
     # Separate valid and invalid records
-    valid_df = quality_df.filter(col("_is_valid") == True)
-    invalid_df = quality_df.filter(col("_is_valid") == False)
+    valid_df = quality_df.filter(col("_is_valid"))
+    invalid_df = quality_df.filter(~col("_is_valid"))
 
     # Log invalid records for investigation
     if invalid_df.count() > 0:
@@ -229,7 +235,7 @@ def bronze_to_silver(bronze_path, silver_path):
 
 ```python
 from dataclasses import dataclass
-from typing import List, Callable
+from typing import List
 
 @dataclass
 class QualityRule:
@@ -245,9 +251,11 @@ def apply_quality_rules(df, rules: List[QualityRule]):
 
     for rule in rules:
         # Count violations
-        violation_count = df.filter(f"NOT ({rule.condition})").count()
+        violation_count = df.filter(
+            f"NOT ({rule.condition}) OR ({rule.condition}) IS NULL"
+        ).count()
         total_count = df.count()
-        pass_rate = (total_count - violation_count) / total_count * 100
+        pass_rate = 100.0 if total_count == 0 else (total_count - violation_count) / total_count * 100
 
         results.append({
             "rule_name": rule.name,
@@ -279,6 +287,19 @@ quality_results = apply_quality_rules(silver_df, order_rules)
 The Gold layer contains business-ready tables optimized for specific use cases.
 
 ```python
+from pyspark.sql.functions import (
+    approx_count_distinct,
+    avg,
+    col,
+    count,
+    current_date,
+    current_timestamp,
+    datediff,
+    max,
+    min,
+    sum
+)
+
 def create_gold_daily_sales(silver_path, gold_path):
     """
     Create Gold layer daily sales aggregate
@@ -293,28 +314,26 @@ def create_gold_daily_sales(silver_path, gold_path):
             col("order_date").cast("date").alias("sale_date")
         ) \
         .agg(
-            {"order_id": "count",
-             "order_total": "sum",
-             "quantity": "sum",
-             "customer_id": "approx_count_distinct"}
-        ) \
-        .withColumnRenamed("count(order_id)", "total_orders") \
-        .withColumnRenamed("sum(order_total)", "total_revenue") \
-        .withColumnRenamed("sum(quantity)", "total_units") \
-        .withColumnRenamed("approx_count_distinct(customer_id)", "unique_customers")
+            count("order_id").alias("total_orders"),
+            sum("order_total").alias("total_revenue"),
+            sum("quantity").alias("total_units"),
+            approx_count_distinct("customer_id").alias("unique_customers")
+        )
 
     # Add computed metrics
     gold_df = daily_sales \
         .withColumn("avg_order_value", col("total_revenue") / col("total_orders")) \
         .withColumn("_processed_timestamp", current_timestamp())
 
-    # Overwrite partition for idempotent updates
-    gold_df.write \
-        .format("delta") \
-        .mode("overwrite") \
-        .option("replaceWhere",
-                f"sale_date >= '{gold_df.agg({'sale_date': 'min'}).collect()[0][0]}'") \
-        .save(gold_path)
+    min_sale_date = gold_df.agg(min("sale_date")).collect()[0][0]
+
+    if min_sale_date is not None:
+        # Overwrite partition for idempotent updates
+        gold_df.write \
+            .format("delta") \
+            .mode("overwrite") \
+            .option("replaceWhere", f"sale_date >= '{min_sale_date}'") \
+            .save(gold_path)
 
     return gold_df
 
@@ -331,11 +350,11 @@ def create_gold_customer_features(silver_orders_path, silver_customers_path, gol
         .withColumn("order_total", col("quantity") * col("unit_price")) \
         .groupBy("customer_id") \
         .agg(
-            {"order_id": "count",
-             "order_total": "sum",
-             "order_total": "avg",
-             "order_date": "max",
-             "order_date": "min"}
+            count("order_id").alias("total_orders"),
+            sum("order_total").alias("total_revenue"),
+            avg("order_total").alias("avg_order_value"),
+            max("order_date").alias("last_order_date"),
+            min("order_date").alias("first_order_date")
         )
 
     # Join with customer details
@@ -399,7 +418,8 @@ class MedallionPipeline:
             self.metrics["quarantined_records"] = quarantine_count
 
             # Quality gate check
-            quarantine_rate = quarantine_count / (silver_count + quarantine_count)
+            total_processed = silver_count + quarantine_count
+            quarantine_rate = 0 if total_processed == 0 else quarantine_count / total_processed
             if quarantine_rate > 0.05:  # More than 5% bad data
                 raise Exception(f"Quality gate failed: {quarantine_rate:.2%} quarantine rate")
 
