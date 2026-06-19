@@ -37,8 +37,6 @@ response = requests.get(f"{host_url}/webhook")
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   app:
     build: .
@@ -53,13 +51,11 @@ On Linux, `host.docker.internal` does not work by default. You need to add it ex
 
 ```yaml
 # docker-compose.yml for Linux
-version: '3.8'
-
 services:
   app:
     build: .
     extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - "host.docker.internal=host-gateway"
     environment:
       HOST_ADDRESS: host.docker.internal
 ```
@@ -134,8 +130,6 @@ docker run --network host myapp
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   app:
     build: .
@@ -146,7 +140,7 @@ With host networking:
 - Container sees all host interfaces
 - `localhost` refers to the host machine
 - No port mapping needed (or possible)
-- Only works on Linux
+- Works on Docker Engine for Linux, and on Docker Desktop 4.34+ when host networking is enabled
 
 ```python
 # With host networking, localhost IS the host
@@ -173,8 +167,6 @@ docker run -e HOST_IP=$HOST_IP myapp
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   app:
     build: .
@@ -204,8 +196,6 @@ If the Docker socket is mounted, query the Docker API:
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   app:
     build: .
@@ -225,7 +215,7 @@ def get_host_ip_from_docker():
     # Get the bridge network
     network = client.networks.get('bridge')
 
-    # Gateway is the host IP
+    # On Linux bridge networks, the gateway is the host IP
     gateway = network.attrs['IPAM']['Config'][0]['Gateway']
     return gateway
 
@@ -272,13 +262,11 @@ def register():
 
 ```yaml
 # docker-compose.yml for connecting to host database
-version: '3.8'
-
 services:
   app:
     build: .
     extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - "host.docker.internal=host-gateway"
     environment:
       # Connect to PostgreSQL running on host
       DATABASE_URL: postgres://user:pass@host.docker.internal:5432/mydb
@@ -323,9 +311,9 @@ exit 1
 |--------|-------|-----|---------|----------------|
 | host.docker.internal | With extra_hosts | Yes | Yes | Minimal |
 | Bridge Gateway | Yes | No | No | None |
-| Host Network Mode | Yes | No | No | None |
+| Host Network Mode | Yes | Docker Desktop 4.34+ | Docker Desktop 4.34+ | Enable in Docker Desktop |
 | Environment Variable | Yes | Yes | Yes | Script needed |
-| Docker API | Yes | Yes | Yes | Socket mount |
+| Docker API | Yes | Not generally | Not generally | Socket mount |
 
 ## Security Considerations
 
