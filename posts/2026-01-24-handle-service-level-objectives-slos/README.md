@@ -63,7 +63,7 @@ sum(rate(http_request_duration_seconds_count[5m]))
 
 ```promql
 # Freshness: proportion of data updated within threshold
-sum(time() - data_last_update_timestamp < 300)
+sum((time() - data_last_update_timestamp) < bool 300)
 /
 count(data_last_update_timestamp)
 ```
@@ -91,6 +91,36 @@ groups:
           /
           sum(rate(http_requests_total{job="api"}[5m]))
 
+      - record: sli:api_availability:ratio_rate30m
+        expr: |
+          sum(rate(http_requests_total{job="api",status!~"5.."}[30m]))
+          /
+          sum(rate(http_requests_total{job="api"}[30m]))
+
+      - record: sli:api_availability:ratio_rate1h
+        expr: |
+          sum(rate(http_requests_total{job="api",status!~"5.."}[1h]))
+          /
+          sum(rate(http_requests_total{job="api"}[1h]))
+
+      - record: sli:api_availability:ratio_rate6h
+        expr: |
+          sum(rate(http_requests_total{job="api",status!~"5.."}[6h]))
+          /
+          sum(rate(http_requests_total{job="api"}[6h]))
+
+      - record: sli:api_availability:ratio_rate3d
+        expr: |
+          sum(rate(http_requests_total{job="api",status!~"5.."}[3d]))
+          /
+          sum(rate(http_requests_total{job="api"}[3d]))
+
+      - record: sli:api_availability:ratio_rate30d
+        expr: |
+          sum(rate(http_requests_total{job="api",status!~"5.."}[30d]))
+          /
+          sum(rate(http_requests_total{job="api"}[30d]))
+
       - record: sli:api_latency:ratio_rate5m
         expr: |
           sum(rate(http_request_duration_seconds_bucket{job="api",le="0.3"}[5m]))
@@ -107,7 +137,7 @@ groups:
           )
 
       # Multi-window alerting for SLO burn rate
-      - alert: SLOAvailabilityBurnRateHigh
+      - alert: SLOBurnRateCritical
         expr: |
           (
             # Fast burn: 14.4x burn rate over 1 hour
@@ -117,10 +147,10 @@ groups:
           )
           or
           (
-            # Slow burn: 3x burn rate over 6 hours
-            (1 - sli:api_availability:ratio_rate6h) > (3 * (1 - slo:api_availability:target))
+            # Sustained burn: 6x burn rate over 6 hours
+            (1 - sli:api_availability:ratio_rate6h) > (6 * (1 - slo:api_availability:target))
             and
-            (1 - sli:api_availability:ratio_rate30m) > (3 * (1 - slo:api_availability:target))
+            (1 - sli:api_availability:ratio_rate30m) > (6 * (1 - slo:api_availability:target))
           )
         for: 2m
         labels:
@@ -128,6 +158,17 @@ groups:
         annotations:
           summary: "High SLO burn rate detected"
           description: "API availability SLO is burning error budget faster than expected"
+
+      - alert: SLOBurnRateWarning
+        expr: |
+          (1 - sli:api_availability:ratio_rate3d) > (1 * (1 - slo:api_availability:target))
+          and
+          (1 - sli:api_availability:ratio_rate6h) > (1 * (1 - slo:api_availability:target))
+        labels:
+          severity: warning
+        annotations:
+          summary: "SLO burn rate warning"
+          description: "API availability SLO is on track to consume the error budget"
 ```
 
 ## Error Budget Management
@@ -306,14 +347,14 @@ route:
   receiver: 'default'
   routes:
     # Page immediately for fast burn
-    - match:
-        alertname: SLOBurnRateCritical
+    - matchers:
+        - alertname="SLOBurnRateCritical"
       receiver: 'pagerduty'
       repeat_interval: 5m
 
     # Ticket for slow burn
-    - match:
-        alertname: SLOBurnRateWarning
+    - matchers:
+        - alertname="SLOBurnRateWarning"
       receiver: 'slack-oncall'
       repeat_interval: 1h
 
@@ -323,14 +364,13 @@ receivers:
       - service_key: 'YOUR_PD_KEY'
         description: '{{ .Annotations.summary }}'
         details:
-          error_budget: '{{ .Annotations.error_budget }}'
+          description: '{{ .Annotations.description }}'
 
   - name: 'slack-oncall'
     slack_configs:
       - channel: '#oncall'
         text: |
           *{{ .Annotations.summary }}*
-          Error budget remaining: {{ .Annotations.error_budget }}
           {{ .Annotations.description }}
 ```
 
