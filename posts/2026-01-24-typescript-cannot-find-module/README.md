@@ -180,13 +180,14 @@ declare module '*.json' {
             "@utils/*": ["src/utils/*"],
             "@types/*": ["src/types/*"]
         },
-        "moduleResolution": "node"
+        "moduleResolution": "node16",
+        "module": "node16"
     }
 }
 ```
 
 ```typescript
-// Now these imports work
+// Now TypeScript can resolve these imports
 import Button from '@/components/Button';
 import { formatDate } from '@utils/date';
 ```
@@ -195,29 +196,29 @@ import { formatDate } from '@utils/date';
 
 ```mermaid
 flowchart LR
-    A[moduleResolution] --> B[node]
+    A[moduleResolution] --> B[node16/nodenext]
     A --> C[bundler]
-    A --> D[node16/nodenext]
+    A --> D[legacy node/node10]
 
-    B --> B1[Classic Node.js resolution]
+    B --> B1[Modern Node.js resolution]
     C --> C1[For bundlers like webpack/vite]
-    D --> D1[Modern ESM support]
+    D --> D1[Deprecated in TypeScript 6]
 ```
 
 ```json
 // For Node.js projects
 {
     "compilerOptions": {
-        "moduleResolution": "node",
-        "module": "commonjs"
+        "moduleResolution": "node16",
+        "module": "node16"
     }
 }
 
-// For ESM Node.js projects (Node 16+)
+// For projects targeting the latest Node.js behavior
 {
     "compilerOptions": {
-        "moduleResolution": "node16",
-        "module": "node16"
+        "moduleResolution": "nodenext",
+        "module": "nodenext"
     }
 }
 
@@ -243,16 +244,26 @@ import { helper } from './utils';
 // SOLUTION 1: Add .js extension (even for .ts files in ESM)
 import { helper } from './utils.js';
 
-// SOLUTION 2: Configure tsconfig to allow extensionless imports
+// SOLUTION 2: Use bundler resolution for bundler-based projects that allow extensionless imports
 // tsconfig.json
 {
     "compilerOptions": {
         "moduleResolution": "bundler",
-        "allowImportingTsExtensions": true
+        "module": "esnext"
     }
 }
 
-// SOLUTION 3: Use the .ts extension directly (with allowImportingTsExtensions)
+// SOLUTION 3: Use the .ts extension directly (only with allowImportingTsExtensions and noEmit or emitDeclarationOnly)
+// tsconfig.json
+{
+    "compilerOptions": {
+        "moduleResolution": "bundler",
+        "module": "esnext",
+        "allowImportingTsExtensions": true,
+        "noEmit": true
+    }
+}
+
 import { helper } from './utils.ts';
 ```
 
@@ -264,9 +275,9 @@ When a package has types but is missing some declarations.
 
 ```typescript
 // src/types/express-augment.d.ts
-import 'express';
+import 'express-serve-static-core';
 
-declare module 'express' {
+declare module 'express-serve-static-core' {
     interface Request {
         user?: {
             id: string;
@@ -307,7 +318,6 @@ app.get('/profile', (req, res) => {
 For local packages or monorepo setups.
 
 ```json
-// package.json of local package
 {
     "name": "my-local-package",
     "main": "./dist/index.js",
@@ -371,8 +381,8 @@ npx tsc --traceResolution 2>&1 | grep "package-name"
 {
     "compilerOptions": {
         "target": "ES2020",
-        "module": "commonjs",
-        "moduleResolution": "node",
+        "module": "node16",
+        "moduleResolution": "node16",
         "esModuleInterop": true,
         "strict": true,
         "skipLibCheck": true,
@@ -480,7 +490,8 @@ import { fileURLToPath } from 'url';
 {
     "compilerOptions": {
         "module": "node16",
-        "moduleResolution": "node16"
+        "moduleResolution": "node16",
+        "types": ["node"]
     }
 }
 ```
