@@ -115,8 +115,8 @@ iostat -xz 2 5
 
 # Key metrics to watch:
 # await - average time for I/O requests (high = problem)
-# %util - device utilization (100% = saturated)
-# svctm - average service time
+# r_await/w_await/f_await - read/write/flush latency (high = problem)
+# %util - device utilization (near 100% can indicate saturation on serial devices)
 
 # Example: Check for disk errors in SMART data
 smartctl -a /dev/sda | grep -i "error\|fail\|bad"
@@ -133,8 +133,8 @@ dmesg | grep -i "ext4\|xfs\|filesystem"
 mount -t nfs,nfs4
 
 # Check if NFS server is responding
-# The -t flag sets timeout for unresponsive servers
-showmount -e nfs-server-ip --no-headers 2>&1
+# Wrap showmount with timeout so it cannot hang indefinitely
+timeout 10 showmount -e nfs-server-ip --no-headers 2>&1
 
 # Check NFS statistics for errors
 nfsstat -c | head -30
@@ -180,16 +180,17 @@ hpssacli ctrl all show config
 umount -f /nfs/mount/point
 mount -o soft,timeo=30,retrans=3 nfs-server:/export /nfs/mount/point
 
-# Alternative: Use intr option to allow interruption
-mount -o intr,timeo=30 nfs-server:/export /nfs/mount/point
+# For write-heavy workloads, prefer hard mounts to avoid returning I/O errors
+# Note: the intr option is ignored on Linux kernels newer than 2.6.25
+mount -o hard,timeo=600,retrans=2 nfs-server:/export /nfs/mount/point
 
 # Force unmount a stuck NFS mount
 # Use when normal umount hangs
 umount -f -l /nfs/mount/point
 
 # Update /etc/fstab for resilient NFS mounting
-# Example entry with recommended options:
-# nfs-server:/export /mnt/nfs nfs4 soft,timeo=30,retrans=3,_netdev 0 0
+# Example entry for write-heavy workloads:
+# nfs-server:/export /mnt/nfs nfs4 hard,timeo=600,retrans=2,_netdev 0 0
 ```
 
 ### Solution 3: Kernel Parameter Tuning
@@ -203,8 +204,7 @@ echo 300 > /proc/sys/kernel/hung_task_timeout_secs
 # Only use for troubleshooting specific known issues
 echo 0 > /proc/sys/kernel/hung_task_timeout_secs
 
-# Make changes permanent via sysctl.conf
-# Edit /etc/sysctl.conf and add:
+# Make changes permanent with a sysctl.d configuration file
 cat >> /etc/sysctl.d/99-hung-task.conf << 'EOF'
 # Increase hung task timeout to 300 seconds
 # Default is 120 seconds
@@ -251,21 +251,28 @@ check_blocked_processes() {
 # Check disk I/O latency
 check_io_latency() {
     # Get await time for all disks
-    iostat -x 1 2 | tail -n +7 | while read -r line; do
-        device=$(echo "$line" | awk '{print $1}')
-        await=$(echo "$line" | awk '{print $10}')
-
-        # Skip empty lines and headers
-        [ -z "$device" ] && continue
-        [ "$device" = "Device" ] && continue
-
-        # Check if await exceeds threshold
-        if [ -n "$await" ]; then
-            await_int=${await%.*}
-            if [ "$await_int" -gt "$ALERT_THRESHOLD_AWAIT" ]; then
-                log_msg "WARNING: High I/O latency on $device: ${await}ms"
-            fi
-        fi
+    iostat -x 1 2 | awk -v threshold="$ALERT_THRESHOLD_AWAIT" '
+        $1 == "Device" {
+            delete idx
+            for (i = 1; i <= NF; i++) {
+                idx[$i] = i
+            }
+            next
+        }
+        (idx["r_await"] || idx["await"]) && NF > 0 {
+            max_await = 0
+            split("r_await w_await d_await f_await await", metrics)
+            for (m in metrics) {
+                if (idx[metrics[m]] && $(idx[metrics[m]]) > max_await) {
+                    max_await = $(idx[metrics[m]])
+                }
+            }
+            if (max_await > threshold) {
+                printf "%s %.2f\n", $1, max_await
+            }
+        }
+    ' | while read -r device await; do
+        log_msg "WARNING: High I/O latency on $device: ${await}ms"
     done
 }
 
@@ -295,8 +302,8 @@ apt-get install kdump-tools  # Debian/Ubuntu
 yum install kexec-tools      # RHEL/CentOS
 
 # Enable kdump service
-systemctl enable kdump
-systemctl start kdump
+systemctl enable --now kdump-tools  # Debian/Ubuntu
+systemctl enable --now kdump        # RHEL/CentOS
 
 # Configure crash kernel memory reservation
 # Add to /etc/default/grub GRUB_CMDLINE_LINUX:
