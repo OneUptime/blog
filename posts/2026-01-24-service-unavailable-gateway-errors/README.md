@@ -79,8 +79,8 @@ kubectl logs -n ingress-nginx -l app.kubernetes.io/name=ingress-nginx | grep -i 
 # Check nginx configuration
 kubectl exec -n ingress-nginx deploy/ingress-nginx-controller -- cat /etc/nginx/nginx.conf
 
-# Check upstream status
-kubectl exec -n ingress-nginx deploy/ingress-nginx-controller -- curl localhost:10254/nginx_status
+# Check controller health endpoint
+kubectl exec -n ingress-nginx deploy/ingress-nginx-controller -- curl localhost:10254/healthz
 ```
 
 ### AWS ALB/NLB
@@ -290,10 +290,10 @@ kubectl describe pod <pod-name> | grep -A5 "Last State"
 Too many connections queued, gateway times out.
 
 ```javascript
-// Node.js - Increase connection pool
+// Node.js - Tune connection pool
 const http = require('http');
 
-// Increase max sockets
+// Set an explicit per-origin socket limit
 http.globalAgent.maxSockets = 100;
 
 // Or use keep-alive agent with limits
@@ -311,14 +311,6 @@ const agent = new http.Agent({
 public class WebClientConfig {
     @Bean
     public WebClient webClient() {
-        HttpClient httpClient = HttpClient.create()
-            .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 5000)
-            .responseTimeout(Duration.ofSeconds(10))
-            .doOnConnected(conn ->
-                conn.addHandlerLast(new ReadTimeoutHandler(10))
-                    .addHandlerLast(new WriteTimeoutHandler(10))
-            );
-
         ConnectionProvider provider = ConnectionProvider.builder("custom")
             .maxConnections(100)
             .maxIdleTime(Duration.ofSeconds(20))
@@ -327,9 +319,17 @@ public class WebClientConfig {
             .evictInBackground(Duration.ofSeconds(120))
             .build();
 
+        HttpClient httpClient = HttpClient.create(provider)
+            .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 5000)
+            .responseTimeout(Duration.ofSeconds(10))
+            .doOnConnected(conn ->
+                conn.addHandlerLast(new ReadTimeoutHandler(10))
+                    .addHandlerLast(new WriteTimeoutHandler(10))
+            );
+
         return WebClient.builder()
             .clientConnector(new ReactorClientHttpConnector(
-                HttpClient.create(provider)
+                httpClient
             ))
             .build();
     }
@@ -450,11 +450,28 @@ spec:
 
 ```yaml
 # Configure health checks and retries
-apiVersion: configuration.konghq.com/v1
-kind: KongIngress
+apiVersion: v1
+kind: Service
 metadata:
-  name: my-service-config
-upstream:
+  name: my-service
+  annotations:
+    konghq.com/connect-timeout: "10000"
+    konghq.com/read-timeout: "60000"
+    konghq.com/write-timeout: "60000"
+    konghq.com/retries: "3"
+    konghq.com/upstream-policy: my-service-health-checks
+spec:
+  ports:
+    - port: 80
+      targetPort: 8080
+  selector:
+    app: my-service
+---
+apiVersion: configuration.konghq.com/v1beta1
+kind: KongUpstreamPolicy
+metadata:
+  name: my-service-health-checks
+spec:
   healthchecks:
     active:
       healthy:
@@ -462,23 +479,19 @@ upstream:
         successes: 2
       unhealthy:
         interval: 5
-        http_failures: 3
-        tcp_failures: 3
+        httpFailures: 3
+        tcpFailures: 3
         timeouts: 3
-      http_path: /healthz
+      httpPath: /healthz
       timeout: 5
+      type: http
     passive:
       healthy:
         successes: 2
       unhealthy:
-        http_failures: 5
-        tcp_failures: 5
+        httpFailures: 5
+        tcpFailures: 5
         timeouts: 5
-proxy:
-  connect_timeout: 10000
-  read_timeout: 60000
-  write_timeout: 60000
-  retries: 3
 ```
 
 ## Step 5: Implement Proper Health Checks
@@ -486,11 +499,12 @@ proxy:
 ### Comprehensive Health Check Implementation
 
 ```go
-package health
+package main
 
 import (
     "context"
     "encoding/json"
+    "fmt"
     "net/http"
     "sync"
     "time"
@@ -603,32 +617,40 @@ func main() {
 
     // Add database check
     checker.AddCheck("database", func(ctx context.Context) error {
-        return db.PingContext(ctx)
+        return checkHTTP(ctx, "http://database:8080/health")
     })
 
     // Add cache check
     checker.AddCheck("redis", func(ctx context.Context) error {
-        return redis.Ping(ctx).Err()
+        return checkHTTP(ctx, "http://redis:8080/health")
     })
 
     // Add downstream service check
     checker.AddCheck("payment-service", func(ctx context.Context) error {
-        req, _ := http.NewRequestWithContext(ctx, "GET",
-            "http://payment-service/health", nil)
-        resp, err := http.DefaultClient.Do(req)
-        if err != nil {
-            return err
-        }
-        defer resp.Body.Close()
-        if resp.StatusCode != 200 {
-            return fmt.Errorf("unhealthy: %d", resp.StatusCode)
-        }
-        return nil
+        return checkHTTP(ctx, "http://payment-service/health")
     })
 
     http.HandleFunc("/healthz", checker.LivenessHandler)
     http.HandleFunc("/ready", checker.ReadinessHandler)
     http.ListenAndServe(":8080", nil)
+}
+
+func checkHTTP(ctx context.Context, url string) error {
+    req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+    if err != nil {
+        return err
+    }
+
+    resp, err := http.DefaultClient.Do(req)
+    if err != nil {
+        return err
+    }
+    defer resp.Body.Close()
+
+    if resp.StatusCode != http.StatusOK {
+        return fmt.Errorf("unhealthy: %d", resp.StatusCode)
+    }
+    return nil
 }
 ```
 
@@ -653,7 +675,7 @@ groups:
 
       - alert: AllBackendsUnhealthy
         expr: |
-          kube_endpoint_address_available{endpoint="my-service"} == 0
+          sum(kube_endpoint_address{endpoint="my-service",ready="true"}) == 0
         for: 1m
         labels:
           severity: critical
