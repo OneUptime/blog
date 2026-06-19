@@ -42,7 +42,7 @@ Add these dependencies to your `Cargo.toml`:
 ```toml
 [dependencies]
 tokio = { version = "1.35", features = ["full"] }
-tokio-stream = "0.1"
+tokio-stream = { version = "0.1", features = ["sync"] }
 futures = "0.3"
 async-stream = "0.3"
 ```
@@ -93,10 +93,9 @@ fn timestamp_stream() -> impl tokio_stream::Stream<Item = u64> {
 
 #[tokio::main]
 async fn main() {
-    let mut timestamps = timestamp_stream();
-
     // Take only the first 10 items from the infinite stream
-    let mut timestamps = timestamps.take(10);
+    let timestamps = timestamp_stream().take(10);
+    tokio::pin!(timestamps);
 
     while let Some(ts) = timestamps.next().await {
         println!("Timestamp: {}", ts);
@@ -184,7 +183,8 @@ async fn main() {
 When you need to perform async work for each item, use `then`:
 
 ```rust
-use tokio_stream::{self as stream, StreamExt};
+use futures::StreamExt;
+use tokio_stream as stream;
 use std::time::Duration;
 
 async fn process_item(item: i32) -> String {
@@ -198,7 +198,8 @@ async fn main() {
     let items = stream::iter(vec![1, 2, 3, 4, 5]);
 
     // Process each item asynchronously, one at a time
-    let mut processed = items.then(|item| process_item(item));
+    let processed = items.then(|item| process_item(item));
+    tokio::pin!(processed);
 
     while let Some(result) = processed.next().await {
         println!("{}", result);
@@ -299,7 +300,8 @@ Processing items one at a time is simple but slow. For I/O-bound work, you want 
 `buffer_unordered` processes multiple items concurrently, emitting results as they complete:
 
 ```rust
-use tokio_stream::{self as stream, StreamExt};
+use futures::StreamExt;
+use tokio_stream as stream;
 use std::time::Duration;
 
 async fn fetch_data(id: i32) -> String {
@@ -330,7 +332,8 @@ async fn main() {
 If you need results in the original order, use `buffered` instead:
 
 ```rust
-use tokio_stream::{self as stream, StreamExt};
+use futures::StreamExt;
+use tokio_stream as stream;
 use std::time::Duration;
 
 async fn fetch_data(id: i32) -> String {
@@ -440,7 +443,8 @@ fn fallible_stream() -> impl tokio_stream::Stream<Item = Result<i32, ProcessErro
 
 #[tokio::main]
 async fn main() {
-    let mut stream = fallible_stream();
+    let stream = fallible_stream();
+    tokio::pin!(stream);
 
     while let Some(result) = stream.next().await {
         match result {
@@ -472,7 +476,8 @@ async fn main() {
     let items = stream::iter(0..100);
 
     // Collect items into chunks of 10
-    let mut batches = items.chunks_timeout(10, tokio::time::Duration::from_secs(1));
+    let batches = items.chunks_timeout(10, tokio::time::Duration::from_secs(1));
+    tokio::pin!(batches);
 
     while let Some(batch) = batches.next().await {
         println!("Processing batch of {} items", batch.len());
