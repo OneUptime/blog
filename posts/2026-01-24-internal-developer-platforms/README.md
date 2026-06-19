@@ -79,24 +79,41 @@ backend:
       user: ${POSTGRES_USER}
       password: ${POSTGRES_PASSWORD}
 
+integrations:
+  github:
+    - host: github.com
+      token: ${GITHUB_TOKEN}
+
 # Authentication configuration
 auth:
   environment: production
   providers:
     github:
       production:
-        clientId: ${GITHUB_CLIENT_ID}
-        clientSecret: ${GITHUB_CLIENT_SECRET}
+        clientId: ${AUTH_GITHUB_CLIENT_ID}
+        clientSecret: ${AUTH_GITHUB_CLIENT_SECRET}
+        signIn:
+          resolvers:
+            - resolver: usernameMatchingUserEntityName
 
 # Catalog configuration for service discovery
 catalog:
   import:
     entityFilename: catalog-info.yaml
+  rules:
+    - allow: [Component, System, API, Resource, Location, Template, Group, User]
+  providers:
+    github:
+      acme:
+        organization: acme-corp
+        catalogPath: /catalog-info.yaml
+        filters:
+          branch: main
+          repository: .*
+        schedule:
+          frequency: { minutes: 30 }
+          timeout: { minutes: 3 }
   locations:
-    # Load all catalog files from your repositories
-    - type: url
-      target: https://github.com/acme-corp/*/blob/main/catalog-info.yaml
-
     # Load team definitions
     - type: file
       target: ./catalog/teams.yaml
@@ -254,7 +271,7 @@ spec:
           ui:field: OwnerPicker
           ui:options:
             catalogFilter:
-              kind: Group
+              - kind: Group
 
     - title: Technical Choices
       properties:
@@ -319,7 +336,7 @@ spec:
         repoContentsUrl: ${{ steps['create-repo'].output.repoContentsUrl }}
         catalogInfoPath: /catalog-info.yaml
 
-    # Create Kubernetes namespace and resources
+    # Create Kubernetes namespace and resources with a custom action
     - id: create-k8s-resources
       name: Create Kubernetes Resources
       action: kubernetes:apply
@@ -367,7 +384,7 @@ spec:
           ui:field: EntityPicker
           ui:options:
             catalogFilter:
-              kind: Component
+              - kind: Component
         environment:
           title: Environment
           type: string
@@ -489,9 +506,8 @@ proxy:
     headers:
       Authorization: Bearer ${ARGOCD_TOKEN}
 
-# GitHub Actions integration
-githubActions:
-  host: https://github.com
+# The GitHub Actions plugin uses the GitHub integration and the
+# github.com/project-slug catalog annotation.
 ```
 
 ### Linking Services to CI/CD Pipelines
@@ -522,26 +538,28 @@ Your IDP should enforce organizational policies automatically, not through manua
 
 package backstage.service
 
+import rego.v1
+
 # All services must have an owner
-deny[msg] {
-    input.spec.owner == ""
+deny contains msg if {
+    not input.spec.owner
     msg := "Service must have an owner specified"
 }
 
 # Production services must have runbook links
-deny[msg] {
+deny contains msg if {
     input.spec.lifecycle == "production"
     not has_runbook_link
     msg := "Production services must have a runbook link"
 }
 
-has_runbook_link {
+has_runbook_link if {
     some link
     input.metadata.links[link].title == "Runbook"
 }
 
 # Critical services must have on-call configured
-deny[msg] {
+deny contains msg if {
     input.metadata.tags[_] == "critical"
     not input.metadata.annotations["pagerduty.com/service-id"]
     msg := "Critical services must have PagerDuty configured"
@@ -554,30 +572,30 @@ Track adoption and identify bottlenecks in your platform.
 
 ```yaml
 # monitoring/idp-dashboard.yaml
-# Grafana dashboard for IDP metrics
+# Grafana dashboard for custom IDP metrics emitted by your Backstage backend
 
 panels:
   - title: Template Usage
     type: stat
     query: |
-      sum(increase(scaffolder_task_count_total[30d])) by (template_name)
+      sum(increase(idp_scaffolder_task_total[30d])) by (template_name)
 
   - title: Average Provisioning Time
     type: timeseries
     query: |
       histogram_quantile(0.95,
-        rate(scaffolder_task_duration_seconds_bucket[1h])
+        sum by (le) (rate(idp_scaffolder_task_duration_seconds_bucket[1h]))
       )
 
   - title: Catalog Entity Count
     type: gauge
     query: |
-      count(catalog_entities_total) by (kind)
+      sum(idp_catalog_entities_total) by (kind)
 
   - title: Failed Template Runs
     type: stat
     query: |
-      sum(increase(scaffolder_task_count_total{status="failed"}[7d]))
+      sum(increase(idp_scaffolder_task_total{status="failed"}[7d]))
 ```
 
 ---
