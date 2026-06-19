@@ -44,7 +44,7 @@ syntax = "proto3";
 
 package streaming;
 
-option go_package = "./pb";
+option go_package = "myservice/pb";
 
 // Message definitions
 message DataPoint {
@@ -117,9 +117,10 @@ Server streaming is useful for push notifications, real-time feeds, and large da
 package main
 
 import (
-    "context"
+    "fmt"
     "log"
     "math/rand"
+    "sync"
     "time"
 
     pb "myservice/pb"
@@ -127,7 +128,8 @@ import (
 
 type dataServer struct {
     pb.UnimplementedDataServiceServer
-    subscribers map[string]chan *pb.DataPoint
+    subscribers   map[string]chan *pb.DataPoint
+    subscribersMu sync.Mutex
 }
 
 // SubscribeData implements server-side streaming
@@ -137,8 +139,17 @@ func (s *dataServer) SubscribeData(req *pb.StreamRequest, stream pb.DataService_
 
     // Create a channel for this subscriber
     dataChan := make(chan *pb.DataPoint, 100)
+    s.subscribersMu.Lock()
+    if s.subscribers == nil {
+        s.subscribers = make(map[string]chan *pb.DataPoint)
+    }
     s.subscribers[req.SubscriptionId] = dataChan
-    defer delete(s.subscribers, req.SubscriptionId)
+    s.subscribersMu.Unlock()
+    defer func() {
+        s.subscribersMu.Lock()
+        delete(s.subscribers, req.SubscriptionId)
+        s.subscribersMu.Unlock()
+    }()
     defer close(dataChan)
 
     // Simulate data generation
@@ -149,6 +160,10 @@ func (s *dataServer) SubscribeData(req *pb.StreamRequest, stream pb.DataService_
     batchSize := int(req.BatchSize)
     if batchSize <= 0 {
         batchSize = 10
+    }
+    topics := req.Topics
+    if len(topics) == 0 {
+        topics = []string{"default"}
     }
 
     for {
@@ -167,7 +182,7 @@ func (s *dataServer) SubscribeData(req *pb.StreamRequest, stream pb.DataService_
                     Value:     rand.Float64() * 100,
                     Timestamp: time.Now().UnixNano(),
                     Metadata: map[string]string{
-                        "topic": req.Topics[rand.Intn(len(req.Topics))],
+                        "topic": topics[rand.Intn(len(topics))],
                     },
                 })
             }
@@ -198,9 +213,9 @@ package main
 
 import (
     "context"
+    "fmt"
     "io"
     "log"
-    "time"
 
     "google.golang.org/grpc"
     "google.golang.org/grpc/credentials/insecure"
@@ -246,7 +261,7 @@ func subscribeToData(client pb.DataServiceClient) error {
 }
 
 func main() {
-    conn, err := grpc.Dial(
+    conn, err := grpc.NewClient(
         "localhost:50051",
         grpc.WithTransportCredentials(insecure.NewCredentials()),
     )
@@ -294,6 +309,7 @@ import (
     "fmt"
     "io"
     "log"
+    "time"
 
     pb "myservice/pb"
 )
@@ -310,9 +326,13 @@ func (s *dataServer) UploadFile(stream pb.DataService_UploadFileServer) error {
         if err == io.EOF {
             // Client finished sending
             checksum := hex.EncodeToString(hasher.Sum(nil))
+            filename := "unknown"
+            if metadata != nil {
+                filename = metadata.Filename
+            }
 
             log.Printf("Upload complete: %s, %d bytes, checksum: %s",
-                metadata.Filename, totalBytes, checksum)
+                filename, totalBytes, checksum)
 
             // Send response
             return stream.SendAndClose(&pb.UploadResponse{
@@ -357,11 +377,14 @@ package main
 
 import (
     "context"
+    "fmt"
     "io"
     "log"
     "os"
+    "time"
 
     "google.golang.org/grpc"
+    "google.golang.org/grpc/credentials/insecure"
     pb "myservice/pb"
 )
 
@@ -435,7 +458,13 @@ func uploadFile(client pb.DataServiceClient, filepath string) (*pb.UploadRespons
 }
 
 func main() {
-    conn, _ := grpc.Dial("localhost:50051", grpc.WithInsecure())
+    conn, err := grpc.NewClient(
+        "localhost:50051",
+        grpc.WithTransportCredentials(insecure.NewCredentials()),
+    )
+    if err != nil {
+        log.Fatalf("Failed to create client: %v", err)
+    }
     defer conn.Close()
 
     client := pb.NewDataServiceClient(conn)
@@ -477,17 +506,24 @@ sequenceDiagram
 package main
 
 import (
+    "fmt"
     "io"
     "log"
     "sync"
+    "time"
 
     pb "myservice/pb"
 )
 
+type chatClient struct {
+    stream pb.DataService_ChatServer
+    sendMu sync.Mutex
+}
+
 type chatServer struct {
     pb.UnimplementedDataServiceServer
     // Map of user ID to their stream
-    clients   map[string]pb.DataService_ChatServer
+    clients   map[string]*chatClient
     clientsMu sync.RWMutex
 }
 
@@ -504,7 +540,10 @@ func (s *chatServer) Chat(stream pb.DataService_ChatServer) error {
 
     // Register this client
     s.clientsMu.Lock()
-    s.clients[userID] = stream
+    if s.clients == nil {
+        s.clients = make(map[string]*chatClient)
+    }
+    s.clients[userID] = &chatClient{stream: stream}
     s.clientsMu.Unlock()
 
     // Cleanup on exit
@@ -542,16 +581,21 @@ func (s *chatServer) Chat(stream pb.DataService_ChatServer) error {
 // broadcast sends message to all clients except sender
 func (s *chatServer) broadcast(msg *pb.ChatMessage, senderID string) {
     s.clientsMu.RLock()
-    defer s.clientsMu.RUnlock()
-
+    clients := make(map[string]*chatClient, len(s.clients))
     for userID, clientStream := range s.clients {
         if userID == senderID {
             continue // Do not send to sender
         }
+        clients[userID] = clientStream
+    }
+    s.clientsMu.RUnlock()
 
-        if err := clientStream.Send(msg); err != nil {
+    for userID, clientStream := range clients {
+        clientStream.sendMu.Lock()
+        if err := clientStream.stream.Send(msg); err != nil {
             log.Printf("Failed to send to %s: %v", userID, err)
         }
+        clientStream.sendMu.Unlock()
     }
 }
 ```
@@ -572,6 +616,7 @@ import (
     "time"
 
     "google.golang.org/grpc"
+    "google.golang.org/grpc/credentials/insecure"
     pb "myservice/pb"
 )
 
@@ -651,7 +696,13 @@ func main() {
     }
     userID := os.Args[1]
 
-    conn, _ := grpc.Dial("localhost:50051", grpc.WithInsecure())
+    conn, err := grpc.NewClient(
+        "localhost:50051",
+        grpc.WithTransportCredentials(insecure.NewCredentials()),
+    )
+    if err != nil {
+        log.Fatalf("Failed to create client: %v", err)
+    }
     defer conn.Close()
 
     client := pb.NewDataServiceClient(conn)
@@ -673,7 +724,7 @@ import grpc
 from concurrent import futures
 import time
 import threading
-from collections import defaultdict
+import queue
 
 import streaming_pb2
 import streaming_pb2_grpc
@@ -687,6 +738,8 @@ class DataServiceServicer(streaming_pb2_grpc.DataServiceServicer):
     def SubscribeData(self, request, context):
         """Server streaming: send continuous data updates."""
         sequence = 0
+        batch_size = request.batch_size if request.batch_size > 0 else 10
+        topics = list(request.topics) or ["default"]
 
         while context.is_active():
             # Generate data points
@@ -695,9 +748,9 @@ class DataServiceServicer(streaming_pb2_grpc.DataServiceServicer):
                     id=f"{request.subscription_id}-{sequence}-{i}",
                     value=50.0 + (sequence % 50),
                     timestamp=int(time.time() * 1e9),
-                    metadata={"topic": request.topics[i % len(request.topics)]}
+                    metadata={"topic": topics[i % len(topics)]}
                 )
-                for i in range(request.batch_size or 10)
+                for i in range(batch_size)
             ]
 
             yield streaming_pb2.StreamResponse(
@@ -736,6 +789,7 @@ class DataServiceServicer(streaming_pb2_grpc.DataServiceServicer):
     def Chat(self, request_iterator, context):
         """Bidirectional streaming: real-time chat."""
         user_id = None
+        message_queue = queue.Queue()
 
         def receive_messages():
             nonlocal user_id
@@ -743,20 +797,22 @@ class DataServiceServicer(streaming_pb2_grpc.DataServiceServicer):
                 if user_id is None:
                     user_id = message.user_id
                     with self.lock:
-                        self.chat_clients[user_id] = context
+                        self.chat_clients[user_id] = message_queue
                     print(f"User {user_id} joined")
                 else:
                     # Broadcast to other users
                     self._broadcast(message, user_id)
 
         # Start receiving in background
-        receiver = threading.Thread(target=receive_messages)
+        receiver = threading.Thread(target=receive_messages, daemon=True)
         receiver.start()
 
         # Yield messages sent to this client
         while context.is_active():
-            # Check for messages in a queue (simplified)
-            time.sleep(0.1)
+            try:
+                yield message_queue.get(timeout=0.1)
+            except queue.Empty:
+                continue
 
         # Cleanup
         if user_id:
@@ -766,10 +822,9 @@ class DataServiceServicer(streaming_pb2_grpc.DataServiceServicer):
 
     def _broadcast(self, message, sender_id):
         with self.lock:
-            for user_id, ctx in self.chat_clients.items():
+            for user_id, message_queue in self.chat_clients.items():
                 if user_id != sender_id:
-                    # In real implementation, use a message queue
-                    pass
+                    message_queue.put(message)
 
 
 def serve():
@@ -791,7 +846,6 @@ if __name__ == "__main__":
 # client_streaming.py - Python gRPC streaming client
 import grpc
 import time
-import threading
 
 import streaming_pb2
 import streaming_pb2_grpc
