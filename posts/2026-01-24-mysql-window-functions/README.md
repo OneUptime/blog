@@ -74,10 +74,11 @@ SELECT
     salesperson,
     region,
     amount,
-    ROW_NUMBER() OVER (ORDER BY amount DESC) AS row_num,
+    ROW_NUMBER() OVER (ORDER BY amount DESC, id) AS row_num,
     RANK() OVER (ORDER BY amount DESC) AS rank_val,
     DENSE_RANK() OVER (ORDER BY amount DESC) AS dense_rank_val
-FROM sales;
+FROM sales
+ORDER BY amount DESC, id;
 
 -- Result:
 -- salesperson | region | amount  | row_num | rank_val | dense_rank_val
@@ -92,7 +93,7 @@ FROM sales;
 ### Ranking Within Partitions
 
 ```sql
--- Rank salespeople within each region
+-- Rank sales within each region
 SELECT
     salesperson,
     region,
@@ -144,11 +145,11 @@ SELECT
     salesperson,
     amount,
     SUM(amount) OVER (
-        ORDER BY sale_date
+        ORDER BY sale_date, id
         ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
     ) AS running_total
 FROM sales
-ORDER BY sale_date;
+ORDER BY sale_date, id;
 
 -- Running total per salesperson
 SELECT
@@ -167,16 +168,16 @@ ORDER BY salesperson, sale_date;
 ### Moving Averages
 
 ```sql
--- 3-day moving average
+-- 3-row moving average
 SELECT
     sale_date,
     amount,
     AVG(amount) OVER (
-        ORDER BY sale_date
+        ORDER BY sale_date, id
         ROWS BETWEEN 2 PRECEDING AND CURRENT ROW
-    ) AS moving_avg_3day
+    ) AS moving_avg_3row
 FROM sales
-ORDER BY sale_date;
+ORDER BY sale_date, id;
 
 -- Moving average with null handling
 SELECT
@@ -184,16 +185,16 @@ SELECT
     amount,
     ROUND(
         AVG(amount) OVER (
-            ORDER BY sale_date
+            ORDER BY sale_date, id
             ROWS BETWEEN 6 PRECEDING AND CURRENT ROW
         ), 2
-    ) AS moving_avg_7day,
-    COUNT(*) OVER (
-        ORDER BY sale_date
+    ) AS moving_avg_7row,
+    COUNT(amount) OVER (
+        ORDER BY sale_date, id
         ROWS BETWEEN 6 PRECEDING AND CURRENT ROW
-    ) AS days_in_window
+    ) AS non_null_values_in_window
 FROM sales
-ORDER BY sale_date;
+ORDER BY sale_date, id;
 ```
 
 ## Value Functions
@@ -293,23 +294,23 @@ SELECT
     amount,
     -- All rows from start to current
     SUM(amount) OVER (
-        ORDER BY sale_date
+        ORDER BY sale_date, id
         ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
     ) AS running_total,
 
     -- 2 rows before to 2 rows after (5-row window)
     AVG(amount) OVER (
-        ORDER BY sale_date
+        ORDER BY sale_date, id
         ROWS BETWEEN 2 PRECEDING AND 2 FOLLOWING
     ) AS centered_avg,
 
     -- Current row to end
     SUM(amount) OVER (
-        ORDER BY sale_date
+        ORDER BY sale_date, id
         ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING
     ) AS remaining_total
 FROM sales
-ORDER BY sale_date;
+ORDER BY sale_date, id;
 ```
 
 ## Named Windows
@@ -387,14 +388,14 @@ WITH numbered AS (
     SELECT
         id,
         sale_date,
-        LAG(sale_date) OVER (ORDER BY sale_date) AS prev_date,
-        DATEDIFF(sale_date, LAG(sale_date) OVER (ORDER BY sale_date)) AS days_gap
+        LAG(sale_date) OVER (ORDER BY sale_date, id) AS prev_date,
+        DATEDIFF(sale_date, LAG(sale_date) OVER (ORDER BY sale_date, id)) AS days_gap
     FROM sales
 )
 SELECT *
 FROM numbered
 WHERE days_gap > 1
-ORDER BY sale_date;
+ORDER BY sale_date, id;
 ```
 
 ## Performance Optimization
