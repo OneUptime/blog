@@ -155,8 +155,11 @@ If a rollout is stuck:
 # Check deployment conditions
 kubectl describe deployment api-server -n production | grep -A 10 "Conditions:"
 
-# Common stuck conditions:
-# - Progressing: False (rollout not making progress)
+# Confirm rollout progress
+kubectl rollout status deployment/api-server -n production
+
+# Common conditions to check:
+# - Progressing: False with ProgressDeadlineExceeded (rollout exceeded its progress deadline)
 # - Available: False (not enough replicas ready)
 ```
 
@@ -185,10 +188,10 @@ Endpoints:         10.244.1.5:8080,10.244.2.15:8080,10.244.3.22:8080
 Debug service connectivity:
 
 ```bash
-# Check endpoints separately
-kubectl get endpoints api-server -n production
+# Check EndpointSlices separately
+kubectl get endpointslices -l kubernetes.io/service-name=api-server -n production
 
-# If empty, pods do not match service selector
+# If endpoints are empty, pods do not match service selector
 kubectl describe service api-server -n production | grep Selector
 kubectl get pods -n production --show-labels | grep api-server
 ```
