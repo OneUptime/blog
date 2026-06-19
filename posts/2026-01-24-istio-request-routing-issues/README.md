@@ -31,7 +31,7 @@ The most common issue is that your VirtualService exists but requests bypass it 
 
 ### Check the Host Field
 
-The `hosts` field in your VirtualService must match exactly what the client uses to reach your service.
+The `hosts` field in your VirtualService must match the destination host for the traffic. In Kubernetes, short names such as `reviews` are interpreted relative to the namespace where the VirtualService is defined, so fully qualified service names are safer when there is any ambiguity.
 
 Here is a VirtualService that only works for internal cluster traffic:
 
@@ -45,7 +45,7 @@ metadata:
   namespace: default
 spec:
   hosts:
-    - reviews  # Only matches "reviews" exactly
+    - reviews  # Interpreted as reviews.default.svc.cluster.local in this namespace
   http:
     - route:
         - destination:
@@ -53,7 +53,7 @@ spec:
             subset: v1
 ```
 
-If you are calling from outside the cluster or using the full DNS name, you need to include all possible hostnames:
+If clients use several internal DNS names for the same service, include those hostnames or standardize clients on the fully qualified service name:
 
 ```yaml
 # This VirtualService matches multiple host patterns
@@ -202,7 +202,7 @@ kubectl get pods -l app=reviews --show-labels
 
 ## Problem 4: Namespace Boundaries
 
-Istio VirtualServices are namespace-scoped by default. A VirtualService in namespace A won't affect traffic in namespace B.
+Istio VirtualServices are namespace-scoped resources, but they are exported to all namespaces by default unless `exportTo` restricts them. Short service names are resolved relative to the VirtualService's namespace, so cross-namespace routes should use fully qualified service names.
 
 ```mermaid
 flowchart TB
@@ -218,7 +218,7 @@ flowchart TB
 
     VS-A --> Svc-A
     VS-B --> Svc-B
-    VS-A -.-x Svc-B
+    VS-A -. use FQDN for cross-namespace routing .-> Svc-B
 ```
 
 To route across namespaces, use the full service name:
@@ -240,11 +240,11 @@ spec:
               number: 8080
 ```
 
-You also need to export the service using a ServiceEntry or ensure the DestinationRule is in the correct namespace.
+You also need any related DestinationRule to be visible from the namespace where traffic is being resolved, using `exportTo` when you restrict visibility.
 
 ## Problem 5: Header-Based Routing Not Working
 
-Header matching is case-sensitive and exact by default:
+Header keys in a VirtualService match must be lowercase and use hyphens. Header values are case-sensitive and exact by default:
 
 ```yaml
 apiVersion: networking.istio.io/v1beta1
