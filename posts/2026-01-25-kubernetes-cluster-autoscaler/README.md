@@ -55,14 +55,30 @@ Before setting up Cluster Autoscaler:
     {
       "Effect": "Allow",
       "Action": [
+        "autoscaling:SetDesiredCapacity",
+        "autoscaling:TerminateInstanceInAutoScalingGroup"
+      ],
+      "Resource": ["*"],
+      "Condition": {
+        "StringEquals": {
+          "aws:ResourceTag/k8s.io/cluster-autoscaler/enabled": "true",
+          "aws:ResourceTag/k8s.io/cluster-autoscaler/my-cluster": "owned"
+        }
+      }
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
         "autoscaling:DescribeAutoScalingGroups",
         "autoscaling:DescribeAutoScalingInstances",
         "autoscaling:DescribeLaunchConfigurations",
+        "autoscaling:DescribeScalingActivities",
         "autoscaling:DescribeTags",
-        "autoscaling:SetDesiredCapacity",
-        "autoscaling:TerminateInstanceInAutoScalingGroup",
+        "ec2:DescribeImages",
         "ec2:DescribeLaunchTemplateVersions",
-        "ec2:DescribeInstanceTypes"
+        "ec2:DescribeInstanceTypes",
+        "ec2:GetInstanceTypesFromInstanceRequirements",
+        "eks:DescribeNodegroup"
       ],
       "Resource": ["*"]
     }
@@ -95,7 +111,8 @@ spec:
       serviceAccountName: cluster-autoscaler
       containers:
         - name: cluster-autoscaler
-          image: registry.k8s.io/autoscaling/cluster-autoscaler:v1.28.0
+          # Match the Cluster Autoscaler minor version to your Kubernetes minor version.
+          image: registry.k8s.io/autoscaling/cluster-autoscaler:v1.34.0
           command:
             - ./cluster-autoscaler
             - --v=4
@@ -105,7 +122,6 @@ spec:
             - --expander=least-waste
             - --node-group-auto-discovery=asg:tag=k8s.io/cluster-autoscaler/enabled,k8s.io/cluster-autoscaler/my-cluster
             - --balance-similar-node-groups
-            - --scale-down-enabled=true
             - --scale-down-delay-after-add=10m
             - --scale-down-unneeded-time=10m
             - --scale-down-utilization-threshold=0.5
@@ -165,7 +181,7 @@ gcloud container clusters update my-cluster \
   --min-nodes=1 \
   --max-nodes=10 \
   --node-pool=default-pool \
-  --zone=us-central1-a
+  --location=us-central1-a
 
 # Or create a new node pool with autoscaling
 gcloud container node-pools create high-memory-pool \
@@ -174,7 +190,7 @@ gcloud container node-pools create high-memory-pool \
   --min-nodes=0 \
   --max-nodes=5 \
   --machine-type=n2-highmem-4 \
-  --zone=us-central1-a
+  --location=us-central1-a
 ```
 
 ## Configuration Parameters
@@ -192,11 +208,10 @@ command:
   - --cloud-provider=aws
 
   # Expander strategy: how to choose which node group to scale
-  # Options: random, most-pods, least-waste, price, priority
+  # Options include: random, most-pods, least-waste, least-nodes, price, priority
   - --expander=least-waste
 
   # Scale down configuration
-  - --scale-down-enabled=true
   # Wait time after scale up before considering scale down
   - --scale-down-delay-after-add=10m
   # Time node must be unneeded before removal
@@ -228,10 +243,13 @@ Choose how the autoscaler selects which node group to scale:
 # Most Pods: Choose group that can schedule most pending pods
 - --expander=most-pods
 
+# Least Nodes: Choose group that uses the fewest nodes after scale up
+- --expander=least-nodes
+
 # Random: Choose randomly (useful for testing)
 - --expander=random
 
-# Price: Choose cheapest option (requires pricing info)
+# Price: Choose cheapest option (supported by GCE, GKE, and Equinix Metal)
 - --expander=price
 
 # Priority: Use explicit priority configuration
@@ -266,8 +284,13 @@ kind: Deployment
 metadata:
   name: critical-service
 spec:
+  selector:
+    matchLabels:
+      app: critical-service
   template:
     metadata:
+      labels:
+        app: critical-service
       annotations:
         # Prevent autoscaler from evicting this pod
         cluster-autoscaler.kubernetes.io/safe-to-evict: "false"
@@ -341,7 +364,7 @@ groups:
           summary: "Unschedulable pods exist for more than 10 minutes"
 
       - alert: ClusterAutoscalerNotReady
-        expr: cluster_autoscaler_last_activity == 0
+        expr: absent(cluster_autoscaler_last_activity{activity="main"}) or (time() - cluster_autoscaler_last_activity{activity="main"} > 300)
         for: 5m
         labels:
           severity: critical
