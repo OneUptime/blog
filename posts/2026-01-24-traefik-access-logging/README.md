@@ -40,10 +40,10 @@ data:
       kubernetesCRD: {}
 ```
 
-With the default configuration, logs go to stdout in Common Log Format:
+With the default configuration, logs go to stdout in Traefik's extended Common Log Format:
 
 ```text
-10.0.0.1 - - [25/Jan/2026:10:00:00 +0000] "GET /api/users HTTP/1.1" 200 1234 "-" "Mozilla/5.0"
+10.0.0.1 - - [25/Jan/2026:10:00:00 +0000] "GET /api/users HTTP/1.1" 200 1234 "-" "Mozilla/5.0" 1 "api-router@kubernetescrd" "https://10.1.0.5:8080" 45ms
 ```
 
 ## JSON Log Format
@@ -60,7 +60,7 @@ metadata:
 data:
   traefik.yaml: |
     accessLog:
-      # Output format: json or common
+      # Output format: json, common, or genericCLF
       format: json
 
       # Fields to include in each log entry
@@ -189,7 +189,7 @@ data:
 
 ## Filtering Requests
 
-Avoid logging health checks and static assets to reduce noise:
+Use status-code and duration filters to reduce noise:
 
 ```yaml
 # log-filtering.yaml
@@ -216,32 +216,26 @@ data:
         retryAttempts: true
 ```
 
-For more selective filtering, use middleware to add headers and filter on those:
+For more selective filtering, disable access logs on specific routers:
 
 ```yaml
 # selective-logging.yaml
-# Mark requests for logging
 apiVersion: traefik.io/v1alpha1
-kind: Middleware
+kind: IngressRoute
 metadata:
-  name: mark-for-logging
+  name: health-check
   namespace: default
 spec:
-  headers:
-    customRequestHeaders:
-      X-Should-Log: "true"
-
----
-# Don't mark health checks
-apiVersion: traefik.io/v1alpha1
-kind: Middleware
-metadata:
-  name: skip-logging
-  namespace: default
-spec:
-  headers:
-    customRequestHeaders:
-      X-Should-Log: "false"
+  entryPoints:
+    - web
+  routes:
+    - match: Path(`/healthz`)
+      kind: Rule
+      observability:
+        accessLogs: false
+      services:
+        - name: health-service
+          port: 80
 ```
 
 ## Adding Custom Fields
@@ -292,7 +286,7 @@ data:
       format: json
 ```
 
-Use a sidecar container for log rotation:
+Use a sidecar container for log rotation. Make sure the rotation tool either sends Traefik a `USR1` signal after rotating the file or uses a copy/truncate strategy:
 
 ```yaml
 # sidecar-rotation.yaml
@@ -356,11 +350,15 @@ spec:
             - name: logs
               mountPath: /var/log/traefik
               readOnly: true
+            - name: fluentd-position
+              mountPath: /fluentd/pos
             - name: fluentd-config
               mountPath: /fluentd/etc
 
       volumes:
         - name: logs
+          emptyDir: {}
+        - name: fluentd-position
           emptyDir: {}
         - name: fluentd-config
           configMap:
@@ -377,7 +375,7 @@ data:
     <source>
       @type tail
       path /var/log/traefik/access.log
-      pos_file /var/log/traefik/access.log.pos
+      pos_file /fluentd/pos/access.log.pos
       tag traefik.access
       <parse>
         @type json
@@ -425,7 +423,7 @@ GET traefik-access/_search
   "query": {
     "range": {
       "Duration": {
-        "gte": 1000000000  -- 1 second in nanoseconds
+        "gte": 1000000000
       }
     }
   }
@@ -436,8 +434,8 @@ sum by (ServiceName) (
   count_over_time({job="traefik"} | json | DownstreamStatus >= 500 [1h])
 )
 
--- Request rate by path (PromQL from metrics)
-sum by (path) (rate(traefik_entrypoint_requests_total[5m]))
+-- Request rate by router (PromQL from metrics)
+sum by (router) (rate(traefik_router_requests_total[5m]))
 ```
 
 ## Performance Considerations
@@ -445,8 +443,8 @@ sum by (path) (rate(traefik_entrypoint_requests_total[5m]))
 Access logging adds overhead. Mitigate it with:
 
 1. **Buffering**: Set `bufferingSize` to batch writes
-2. **Filtering**: Drop health checks and high-volume low-value paths
-3. **Sampling**: For very high traffic, consider logging a percentage
+2. **Filtering**: Use status-code and duration filters, and disable access logs on low-value routers
+3. **Sampling**: For very high traffic, sample logs in your log pipeline
 4. **Async shipping**: Use sidecars or async agents for log shipping
 
 ```yaml
