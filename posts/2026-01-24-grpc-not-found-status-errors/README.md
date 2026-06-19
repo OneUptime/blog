@@ -8,7 +8,7 @@ Description: A comprehensive guide to diagnosing and fixing NOT_FOUND status err
 
 ---
 
-The NOT_FOUND status code (code 5) in gRPC indicates that a requested resource does not exist. While this seems straightforward, debugging NOT_FOUND errors can be challenging because they can originate from various sources including misconfigured services, incorrect routing, or genuinely missing data. This guide will help you systematically diagnose and fix NOT_FOUND errors in your gRPC applications.
+The NOT_FOUND status code (code 5) in gRPC indicates that a requested resource does not exist. While this seems straightforward, debugging NOT_FOUND errors can be challenging because they can originate from various sources including application routing, proxy routing, or genuinely missing data. This guide will help you systematically diagnose and fix NOT_FOUND errors in your gRPC applications.
 
 ## Understanding the NOT_FOUND Status Code
 
@@ -30,15 +30,15 @@ flowchart TD
 NOT_FOUND errors typically fall into these categories:
 
 1. **Legitimate missing resources** - The requested resource genuinely does not exist
-2. **Service discovery issues** - The gRPC method or service itself is not registered
-3. **Routing misconfigurations** - Load balancers or proxies routing to wrong backends
+2. **Application routing issues** - Your service code maps an unknown tenant, collection, or route to NOT_FOUND
+3. **Proxy routing misconfigurations** - Load balancers or proxies returning or translating missing-route errors
 4. **Data synchronization issues** - Eventual consistency problems in distributed systems
 
 ## Diagnosing NOT_FOUND Errors
 
 ### Step 1: Check If the Service Method Is Registered
 
-One of the most common causes of NOT_FOUND is calling a method that does not exist on the server. This happens when the service is not properly registered.
+An unregistered gRPC service or method normally returns UNIMPLEMENTED, not NOT_FOUND. It is still worth checking service registration early, because a routing or deployment issue that sends clients to the wrong backend can be mistaken for a resource-level NOT_FOUND.
 
 The following code shows how to verify service registration on the server side:
 
@@ -65,7 +65,7 @@ func main() {
     server := grpc.NewServer()
 
     // IMPORTANT: Register your service implementation
-    // Missing this line is a common cause of NOT_FOUND errors
+    // Missing this line usually causes UNIMPLEMENTED errors
     userService := &UserServiceImpl{}
     pb.RegisterUserServiceServer(server, userService)
 
@@ -95,11 +95,11 @@ grpcurl -plaintext localhost:50051 list myapp.UserService
 grpcurl -plaintext localhost:50051 describe myapp.UserService.GetUser
 ```
 
-If your service does not appear in the list, the service is not registered correctly.
+If your service does not appear in the list, the service is not registered correctly. Fix that first before debugging resource-level NOT_FOUND errors.
 
 ### Step 3: Verify the Fully Qualified Method Name
 
-gRPC uses fully qualified method names in the format `/package.Service/Method`. A mismatch causes NOT_FOUND errors.
+gRPC uses fully qualified method names in the format `/package.Service/Method`. A mismatch normally causes UNIMPLEMENTED errors from the gRPC server, and it can also point to a proxy or deployment mismatch that is causing apparent NOT_FOUND responses.
 
 ```mermaid
 flowchart LR
@@ -107,7 +107,7 @@ flowchart LR
     C[Client Call] --> D{Names Match?}
     B --> D
     D -->|Yes| E[Request Processed]
-    D -->|No| F[NOT_FOUND Error]
+    D -->|No| F[Usually UNIMPLEMENTED]
 ```
 
 Check your proto file to ensure the package and service names match what the client expects:
@@ -137,7 +137,7 @@ message User {
 }
 ```
 
-## Fixing Service-Level NOT_FOUND Errors
+## Fixing Service Registration Issues
 
 ### Implementing Proper Service Registration
 
@@ -243,9 +243,9 @@ In production environments with load balancers, NOT_FOUND errors might occur due
 flowchart TD
     A[Client] --> B[Load Balancer]
     B --> C{Routing Decision}
-    C -->|Backend 1| D[Server with Service v1.0]
-    C -->|Backend 2| E[Server with Service v1.1]
-    C -->|Backend 3| F[Server Missing Service]
+    C -->|Backend 1| D[Server with Current Data]
+    C -->|Backend 2| E[Server with Stale Data]
+    C -->|Backend 3| F[Wrong Backend or Proxy Route]
     F --> G[NOT_FOUND Error]
 ```
 
@@ -259,9 +259,11 @@ package healthcheck
 
 import (
     "context"
+    "fmt"
     "time"
 
     "google.golang.org/grpc"
+    "google.golang.org/grpc/credentials/insecure"
     "google.golang.org/grpc/health/grpc_health_v1"
 )
 
@@ -270,7 +272,7 @@ func CheckServiceHealth(addr string, serviceName string) error {
     ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
     defer cancel()
 
-    conn, err := grpc.DialContext(ctx, addr, grpc.WithInsecure(), grpc.WithBlock())
+    conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
     if err != nil {
         return err
     }
@@ -331,6 +333,7 @@ package client
 
 import (
     "context"
+    "fmt"
     "log"
 
     "google.golang.org/grpc"
@@ -422,9 +425,16 @@ Use gRPC's error details to provide more context about NOT_FOUND errors:
 package service
 
 import (
+    "context"
+    "database/sql"
+    "errors"
+    "fmt"
+
     "google.golang.org/genproto/googleapis/rpc/errdetails"
     "google.golang.org/grpc/codes"
     "google.golang.org/grpc/status"
+
+    pb "myapp/proto/user"
 )
 
 // NotFoundError creates a detailed NOT_FOUND error
@@ -468,7 +478,7 @@ When you encounter a NOT_FOUND error, follow this checklist:
 ```mermaid
 flowchart TD
     A[NOT_FOUND Error] --> B{Is service registered?}
-    B -->|No| C[Register service with grpc.Server]
+    B -->|No| C[Register service with grpc.Server; expect UNIMPLEMENTED]
     B -->|Yes| D{Is method name correct?}
     D -->|No| E[Fix proto package/service/method names]
     D -->|Yes| F{Is reflection enabled?}
@@ -513,8 +523,8 @@ grpcurl -plaintext -d '{"service": "myapp.UserService"}' \
 
 6. **Use error details** - Provide structured error information using errdetails
 
-7. **Distinguish between service-level and resource-level NOT_FOUND** - These require different debugging approaches
+7. **Distinguish between registration errors and resource-level NOT_FOUND** - Missing gRPC services or methods usually return UNIMPLEMENTED, while missing application resources should return NOT_FOUND
 
 ## Conclusion
 
-NOT_FOUND errors in gRPC can originate from multiple sources, from misconfigured service registration to genuinely missing resources. By following the systematic debugging approach outlined in this guide, you can quickly identify the root cause and implement appropriate fixes. Remember to use tools like grpcurl and health checks to verify service availability, and always provide clear error messages that help both developers and end users understand what went wrong.
+NOT_FOUND errors in gRPC can originate from multiple sources, from application routing behavior to genuinely missing resources. By following the systematic debugging approach outlined in this guide, you can quickly identify the root cause and implement appropriate fixes. Remember to use tools like grpcurl and health checks to verify service availability, and always provide clear error messages that help both developers and end users understand what went wrong.
