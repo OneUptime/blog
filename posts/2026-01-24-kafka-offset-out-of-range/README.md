@@ -31,7 +31,7 @@ flowchart LR
     end
 
     LEO[Log End Offset: 5]
-    LSO[Log Start Offset: 0]
+    StartOffset[Log Start Offset: 0]
 
     M0 --> M1 --> M2 --> M3 --> M4
 
@@ -43,13 +43,13 @@ flowchart LR
 
 Each partition has two important offset boundaries:
 
-- **Log Start Offset (LSO)**: The earliest available offset (messages before this have been deleted)
+- **Log Start Offset**: The earliest available offset (messages before this have been deleted)
 - **Log End Offset (LEO)**: The offset of the next message to be written
 
 ```mermaid
 flowchart LR
     subgraph "Valid Offset Range"
-        LSO[Log Start Offset: 1000]
+        StartOffset[Log Start Offset: 1000]
         Data[Available Messages<br/>Offsets 1000-1999]
         LEO[Log End Offset: 2000]
     end
@@ -57,7 +57,7 @@ flowchart LR
     Invalid1[Offset 500<br/>OUT OF RANGE]
     Invalid2[Offset 2500<br/>OUT OF RANGE]
 
-    Invalid1 -.->|Too old| LSO
+    Invalid1 -.->|Too old| StartOffset
     Invalid2 -.->|Future| LEO
 
     style Invalid1 fill:#ff6b6b
@@ -83,13 +83,13 @@ kafka-configs.sh --bootstrap-server localhost:9092 \
 # retention.bytes=-1      (unlimited)
 ```
 
-### 2. Log Compaction
+### 2. Log Truncation or Manual Deletion
 
-For compacted topics, messages with duplicate keys are removed, creating gaps in offset sequences.
+When records are deleted with retention policies or tools such as `kafka-delete-records.sh`, older offsets may fall below the log start offset. Log-compacted topics can have gaps where individual records were compacted away, but Kafka keeps those offsets as valid positions in the log.
 
 ```mermaid
 flowchart TB
-    subgraph Before Compaction
+    subgraph Before Deletion
         B1[Offset 0: key=A, val=1]
         B2[Offset 1: key=B, val=2]
         B3[Offset 2: key=A, val=3]
@@ -97,15 +97,15 @@ flowchart TB
         B5[Offset 4: key=A, val=5]
     end
 
-    subgraph After Compaction
-        A1[Offset 1: key=B, val=2]
+    subgraph After Deletion
+        A1[Log Start Offset: 3]
         A2[Offset 3: key=C, val=4]
         A3[Offset 4: key=A, val=5]
     end
 
-    Before Compaction --> |Compaction| After Compaction
+    Before Deletion --> |Delete records below offset 3| After Deletion
 
-    Note[Offsets 0 and 2 no longer exist]
+    Note[Offsets 0-2 are now out of range]
 ```
 
 ### 3. Consumer Downtime
@@ -129,7 +129,7 @@ sequenceDiagram
     Note over C: Consumer restarts
     C->>K: Fetch offset 1100
     K--xC: OffsetOutOfRangeException
-    Note over C: Stored offset 1100 < LSO 5000
+    Note over C: Stored offset 1100 < log start offset 5000
 ```
 
 ### 4. Partition Reassignment
@@ -159,9 +159,9 @@ kafka-get-offsets.sh --bootstrap-server localhost:9092 \
     --topic orders \
     --time earliest
 
-# kafka-get-offsets.sh --bootstrap-server localhost:9092 \
-#     --topic orders \
-#     --time latest
+kafka-get-offsets.sh --bootstrap-server localhost:9092 \
+    --topic orders \
+    --time latest
 ```
 
 ### Examine Topic Details
@@ -223,12 +223,13 @@ consumer = KafkaConsumer(
     # Automatically reset to earliest when offset is out of range
     auto_offset_reset='earliest',
 
-    # Enable this to actually reset (otherwise just logs warning)
+    # Commit offsets automatically after consumption resumes
     enable_auto_commit=True,
 )
 
 # Alternative: Reset programmatically
 from kafka import TopicPartition
+from kafka.structs import OffsetAndMetadata
 
 consumer = KafkaConsumer(
     bootstrap_servers=['localhost:9092'],
@@ -242,6 +243,11 @@ consumer.assign(partitions)
 
 # Seek to beginning of each partition
 consumer.seek_to_beginning(*partitions)
+
+consumer.commit({
+    tp: OffsetAndMetadata(consumer.position(tp), '')
+    for tp in partitions
+})
 
 print("Reset to earliest offsets")
 for tp in partitions:
@@ -264,6 +270,7 @@ kafka-consumer-groups.sh --bootstrap-server localhost:9092 \
 
 ```python
 from kafka import KafkaConsumer, TopicPartition
+from kafka.structs import OffsetAndMetadata
 
 consumer = KafkaConsumer(
     'orders',
@@ -286,6 +293,11 @@ consumer.assign(partitions)
 # Seek to end of each partition
 consumer.seek_to_end(*partitions)
 
+consumer.commit({
+    tp: OffsetAndMetadata(consumer.position(tp), '')
+    for tp in partitions
+})
+
 print("Reset to latest offsets")
 for tp in partitions:
     print(f"  {tp}: {consumer.position(tp)}")
@@ -296,7 +308,7 @@ for tp in partitions:
 Reset to offsets corresponding to a specific point in time.
 
 ```bash
-# Reset to offset at specific timestamp (milliseconds since epoch)
+# Reset to offset at a specific datetime
 # Example: Reset to January 1, 2026 00:00:00 UTC
 kafka-consumer-groups.sh --bootstrap-server localhost:9092 \
     --group order-processors \
@@ -308,6 +320,7 @@ kafka-consumer-groups.sh --bootstrap-server localhost:9092 \
 
 ```python
 from kafka import KafkaConsumer, TopicPartition
+from kafka.structs import OffsetAndMetadata
 from datetime import datetime, timezone
 
 consumer = KafkaConsumer(
@@ -339,7 +352,10 @@ for tp, offset_and_timestamp in offsets.items():
         print(f"No messages after timestamp for {tp}, reset to end")
 
 # Commit the new offsets
-consumer.commit()
+consumer.commit({
+    tp: OffsetAndMetadata(consumer.position(tp), '')
+    for tp in partitions
+})
 ```
 
 ### Strategy 4: Reset to Specific Offset
@@ -347,18 +363,18 @@ consumer.commit()
 Reset to a known good offset value.
 
 ```bash
-# Reset to specific offset
+# Reset partitions 0, 1, and 2 to offset 5000
 kafka-consumer-groups.sh --bootstrap-server localhost:9092 \
     --group order-processors \
-    --topic orders:0:5000 \
-    --topic orders:1:6000 \
-    --topic orders:2:7000 \
     --reset-offsets \
+    --topic orders:0,1,2 \
+    --to-offset 5000 \
     --execute
 ```
 
 ```python
 from kafka import KafkaConsumer, TopicPartition
+from kafka.structs import OffsetAndMetadata
 
 consumer = KafkaConsumer(
     bootstrap_servers=['localhost:9092'],
@@ -382,7 +398,10 @@ for tp, offset in target_offsets.items():
     print(f"Reset {tp} to offset {offset}")
 
 # Commit the new offsets
-consumer.commit()
+consumer.commit({
+    tp: OffsetAndMetadata(offset, '')
+    for tp, offset in target_offsets.items()
+})
 ```
 
 ### Strategy 5: Automatic Recovery in Code
@@ -392,6 +411,7 @@ Implement automatic recovery when the error occurs.
 ```python
 from kafka import KafkaConsumer, TopicPartition
 from kafka.errors import OffsetOutOfRangeError
+from kafka.structs import OffsetAndMetadata
 import logging
 
 logging.basicConfig(level=logging.INFO)
@@ -458,7 +478,10 @@ class ResilientConsumer:
             logger.info(f"Reset to offsets at timestamp {self.recovery_strategy}")
 
         # Commit the recovered offsets
-        self.consumer.commit()
+        self.consumer.commit({
+            tp: OffsetAndMetadata(self.consumer.position(tp), '')
+            for tp in partitions
+        })
 
     def consume(self, handler):
         """
@@ -481,9 +504,10 @@ class ResilientConsumer:
             except OffsetOutOfRangeError as e:
                 logger.error(f"Offset out of range error: {e}")
                 # Extract affected partitions from error
-                affected_partitions = set()
-                for tp_offset in e.args[0].values():
-                    affected_partitions.update(tp_offset.keys())
+                if e.args and isinstance(e.args[0], dict):
+                    affected_partitions = set(e.args[0].keys())
+                else:
+                    affected_partitions = self.consumer.assignment()
                 self._recover_from_offset_error(affected_partitions)
 
             except Exception as e:
@@ -614,7 +638,11 @@ public class ResilientKafkaConsumer {
                 }
         }
 
-        consumer.commitSync();
+        Map<TopicPartition, OffsetAndMetadata> recoveredOffsets = new HashMap<>();
+        for (TopicPartition tp : partitions) {
+            recoveredOffsets.put(tp, new OffsetAndMetadata(consumer.position(tp)));
+        }
+        consumer.commitSync(recoveredOffsets);
     }
 
     public void close() {
@@ -740,6 +768,8 @@ Store offsets externally as a backup.
 import json
 import redis
 from kafka import KafkaConsumer, TopicPartition
+from kafka.errors import OffsetOutOfRangeError
+from kafka.structs import OffsetAndMetadata
 
 class OffsetCheckpointer:
     """
@@ -829,10 +859,18 @@ def consume_with_checkpointing():
         if saved_offsets:
             for tp, offset in saved_offsets.items():
                 consumer.seek(tp, offset)
+            consumer.commit({
+                tp: OffsetAndMetadata(offset, '')
+                for tp, offset in saved_offsets.items()
+            })
             print(f"Restored offsets: {saved_offsets}")
         else:
             # Fall back to earliest
             consumer.seek_to_beginning(*consumer.assignment())
+            consumer.commit({
+                tp: OffsetAndMetadata(consumer.position(tp), '')
+                for tp in consumer.assignment()
+            })
             print("No checkpoint found, reset to earliest")
 
 
@@ -847,6 +885,7 @@ Design message processing to be idempotent, making offset resets safe.
 
 ```python
 import hashlib
+import json
 import redis
 
 class IdempotentProcessor:
