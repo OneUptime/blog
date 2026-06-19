@@ -60,6 +60,7 @@ import httpx
 from opentelemetry import trace
 from opentelemetry.propagate import inject
 from typing import Dict, Optional
+import hashlib
 import re
 
 tracer = trace.get_tracer(__name__)
@@ -120,8 +121,8 @@ class StranglerFacade:
             return False
 
         # Use request_id for consistent routing (same user gets same experience)
-        hash_value = hash(request_id) % 100
-        return hash_value < config.weight
+        bucket = int(hashlib.sha256(request_id.encode()).hexdigest(), 16) % 100
+        return bucket < config.weight
 
     async def proxy_request(
         self,
@@ -138,7 +139,8 @@ class StranglerFacade:
 
             # Build headers with trace context
             headers = dict(request.headers)
-            headers.pop("host", None)
+            for header in ["host", "content-length", "transfer-encoding", "connection"]:
+                headers.pop(header, None)
             inject(headers)
 
             # Read request body
@@ -158,7 +160,11 @@ class StranglerFacade:
                 return Response(
                     content=response.content,
                     status_code=response.status_code,
-                    headers=dict(response.headers)
+                    headers={
+                        key: value
+                        for key, value in response.headers.items()
+                        if key.lower() not in {"content-length", "transfer-encoding", "connection"}
+                    }
                 )
 
             except httpx.RequestError as e:
@@ -203,7 +209,13 @@ async def proxy_all(request: Request, path: str):
     """Route all requests through the strangler facade"""
 
     full_path = f"/{path}"
-    request_id = request.headers.get("x-request-id", str(hash(request.client.host)))
+    routing_key = request.headers.get(
+        "x-user-id",
+        request.headers.get(
+            "x-request-id",
+            request.client.host if request.client else "anonymous"
+        )
+    )
 
     with tracer.start_as_current_span("strangler_facade") as span:
         span.set_attribute("http.path", full_path)
@@ -212,7 +224,7 @@ async def proxy_all(request: Request, path: str):
         # Find matching route
         route_config = facade.find_matching_route(full_path, request.method)
 
-        if route_config and facade.should_route_to_new_service(route_config, request_id):
+        if route_config and facade.should_route_to_new_service(route_config, routing_key):
             # Route to new microservice
             target_url = f"{route_config.target}{full_path}"
             span.set_attribute("routing.target", "new_service")
@@ -237,6 +249,7 @@ Control migration at a granular level with feature flags:
 # feature_flags.py
 import redis
 import json
+import hashlib
 from typing import Optional, Dict, Any
 from dataclasses import dataclass, asdict
 from opentelemetry import trace
@@ -330,8 +343,8 @@ class MigrationFeatureFlags:
 
             # Use user_id hash for consistent experience
             if user_id:
-                user_hash = hash(user_id) % 100
-                enabled = user_hash < flag.rollout_percentage
+                user_bucket = int(hashlib.sha256(user_id.encode()).hexdigest(), 16) % 100
+                enabled = user_bucket < flag.rollout_percentage
             else:
                 import random
                 enabled = random.randint(0, 99) < flag.rollout_percentage
@@ -393,7 +406,7 @@ flowchart TD
 ```python
 # data_sync.py
 import json
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import Callable, Dict, Any
 from dataclasses import dataclass
 import redis
@@ -539,14 +552,15 @@ class DualWriteService:
                     span.set_attribute("dual_write.new_failed", True)
 
                     # Publish sync event for retry
+                    now = datetime.now(UTC).isoformat()
                     self.sync_service.publish_change(ChangeEvent(
-                        event_id=f"retry-{datetime.utcnow().isoformat()}",
+                        event_id=f"retry-{now}",
                         table=table,
                         operation=operation,
-                        timestamp=datetime.utcnow().isoformat(),
+                        timestamp=now,
                         before={},
                         after=data,
-                        source="dual_write_retry"
+                        source="legacy"
                     ))
 
             return results
@@ -594,8 +608,20 @@ def transform_user_schema(legacy_data: dict) -> dict:
         "created_at": legacy_data.get("created_date"),
         "metadata": {
             "legacy_id": legacy_data["user_id"],
-            "migrated_at": datetime.utcnow().isoformat()
+            "migrated_at": datetime.now(UTC).isoformat()
         }
+    }
+
+
+def transform_order_schema(legacy_data: dict) -> dict:
+    """Transform legacy order schema to new schema"""
+    return {
+        "id": legacy_data["order_no"],
+        "customer_id": legacy_data["cust_id"],
+        "created_at": legacy_data.get("order_date"),
+        "total": float(legacy_data.get("total_amt", 0)),
+        "items": json.loads(legacy_data.get("items_json", "[]")),
+        "status": legacy_data.get("status")
     }
 ```
 
@@ -607,6 +633,7 @@ Protect new services from legacy system quirks:
 
 ```python
 # anti_corruption_layer.py
+import json
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional
 from dataclasses import dataclass
@@ -784,9 +811,10 @@ acl.register_adapter("order", OrderAdapter())
 class NewUserService:
     """New user service that uses ACL for legacy integration"""
 
-    def __init__(self, acl: AntiCorruptionLayer, legacy_client):
+    def __init__(self, acl: AntiCorruptionLayer, legacy_client, new_db):
         self.acl = acl
         self.legacy = legacy_client
+        self.db = new_db
 
     async def get_user(self, user_id: str) -> dict:
         """Get user, falling back to legacy if needed"""
@@ -832,7 +860,6 @@ Monitor and track migration progress:
 ```python
 # migration_tracker.py
 from dataclasses import dataclass, field
-from datetime import datetime
 from typing import Dict, List, Optional
 from prometheus_client import Gauge, Counter
 import redis
@@ -1001,9 +1028,12 @@ Implement a safe rollout with automatic rollback:
 ```python
 # rollout_controller.py
 from dataclasses import dataclass
-from typing import Optional
+from datetime import datetime, UTC
+from typing import Dict, Optional
 import asyncio
 from opentelemetry import trace
+from feature_flags import FeatureFlag, MigrationFeatureFlags
+from migration_tracker import MigrationStatus, MigrationTracker
 
 tracer = trace.get_tracer(__name__)
 
@@ -1089,7 +1119,7 @@ class RolloutController:
             service_name=config.service_name,
             status="completed",
             rollout_percentage=100,
-            completed_at=datetime.utcnow().isoformat()
+            completed_at=datetime.now(UTC).isoformat()
         ))
 
     async def _execute_rollback(self, config: RolloutConfig):
@@ -1134,6 +1164,7 @@ Implement shadow testing to validate new services:
 # shadow_testing.py
 import asyncio
 import json
+from datetime import datetime, UTC
 from typing import Tuple
 from opentelemetry import trace
 
@@ -1192,7 +1223,7 @@ class ShadowTester:
                 "path": path,
                 "method": method,
                 "comparison": comparison,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(UTC).isoformat()
             })
 
             return legacy_response, new_response, comparison
