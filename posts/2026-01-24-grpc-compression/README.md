@@ -46,6 +46,7 @@ flowchart TD
 package main
 
 import (
+    "context"
     "log"
     "net"
 
@@ -63,12 +64,8 @@ func main() {
 
     // Create server with compression options
     server := grpc.NewServer(
-        // Register compressors (gzip is registered by default)
+        // Importing google.golang.org/grpc/encoding/gzip registers gzip.
         // Custom compressors can be added here
-
-        // Set default compression for all responses
-        grpc.RPCCompressor(grpc.NewGZIPCompressor()),
-        grpc.RPCDecompressor(grpc.NewGZIPDecompressor()),
     )
 
     pb.RegisterMyServiceServer(server, &myServiceServer{})
@@ -85,6 +82,11 @@ type myServiceServer struct {
 
 // GetLargeData returns large data with compression
 func (s *myServiceServer) GetLargeData(ctx context.Context, req *pb.DataRequest) (*pb.DataResponse, error) {
+    // Compress this response if the client advertises gzip support
+    if err := grpc.SetSendCompressor(ctx, gzip.Name); err != nil {
+        return nil, err
+    }
+
     // Generate large response
     data := make([]byte, 1024*1024) // 1MB
     for i := range data {
@@ -107,15 +109,17 @@ import (
     "log"
 
     "google.golang.org/grpc"
+    "google.golang.org/grpc/credentials/insecure"
+    "google.golang.org/grpc/encoding"
     "google.golang.org/grpc/encoding/gzip"
     pb "myservice/proto"
 )
 
 func main() {
     // Connect with default compression enabled
-    conn, err := grpc.Dial(
+    conn, err := grpc.NewClient(
         "localhost:50051",
-        grpc.WithInsecure(),
+        grpc.WithTransportCredentials(insecure.NewCredentials()),
         // Enable gzip compression for all calls by default
         grpc.WithDefaultCallOptions(
             grpc.UseCompressor(gzip.Name),
@@ -155,7 +159,7 @@ func MakeCallWithoutCompression(client pb.MyServiceClient, req *pb.DataRequest) 
     return client.GetLargeData(
         context.Background(),
         req,
-        grpc.UseCompressor("identity"), // No compression
+        grpc.UseCompressor(encoding.Identity), // No compression
     )
 }
 ```
@@ -186,7 +190,7 @@ class MyServiceServicer(service_pb2_grpc.MyServiceServicer):
     def GetSmallData(self, request, context):
         """Disable compression for small responses."""
         # Explicitly disable compression for small data
-        context.set_compression(grpc.Compression.NoCompression)
+        context.disable_next_message_compression()
 
         return service_pb2.DataResponse(data=b"small response")
 
@@ -195,12 +199,8 @@ def serve():
     # Create server with compression options
     server = grpc.server(
         futures.ThreadPoolExecutor(max_workers=10),
-        # Enable compression support
-        compression=grpc.Compression.Gzip,
-        options=[
-            # Set compression level (optional)
-            ('grpc.default_compression_level', grpc.Compression.Gzip.value),
-        ]
+        # Use gzip compression by default unless overridden per call
+        compression=grpc.Compression.Gzip
     )
 
     service_pb2_grpc.add_MyServiceServicer_to_server(
@@ -225,12 +225,7 @@ def create_compressed_channel(target: str) -> grpc.Channel:
     """Create channel with compression enabled."""
     return grpc.insecure_channel(
         target,
-        options=[
-            # Enable gzip compression by default
-            ('grpc.default_compression_algorithm', grpc.Compression.Gzip.value),
-            # Set compression level (1-9, higher = better compression)
-            ('grpc.default_compression_level', 6),
-        ],
+        # Use gzip compression by default for calls on this channel
         compression=grpc.Compression.Gzip
     )
 
@@ -302,18 +297,18 @@ flowchart LR
 package main
 
 import (
-    "bytes"
     "io"
     "sync"
 
     "github.com/klauspost/compress/zstd"
+    "google.golang.org/grpc"
+    "google.golang.org/grpc/credentials/insecure"
     "google.golang.org/grpc/encoding"
 )
 
 // ZstdCompressor implements gRPC compression using zstd
 type ZstdCompressor struct {
     encoderPool sync.Pool
-    decoderPool sync.Pool
 }
 
 const zstdName = "zstd"
@@ -350,25 +345,7 @@ func (c *ZstdCompressor) Compress(w io.Writer) (io.WriteCloser, error) {
 }
 
 func (c *ZstdCompressor) Decompress(r io.Reader) (io.Reader, error) {
-    // Get decoder from pool or create new one
-    decoder := c.decoderPool.Get()
-    if decoder == nil {
-        var err error
-        decoder, err = zstd.NewReader(r)
-        if err != nil {
-            return nil, err
-        }
-    }
-
-    dec := decoder.(*zstd.Decoder)
-    if err := dec.Reset(r); err != nil {
-        return nil, err
-    }
-
-    return &zstdReadCloser{
-        decoder: dec,
-        pool:    &c.decoderPool,
-    }, nil
+    return zstd.NewReader(r)
 }
 
 type zstdWriteCloser struct {
@@ -386,19 +363,11 @@ func (w *zstdWriteCloser) Close() error {
     return err
 }
 
-type zstdReadCloser struct {
-    decoder *zstd.Decoder
-    pool    *sync.Pool
-}
-
-func (r *zstdReadCloser) Read(p []byte) (int, error) {
-    return r.decoder.Read(p)
-}
-
 // Usage
 func UseZstdCompression() {
-    conn, _ := grpc.Dial(
+    conn, _ := grpc.NewClient(
         "localhost:50051",
+        grpc.WithTransportCredentials(insecure.NewCredentials()),
         grpc.WithDefaultCallOptions(
             grpc.UseCompressor(zstdName),
         ),
@@ -421,6 +390,7 @@ import (
 
     "google.golang.org/grpc"
     "google.golang.org/grpc/encoding/gzip"
+    pb "myservice/proto"
 )
 
 // CompressionDecider helps decide when to compress
@@ -494,6 +464,11 @@ func (c *SmartClient) SendData(ctx context.Context, data []byte, contentType str
     }
 
     return c.client.SendData(ctx, req, opts...)
+}
+
+func getCurrentCPUUsage() float64 {
+    // Replace with process or host CPU measurement from your metrics library.
+    return 0
 }
 ```
 
@@ -600,7 +575,9 @@ def run_compression_benchmark():
 package main
 
 import (
+    "context"
     "io"
+    "log"
 
     "google.golang.org/grpc"
     "google.golang.org/grpc/encoding/gzip"
@@ -727,19 +704,13 @@ def upload_with_compression(stub, data_generator: Iterator[bytes]):
 
 ```python
 import grpc
-from prometheus_client import Counter, Histogram, Gauge
+from prometheus_client import Counter, Histogram
 
 # Compression metrics
 
-compressed_bytes_sent = Counter(
-    'grpc_compressed_bytes_sent_total',
-    'Total compressed bytes sent',
-    ['method', 'algorithm']
-)
-
-uncompressed_bytes_sent = Counter(
-    'grpc_uncompressed_bytes_sent_total',
-    'Total uncompressed bytes sent',
+response_message_bytes = Counter(
+    'grpc_response_message_bytes_total',
+    'Total serialized response message bytes before transport compression',
     ['method']
 )
 
@@ -763,30 +734,29 @@ class CompressionMonitoringInterceptor(grpc.ServerInterceptor):
 
     def intercept_service(self, continuation, handler_call_details):
         method = handler_call_details.method
+        handler = continuation(handler_call_details)
+        if handler is None or handler.unary_unary is None:
+            return handler
 
         def wrapper(request_or_iterator, context):
-            # Get compression info from metadata
-            metadata = dict(context.invocation_metadata() or [])
-            encoding = metadata.get('grpc-encoding', 'identity')
-
-            response = continuation(handler_call_details).unary_unary(
+            response = handler.unary_unary(
                 request_or_iterator, context
             )
 
-            # Record metrics
+            # ByteSize is the serialized protobuf size before transport compression.
+            # Use transport, proxy, or OpenTelemetry metrics for wire byte counts.
             if hasattr(response, 'ByteSize'):
-                size = response.ByteSize()
-                if encoding != 'identity':
-                    compressed_bytes_sent.labels(
-                        method=method,
-                        algorithm=encoding
-                    ).inc(size)
-                else:
-                    uncompressed_bytes_sent.labels(method=method).inc(size)
+                response_message_bytes.labels(method=method).inc(
+                    response.ByteSize()
+                )
 
             return response
 
-        return grpc.unary_unary_rpc_method_handler(wrapper)
+        return grpc.unary_unary_rpc_method_handler(
+            wrapper,
+            request_deserializer=handler.request_deserializer,
+            response_serializer=handler.response_serializer,
+        )
 ```
 
 ---
