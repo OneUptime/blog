@@ -184,25 +184,21 @@ kafka-topics.sh --bootstrap-server localhost:9092 \
 # Increase throttle if cluster can handle more
 kafka-reassign-partitions.sh --bootstrap-server localhost:9092 \
   --reassignment-json-file reassignment.json \
+  --additional \
   --execute \
   --throttle 209715200
 
-# Remove throttle after completion (important!)
+# Verify completion and remove throttle after completion (important!)
 kafka-reassign-partitions.sh --bootstrap-server localhost:9092 \
   --reassignment-json-file reassignment.json \
   --verify
-
-# If verification shows complete, remove throttle config
-kafka-configs.sh --bootstrap-server localhost:9092 \
-  --alter --entity-type brokers --entity-default \
-  --delete-config follower.replication.throttled.rate,leader.replication.throttled.rate
 ```
 
 ---
 
 ## Handling Consumer Group Rebalancing
 
-Partition reassignment triggers consumer rebalancing. Handle it gracefully:
+Partition reassignment does not normally trigger a consumer group rebalance because consumer ownership is based on topic partitions, not replica placement on brokers. It can still affect consumers through leader movement, broker load, or ordinary consumer group changes, so make sure your consumers handle rebalances gracefully:
 
 ### Consumer Configuration for Smooth Rebalancing
 
@@ -248,6 +244,7 @@ public class RebalanceAwareConsumer {
 ```java
 import org.apache.kafka.clients.consumer.*;
 import org.apache.kafka.common.TopicPartition;
+import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -389,16 +386,16 @@ curl -X GET "http://localhost:9090/kafkacruisecontrol/state"
 curl -X POST "http://localhost:9090/kafkacruisecontrol/rebalance?dryrun=true"
 
 # Execute rebalance with throttle
-curl -X POST "http://localhost:9090/kafkacruisecontrol/rebalance?throttle_added_broker=104857600"
+curl -X POST "http://localhost:9090/kafkacruisecontrol/rebalance?dryrun=false&replication_throttle=104857600"
 
 # Check execution status
 curl -X GET "http://localhost:9090/kafkacruisecontrol/user_tasks"
 
 # Add new broker and rebalance
-curl -X POST "http://localhost:9090/kafkacruisecontrol/add_broker?brokerid=3"
+curl -X POST "http://localhost:9090/kafkacruisecontrol/add_broker?brokerid=3&dryrun=false"
 
 # Remove broker (decommission)
-curl -X POST "http://localhost:9090/kafkacruisecontrol/remove_broker?brokerid=2"
+curl -X POST "http://localhost:9090/kafkacruisecontrol/remove_broker?brokerid=2&dryrun=false"
 ```
 
 ---
@@ -417,7 +414,7 @@ import json
 import subprocess
 import time
 import argparse
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 class KafkaReassignment:
     def __init__(self, bootstrap_servers: str, throttle_bytes: int = 104857600):
@@ -432,14 +429,21 @@ class KafkaReassignment:
             '--describe',
             '--topic', topic
         ], capture_output=True, text=True)
+        result.check_returncode()
 
         # Parse output
         partitions = {}
         for line in result.stdout.strip().split('\n'):
             if 'Partition:' in line:
                 parts = line.split('\t')
-                partition = int(parts[1].split(':')[1].strip())
-                replicas = [int(r) for r in parts[4].split(':')[1].strip().split(',')]
+                fields = {}
+                for part in parts:
+                    if ':' in part:
+                        key, value = part.split(':', 1)
+                        fields[key.strip()] = value.strip()
+
+                partition = int(fields['Partition'])
+                replicas = [int(r) for r in fields['Replicas'].split(',')]
                 partitions[partition] = replicas
 
         return partitions
@@ -454,6 +458,8 @@ class KafkaReassignment:
         current = self.get_topic_partitions(topic)
         num_partitions = len(current)
         num_brokers = len(target_brokers)
+        if replication_factor > num_brokers:
+            raise ValueError("Replication factor cannot exceed the number of target brokers")
 
         plan = {
             "version": 1,
@@ -518,7 +524,7 @@ class KafkaReassignment:
         for line in result.stdout.strip().split('\n'):
             if 'in progress' in line.lower():
                 status["in_progress"].append(line)
-            elif 'completed successfully' in line.lower():
+            elif 'completed successfully' in line.lower() or 'is completed' in line.lower():
                 status["completed"].append(line)
             elif 'failed' in line.lower():
                 status["failed"].append(line)
@@ -550,7 +556,7 @@ class KafkaReassignment:
                     return False
                 else:
                     print("Reassignment completed successfully")
-                    self.remove_throttle()
+                    self.remove_throttle(plan_file)
                     return True
 
             time.sleep(check_interval)
@@ -558,19 +564,16 @@ class KafkaReassignment:
         print("Timeout waiting for reassignment")
         return False
 
-    def remove_throttle(self):
-        """Remove replication throttle after completion"""
+    def remove_throttle(self, plan_file: str = "/tmp/reassignment.json"):
+        """Remove reassignment throttles after completion"""
         print("Removing replication throttle...")
 
         subprocess.run([
-            'kafka-configs.sh',
+            'kafka-reassign-partitions.sh',
             '--bootstrap-server', self.bootstrap_servers,
-            '--alter',
-            '--entity-type', 'brokers',
-            '--entity-default',
-            '--delete-config',
-            'follower.replication.throttled.rate,leader.replication.throttled.rate'
-        ], capture_output=True)
+            '--reassignment-json-file', plan_file,
+            '--verify'
+        ], capture_output=True, text=True)
 
 
 def main():
