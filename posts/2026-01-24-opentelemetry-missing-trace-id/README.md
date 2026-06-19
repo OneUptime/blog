@@ -21,12 +21,12 @@ sequenceDiagram
     participant Service B
     participant Service C
 
-    Client->>Service A: Request (no trace ID)
-    Note over Service A: Generate new Trace ID<br/>abc123
-    Service A->>Service B: Request + Headers<br/>traceparent: abc123
-    Note over Service B: Extract Trace ID abc123<br/>Create child span
-    Service B->>Service C: Request + Headers<br/>traceparent: abc123
-    Note over Service C: Extract Trace ID abc123<br/>Create child span
+    Client->>Service A: Request (no traceparent)
+    Note over Service A: Generate new Trace ID<br/>4bf92f3577b34da6a3ce929d0e0e4736
+    Service A->>Service B: Request + Headers<br/>traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
+    Note over Service B: Extract Trace ID<br/>4bf92f3577b34da6a3ce929d0e0e4736<br/>Create child span
+    Service B->>Service C: Request + Headers<br/>traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-4c721bf33e3caf8f-01
+    Note over Service C: Extract Trace ID<br/>4bf92f3577b34da6a3ce929d0e0e4736<br/>Create child span
     Service C-->>Service B: Response
     Service B-->>Service A: Response
     Service A-->>Client: Response
@@ -34,16 +34,18 @@ sequenceDiagram
 
 ## Common Causes of Missing Trace IDs
 
-### 1. Context Propagation Not Configured
+### 1. Context Propagation Disabled or Misconfigured
 
-The most common cause is missing context propagation configuration. Without propagators, trace context is not passed between services.
+The most common cause is disabled or mismatched context propagation configuration. Without compatible propagators, trace context is not passed between services. The Node.js SDK defaults to W3C Trace Context and Baggage, but propagation can still be disabled or overridden by environment variables or custom SDK setup.
 
 ```javascript
-// WRONG: Missing propagation configuration
+// WRONG: Propagation disabled by configuration
+process.env.OTEL_PROPAGATORS = 'none';
+
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
 
-// This configuration lacks propagators
+// This configuration disables automatically configured propagators
 // Trace context will not be passed in HTTP headers
 const sdk = new NodeSDK({
   traceExporter: new OTLPTraceExporter(),
@@ -142,12 +144,12 @@ async function processRequest(req, res) {
   const tracer = trace.getTracer('my-service');
   const span = tracer.startSpan('process-request');
 
-  // Capture the current context
-  const currentContext = context.active();
+  // Put the span into a context before capturing it
+  const spanContext = trace.setSpan(context.active(), span);
 
   // Bind the context to the callback
   setTimeout(
-    context.bind(currentContext, () => {
+    context.bind(spanContext, () => {
       // Now this span correctly uses the same trace ID
       const childSpan = tracer.startSpan('delayed-operation');
       // Your async operation here
@@ -360,6 +362,13 @@ def validate_traceparent(traceparent: str) -> dict:
 
     version, trace_id, parent_id, flags = match.groups()
 
+    # Check for invalid version
+    if version == 'ff':
+        return {
+            'valid': False,
+            'error': 'Version ff is invalid'
+        }
+
     # Check for invalid all-zeros trace ID
     if trace_id == '0' * 32:
         return {
@@ -379,7 +388,7 @@ def validate_traceparent(traceparent: str) -> dict:
         'version': version,
         'trace_id': trace_id,
         'parent_id': parent_id,
-        'sampled': flags == '01'
+        'sampled': bool(int(flags, 16) & 0x01)
     }
 
 # Usage in middleware
@@ -610,7 +619,7 @@ flowchart TD
 
 Missing trace IDs usually come down to one of these issues:
 
-1. **Propagators not configured** - Ensure W3CTraceContextPropagator is set up
+1. **Propagators disabled or misconfigured** - Ensure W3C Trace Context propagation is enabled
 2. **HTTP clients not instrumented** - Add instrumentation for your HTTP library
 3. **Context not extracted** - Server must extract context from incoming headers
 4. **Async context loss** - Bind context when using callbacks or thread pools
