@@ -149,7 +149,7 @@ export default function Document() {
 // app/layout.tsx (NEW)
 // Root layout replaces both _app.tsx and _document.tsx
 
-import { Metadata } from "next";
+import type { Metadata } from "next";
 import { ThemeProvider } from "@/contexts/theme";
 import "@/styles/globals.css";
 
@@ -236,7 +236,7 @@ The most significant change is how data fetching works.
 
 ```typescript
 // pages/posts/[id].tsx (OLD)
-import { GetServerSideProps } from "next";
+import type { GetServerSideProps } from "next";
 
 interface Post {
   id: string;
@@ -283,7 +283,7 @@ export default function PostPage({ post }: PostPageProps) {
 // Server Components can fetch data directly
 
 import { notFound } from "next/navigation";
-import { Metadata } from "next";
+import type { Metadata } from "next";
 
 interface Post {
   id: string;
@@ -293,7 +293,7 @@ interface Post {
 
 // Type for page params
 interface PostPageProps {
-  params: Promise<{ id: string }>;
+  params: { id: string };
 }
 
 // Fetch function with caching
@@ -314,7 +314,7 @@ async function getPost(id: string): Promise<Post | null> {
 export async function generateMetadata({
   params,
 }: PostPageProps): Promise<Metadata> {
-  const { id } = await params;
+  const { id } = params;
   const post = await getPost(id);
 
   if (!post) {
@@ -329,7 +329,7 @@ export async function generateMetadata({
 
 // Page component fetches data directly
 export default async function PostPage({ params }: PostPageProps) {
-  const { id } = await params;
+  const { id } = params;
   const post = await getPost(id);
 
   if (!post) {
@@ -355,7 +355,7 @@ Static generation patterns also change significantly.
 
 ```typescript
 // pages/blog/[slug].tsx (OLD)
-import { GetStaticProps, GetStaticPaths } from "next";
+import type { GetStaticProps, GetStaticPaths } from "next";
 
 export const getStaticPaths: GetStaticPaths = async () => {
   const posts = await getAllPosts();
@@ -391,7 +391,7 @@ export const getStaticProps: GetStaticProps = async ({ params }) => {
 import { notFound } from "next/navigation";
 
 interface BlogPageProps {
-  params: Promise<{ slug: string }>;
+  params: { slug: string };
 }
 
 // Replace getStaticPaths with generateStaticParams
@@ -409,7 +409,7 @@ export const revalidate = 60; // Revalidate every 60 seconds
 
 // Fetch and render in the same component
 export default async function BlogPage({ params }: BlogPageProps) {
-  const { slug } = await params;
+  const { slug } = params;
   const post = await getPostBySlug(slug);
 
   if (!post) {
@@ -475,12 +475,12 @@ export default async function handler(
 import { NextRequest, NextResponse } from "next/server";
 
 interface RouteParams {
-  params: Promise<{ id: string }>;
+  params: { id: string };
 }
 
 // GET handler
 export async function GET(request: NextRequest, { params }: RouteParams) {
-  const { id } = await params;
+  const { id } = params;
   const post = await getPost(id);
 
   if (!post) {
@@ -495,7 +495,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
 // PUT handler
 export async function PUT(request: NextRequest, { params }: RouteParams) {
-  const { id } = await params;
+  const { id } = params;
   const body = await request.json();
 
   const updated = await updatePost(id, body);
@@ -505,7 +505,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
 // DELETE handler
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
-  const { id } = await params;
+  const { id } = params;
   await deletePost(id);
 
   return new NextResponse(null, { status: 204 });
@@ -680,12 +680,12 @@ import { BackButton } from "@/components/BackButton";
 import { NavigateButton } from "@/components/NavigateButton";
 
 interface ProductPageProps {
-  params: Promise<{ id: string }>;
+  params: { id: string };
 }
 
 // Server Component for the page
 export default async function ProductPage({ params }: ProductPageProps) {
-  const { id } = await params;
+  const { id } = params;
   const product = await getProduct(id);
 
   return (
@@ -777,7 +777,7 @@ export async function UserProfile({ userId }) {
 // CORRECT: Fetch in Server Component, pass to Client
 // app/users/[id]/page.tsx (Server Component)
 export default async function UserPage({ params }) {
-  const { id } = await params;
+  const { id } = params;
   const user = await getUser(id);
   return <UserProfile user={user} />;
 }
