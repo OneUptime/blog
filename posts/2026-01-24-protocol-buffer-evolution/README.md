@@ -124,7 +124,7 @@ flowchart TD
 
 ### Adding New Fields
 
-Adding new fields is always safe:
+Adding new fields is safe for the binary wire format:
 
 ```protobuf
 // Version 1
@@ -207,21 +207,23 @@ Some type changes are compatible because they share the same wire format:
 // string and bytes - length-delimited (but semantic meaning differs)
 ```
 
-### Safe Type Widening
+### Conditionally Safe Type Widening
 
 ```protobuf
 // Version 1
 message Metrics {
     int32 count = 1;      // Can hold values up to 2 billion
-    float rate = 2;       // 32-bit float
+    string source = 2;
 }
 
-// Version 2 - Safe widening
+// Version 2 - Conditionally safe widening
 message Metrics {
     int64 count = 1;      // Now can hold larger values
-    double rate = 2;      // More precision
+    string source = 2;
 }
 ```
+
+Changing `int32` to `int64` is wire-compatible but not automatically safe. During rollout, continue writing values that fit in the old `int32` range until all readers have been upgraded; otherwise older readers may truncate larger values.
 
 ### Dangerous Type Changes
 
@@ -232,10 +234,10 @@ message Record {
     int32 value = 2;
 }
 
-// Version 2 - DANGEROUS: Different wire format
+// Version 2 - DANGEROUS: Different integer encoding
 message Record {
     string id = 1;
-    sint32 value = 2;  // zigzag encoding, not compatible with int32
+    sint32 value = 2;  // Different integer encoding, not compatible with int32
 }
 
 // Version 2 - DANGEROUS: Semantic mismatch
@@ -247,7 +249,7 @@ message Record {
 
 ## Handling Optional and Required Fields
 
-In proto3, all fields are optional by default. Use wrapper types when you need to distinguish between "not set" and "default value":
+In proto3, singular fields are not required, but scalar fields without the `optional` keyword use implicit presence and cannot distinguish between "not set" and "default value". Use explicit presence when you need that distinction:
 
 ```protobuf
 syntax = "proto3";
@@ -287,6 +289,7 @@ func ProcessConfig(config *pb.Configuration) {
         // Definitely not set
     } else {
         actualValue := config.TimeoutMsV2.GetValue()
+        _ = actualValue
         // Value was explicitly set (could be 0)
     }
 
@@ -295,6 +298,7 @@ func ProcessConfig(config *pb.Configuration) {
         // Not set
     } else {
         actualValue := *config.TimeoutMsV3
+        _ = actualValue
         // Value was explicitly set
     }
 }
@@ -354,6 +358,8 @@ enum OrderStatus {
 package service
 
 import (
+    "fmt"
+
     pb "myapp/proto/order"
 )
 
@@ -393,7 +399,7 @@ message Notification {
     }
 }
 
-// Version 2 - Safe addition to oneof
+// Version 2 - Addition to oneof with compatibility caveats
 message Notification {
     string id = 1;
     oneof content {
@@ -413,6 +419,8 @@ message Notification {
     PushContent push = 4;  // Was in oneof, now standalone - INCOMPATIBLE
 }
 ```
+
+Adding a new oneof option is wire-compatible, but old readers cannot distinguish "the oneof was not set" from "the oneof was set to an option this version does not know about." Avoid relying on that distinction during mixed-version rollouts.
 
 ## API Versioning Strategies
 
@@ -533,6 +541,7 @@ message EmailAddress {
 package service
 
 import (
+    "context"
     "log"
 
     pb "myapp/proto/account"
