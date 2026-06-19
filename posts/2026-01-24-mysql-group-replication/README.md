@@ -40,7 +40,7 @@ flowchart TB
 
 Before starting, ensure you have:
 
-- MySQL 8.0 or later on all nodes
+- MySQL 8.0.26 or later on all nodes
 - Network connectivity between all nodes (ports 3306 and 33061)
 - Unique server IDs for each node
 - GTID-based replication enabled
@@ -61,18 +61,13 @@ bind-address = 0.0.0.0
 
 # Binary logging (required for Group Replication)
 log_bin = mysql-bin
-log_slave_updates = ON
+log_replica_updates = ON
 binlog_format = ROW
 binlog_checksum = NONE
 
 # GTID configuration (required)
 gtid_mode = ON
 enforce_gtid_consistency = ON
-
-# Replication settings
-master_info_repository = TABLE
-relay_log_info_repository = TABLE
-transaction_write_set_extraction = XXHASH64
 
 # Group Replication settings
 plugin_load_add = 'group_replication.so'
@@ -87,9 +82,8 @@ group_replication_single_primary_mode = ON
 group_replication_enforce_update_everywhere_checks = OFF
 
 # Performance and safety settings
-slave_parallel_workers = 4
-slave_preserve_commit_order = ON
-slave_parallel_type = LOGICAL_CLOCK
+replica_parallel_workers = 4
+replica_preserve_commit_order = ON
 ```
 
 ### Node 2 and Node 3 Configuration
@@ -181,11 +175,7 @@ FROM performance_schema.replication_group_members;
 SELECT
     MEMBER_HOST,
     MEMBER_ROLE,
-    IF(@@server_uuid =
-        (SELECT VARIABLE_VALUE
-         FROM performance_schema.global_status
-         WHERE VARIABLE_NAME = 'group_replication_primary_member'),
-        'YES', 'NO') AS is_primary
+    IF(MEMBER_ROLE = 'PRIMARY', 'YES', 'NO') AS is_primary
 FROM performance_schema.replication_group_members
 WHERE MEMBER_ID = @@server_uuid;
 ```
@@ -280,15 +270,15 @@ SELECT group_replication_set_as_primary(
 ```sql
 -- Check why the node left the group
 SELECT * FROM performance_schema.replication_group_members;
-SHOW SLAVE STATUS FOR CHANNEL 'group_replication_applier'\G
+SHOW REPLICA STATUS FOR CHANNEL 'group_replication_applier'\G
 
 -- Try to rejoin
 START GROUP_REPLICATION;
 
 -- If that fails, reset and rejoin
 STOP GROUP_REPLICATION;
-RESET SLAVE ALL FOR CHANNEL 'group_replication_recovery';
-RESET SLAVE ALL FOR CHANNEL 'group_replication_applier';
+RESET REPLICA ALL FOR CHANNEL 'group_replication_recovery';
+RESET REPLICA ALL FOR CHANNEL 'group_replication_applier';
 
 -- Reconfigure and rejoin
 CHANGE REPLICATION SOURCE TO
@@ -371,16 +361,16 @@ group_replication_recovery_ssl_key = /etc/mysql/certs/server-key.pem
 
 ### Using MySQL Router
 
-MySQL Router provides automatic failover for applications:
+For InnoDB Cluster deployments built on Group Replication, MySQL Router provides automatic failover for applications:
 
 ```bash
-# Bootstrap MySQL Router with the cluster
-mysqlrouter --bootstrap repl_user@node1.example.com:3306 \
+# Bootstrap MySQL Router with the InnoDB Cluster
+mysqlrouter --bootstrap root@node1.example.com:3306 \
     --user=mysqlrouter \
     --directory=/etc/mysqlrouter
 
 # Start MySQL Router
-systemctl start mysqlrouter
+mysqlrouter -c /etc/mysqlrouter/mysqlrouter.conf
 ```
 
 Application connection string:
@@ -404,9 +394,9 @@ config = {
     'pool_name': 'mypool',
     'pool_size': 10,
     'failover': [
-        {'host': 'node1.example.com', 'port': 3306, 'priority': 100},
-        {'host': 'node2.example.com', 'port': 3306, 'priority': 90},
-        {'host': 'node3.example.com', 'port': 3306, 'priority': 80},
+        {'host': 'node1.example.com', 'port': 3306},
+        {'host': 'node2.example.com', 'port': 3306},
+        {'host': 'node3.example.com', 'port': 3306},
     ],
     'user': 'app_user',
     'password': 'password',
