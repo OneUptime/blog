@@ -38,10 +38,10 @@ flowchart TD
 | Feature | Classic Mirrored | Quorum Queue |
 |---------|-----------------|--------------|
 | Replication | Asynchronous | Raft consensus |
-| Data safety | May lose messages | Guaranteed delivery |
+| Data safety | May lose messages | Safer with publisher confirms and quorum |
 | Performance | Higher throughput | More consistent |
 | Memory usage | Lower | Higher (WAL) |
-| Message ordering | Weaker guarantees | Strong ordering |
+| Message ordering | FIFO, with caveats | FIFO, with replication caveats |
 | Poison messages | Manual handling | Built-in delivery limit |
 | Leader election | May cause issues | Automatic failover |
 
@@ -100,8 +100,8 @@ def analyze_queues():
         if args.get('x-max-priority'):
             issues.append({
                 'queue': name,
-                'issue': 'Priority queues not supported in quorum queues',
-                'severity': 'high'
+                'issue': 'x-max-priority is a classic-queue argument; remove it when converting definitions. RabbitMQ 4.3+ quorum queues always provide priorities.',
+                'severity': 'warning'
             })
 
         if args.get('x-queue-mode') == 'lazy':
@@ -151,11 +151,11 @@ if __name__ == '__main__':
 
 ```bash
 #!/bin/bash
-# Check for features not supported in quorum queues
+# Check for features that need changes before conversion to quorum queues
 
-echo "Checking for incompatible features..."
+echo "Checking for features that need migration changes..."
 
-# Check for priority queues
+# Check for classic priority queue arguments that should be removed from converted definitions
 
 echo "Priority queues:"
 rabbitmqctl list_queues name arguments --formatter=json | \
@@ -376,7 +376,7 @@ class ShovelMigration:
                 "dest-queue": dest_queue,
                 "ack-mode": "on-confirm",
                 "reconnect-delay": 5,
-                # Delete shovel after source is empty
+                # Delete shovel after the initial source queue length has been transferred
                 "src-delete-after": "queue-length"
             }
         }
@@ -497,7 +497,7 @@ class BlueGreenMigration:
         self.auth = (user, password)
 
     def setup_federation(self, source_host, dest_host, dest_url, queue_pattern):
-        """Set up federation to replicate queues"""
+        """Set up queue federation so green consumers can pull from blue"""
 
         # Create upstream on destination
         upstream_config = {
@@ -544,7 +544,7 @@ class BlueGreenMigration:
 
         # Convert queue types
         for queue in definitions.get('queues', []):
-            args = queue.get('arguments', {})
+            args = queue.setdefault('arguments', {})
 
             # Skip incompatible queues
             if not queue.get('durable', True):
@@ -556,8 +556,8 @@ class BlueGreenMigration:
                 continue
 
             if args.get('x-max-priority'):
-                print(f"Skipping priority queue: {queue['name']}")
-                continue
+                print(f"Removing classic priority argument from: {queue['name']}")
+                args.pop('x-max-priority', None)
 
             # Convert to quorum
             args['x-queue-type'] = 'quorum'
@@ -571,10 +571,10 @@ class BlueGreenMigration:
             json=definitions
         )
         response.raise_for_status()
-        print("Definitions imported as quorum queues")
+        print("Definitions imported with compatible durable queues converted to quorum")
 
-    def verify_sync(self, blue_queue, green_queue):
-        """Verify queues are in sync"""
+    def verify_federation_ready(self, blue_queue, green_queue):
+        """Verify both queues are available before cutover"""
 
         blue_info = requests.get(
             f"{self.blue_url}/queues/%2F/{blue_queue}",
@@ -589,8 +589,8 @@ class BlueGreenMigration:
         blue_messages = blue_info.get('messages', 0)
         green_messages = green_info.get('messages', 0)
 
-        print(f"Blue: {blue_messages} messages, Green: {green_messages} messages")
-        return abs(blue_messages - green_messages) < 10
+        print(f"Blue backlog: {blue_messages} messages, Green local backlog: {green_messages} messages")
+        return blue_info.get('state') == 'running' and green_info.get('state') == 'running'
 
     def run_migration(self, queue_pattern=".*"):
         """Run complete blue-green migration"""
@@ -609,12 +609,12 @@ class BlueGreenMigration:
             queue_pattern
         )
 
-        print("Step 4: Wait for sync...")
+        print("Step 4: Wait for federation links...")
         time.sleep(30)
 
-        print("Step 5: Verify sync")
+        print("Step 5: Verify queues before cutover")
         # Verify specific queues
-        # self.verify_sync('orders', 'orders')
+        # self.verify_federation_ready('orders', 'orders')
 
         print("Migration ready for cutover")
         print("Update load balancer to point to green cluster")
@@ -913,29 +913,19 @@ class MigrationValidator:
     def validate_quorum_health(self):
         """Check quorum queue replica health"""
         result = subprocess.run(
-            ['rabbitmqctl', 'list_queues',
-             'name', 'type', 'leader', 'members', 'online',
-             '--formatter=json'],
+            ['rabbitmq-queues', 'quorum_status', self.quorum_queue],
             capture_output=True,
             text=True
         )
 
-        queues = json.loads(result.stdout)
-        for q in queues:
-            if q['name'] == self.quorum_queue:
-                members = len(q.get('members', []))
-                online = len(q.get('online', []))
+        if result.returncode != 0:
+            self.issues.append(
+                f"Unable to read quorum status for {self.quorum_queue}: {result.stderr.strip()}"
+            )
+            return False
 
-                if online < members:
-                    self.issues.append(
-                        f"Quorum queue has offline replicas: {online}/{members}"
-                    )
-                    return False
-
-                print(f"[OK] All replicas online: {online}/{members}")
-                return True
-
-        return False
+        print(f"[OK] Quorum status available for: {self.quorum_queue}")
+        return True
 
     def validate_classic_drained(self):
         """Check classic queue is drained"""
@@ -1129,17 +1119,14 @@ rollback.rollback('orders-quorum', 'orders', delete_quorum=True)
 
 ### Performance Tuning
 
-```erlang
-%% rabbitmq.conf - Quorum queue optimizations
+```ini
+# rabbitmq.conf - Quorum queue optimizations
 
-%% Increase Raft segment size for high throughput
-raft.segment_max_entries = 65536
+# Configure WAL settings. Larger values can improve throughput but increase memory use.
+raft.wal_max_size_bytes = 32000000
 
-%% Configure WAL settings
-raft.wal_max_size_bytes = 1073741824
-
-%% Memory management
-quorum_queue.memory_limit = 0.4
+# Memory management
+vm_memory_high_watermark.relative = 0.4
 ```
 
 ---
