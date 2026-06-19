@@ -144,6 +144,7 @@ import grpc
 import uuid
 from google.protobuf import any_pb2
 from google.rpc import error_details_pb2, status_pb2
+from grpc_status import rpc_status
 
 class ResourceService(service_pb2_grpc.ResourceServiceServicer):
 
@@ -233,12 +234,7 @@ class ResourceService(service_pb2_grpc.ResourceServiceServicer):
         )
 
         # Set trailing metadata with error details
-        context.abort_with_status(
-            grpc.Status(
-                grpc.StatusCode.ALREADY_EXISTS,
-                description
-            )
-        )
+        context.abort_with_status(rpc_status.to_status(rich_status))
 ```
 
 ---
@@ -278,6 +274,7 @@ package main
 import (
     "context"
     "crypto/sha256"
+    "database/sql"
     "encoding/hex"
     "sync"
     "time"
@@ -308,6 +305,22 @@ func NewIdempotencyStore(ttl time.Duration) *IdempotencyStore {
     }
     go store.cleanupLoop()
     return store
+}
+
+// cleanupLoop removes expired entries from the store
+func (s *IdempotencyStore) cleanupLoop() {
+    ticker := time.NewTicker(time.Minute)
+    defer ticker.Stop()
+
+    for range ticker.C {
+        s.mu.Lock()
+        for key, entry := range s.cache {
+            if time.Since(entry.createdAt) > s.ttl {
+                delete(s.cache, key)
+            }
+        }
+        s.mu.Unlock()
+    }
 }
 
 type serverWithIdempotency struct {
@@ -347,13 +360,17 @@ func (s *serverWithIdempotency) CreateResource(ctx context.Context, req *pb.Crea
 func (s *serverWithIdempotency) doCreateResource(ctx context.Context, req *pb.CreateResourceRequest) (*pb.Resource, error) {
     // Use INSERT ... ON CONFLICT for atomic idempotent insert
     var resource pb.Resource
+    resourceID := req.ResourceId
+    if resourceID == "" {
+        resourceID = generateUUID()
+    }
 
     err := s.db.QueryRowContext(ctx,
         `INSERT INTO resources (id, name, created_by, created_at)
          VALUES ($1, $2, $3, NOW())
          ON CONFLICT (id) DO UPDATE SET id = resources.id
          RETURNING id, name, created_by`,
-        req.ResourceId, req.Name, req.CreatedBy,
+        resourceID, req.Name, req.CreatedBy,
     ).Scan(&resource.Id, &resource.Name, &resource.CreatedBy)
 
     if err != nil {
@@ -407,8 +424,12 @@ func (s *IdempotencyStore) Set(key string, result *pb.Resource, err error) {
 import grpc
 import json
 import hashlib
+import uuid
 import redis
 from typing import Optional, Tuple
+
+class DuplicateError(Exception):
+    pass
 
 class IdempotencyMiddleware:
     """Middleware for handling idempotent create operations."""
@@ -546,7 +567,6 @@ import (
     "context"
     "log"
 
-    "google.golang.org/grpc"
     "google.golang.org/grpc/codes"
     "google.golang.org/grpc/status"
     pb "myservice/proto"
