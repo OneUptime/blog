@@ -8,11 +8,11 @@ Description: Learn how to identify and fix the React warning about updating stat
 
 ---
 
-The warning "Can't perform a React state update on an unmounted component" appears when your code tries to update state after a component has been removed from the DOM. While React 18 removed this warning by default, the underlying issue of memory leaks and wasted operations still exists. Understanding and fixing this pattern is essential for building efficient React applications.
+The warning "Can't perform a React state update on an unmounted component" appears when your code tries to update state after a component has been removed from the DOM. While React 18 removed this warning by default because many cases were harmless, subscriptions, timers, and uncanceled requests can still cause memory leaks, wasted operations, or race conditions. Understanding and fixing this pattern is essential for building efficient React applications.
 
 ## Understanding the Problem
 
-When a component unmounts while an async operation is still pending, the operation's callback may try to update state that no longer exists.
+When a component unmounts while an async operation is still pending, the operation's callback may try to update state for a component that React has already removed.
 
 ```mermaid
 sequenceDiagram
@@ -37,7 +37,7 @@ function UserProfile({ userId }) {
   useEffect(() => {
     fetchUser(userId).then(data => {
       // If component unmounts before fetch completes,
-      // this setState will trigger on unmounted component
+      // this setState targets an unmounted component
       setUser(data);
       setLoading(false);
     });
@@ -273,16 +273,11 @@ function useAsyncEffect(asyncEffect, deps) {
     };
 
     // Call the async effect with the context
-    const cleanup = asyncEffect(context);
+    asyncEffect(context);
 
     return () => {
       isMounted.current = false;
       controller.abort();
-
-      // Call any additional cleanup returned by the effect
-      if (typeof cleanup === 'function') {
-        cleanup();
-      }
     };
   }, deps);
 }
@@ -572,15 +567,17 @@ function useFetch(url) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [refreshIndex, setRefreshIndex] = useState(0);
 
   const refetch = useCallback(() => {
-    setLoading(true);
-    setError(null);
+    setRefreshIndex(index => index + 1);
   }, []);
 
   useEffect(() => {
     // Skip if no URL
     if (!url) {
+      setData(null);
+      setError(null);
       setLoading(false);
       return;
     }
@@ -626,7 +623,7 @@ function useFetch(url) {
       isMounted = false;
       controller.abort();
     };
-  }, [url, loading]); // Include loading to support refetch
+  }, [url, refreshIndex]); // Include refreshIndex to support refetch
 
   return { data, loading, error, refetch };
 }
@@ -684,8 +681,8 @@ function UserDashboard({ userId }) {
 ## Testing Components with Async Effects
 
 ```jsx
-import { render, screen, waitFor } from '@testing-library/react';
-import { act } from 'react-dom/test-utils';
+import { render } from '@testing-library/react';
+import { act } from 'react';
 import UserProfile from './UserProfile';
 
 // Mock fetch
@@ -746,7 +743,7 @@ The "Cannot update state on unmounted component" warning indicates a potential m
 | Pattern | Use Case | Pros | Cons |
 |---------|----------|------|------|
 | **Cleanup Flag** | Any async operation | Simple, universal | Does not cancel operations |
-| **AbortController** | Fetch requests | Actually cancels request | Only works with fetch |
+| **AbortController** | APIs that accept AbortSignal | Actually cancels request | Requires API support |
 | **Custom Hook** | Reusable logic | DRY, encapsulated | Additional abstraction |
 | **React Query/SWR** | Data fetching | Handles everything | Additional dependency |
 
