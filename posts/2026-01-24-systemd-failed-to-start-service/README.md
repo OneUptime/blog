@@ -145,7 +145,7 @@ Common exit codes and their meanings:
 | 127 | Command not found | Binary missing or wrong path |
 | 137 | SIGKILL (128+9) | OOM killer, forced termination |
 | 143 | SIGTERM (128+15) | Graceful termination signal |
-| 203 | EXEC format error | Wrong architecture, script issue |
+| 203 | EXEC failure | ExecStart command could not be executed: bad path, permissions, invalid script/interpreter |
 | 217 | User not found | Service user does not exist |
 
 ### Fix Exit Code 1 - Configuration Error
@@ -479,8 +479,8 @@ flowchart TD
 
     subgraph "Type=oneshot"
         O1[ExecStart runs and exits]
-        O2[Service considered active after exit]
-        O3[Good for setup scripts]
+        O2[Service completes after exit]
+        O3[Use RemainAfterExit=yes to stay active]
         O1 --> O2 --> O3
     end
 
@@ -495,7 +495,7 @@ flowchart TD
 ### Fix Type Mismatch Issues
 
 ```bash
-# If service forks but type is simple, it will fail
+# If service forks but type is simple, it may stop unexpectedly
 # Check if the process forks
 ps aux | grep myapp
 
@@ -773,14 +773,15 @@ Configure automatic recovery:
 sudo systemctl edit myapp.service
 
 # Override:
+[Unit]
+# Limit restart attempts
+StartLimitBurst=5
+StartLimitIntervalSec=300
+
 [Service]
 # Restart on failure
 Restart=on-failure
 RestartSec=10
-
-# Limit restart attempts
-StartLimitBurst=5
-StartLimitIntervalSec=300
 
 # Run health check
 ExecStartPost=/usr/local/bin/check-myapp-health.sh
