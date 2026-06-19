@@ -65,15 +65,15 @@ Configure connectors to handle errors without failing immediately:
     "connection.password": "${secrets:db-password}",
 
     "errors.tolerance": "all",
-    "errors.log.enable": true,
-    "errors.log.include.messages": true,
+    "errors.log.enable": "true",
+    "errors.log.include.messages": "true",
 
     "errors.deadletterqueue.topic.name": "orders-dlq",
-    "errors.deadletterqueue.topic.replication.factor": 3,
-    "errors.deadletterqueue.context.headers.enable": true,
+    "errors.deadletterqueue.topic.replication.factor": "3",
+    "errors.deadletterqueue.context.headers.enable": "true",
 
-    "errors.retry.timeout": 300000,
-    "errors.retry.delay.max.ms": 60000
+    "errors.retry.timeout": "300000",
+    "errors.retry.delay.max.ms": "60000"
   }
 }
 ```
@@ -126,14 +126,13 @@ flowchart LR
     "connector.class": "io.confluent.connect.elasticsearch.ElasticsearchSinkConnector",
     "topics": "logs",
     "connection.url": "http://elasticsearch:9200",
-    "type.name": "_doc",
     "key.ignore": "true",
 
     "errors.tolerance": "all",
 
     "errors.deadletterqueue.topic.name": "logs-dlq",
-    "errors.deadletterqueue.topic.replication.factor": 3,
-    "errors.deadletterqueue.context.headers.enable": true
+    "errors.deadletterqueue.topic.replication.factor": "3",
+    "errors.deadletterqueue.context.headers.enable": "true"
   }
 }
 ```
@@ -191,7 +190,7 @@ public class DLQProcessor {
         Headers headers = record.headers();
 
         String originalTopic = getHeader(headers, "__connect.errors.topic");
-        String errorClass = getHeader(headers, "__connect.errors.exception.class.name");
+        String errorClass = getHeader(headers, "__connect.errors.class.name");
         String errorMessage = getHeader(headers, "__connect.errors.exception.message");
         String stage = getHeader(headers, "__connect.errors.stage");
 
@@ -219,7 +218,7 @@ public class DLQProcessor {
 
     private static byte[] attemptFix(byte[] value, String errorClass) {
         // Implement fix logic based on error type
-        if (errorClass.contains("JsonParseException")) {
+        if (errorClass != null && errorClass.contains("JsonParseException")) {
             // Attempt to fix malformed JSON
             return fixMalformedJson(value);
         }
@@ -255,22 +254,23 @@ public class DLQProcessor {
     "tasks.max": "2",
 
     "errors.tolerance": "all",
-    "errors.retry.timeout": 600000,
-    "errors.retry.delay.max.ms": 60000,
+    "errors.retry.timeout": "600000",
+    "errors.retry.delay.max.ms": "60000",
 
-    "retry.backoff.ms": 1000,
-    "max.retries": 10,
+    "retry.backoff.ms": "1000",
+    "max.retries": "10",
 
     "behavior.on.error": "log",
+    "reporter.bootstrap.servers": "kafka:9092",
     "reporter.error.topic.name": "http-errors",
-    "reporter.error.topic.replication.factor": 3
+    "reporter.error.topic.replication.factor": "3"
   }
 }
 ```
 
-### Custom Retry Transformer
+### Custom Retry Metadata Transformer
 
-Create a Single Message Transform (SMT) for custom retry logic:
+Create a Single Message Transform (SMT) to track retry metadata. SMTs cannot schedule delayed retries by themselves, but they can annotate or filter records before connector error handling sends them to a DLQ:
 
 ```java
 public class RetryTransform<R extends ConnectRecord<R>> implements Transformation<R> {
@@ -280,12 +280,11 @@ public class RetryTransform<R extends ConnectRecord<R>> implements Transformatio
     private static final String RETRY_TIMESTAMP_HEADER = "retry-timestamp";
 
     private int maxRetries;
-    private long retryDelayMs;
 
     @Override
     public void configure(Map<String, ?> configs) {
-        maxRetries = (int) configs.getOrDefault("max.retries", 3);
-        retryDelayMs = (long) configs.getOrDefault("retry.delay.ms", 5000L);
+        SimpleConfig config = new SimpleConfig(config(), configs);
+        maxRetries = config.getInt("max.retries");
     }
 
     @Override
@@ -295,20 +294,20 @@ public class RetryTransform<R extends ConnectRecord<R>> implements Transformatio
         // Check retry count
         Header retryHeader = headers.lastHeader(RETRY_COUNT_HEADER);
         int retryCount = retryHeader != null ?
-            Integer.parseInt(new String(retryHeader.value())) : 0;
+            Integer.parseInt(retryHeader.value().toString()) : 0;
 
         if (retryCount >= maxRetries) {
-            log.warn("Max retries exceeded for record at offset {}",
-                record.kafkaOffset());
+            log.warn("Max retries exceeded for record on topic {}",
+                record.topic());
             // Return null to skip the record or throw exception
             return null;
         }
 
         // Add retry metadata
-        headers.add(RETRY_COUNT_HEADER,
-            String.valueOf(retryCount + 1).getBytes());
-        headers.add(RETRY_TIMESTAMP_HEADER,
-            String.valueOf(System.currentTimeMillis()).getBytes());
+        headers.addString(RETRY_COUNT_HEADER,
+            String.valueOf(retryCount + 1));
+        headers.addString(RETRY_TIMESTAMP_HEADER,
+            String.valueOf(System.currentTimeMillis()));
 
         return record;
     }
@@ -317,9 +316,7 @@ public class RetryTransform<R extends ConnectRecord<R>> implements Transformatio
     public ConfigDef config() {
         return new ConfigDef()
             .define("max.retries", ConfigDef.Type.INT, 3,
-                ConfigDef.Importance.MEDIUM, "Maximum retry attempts")
-            .define("retry.delay.ms", ConfigDef.Type.LONG, 5000L,
-                ConfigDef.Importance.MEDIUM, "Delay between retries");
+                ConfigDef.Importance.MEDIUM, "Maximum retry attempts");
     }
 
     @Override
@@ -418,6 +415,14 @@ JMX exporter configuration:
 hostPort: kafka-connect:9999
 rules:
   # Connector metrics
+  - pattern: 'kafka.connect<type=connector-metrics, connector=(.+)><>status: ([a-z-]+)'
+    name: kafka_connect_connector_status
+    labels:
+      connector: $1
+      status: $2
+    value: 1
+    type: GAUGE
+
   - pattern: 'kafka.connect<type=connector-metrics, connector=(.+)><>(.+): (.+)'
     name: kafka_connect_connector_$2
     labels:
@@ -426,6 +431,15 @@ rules:
     type: GAUGE
 
   # Task metrics
+  - pattern: 'kafka.connect<type=connector-task-metrics, connector=(.+), task=(.+)><>status: ([a-z-]+)'
+    name: kafka_connect_task_status
+    labels:
+      connector: $1
+      task: $2
+      status: $3
+    value: 1
+    type: GAUGE
+
   - pattern: 'kafka.connect<type=connector-task-metrics, connector=(.+), task=(.+)><>(.+): (.+)'
     name: kafka_connect_task_$3
     labels:
@@ -453,7 +467,7 @@ groups:
     rules:
       # Alert when connector is not running
       - alert: KafkaConnectorNotRunning
-        expr: kafka_connect_connector_status != 1
+        expr: kafka_connect_connector_status{status!="running"} == 1
         for: 2m
         labels:
           severity: critical
@@ -462,7 +476,7 @@ groups:
 
       # Alert when task fails
       - alert: KafkaConnectTaskFailed
-        expr: kafka_connect_task_status == 0
+        expr: kafka_connect_task_status{status="failed"} == 1
         for: 1m
         labels:
           severity: critical
@@ -527,7 +541,7 @@ def restart_connector(connector):
     """Restart a connector."""
     logger.info(f"Restarting connector: {connector}")
     response = requests.post(f"{CONNECT_URL}/connectors/{connector}/restart")
-    return response.status_code == 204
+    return response.status_code in (200, 202, 204)
 
 def restart_task(connector, task_id):
     """Restart a specific task."""
@@ -535,7 +549,7 @@ def restart_task(connector, task_id):
     response = requests.post(
         f"{CONNECT_URL}/connectors/{connector}/tasks/{task_id}/restart"
     )
-    return response.status_code == 204
+    return response.status_code in (200, 204)
 
 def check_and_restart():
     """Check connector health and restart if needed."""
@@ -603,11 +617,13 @@ For Kubernetes deployments, use a custom resource and operator:
 
 ```yaml
 # kafka-connector.yaml
-apiVersion: kafka.example.com/v1
+apiVersion: kafka.strimzi.io/v1beta2
 kind: KafkaConnector
 metadata:
   name: jdbc-sink
   namespace: kafka
+  labels:
+    strimzi.io/cluster: my-connect-cluster
 spec:
   class: io.confluent.connect.jdbc.JdbcSinkConnector
   tasksMax: 3
@@ -622,14 +638,6 @@ spec:
   autoRestart:
     enabled: true
     maxRestarts: 5
-    restartDelay: 30s
-    resetOnSuccess: true
-
-  # Health check settings
-  healthCheck:
-    enabled: true
-    interval: 30s
-    failureThreshold: 3
 ```
 
 ## Connector Failure Patterns and Solutions
@@ -668,14 +676,14 @@ flowchart TB
     "connector.class": "io.confluent.connect.jdbc.JdbcSourceConnector",
     "connection.url": "jdbc:postgresql://db:5432/app",
 
-    "connection.attempts": 5,
-    "connection.backoff.ms": 10000,
+    "connection.attempts": "5",
+    "connection.backoff.ms": "10000",
 
-    "poll.interval.ms": 5000,
-    "batch.max.rows": 1000,
+    "poll.interval.ms": "5000",
+    "batch.max.rows": "1000",
 
-    "query.timeout.ms": 30000,
-    "transaction.isolation.mode": "read_committed"
+    "query.timeout.ms": "30000",
+    "transaction.isolation.mode": "READ_COMMITTED"
   }
 }
 ```
@@ -691,13 +699,15 @@ flowchart TB
 
     "key.converter": "io.confluent.connect.avro.AvroConverter",
     "key.converter.schema.registry.url": "http://schema-registry:8081",
-    "key.converter.schema.registry.basic.auth.user.info": "user:password",
+    "key.converter.basic.auth.credentials.source": "USER_INFO",
+    "key.converter.basic.auth.user.info": "user:password",
 
     "value.converter": "io.confluent.connect.avro.AvroConverter",
     "value.converter.schema.registry.url": "http://schema-registry:8081",
-    "value.converter.schemas.enable": true,
+    "value.converter.basic.auth.credentials.source": "USER_INFO",
+    "value.converter.basic.auth.user.info": "user:password",
 
-    "schema.compatibility.level": "BACKWARD",
+    "schema.compatibility": "BACKWARD",
 
     "errors.tolerance": "all",
     "errors.deadletterqueue.topic.name": "events-dlq"
@@ -707,7 +717,7 @@ flowchart TB
 
 ## Best Practices
 
-1. **Always configure error tolerance** - Use `errors.tolerance=all` with DLQ for production
+1. **Configure error tolerance intentionally** - Use `errors.tolerance=all` with a DLQ when it is acceptable to skip bad records and inspect them later
 2. **Implement DLQ processing** - Monitor and reprocess failed records
 3. **Set appropriate timeouts** - Balance between resilience and failure detection
 4. **Monitor connector metrics** - Alert on failures before they impact data
