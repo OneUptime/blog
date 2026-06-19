@@ -46,13 +46,12 @@ JIT compilation trades startup time for runtime performance:
 
 ```bash
 # Default tiered compilation (recommended for most applications)
-
 java -XX:+TieredCompilation -jar app.jar
 
 # Tiered compilation levels:
 # Level 0: Interpreter
-# Level 1: C1 with full optimization (no profiling)
-# Level 2: C1 with invocation & backedge counters
+# Level 1: C1 without profiling
+# Level 2: C1 with limited profiling
 # Level 3: C1 with full profiling
 # Level 4: C2 with full optimization
 
@@ -64,7 +63,8 @@ java -XX:+PrintCompilation -jar app.jar
 
 ```bash
 # Adjust when methods get compiled
-# Default: 10000 invocations or loops for C2 compilation
+# The common non-tiered CompileThreshold default is 10000.
+# Tiered compilation uses tier-specific thresholds.
 
 # Lower threshold for faster warmup (at cost of less optimization data)
 java -XX:CompileThreshold=5000 -jar app.jar
@@ -80,7 +80,7 @@ java \
 
 ```bash
 # Code cache stores compiled native code
-# Too small = methods get deoptimized and recompiled
+# Too small = code cache flushing or disabled compilation until space is available
 
 # Check default code cache size
 java -XX:+PrintFlagsFinal -version | grep CodeCache
@@ -107,31 +107,32 @@ java -XX:+PrintCodeCache -jar app.jar
 
 # Increase for more aggressive inlining
 java \
+  -XX:+UnlockDiagnosticVMOptions \
   -XX:MaxInlineSize=50 \
   -XX:FreqInlineSize=400 \
   -XX:MaxInlineLevel=15 \
   -jar app.jar
 
 # See what gets inlined
-java -XX:+PrintInlining -jar app.jar
+java -XX:+UnlockDiagnosticVMOptions -XX:+PrintInlining -jar app.jar
 ```
 
 ### GraalVM JIT Configuration
 
 ```bash
 # GraalVM provides an advanced JIT compiler
-# Enable Graal compiler on HotSpot
+# GraalVM uses the Graal JIT as the top-tier compiler by default.
+# Enable the Graal compiler on a compatible HotSpot VM
 java \
   -XX:+UnlockExperimentalVMOptions \
-  -XX:+UseJVMCICompiler \
+  -XX:+UseGraalJIT \
   -jar app.jar
 
-# GraalVM specific optimizations
+# Confirm the Graal JIT configuration
 java \
   -XX:+UnlockExperimentalVMOptions \
-  -XX:+EnableJVMCI \
-  -XX:+UseJVMCICompiler \
-  -Dgraal.CompilerConfiguration=enterprise \
+  -XX:+UseGraalJIT \
+  -Djdk.graal.ShowConfiguration=info \
   -jar app.jar
 ```
 
@@ -189,13 +190,16 @@ public class WarmupService {
 
 // Usage in Spring Boot
 @Component
-public class ApplicationWarmup implements ApplicationRunner {
+class ApplicationWarmup implements ApplicationRunner {
 
     @Autowired
     private UserService userService;
 
     @Autowired
     private ProductService productService;
+
+    @Autowired
+    private HealthController healthController;
 
     @Override
     public void run(ApplicationArguments args) {
@@ -208,6 +212,7 @@ public class ApplicationWarmup implements ApplicationRunner {
 
         // Run warmup iterations
         warmup.warmup(10000);
+        healthController.setWarmupComplete();
     }
 }
 ```
@@ -221,7 +226,13 @@ kind: Deployment
 metadata:
   name: api-server
 spec:
+  selector:
+    matchLabels:
+      app: api-server
   template:
+    metadata:
+      labels:
+        app: api-server
     spec:
       containers:
       - name: api
@@ -458,13 +469,16 @@ public class JitMetrics {
     public static void printCodeCacheStats() {
         try {
             MBeanServer mbs = ManagementFactory.getPlatformMBeanServer();
-            ObjectName name = new ObjectName("java.lang:type=MemoryPool,name=*CodeCache*");
+            ObjectName name = new ObjectName("java.lang:type=MemoryPool,*");
 
             // Get code cache memory pools
             for (ObjectName poolName : mbs.queryNames(name, null)) {
-                Object usage = mbs.getAttribute(poolName, "Usage");
-                System.out.println("Code Cache: " + poolName.getKeyProperty("name"));
-                System.out.println("  Usage: " + usage);
+                String pool = poolName.getKeyProperty("name");
+                if (pool != null && (pool.contains("CodeCache") || pool.contains("CodeHeap"))) {
+                    Object usage = mbs.getAttribute(poolName, "Usage");
+                    System.out.println("Code Cache: " + pool);
+                    System.out.println("  Usage: " + usage);
+                }
             }
         } catch (Exception e) {
             e.printStackTrace();
@@ -525,7 +539,7 @@ public class JitPrometheusMetrics {
 ### GraalVM Native Image
 
 ```bash
-# Build native executable (no JIT needed, instant startup)
+# Build native executable (no JVM JIT warmup, fast startup)
 native-image -jar app.jar
 
 # With build-time initialization
@@ -544,7 +558,7 @@ native-image \
 | Aspect | JIT | AOT (Native Image) |
 |--------|-----|-------------------|
 | Startup time | Slow (seconds) | Fast (milliseconds) |
-| Peak performance | Higher | Lower |
+| Peak performance | Often higher for long-running adaptive workloads | Often lower for long-running adaptive workloads |
 | Memory usage | Higher | Lower |
 | Warmup needed | Yes | No |
 | Reflection support | Full | Limited |
