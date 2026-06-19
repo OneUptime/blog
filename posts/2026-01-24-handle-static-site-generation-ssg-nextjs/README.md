@@ -196,6 +196,7 @@ Use for large datasets where you want to generate pages on-demand.
 
 ```javascript
 // pages/products/[id].js
+import { useRouter } from 'next/router';
 
 export async function getStaticPaths() {
   // Only pre-render the most popular products
@@ -559,11 +560,11 @@ flowchart TD
     A[Large Dataset] --> B{Strategy}
     B --> C[Pre-render Popular Pages]
     B --> D[Use fallback: blocking]
-    B --> E[Incremental Builds]
+    B --> E[ISR Revalidation]
 
     C --> F[Fast Initial Build]
     D --> G[On-demand Generation]
-    E --> H[Only Changed Pages]
+    E --> H[Refresh Stale Pages]
 
     F --> I[Good User Experience]
     G --> I
