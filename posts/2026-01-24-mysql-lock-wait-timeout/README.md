@@ -110,12 +110,12 @@ ORDER BY p.time DESC;
 
 ```sql
 -- Set up monitoring for lock waits
--- This logs queries that wait for locks
+-- This helps surface slow statements; use lock wait tables for active waits
 
 -- Lower the lock wait timeout for testing (default is 50 seconds)
 SET GLOBAL innodb_lock_wait_timeout = 10;
 
--- Enable slow query log to capture lock wait incidents
+-- Enable slow query log to capture slow statements related to contention
 SET GLOBAL slow_query_log = 'ON';
 SET GLOBAL long_query_time = 5;
 SET GLOBAL log_queries_not_using_indexes = 'ON';
@@ -208,14 +208,14 @@ UPDATE accounts SET                 UPDATE accounts SET
 
 -- Transaction 1 (transfer from account 1 to 2)
 START TRANSACTION;
-SELECT * FROM accounts WHERE id IN (1, 2) FOR UPDATE;  -- Lock both in ID order
+SELECT * FROM accounts WHERE id IN (1, 2) ORDER BY id FOR UPDATE;  -- Lock both in ID order
 UPDATE accounts SET balance = balance - 100 WHERE id = 1;
 UPDATE accounts SET balance = balance + 100 WHERE id = 2;
 COMMIT;
 
 -- Transaction 2 (transfer from account 2 to 1)
 START TRANSACTION;
-SELECT * FROM accounts WHERE id IN (1, 2) FOR UPDATE;  -- Same order!
+SELECT * FROM accounts WHERE id IN (1, 2) ORDER BY id FOR UPDATE;  -- Same order!
 UPDATE accounts SET balance = balance - 50 WHERE id = 2;
 UPDATE accounts SET balance = balance + 50 WHERE id = 1;
 COMMIT;
@@ -241,6 +241,7 @@ BEGIN
         SET archived = 1
         WHERE created_at < '2023-01-01'
         AND archived = 0
+        ORDER BY id
         LIMIT batch_size;  -- Process only batch_size rows at a time
 
         SET affected_rows = ROW_COUNT();
@@ -265,7 +266,7 @@ Adjust the timeout based on your application's needs.
 -- Check current setting
 SHOW VARIABLES LIKE 'innodb_lock_wait_timeout';
 
--- Set globally (requires SUPER privilege)
+-- Set globally (requires SYSTEM_VARIABLES_ADMIN, or deprecated SUPER)
 SET GLOBAL innodb_lock_wait_timeout = 30;  -- 30 seconds
 
 -- Set for current session only
@@ -282,9 +283,9 @@ SET SESSION innodb_lock_wait_timeout = 10;
 -- Check deadlock detection setting (MySQL 8.0+)
 SHOW VARIABLES LIKE 'innodb_deadlock_detect';
 
--- Deadlock detection adds overhead but prevents indefinite waits
+-- Deadlock detection adds overhead but resolves deadlocks quickly
 -- Keep it ON unless you have very high transaction rates
--- and can handle deadlocks at the application level
+-- and can rely on lock wait timeouts plus application-level retries
 ```
 
 ## Application-Level Handling
@@ -361,6 +362,8 @@ def retry_on_lock_timeout(max_retries=3, base_delay=0.1):
                     error_code = e.args[0]
                     # 1205: Lock wait timeout, 1213: Deadlock
                     if error_code in (1205, 1213):
+                        if args and hasattr(args[0], "rollback"):
+                            args[0].rollback()
                         last_exception = e
                         delay = base_delay * (2 ** attempt)
                         print(f"Attempt {attempt + 1} failed, retrying in {delay}s")
@@ -384,7 +387,7 @@ def transfer_funds(conn, from_id, to_id, amount):
 
 ### Optimistic Locking
 
-Use version numbers to detect concurrent modifications without holding locks.
+Use version numbers to detect concurrent modifications without holding locks across the read-modify-write workflow.
 
 ```sql
 -- Add version column to table
