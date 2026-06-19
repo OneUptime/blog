@@ -49,26 +49,24 @@ flowchart LR
 
 ## Common "Invalid Endpoint" Errors
 
-### Error Type 1: Malformed URL in Exporters
+### Error Type 1: Malformed URL in HTTP Exporters
 
 ```yaml
-# WRONG: Missing protocol scheme
+# WRONG: Missing protocol scheme for the OTLP HTTP exporter
 
 exporters:
-  otlp:
+  otlp_http:
     endpoint: collector.example.com:4317  # Error: invalid endpoint
 
-# CORRECT: Include the scheme for gRPC
+# CORRECT: Include the scheme for HTTP
 exporters:
-  otlp:
-    endpoint: http://collector.example.com:4317
-    tls:
-      insecure: true  # Required for plain HTTP
+  otlp_http:
+    endpoint: http://collector.example.com:4318
 
 # CORRECT: For HTTPS/TLS
 exporters:
-  otlp:
-    endpoint: https://collector.example.com:4317
+  otlp_http:
+    endpoint: https://collector.example.com:4318
 ```
 
 ### Error Type 2: Port Mismatch Between Protocols
@@ -82,7 +80,7 @@ flowchart TD
     B -->|HTTP| D[Default Port: 4318]
 
     C --> E[endpoint: host:4317]
-    D --> F[endpoint: host:4318/v1/traces]
+    D --> F[endpoint: http://host:4318]
 
     style C fill:#e8f5e9
     style D fill:#e3f2fd
@@ -91,33 +89,31 @@ flowchart TD
 ```yaml
 # WRONG: Using HTTP port with gRPC exporter
 exporters:
-  otlp:
+  otlp_grpc:
     endpoint: http://collector:4318  # Wrong port for gRPC!
 
 # CORRECT: gRPC uses port 4317
 exporters:
-  otlp:
+  otlp_grpc:
     endpoint: http://collector:4317
-    tls:
-      insecure: true
 
 # CORRECT: HTTP exporter uses port 4318
 exporters:
-  otlphttp:
+  otlp_http:
     endpoint: http://collector:4318
 ```
 
-### Error Type 3: Missing Path for HTTP Endpoints
+### Error Type 3: HTTP Endpoint Paths
 
 ```yaml
-# WRONG: HTTP exporter without proper path
+# VALID: The base endpoint automatically appends /v1/traces, /v1/metrics, and /v1/logs
 exporters:
-  otlphttp:
-    endpoint: http://collector:4318  # May work but better to be explicit
+  otlp_http:
+    endpoint: http://collector:4318
 
-# CORRECT: Specify the signal-specific path
+# CORRECT: Specify signal-specific paths when you need to override the defaults
 exporters:
-  otlphttp:
+  otlp_http:
     traces_endpoint: http://collector:4318/v1/traces
     metrics_endpoint: http://collector:4318/v1/metrics
     logs_endpoint: http://collector:4318/v1/logs
@@ -128,22 +124,18 @@ exporters:
 ```yaml
 # WRONG: Unbracketed IPv6 address
 exporters:
-  otlp:
+  otlp_grpc:
     endpoint: http://::1:4317  # Invalid!
 
 # CORRECT: IPv6 addresses must be in brackets
 exporters:
-  otlp:
+  otlp_grpc:
     endpoint: http://[::1]:4317
-    tls:
-      insecure: true
 
 # CORRECT: IPv6 with full address
 exporters:
-  otlp:
+  otlp_grpc:
     endpoint: http://[2001:db8::1]:4317
-    tls:
-      insecure: true
 ```
 
 ## Receiver Endpoint Configuration
@@ -174,7 +166,7 @@ receivers:
     config:
       scrape_configs:
         - job_name: 'my-service'
-          # CORRECT: Full URL for scrape targets
+          # CORRECT: host:port for scrape targets
           static_configs:
             - targets: ['localhost:8080']
           # WRONG: Including scheme in targets
@@ -238,10 +230,8 @@ processors:
 # Exporters: Where telemetry data is sent
 exporters:
   # OTLP gRPC exporter to another collector or backend
-  otlp:
+  otlp_grpc:
     endpoint: http://upstream-collector:4317
-    tls:
-      insecure: true
     # Retry configuration for reliability
     retry_on_failure:
       enabled: true
@@ -250,17 +240,19 @@ exporters:
       max_elapsed_time: 300s
 
   # OTLP HTTP exporter (useful when gRPC is blocked)
-  otlphttp:
-    endpoint: https://api.oneuptime.com
+  otlp_http:
+    endpoint: https://oneuptime.com/otlp
     headers:
       # Authentication header for the backend
-      x-oneuptime-token: "${ONEUPTIME_TOKEN}"
+      x-oneuptime-token: "${env:ONEUPTIME_TOKEN}"
+      Content-Type: "application/json"
+    encoding: json
     # Compression reduces bandwidth usage
     compression: gzip
 
-  # Jaeger exporter for Jaeger backend
-  jaeger:
-    endpoint: http://jaeger:14250
+  # OTLP gRPC exporter to a Jaeger backend that accepts OTLP
+  otlp_grpc/jaeger:
+    endpoint: jaeger:4317
     tls:
       insecure: true
 
@@ -302,26 +294,31 @@ service:
     traces:
       receivers: [otlp, jaeger, zipkin]
       processors: [memory_limiter, batch]
-      exporters: [otlp, otlphttp, jaeger]
+      exporters: [otlp_grpc, otlp_http, otlp_grpc/jaeger]
 
     # Metrics pipeline
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [otlphttp, prometheus]
+      exporters: [otlp_http, prometheus]
 
     # Logs pipeline
     logs:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [otlphttp]
+      exporters: [otlp_http]
 
   # Telemetry configuration for the collector itself
   telemetry:
     logs:
       level: info
     metrics:
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 ```
 
 ## Debugging Invalid Endpoint Errors
@@ -394,10 +391,10 @@ flowchart TD
     B --> E[OneUptime/SaaS]
     B --> F[Another Collector]
 
-    C --> C1["endpoint: jaeger:14250<br/>(gRPC)"]
+    C --> C1["endpoint: jaeger:4317<br/>(OTLP gRPC)"]
     D --> D1["endpoint: http://zipkin:9411/api/v2/spans"]
-    E --> E1["endpoint: https://api.oneuptime.com<br/>+ auth headers"]
-    F --> F1["endpoint: http://collector:4317<br/>(OTLP)"]
+    E --> E1["endpoint: https://oneuptime.com/otlp<br/>+ auth headers"]
+    F --> F1["endpoint: http://collector:4317<br/>(OTLP gRPC)"]
 
     style C1 fill:#e8f5e9
     style D1 fill:#e3f2fd
@@ -408,10 +405,10 @@ flowchart TD
 ```yaml
 # Backend-specific configurations
 
-# Jaeger
+# Jaeger with OTLP enabled
 exporters:
-  jaeger:
-    endpoint: jaeger-collector:14250
+  otlp_grpc/jaeger:
+    endpoint: jaeger-collector:4317
     tls:
       insecure: true
 
@@ -421,19 +418,19 @@ exporters:
     endpoint: http://zipkin:9411/api/v2/spans
     format: proto  # or json
 
-# Generic OTLP backend (OneUptime, Grafana, etc.)
+# OneUptime OTLP backend
 exporters:
-  otlphttp:
-    endpoint: https://api.oneuptime.com
+  otlp_http:
+    endpoint: https://oneuptime.com/otlp
     headers:
-      Authorization: "Bearer ${API_TOKEN}"
+      x-oneuptime-token: "${env:ONEUPTIME_TOKEN}"
+      Content-Type: "application/json"
+    encoding: json
 
 # Another OpenTelemetry Collector
 exporters:
-  otlp:
+  otlp_grpc:
     endpoint: http://upstream-collector:4317
-    tls:
-      insecure: true
 ```
 
 ## Environment Variable Substitution
@@ -447,22 +444,22 @@ receivers:
     protocols:
       grpc:
         # Use env var with default value
-        endpoint: ${OTLP_GRPC_ENDPOINT:-0.0.0.0:4317}
+        endpoint: ${env:OTLP_GRPC_ENDPOINT:-0.0.0.0:4317}
       http:
-        endpoint: ${OTLP_HTTP_ENDPOINT:-0.0.0.0:4318}
+        endpoint: ${env:OTLP_HTTP_ENDPOINT:-0.0.0.0:4318}
 
 exporters:
-  otlphttp:
+  otlp_http:
     # Required env var (will fail if not set)
-    endpoint: ${BACKEND_ENDPOINT}
+    endpoint: ${env:BACKEND_ENDPOINT}
     headers:
-      Authorization: "Bearer ${API_TOKEN}"
+      x-oneuptime-token: "${env:ONEUPTIME_TOKEN}"
 ```
 
 ```bash
 # Set environment variables before starting collector
-export BACKEND_ENDPOINT="https://api.oneuptime.com"
-export API_TOKEN="your-api-token-here"
+export BACKEND_ENDPOINT="https://oneuptime.com/otlp"
+export ONEUPTIME_TOKEN="your-ingestion-token-here"
 export OTLP_GRPC_ENDPOINT="0.0.0.0:4317"
 
 # Start the collector
@@ -486,7 +483,7 @@ flowchart TD
     D --> D3[Verify service is running]
 
     B -->|"TLS handshake"| E[Check TLS Config]
-    E --> E1[Set insecure: true for HTTP]
+    E --> E1[Use http:// or tls.insecure for plaintext gRPC]
     E --> E2[Configure certificates]
     E --> E3[Check cert expiration]
 
