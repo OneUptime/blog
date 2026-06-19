@@ -109,6 +109,19 @@ const ScopeDefinitions = {
         required: false,
         sensitive: true
     },
+    'settings:read': {
+        description: 'Read application settings',
+        permissions: ['GET /settings'],
+        default: false,
+        required: false
+    },
+    'settings:write': {
+        description: 'Update application settings',
+        permissions: ['PUT /settings', 'PATCH /settings'],
+        default: false,
+        required: false,
+        sensitive: true
+    },
 
     // Hierarchical scopes
     'admin': {
@@ -368,7 +381,7 @@ class ClientScopeValidator {
         const client = this.getClient(clientId);
         const scopes = Array.isArray(requestedScopes)
             ? requestedScopes
-            : requestedScopes.split(/\s+/);
+            : (requestedScopes || '').split(/\s+/).filter(Boolean);
 
         const result = {
             granted: [],
@@ -446,6 +459,7 @@ function createScopeMiddleware(options = {}) {
             );
 
             if (missingScopes.length > 0) {
+                res.set('WWW-Authenticate', `Bearer error="insufficient_scope", scope="${requiredScopes.join(' ')}"`);
                 return res.status(403).json({
                     error: 'insufficient_scope',
                     error_description: `Missing required scopes: ${missingScopes.join(', ')}`,
@@ -469,6 +483,7 @@ function createScopeMiddleware(options = {}) {
             );
 
             if (!hasScope) {
+                res.set('WWW-Authenticate', `Bearer error="insufficient_scope", scope="${requiredScopes.join(' ')}"`);
                 return res.status(403).json({
                     error: 'insufficient_scope',
                     error_description: `Requires one of: ${requiredScopes.join(', ')}`,
@@ -491,6 +506,7 @@ function createScopeMiddleware(options = {}) {
             const hasMatchingScope = tokenScopes.some(scope => regex.test(scope));
 
             if (!hasMatchingScope) {
+                res.set('WWW-Authenticate', 'Bearer error="insufficient_scope"');
                 return res.status(403).json({
                     error: 'insufficient_scope',
                     error_description: `Requires scope matching pattern: ${pattern}`,
@@ -511,6 +527,7 @@ function createScopeMiddleware(options = {}) {
             const requiredScope = await getResourceScope(req);
 
             if (!tokenScopes.includes(requiredScope)) {
+                res.set('WWW-Authenticate', `Bearer error="insufficient_scope", scope="${requiredScope}"`);
                 return res.status(403).json({
                     error: 'insufficient_scope',
                     error_description: `Missing required scope: ${requiredScope}`,
@@ -714,8 +731,7 @@ class ScopeValidator:
                 result["sensitive"].append(scope)
 
             # Expand hierarchical scopes
-            for included in definition.includes:
-                result["expanded"].add(included)
+            result["expanded"].update(self.expand(definition.includes))
 
         result["expanded"] = list(result["expanded"])
         return result
@@ -826,25 +842,36 @@ class ClientScopeManager:
 
 
 # FastAPI dependency for scope validation
-def create_scope_checker(required_scopes: List[str]):
+def create_scope_checker(
+    required_scopes: List[str],
+    key: str,
+    algorithms: List[str],
+    audience: Optional[str] = None,
+    issuer: Optional[str] = None
+):
     """Create a FastAPI dependency for scope checking."""
     from fastapi import Depends, HTTPException, status
     from fastapi.security import OAuth2PasswordBearer
+    import jwt
+    from jwt.exceptions import InvalidTokenError
 
     oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
     async def check_scopes(token: str = Depends(oauth2_scheme)):
-        # In practice, decode and verify the token here
-        # This is a simplified example
-        import jwt
-
         try:
-            payload = jwt.decode(token, options={"verify_signature": False})
+            payload = jwt.decode(
+                token,
+                key,
+                algorithms=algorithms,
+                audience=audience,
+                issuer=issuer
+            )
             token_scopes = payload.get("scope", "").split()
-        except Exception:
+        except InvalidTokenError:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token"
+                detail="Invalid token",
+                headers={"WWW-Authenticate": "Bearer"}
             )
 
         # Check if token has required scopes
@@ -856,7 +883,8 @@ def create_scope_checker(required_scopes: List[str]):
                     "error": "insufficient_scope",
                     "required": required_scopes,
                     "missing": missing
-                }
+                },
+                headers={"WWW-Authenticate": f'Bearer error="insufficient_scope", scope="{" ".join(required_scopes)}"'}
             )
 
         return payload
@@ -914,7 +942,7 @@ if __name__ == "__main__":
 // Express API with comprehensive scope-based access control
 
 const express = require('express');
-const jwt = require('express-jwt');
+const { expressjwt: jwt } = require('express-jwt');
 const { createScopeMiddleware } = require('./middleware/scope-validator');
 
 const app = express();
@@ -922,7 +950,7 @@ app.use(express.json());
 
 // JWT middleware
 const jwtMiddleware = jwt({
-    secret: process.env.JWT_SECRET,
+    secret: process.env.JWT_PUBLIC_KEY,
     algorithms: ['RS256']
 });
 
