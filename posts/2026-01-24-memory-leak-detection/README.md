@@ -181,14 +181,14 @@ class HeapSnapshotManager {
     const start = Date.now();
 
     // Write snapshot to file
-    const snapshotStream = v8.writeHeapSnapshot(filepath);
+    const snapshotPath = v8.writeHeapSnapshot(filepath);
 
     console.log(`Heap snapshot saved in ${Date.now() - start}ms`);
 
     // Clean up old snapshots
     await this.cleanup();
 
-    return filepath;
+    return snapshotPath;
   }
 
   async cleanup() {
@@ -363,9 +363,9 @@ function getData(key) {
 }
 
 // FIX: Use LRU cache with size limit
-const LRU = require('lru-cache');
+const { LRUCache } = require('lru-cache');
 
-const cache = new LRU({
+const cache = new LRUCache({
   max: 500,           // Maximum 500 items
   maxSize: 50000000,  // Or 50MB total
   sizeCalculation: (value) => JSON.stringify(value).length,
@@ -429,11 +429,24 @@ class DataPoller {
 
   sleep(ms) {
     return new Promise((resolve, reject) => {
-      const timeout = setTimeout(resolve, ms);
-      this.abortController.signal.addEventListener('abort', () => {
+      const signal = this.abortController.signal;
+      let timeout;
+
+      function cleanup() {
+        signal.removeEventListener('abort', onAbort);
+      }
+
+      function onAbort() {
         clearTimeout(timeout);
+        cleanup();
         reject(new DOMException('Aborted', 'AbortError'));
-      });
+      }
+
+      signal.addEventListener('abort', onAbort, { once: true });
+      timeout = setTimeout(() => {
+        cleanup();
+        resolve();
+      }, ms);
     });
   }
 
@@ -584,7 +597,7 @@ const safeguard = new MemorySafeguard({
   heapThreshold: 0.85,
   onPressure: () => {
     // Reduce memory usage
-    cache.prune();
+    cache.clear();
   },
   onCritical: () => {
     // Graceful shutdown
