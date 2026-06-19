@@ -73,6 +73,15 @@ type AuthInterceptor struct {
     publicMethods map[string]bool
 }
 
+type wrappedServerStream struct {
+    grpc.ServerStream
+    ctx context.Context
+}
+
+func (w *wrappedServerStream) Context() context.Context {
+    return w.ctx
+}
+
 // NewAuthInterceptor creates a new authentication interceptor
 func NewAuthInterceptor(jwtSecret string, publicMethods []string) *AuthInterceptor {
     methods := make(map[string]bool)
@@ -123,12 +132,15 @@ func (i *AuthInterceptor) Stream() grpc.StreamServerInterceptor {
         }
 
         // Authenticate the request
-        _, err := i.authenticate(ss.Context())
+        newCtx, err := i.authenticate(ss.Context())
         if err != nil {
             return err
         }
 
-        return handler(srv, ss)
+        return handler(srv, &wrappedServerStream{
+            ServerStream: ss,
+            ctx:          newCtx,
+        })
     }
 }
 
@@ -175,7 +187,7 @@ func (i *AuthInterceptor) validateToken(tokenString string) (*Claims, error) {
             return nil, status.Errorf(codes.Unauthenticated, "unexpected signing method: %v", token.Header["alg"])
         }
         return i.jwtSecret, nil
-    })
+    }, jwt.WithLeeway(30 * time.Second))
 
     if err != nil {
         // Provide specific error messages for common issues
@@ -268,7 +280,7 @@ import (
 
     "google.golang.org/grpc"
     "google.golang.org/grpc/credentials"
-    "google.golang.org/grpc/metadata"
+    insecurecreds "google.golang.org/grpc/credentials/insecure"
 )
 
 // TokenAuth implements credentials.PerRPCCredentials
@@ -299,7 +311,7 @@ func NewAuthenticatedConnection(address string, token string, insecure bool) (*g
     var opts []grpc.DialOption
 
     if insecure {
-        opts = append(opts, grpc.WithInsecure())
+        opts = append(opts, grpc.WithTransportCredentials(insecurecreds.NewCredentials()))
     } else {
         // Load TLS credentials
         creds, err := credentials.NewClientTLSFromFile("ca-cert.pem", "")
@@ -312,7 +324,7 @@ func NewAuthenticatedConnection(address string, token string, insecure bool) (*g
     // Add per-RPC credentials
     opts = append(opts, grpc.WithPerRPCCredentials(tokenAuth))
 
-    return grpc.Dial(address, opts...)
+    return grpc.NewClient(address, opts...)
 }
 ```
 
@@ -360,6 +372,13 @@ func (tm *TokenManager) GetAccessToken() string {
     tm.mu.RLock()
     defer tm.mu.RUnlock()
     return tm.accessToken
+}
+
+// GetRefreshToken returns the current refresh token
+func (tm *TokenManager) GetRefreshToken() string {
+    tm.mu.RLock()
+    defer tm.mu.RUnlock()
+    return tm.refreshToken
 }
 
 // AuthInterceptor creates a unary client interceptor that adds auth tokens
@@ -418,6 +437,9 @@ flowchart TD
 Use grpcurl to test with explicit metadata:
 
 ```bash
+# These commands assume server reflection is enabled.
+# If not, add -proto or -protoset flags for your service definitions.
+
 # Test without token - should get UNAUTHENTICATED
 
 grpcurl -plaintext localhost:50051 myapp.UserService/GetUser
@@ -509,9 +531,16 @@ func main() {
 
     tokenString := os.Args[1]
     secret := os.Getenv("JWT_SECRET")
+    if secret == "" {
+        fmt.Println("JWT_SECRET environment variable is required")
+        os.Exit(1)
+    }
 
     claims := &Claims{}
     token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+        if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+            return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+        }
         return []byte(secret), nil
     })
 
@@ -627,7 +656,8 @@ func (i *RefreshableAuthInterceptor) tryRefreshToken() error {
         return status.Error(codes.Unauthenticated, "no refresh function configured")
     }
 
-    newAccess, newRefresh, err := i.tokenManager.refreshFunc(i.tokenManager.refreshToken)
+    refreshToken := i.tokenManager.GetRefreshToken()
+    newAccess, newRefresh, err := i.tokenManager.refreshFunc(refreshToken)
     if err != nil {
         return err
     }
@@ -648,9 +678,8 @@ package main
 import (
     "crypto/tls"
     "crypto/x509"
-    "io/ioutil"
     "log"
-    "net"
+    "os"
 
     "google.golang.org/grpc"
     "google.golang.org/grpc/credentials"
@@ -664,7 +693,7 @@ func createTLSServer() *grpc.Server {
     }
 
     // Load CA certificate for client verification (mTLS)
-    caCert, err := ioutil.ReadFile("ca-cert.pem")
+    caCert, err := os.ReadFile("ca-cert.pem")
     if err != nil {
         log.Fatalf("failed to read CA certificate: %v", err)
     }
