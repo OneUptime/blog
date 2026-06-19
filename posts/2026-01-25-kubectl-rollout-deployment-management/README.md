@@ -105,23 +105,26 @@ kubectl rollout history deployment/myapp -n production --revision=2
 
 ### Recording Change Causes
 
-Always record why you made a change:
-
-```bash
-# Record the change cause when updating
-kubectl set image deployment/myapp myapp=myapp:v1.2.0 -n production --record
-
-# Or with apply
-kubectl apply -f deployment.yaml --record
-```
-
-Better approach using annotations:
+Always record why you made a change. Set the change-cause annotation before changing the pod template so it is copied to the new revision:
 
 ```bash
 # Annotate the change cause
-kubectl annotate deployment/myapp -n production \
+kubectl annotate deployment/myapp -n production --overwrite \
     kubernetes.io/change-cause="Update to v1.2.0 for bug fix #1234"
+
+# Update the deployment
+kubectl set image deployment/myapp myapp=myapp:v1.2.0 -n production
 ```
+
+Or include the annotation in your manifest before applying it:
+
+```yaml
+metadata:
+  annotations:
+    kubernetes.io/change-cause: "Update to v1.2.0 for bug fix #1234"
+```
+
+In older Kubernetes versions, `kubectl --record` could populate `CHANGE-CAUSE` automatically. That flag is deprecated and will be removed in a future release.
 
 ## Pausing and Resuming Rollouts
 
@@ -193,18 +196,18 @@ TIMEOUT=${3:-300}
 echo "Deploying $DEPLOYMENT in $NAMESPACE"
 
 # Store current revision
-CURRENT_REVISION=$(kubectl rollout history deployment/$DEPLOYMENT -n $NAMESPACE | tail -2 | head -1 | awk '{print $1}')
+CURRENT_REVISION=$(kubectl rollout history deployment/"$DEPLOYMENT" -n "$NAMESPACE" | awk 'NR > 1 && $1 ~ /^[0-9]+$/ { rev=$1 } END { print rev }')
 
 # Apply changes
-kubectl apply -f deployment.yaml
+kubectl apply -f deployment.yaml -n "$NAMESPACE"
 
 # Wait for rollout
-if kubectl rollout status deployment/$DEPLOYMENT -n $NAMESPACE --timeout=${TIMEOUT}s; then
+if kubectl rollout status deployment/"$DEPLOYMENT" -n "$NAMESPACE" --timeout="${TIMEOUT}s"; then
     echo "Deployment successful"
 else
     echo "Deployment failed, rolling back to revision $CURRENT_REVISION"
-    kubectl rollout undo deployment/$DEPLOYMENT -n $NAMESPACE --to-revision=$CURRENT_REVISION
-    kubectl rollout status deployment/$DEPLOYMENT -n $NAMESPACE
+    kubectl rollout undo deployment/"$DEPLOYMENT" -n "$NAMESPACE" --to-revision="$CURRENT_REVISION"
+    kubectl rollout status deployment/"$DEPLOYMENT" -n "$NAMESPACE"
     exit 1
 fi
 ```
@@ -213,7 +216,7 @@ fi
 
 ### Rolling Restart
 
-Restart all pods without changing the spec:
+Restart all pods without changing container images or other application configuration:
 
 ```bash
 # Restart deployment (triggers rolling update)
@@ -249,6 +252,17 @@ metadata:
   name: myapp
 spec:
   replicas: 10
+  selector:
+    matchLabels:
+      app: myapp
+  template:
+    metadata:
+      labels:
+        app: myapp
+    spec:
+      containers:
+      - name: myapp
+        image: myapp:v1.2.0
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -398,6 +412,19 @@ metadata:
     kubernetes.io/change-cause: "Initial deployment"
 spec:
   replicas: 5
+  selector:
+    matchLabels:
+      app: myapp
+  template:
+    metadata:
+      labels:
+        app: myapp
+    spec:
+      containers:
+      - name: myapp
+        image: myapp:v1.2.0
+        ports:
+        - containerPort: 8080
   revisionHistoryLimit: 10  # Keep 10 revisions for rollback
   progressDeadlineSeconds: 600  # Fail rollout after 10 minutes
   strategy:
