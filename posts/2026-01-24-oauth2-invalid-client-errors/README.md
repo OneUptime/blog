@@ -204,14 +204,14 @@ flowchart LR
 
     subgraph "client_secret_basic"
         B[HTTP Header]
-        B1["Authorization: Basic base64(client_id:client_secret)"]
+        B1["Authorization: Basic base64(urlencode(client_id):urlencode(client_secret))"]
         B --> B1
     end
 
     subgraph "private_key_jwt"
         C[JWT Assertion]
         C1["client_assertion=signed_jwt"]
-        C2["client_assertion_type=jwt-bearer"]
+        C2["client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer"]
         C --> C1
         C --> C2
     end
@@ -223,6 +223,7 @@ Implement support for multiple authentication methods:
 
 ```python
 import base64
+import urllib.parse
 import requests
 from enum import Enum
 from typing import Optional
@@ -292,7 +293,9 @@ class OAuth2Client:
             data["client_secret"] = self.client_secret
 
         elif self.auth_method == ClientAuthMethod.CLIENT_SECRET_BASIC:
-            credentials = f"{self.client_id}:{self.client_secret}"
+            encoded_id = urllib.parse.quote_plus(self.client_id, safe="")
+            encoded_secret = urllib.parse.quote_plus(self.client_secret, safe="")
+            credentials = f"{encoded_id}:{encoded_secret}"
             encoded = base64.b64encode(credentials.encode()).decode()
             headers["Authorization"] = f"Basic {encoded}"
 
@@ -413,7 +416,7 @@ The client may not be authorized for the grant type you are using.
 ```python
 # Error when using unsupported grant type
 {
-    "error": "invalid_client",
+    "error": "unauthorized_client",
     "error_description": "Client not authorized for this grant type"
 }
 ```
@@ -516,7 +519,7 @@ class OAuth2ClientConfig:
 
         if response.status_code != 200:
             error_data = response.json()
-            if error_data.get("error") == "invalid_client":
+            if error_data.get("error") == "unauthorized_client":
                 # Check if it might be a grant type issue
                 self._diagnose_grant_type_issue(params.get("grant_type"))
             raise OAuth2Error(error_data)
@@ -603,8 +606,8 @@ class SecureOAuth2Client:
         Credentials must be URL-encoded before base64 encoding per RFC 6749.
         """
         # URL encode the credentials first (RFC 6749 Section 2.3.1)
-        encoded_id = urllib.parse.quote(self.client_id, safe="")
-        encoded_secret = urllib.parse.quote(self.client_secret, safe="")
+        encoded_id = urllib.parse.quote_plus(self.client_id, safe="")
+        encoded_secret = urllib.parse.quote_plus(self.client_secret, safe="")
 
         # Then base64 encode
         credentials = f"{encoded_id}:{encoded_secret}"
@@ -933,8 +936,8 @@ def diagnose_invalid_client(
     print("\nTesting client_secret_basic...")
     try:
         # Proper encoding per RFC 6749
-        encoded_id = urllib.parse.quote(client_id, safe="")
-        encoded_secret = urllib.parse.quote(client_secret, safe="")
+        encoded_id = urllib.parse.quote_plus(client_id, safe="")
+        encoded_secret = urllib.parse.quote_plus(client_secret, safe="")
         credentials = f"{encoded_id}:{encoded_secret}"
         basic_auth = base64.b64encode(credentials.encode()).decode()
 
