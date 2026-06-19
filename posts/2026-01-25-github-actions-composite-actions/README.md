@@ -316,8 +316,8 @@ runs:
 
 Share your composite action publicly:
 
-1. Create a dedicated repository for the action
-2. Add metadata to `action.yml`:
+1. Create a dedicated public repository for the action
+2. Add metadata to `action.yml` at the repository root:
 
 ```yaml
 name: 'My Awesome Action'
@@ -430,7 +430,7 @@ Choose the right tool:
 | Feature | Composite Action | Reusable Workflow |
 |---------|-----------------|-------------------|
 | Scope | Steps within a job | Entire jobs |
-| Secrets | Inherited automatically | Must be passed explicitly |
+| Secrets | Must be passed explicitly as inputs or environment variables | Passed explicitly or inherited with `secrets: inherit` |
 | Runners | Uses caller's runner | Can specify own runners |
 | Matrix | No direct matrix support | Full matrix support |
 | Environments | Uses caller's environment | Can define environments |
