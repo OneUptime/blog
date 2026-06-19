@@ -43,6 +43,7 @@ build:
   script:
     - docker build -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA .
     - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
+    - syft $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA -o cyclonedx-json=sbom.json
   artifacts:
     reports:
       # Export SBOM for later analysis
@@ -51,10 +52,12 @@ build:
 # Stage 2: Static analysis and dependency scanning
 sast:
   stage: security-scan
-  image: semgrep/semgrep:latest
+  image:
+    name: semgrep/semgrep:latest
+    entrypoint: [""]
   script:
     # Run SAST with rules relevant to your stack
-    - semgrep scan --config auto --json --output sast-results.json .
+    - semgrep scan --config auto --json --json-output sast-results.json .
     # Check for blocking issues
     - |
       HIGH_COUNT=$(jq '[.results[] | select(.extra.severity == "ERROR")] | length' sast-results.json)
@@ -64,56 +67,59 @@ sast:
         exit 1
       fi
   artifacts:
-    reports:
-      sast: sast-results.json
+    paths:
+      - sast-results.json
   allow_failure: false
 
 dependency_scan:
   stage: security-scan
-  image: aquasec/trivy:latest
+  image:
+    name: aquasec/trivy:latest
+    entrypoint: [""]
   script:
     # Scan dependencies for known vulnerabilities
     - trivy fs --format json --output dep-scan.json .
     # Check against threshold
     - |
-      CRITICAL=$(jq '[.Results[].Vulnerabilities[] | select(.Severity == "CRITICAL")] | length' dep-scan.json)
+      CRITICAL=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length' dep-scan.json)
       if [ "$CRITICAL" -gt 0 ]; then
         echo "Found $CRITICAL critical vulnerabilities in dependencies"
         exit 1
       fi
   artifacts:
-    reports:
-      dependency_scanning: dep-scan.json
+    paths:
+      - dep-scan.json
 
 container_scan:
   stage: security-scan
-  image: aquasec/trivy:latest
+  image:
+    name: aquasec/trivy:latest
+    entrypoint: [""]
   script:
     # Scan the container image
     - trivy image --format json --output container-scan.json $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
     - |
-      CRITICAL=$(jq '[.Results[].Vulnerabilities[] | select(.Severity == "CRITICAL")] | length' container-scan.json)
-      HIGH=$(jq '[.Results[].Vulnerabilities[] | select(.Severity == "HIGH")] | length' container-scan.json)
+      CRITICAL=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length' container-scan.json)
+      HIGH=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "HIGH")] | length' container-scan.json)
       echo "Found $CRITICAL critical and $HIGH high vulnerabilities"
       if [ "$CRITICAL" -gt 0 ]; then
         exit 1
       fi
   artifacts:
-    reports:
-      container_scanning: container-scan.json
+    paths:
+      - container-scan.json
 
 secrets_detection:
   stage: security-scan
-  image: trufflesecurity/trufflehog:latest
+  image:
+    name: trufflesecurity/trufflehog:latest
+    entrypoint: [""]
   script:
     # Scan for leaked secrets
-    - trufflehog git file://. --json > secrets-scan.json 2>&1 || true
-    - |
-      if [ -s secrets-scan.json ]; then
-        echo "Potential secrets detected!"
-        cat secrets-scan.json
-        exit 1
-      fi
+    - trufflehog git file://. --json --results=verified,unknown --fail > secrets-scan.json
+  artifacts:
+    paths:
+      - secrets-scan.json
 
 # Stage 3: Run tests
 test:
@@ -135,13 +141,15 @@ deploy_staging:
 # Stage 5: Dynamic security testing against staging
 dast:
   stage: security-test
-  image: owasp/zap2docker-stable
+  image:
+    name: ghcr.io/zaproxy/zaproxy:stable
+    entrypoint: [""]
   script:
     # Run OWASP ZAP against staging environment
     - zap-baseline.py -t https://staging.example.com -J dast-results.json
   artifacts:
-    reports:
-      dast: dast-results.json
+    paths:
+      - dast-results.json
   needs:
     - deploy_staging
 
@@ -178,8 +186,8 @@ repos:
         args: ['--baseline', '.secrets.baseline']
 
   # Fast static analysis
-  - repo: https://github.com/returntocorp/semgrep
-    rev: v1.50.0
+  - repo: https://github.com/semgrep/pre-commit
+    rev: v1.166.0
     hooks:
       - id: semgrep
         args: ['--config', 'p/security-audit', '--error']
@@ -189,8 +197,9 @@ repos:
     hooks:
       - id: safety-check
         name: Check Python dependencies
-        entry: safety check --full-report
+        entry: safety scan --target .
         language: python
+        additional_dependencies: ['safety']
         files: requirements.*\.txt$
         pass_filenames: false
 ```
@@ -235,14 +244,15 @@ Here is a script that integrates scanner results with your ticketing system:
 # Automated vulnerability triage and ticket creation
 
 import json
+import os
 import requests
 from datetime import datetime, timedelta
 from typing import List, Dict
 
 class VulnerabilityManager:
-    def __init__(self, jira_url: str, jira_token: str, project_key: str):
+    def __init__(self, jira_url: str, jira_email: str, jira_token: str, project_key: str):
         self.jira_url = jira_url
-        self.jira_auth = ('', jira_token)
+        self.jira_auth = (jira_email, jira_token)
         self.project = project_key
 
         # SLA definitions by severity
@@ -300,12 +310,12 @@ class VulnerabilityManager:
         jql = f'project = {self.project} AND labels = "security" AND summary ~ "{finding["id"]}"'
 
         response = requests.get(
-            f'{self.jira_url}/rest/api/2/search',
+            f'{self.jira_url}/rest/api/3/search/jql',
             auth=self.jira_auth,
-            params={'jql': jql, 'maxResults': 1}
+            params={'jql': jql, 'maxResults': 1, 'fields': 'key'}
         )
 
-        return response.json().get('total', 0) > 0
+        return len(response.json().get('issues', [])) > 0
 
     def _create_ticket(self, finding: Dict):
         """Create a Jira ticket for the finding."""
@@ -333,7 +343,7 @@ class VulnerabilityManager:
         }
 
         response = requests.post(
-            f'{self.jira_url}/rest/api/2/issue',
+            f'{self.jira_url}/rest/api/3/issue',
             auth=self.jira_auth,
             json=ticket_data
         )
@@ -363,8 +373,15 @@ h3. Remediation
 {finding.get('fixed_version', 'See vendor advisory')}
 
 h3. References
-* [CVE Details|https://nvd.nist.gov/vuln/detail/{finding['id']}]
+{self._format_references(finding)}
 """
+
+    def _format_references(self, finding: Dict) -> str:
+        """Format external references for the finding."""
+        if finding['id'].startswith('CVE-'):
+            return f"* [CVE Details|https://nvd.nist.gov/vuln/detail/{finding['id']}]"
+
+        return "See scanner output for references."
 
 
 # Example usage in CI pipeline
@@ -373,6 +390,7 @@ if __name__ == '__main__':
 
     manager = VulnerabilityManager(
         jira_url='https://yourcompany.atlassian.net',
+        jira_email=os.environ['JIRA_EMAIL'],
         jira_token=os.environ['JIRA_TOKEN'],
         project_key='SEC'
     )
@@ -426,12 +444,18 @@ Set up alerts for suspicious container behavior:
 # falco-rules.yaml
 # Runtime security rules using Falco
 
+- list: shell_procs
+  items: [ash, bash, csh, dash, ksh, sh, tcsh, zsh]
+
+- list: allowed_shell_images
+  items: ["debug-tools", "admin-shell"]
+
 - rule: Unexpected Shell in Container
   desc: Detect shell execution in containers that shouldn't have shells
   condition: >
     spawned_process and
     container and
-    shell_procs and
+    proc.name in (shell_procs) and
     not container.image.repository in (allowed_shell_images)
   output: >
     Shell executed in container (user=%user.name command=%proc.cmdline
@@ -444,7 +468,8 @@ Set up alerts for suspicious container behavior:
   condition: >
     open_read and
     container and
-    fd.name in (/etc/shadow, /etc/passwd, /root/.ssh/*)
+    (fd.name in (/etc/shadow, /etc/passwd) or
+     fd.name pmatch (/root/.ssh))
   output: >
     Sensitive file accessed (user=%user.name command=%proc.cmdline
     file=%fd.name container=%container.name)
