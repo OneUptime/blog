@@ -227,17 +227,17 @@ CREATE TABLE articles (
     id INT AUTO_INCREMENT PRIMARY KEY,
     title VARCHAR(255),
     metadata JSON,
-    INDEX idx_tags ((CAST(metadata->>'$.tags' AS CHAR(50) ARRAY)))
+    INDEX idx_tag_ids ((CAST(metadata->'$.tag_ids' AS UNSIGNED ARRAY)))
 );
 
 -- Insert with tags array
 INSERT INTO articles (title, metadata) VALUES
-('MySQL Tips', '{"tags": ["mysql", "database", "sql"]}'),
-('JSON Guide', '{"tags": ["json", "mysql", "nosql"]}');
+('MySQL Tips', '{"tag_ids": [1, 2, 3], "tags": ["mysql", "database", "sql"]}'),
+('JSON Guide', '{"tag_ids": [1, 4, 5], "tags": ["json", "mysql", "nosql"]}');
 
 -- Query using the multi-value index
 SELECT * FROM articles
-WHERE 'mysql' MEMBER OF (metadata->>'$.tags');
+WHERE 1 MEMBER OF (metadata->'$.tag_ids');
 ```
 
 ## JSON Validation
@@ -300,10 +300,10 @@ flowchart TD
     B -->|Yes via Generated Column| C[Index Scan - Fast]
     B -->|No| D[Full Table Scan - Slow]
 
-    E[JSON Size] --> F{Small < 1KB}
-    F -->|Yes| G[Inline Storage]
-    F -->|No Large| H[External Storage]
-    H --> I[Slower Access]
+    E[JSON Size] --> F{Reasonably Sized?}
+    F -->|Yes| G[Lower I/O Cost]
+    F -->|No Very Large| H[More Storage and Transfer Cost]
+    H --> I[Slower Reads and Updates]
 ```
 
 **Best practices for JSON performance:**
@@ -335,7 +335,7 @@ WHERE JSON_CONTAINS(attributes->'$.ports', '"HDMI"');
 CREATE TABLE users (
     id INT AUTO_INCREMENT PRIMARY KEY,
     email VARCHAR(255) NOT NULL UNIQUE,
-    preferences JSON DEFAULT '{}',
+    preferences JSON DEFAULT ('{}'),
     CONSTRAINT check_prefs CHECK (JSON_VALID(preferences))
 );
 
@@ -376,7 +376,7 @@ WHERE email = 'user@example.com';
 | Schema flexibility | High | Low |
 | Query performance | Lower | Higher |
 | Index support | Limited | Full |
-| Data integrity | Application enforced | Database enforced |
+| Data integrity | Limited constraints | Database enforced |
 | Storage efficiency | Variable | Predictable |
 
 Use JSON for metadata, configuration, and truly variable data. Use regular columns for data you query frequently or need to join on.
