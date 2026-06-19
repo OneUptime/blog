@@ -39,7 +39,7 @@ flowchart TD
 In gRPC:
 - **Deadline**: An absolute point in time when the request should complete
 - **Timeout**: A relative duration that gets converted to a deadline
-- Deadlines propagate automatically across service calls
+- Some gRPC implementations propagate deadlines automatically across service calls; otherwise, pass the remaining timeout explicitly
 
 ---
 
@@ -113,7 +113,6 @@ import (
     "log"
     "time"
 
-    "google.golang.org/grpc"
     "google.golang.org/grpc/codes"
     "google.golang.org/grpc/status"
 
@@ -218,14 +217,14 @@ class MyService(service_pb2_grpc.MyServiceServicer):
                 "Insufficient time to complete request"
             )
 
-        # Check if context is already cancelled
-        if context.cancelled():
+        # Check if context is still active
+        if not context.is_active():
             return service_pb2.DataResponse()
 
         # For long operations, check periodically
         result = []
         for item in self._fetch_items(request):
-            if context.cancelled():
+            if not context.is_active():
                 # Client cancelled or deadline exceeded
                 break
             result.append(item)
@@ -241,7 +240,7 @@ class MyService(service_pb2_grpc.MyServiceServicer):
             timeout = 30
         elif remaining <= 0:
             # Already exceeded
-            raise grpc.RpcError(
+            context.abort(
                 grpc.StatusCode.DEADLINE_EXCEEDED,
                 "Deadline already exceeded"
             )
@@ -294,7 +293,10 @@ func (s *server) GetData(ctx context.Context, req *pb.DataRequest) (*pb.DataResp
     // Wait for result or context cancellation
     select {
     case <-ctx.Done():
-        return nil, status.Error(codes.DeadlineExceeded, ctx.Err().Error())
+        if ctx.Err() == context.DeadlineExceeded {
+            return nil, status.Error(codes.DeadlineExceeded, ctx.Err().Error())
+        }
+        return nil, status.Error(codes.Canceled, ctx.Err().Error())
     case err := <-errChan:
         return nil, err
     case result := <-resultChan:
@@ -308,7 +310,6 @@ func (s *server) callDownstream(ctx context.Context, client pb.DownstreamClient,
     // But we can add a buffer to ensure we have time to process the response
     deadline, ok := ctx.Deadline()
     if ok {
-        remaining := time.Until(deadline)
         // Reserve 500ms for response processing
         newDeadline := deadline.Add(-500 * time.Millisecond)
         if newDeadline.Before(time.Now()) {
@@ -384,6 +385,7 @@ package main
 
 import (
     "google.golang.org/grpc"
+    "google.golang.org/grpc/credentials/insecure"
 )
 
 func createChannelWithRetry(address string) (*grpc.ClientConn, error) {
@@ -402,9 +404,9 @@ func createChannelWithRetry(address string) (*grpc.ClientConn, error) {
         }]
     }`
 
-    conn, err := grpc.Dial(
+    conn, err := grpc.NewClient(
         address,
-        grpc.WithInsecure(),
+        grpc.WithTransportCredentials(insecure.NewCredentials()),
         grpc.WithDefaultServiceConfig(serviceConfig),
     )
 
@@ -511,7 +513,6 @@ package main
 
 import (
     "context"
-    "math"
     "math/rand"
     "time"
 
@@ -592,7 +593,13 @@ func RetryUnary[Req any, Resp any](
             }
         }
 
-        time.Sleep(sleep)
+        timer := time.NewTimer(sleep)
+        select {
+        case <-ctx.Done():
+            timer.Stop()
+            return zero, ctx.Err()
+        case <-timer.C:
+        }
         backoff = time.Duration(float64(backoff) * config.BackoffMultiplier)
     }
 
@@ -629,6 +636,7 @@ stateDiagram-v2
 ```python
 import time
 import threading
+import grpc
 from enum import Enum
 from collections import deque
 
@@ -636,6 +644,13 @@ class CircuitState(Enum):
     CLOSED = "closed"      # Normal operation
     OPEN = "open"          # Failing, reject requests
     HALF_OPEN = "half_open"  # Testing if service recovered
+
+class CircuitBreakerOpenError(grpc.RpcError):
+    def code(self):
+        return grpc.StatusCode.UNAVAILABLE
+
+    def details(self):
+        return "Circuit breaker is open"
 
 class CircuitBreaker:
     def __init__(
@@ -715,10 +730,7 @@ class GrpcClientWithCircuitBreaker:
 
     def get_data(self, request, timeout=30):
         if not self.circuit_breaker.can_execute():
-            raise grpc.RpcError(
-                grpc.StatusCode.UNAVAILABLE,
-                "Circuit breaker is open"
-            )
+            raise CircuitBreakerOpenError()
 
         try:
             response = self.stub.GetData(request, timeout=timeout)
@@ -786,8 +798,8 @@ def get_timeout_with_retry_budget(operation, max_retries=3):
     """Calculate total timeout including retry budget"""
     base_timeout = TIMEOUT_CONFIG.get(operation, 30)
     # Account for retries with exponential backoff
-    # Sum of backoffs: 0.1 + 0.2 + 0.4 + ... ~= 2 * (2^n - 1) * initial
-    retry_budget = 2 * (2 ** max_retries - 1) * 0.1
+    # Sum of backoffs: 0.1 + 0.2 + 0.4 + ... = (2^n - 1) * initial
+    retry_budget = (2 ** max_retries - 1) * 0.1
     return base_timeout + retry_budget
 ```
 
