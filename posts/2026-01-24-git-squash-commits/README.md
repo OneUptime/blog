@@ -16,21 +16,20 @@ Before squashing, your feature branch might look like this:
 
 ```bash
 git log --oneline feature-branch
-# d4e5f6g (HEAD -> feature-branch) Fix linting errors
+# d4e5f6a (HEAD -> feature-branch) Fix linting errors
 
 # c3d4e5f Add missing test case
 # b2c3d4e Oops, forgot to save file
 # a1b2c3d WIP: user authentication
-# 9z8y7x6 Initial attempt at login
-# 8w7v6u5 (main) Previous stable commit
+# 8f7e6d5 (main) Previous stable commit
 ```
 
 After squashing, it becomes:
 
 ```bash
 git log --oneline feature-branch
-# f7g8h9i (HEAD -> feature-branch) Add user authentication with tests
-# 8w7v6u5 (main) Previous stable commit
+# f7e8d9c (HEAD -> feature-branch) Add user authentication with tests
+# 8f7e6d5 (main) Previous stable commit
 ```
 
 ```mermaid
@@ -73,9 +72,9 @@ This opens your editor with something like:
 pick a1b2c3d WIP: user authentication
 pick b2c3d4e Oops, forgot to save file
 pick c3d4e5f Add missing test case
-pick d4e5f6g Fix linting errors
+pick d4e5f6a Fix linting errors
 
-# Rebase 8w7v6u5..d4e5f6g onto 8w7v6u5 (4 commands)
+# Rebase 8f7e6d5..d4e5f6a onto 8f7e6d5 (4 commands)
 #
 # Commands:
 # p, pick = use commit
@@ -95,7 +94,7 @@ Change `pick` to `squash` (or `s`) for commits you want to combine. The first co
 pick a1b2c3d WIP: user authentication
 squash b2c3d4e Oops, forgot to save file
 squash c3d4e5f Add missing test case
-squash d4e5f6g Fix linting errors
+squash d4e5f6a Fix linting errors
 ```
 
 Save and close. Git then opens another editor for you to write the combined commit message.
@@ -141,7 +140,7 @@ Use `fixup` instead of `squash` when you want to discard commit messages entirel
 pick a1b2c3d Implement user authentication
 fixup b2c3d4e Oops, forgot to save file
 fixup c3d4e5f Add missing test case
-fixup d4e5f6g Fix linting errors
+fixup d4e5f6a Fix linting errors
 ```
 
 This skips the message editing step entirely.
@@ -212,9 +211,9 @@ This is commonly used in pull request workflows where you want to keep a clean m
 ### Comparing Merge Strategies
 
 ```bash
-# Regular merge: preserves all commits and creates merge commit
+# Regular merge: preserves all commits and may create a merge commit
 git merge feature-branch
-# History shows all individual commits plus merge commit
+# History shows all individual commits, plus a merge commit if not fast-forwarded
 
 # Squash merge: combines all commits into one
 git merge --squash feature-branch
