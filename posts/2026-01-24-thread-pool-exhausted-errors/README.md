@@ -617,7 +617,7 @@ public class FixThreadLeaks {
     }
 
     /**
-     * BETTER: Use try-with-resources (Java 19+)
+     * BETTER: Use try-with-resources with virtual threads (Java 21+)
      */
     public void betterThreadPoolUsage() {
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
@@ -846,7 +846,7 @@ ALERT_THRESHOLDS = {
 }
 
 
-def check_pool_health(executor: MonitoredThreadPoolExecutor, pool_name: str):
+def check_pool_health(executor: 'MonitoredThreadPoolExecutor', pool_name: str):
     """Check thread pool health and generate alerts"""
     stats = executor.get_stats()
     alerts = []
@@ -928,22 +928,27 @@ class CircuitBreaker:
                 else:
                     raise CircuitOpenError("Circuit breaker is open")
 
+        import concurrent.futures
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        future = executor.submit(func, *args, **kwargs)
+
         try:
             # Add timeout to prevent indefinite blocking
-            import concurrent.futures
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(func, *args, **kwargs)
-                result = future.result(timeout=self.timeout)
-
+            result = future.result(timeout=self.timeout)
             self._record_success()
             return result
 
         except concurrent.futures.TimeoutError:
             self._record_failure()
+            future.cancel()
+            executor.shutdown(wait=False, cancel_futures=True)
             raise TimeoutError(f"Call timed out after {self.timeout}s")
         except Exception as e:
             self._record_failure()
             raise
+        finally:
+            if future.done():
+                executor.shutdown(wait=False)
 
     def _record_success(self):
         with self._lock:
