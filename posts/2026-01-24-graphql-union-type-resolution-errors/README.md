@@ -332,22 +332,17 @@ const resolvers = {
 
 ---
 
-### Error 4: Async resolveType Issues
-
-**Error Message:**
-
-```text
-Cannot return non-Object type "Promise" from resolveType
-```
+### Issue 4: Expensive Async resolveType Logic
 
 **Problem:**
 
 ```javascript
-// BAD: Async resolveType without proper handling
+// WORKS, but can be inefficient if every item needs extra async lookups
 const resolvers = {
   Notification: {
     __resolveType: async (obj) => {
-      // Async operations in resolveType can cause issues
+      // Async operations in resolveType are supported by GraphQL.js,
+      // but repeated database/API calls here can slow down list fields.
       const type = await determineType(obj);
       return type;
     }
@@ -428,7 +423,7 @@ query SearchResults($query: String!) {
 
 ## Complete Union Type Example
 
-Here is a complete example implementing a notification system with union types.
+Here is a fuller example implementing a notification system with union types.
 
 ```graphql
 # schema.graphql
@@ -734,10 +729,10 @@ const resolvers: Resolvers = {
 
 ## Best Practices
 
-1. **Always provide resolveType** for union and interface types
+1. **Provide reliable runtime type resolution** for union and interface types with `__resolveType` or `isTypeOf`
 2. **Use discriminator fields** like `__typename` for reliable resolution
 3. **Return exact type names** matching your schema definition
-4. **Avoid async operations** in resolveType functions
+4. **Avoid expensive async operations** in resolveType functions when you can pre-resolve type information
 5. **Add logging** to debug resolution issues
 6. **Use TypeScript** for type-safe union handling
 7. **Test all union members** to ensure proper resolution
@@ -750,10 +745,10 @@ Union type resolution errors in GraphQL stem from missing or incorrect type reso
 
 Key takeaways:
 
-- Every union type needs a `__resolveType` function
+- Every union type needs reliable runtime type resolution, usually with a `__resolveType` function or object-type `isTypeOf` checks
 - Use discriminator fields for reliable type detection
 - Return exact type names as defined in the schema
-- Pre-resolve types in parent resolvers for async operations
+- Pre-resolve types in parent resolvers when type resolution would require expensive async operations
 - Use TypeScript for compile-time type safety
 
 ---
