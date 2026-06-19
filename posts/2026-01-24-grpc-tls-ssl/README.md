@@ -197,13 +197,7 @@ def create_secure_server():
     credentials = load_credentials()
 
     # Create server with thread pool
-    server = grpc.server(
-        futures.ThreadPoolExecutor(max_workers=50),
-        options=[
-            # Optional: Set minimum TLS version
-            ('grpc.ssl_target_name_override', 'localhost'),
-        ]
-    )
+    server = grpc.server(futures.ThreadPoolExecutor(max_workers=50))
 
     # Register your service
     service_pb2_grpc.add_MyServiceServicer_to_server(
@@ -407,9 +401,10 @@ package main
 import (
     "crypto/tls"
     "crypto/x509"
-    "io/ioutil"
+    "fmt"
     "log"
     "net"
+    "os"
 
     "google.golang.org/grpc"
     "google.golang.org/grpc/credentials"
@@ -436,7 +431,7 @@ func loadTLSCredentials() (credentials.TransportCredentials, error) {
 
 func loadMTLSCredentials() (credentials.TransportCredentials, error) {
     // Load CA certificate to verify clients
-    caCert, err := ioutil.ReadFile("certs/ca.crt")
+    caCert, err := os.ReadFile("certs/ca.crt")
     if err != nil {
         return nil, err
     }
@@ -498,8 +493,9 @@ import (
     "context"
     "crypto/tls"
     "crypto/x509"
-    "io/ioutil"
+    "fmt"
     "log"
+    "os"
 
     "google.golang.org/grpc"
     "google.golang.org/grpc/credentials"
@@ -509,7 +505,7 @@ import (
 
 func loadClientTLSCredentials() (credentials.TransportCredentials, error) {
     // Load CA certificate to verify server
-    caCert, err := ioutil.ReadFile("certs/ca.crt")
+    caCert, err := os.ReadFile("certs/ca.crt")
     if err != nil {
         return nil, err
     }
@@ -530,7 +526,7 @@ func loadClientTLSCredentials() (credentials.TransportCredentials, error) {
 
 func loadClientMTLSCredentials() (credentials.TransportCredentials, error) {
     // Load CA certificate
-    caCert, err := ioutil.ReadFile("certs/ca.crt")
+    caCert, err := os.ReadFile("certs/ca.crt")
     if err != nil {
         return nil, err
     }
@@ -564,7 +560,7 @@ func main() {
     }
 
     // Create secure connection
-    conn, err := grpc.Dial(
+    conn, err := grpc.NewClient(
         "localhost:50051",
         grpc.WithTransportCredentials(creds),
     )
@@ -597,8 +593,12 @@ package main
 
 import (
     "crypto/tls"
+    "log"
     "sync"
     "time"
+
+    "google.golang.org/grpc"
+    "google.golang.org/grpc/credentials"
 )
 
 // CertificateManager handles dynamic certificate reloading
@@ -696,7 +696,7 @@ flowchart TD
     D --> D2[Check cipher suites]
 
     E --> E1[Provide root_certificates]
-    E --> E2[Use ssl_target_name_override]
+    E --> E2[Use the correct CA bundle]
 
     F --> F1[Add hostname to SAN]
     F --> F2[Use ssl_target_name_override]
@@ -731,6 +731,7 @@ def diagnose_tls_issues(target):
     context = ssl.create_default_context()
     context.check_hostname = False
     context.verify_mode = ssl.CERT_NONE
+    context.set_alpn_protocols(['h2'])
 
     try:
         with socket.create_connection((host, port)) as sock:
@@ -745,8 +746,8 @@ def diagnose_tls_issues(target):
                 cert_obj = x509.load_der_x509_certificate(cert)
                 print(f'Subject: {cert_obj.subject}')
                 print(f'Issuer: {cert_obj.issuer}')
-                print(f'Valid from: {cert_obj.not_valid_before}')
-                print(f'Valid until: {cert_obj.not_valid_after}')
+                print(f'Valid from: {cert_obj.not_valid_before_utc}')
+                print(f'Valid until: {cert_obj.not_valid_after_utc}')
 
                 # Check SANs
                 try:
@@ -769,7 +770,7 @@ def verify_certificate_chain(ca_cert_path, server_cert_path):
     Verify that a server certificate is signed by the CA.
     """
     from cryptography import x509
-    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.asymmetric import padding
     from cryptography.hazmat.backends import default_backend
 
     with open(ca_cert_path, 'rb') as f:
