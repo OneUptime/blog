@@ -80,12 +80,8 @@ function getTimeout(config: Config): number {
     // return 5000;
 }
 
-// Solution 3: Make it required with Partial utility reversed
-interface ConfigRequired {
-    host: string;
-    port: number;
-    timeout: number;  // Now required
-}
+// Solution 3: Make it required with the Required utility type
+type ConfigRequired = Required<Config>;  // timeout is now required
 ```
 
 ### Scenario 3: Dynamic Object Keys
@@ -117,7 +113,7 @@ function getPropertyTyped<K extends keyof Product>(
 
 // Usage
 const product: Product = { id: "1", name: "Widget", price: 99.99 };
-const name = getPropertyTyped(product, "name");  // Type: string
+const productName = getPropertyTyped(product, "name");  // Type: string
 const price = getPropertyTyped(product, "price"); // Type: number
 ```
 
@@ -186,6 +182,8 @@ function makeSoundAlt(pet: Pet): void {
 // window.customMethod = () => {};
 
 // Solution 1: Extend the global interface
+export {}; // Makes this file a module so declare global works
+
 declare global {
     interface Window {
         customMethod: () => void;
@@ -211,7 +209,7 @@ window.appConfig = {
 
 // Solution 3: Create a typed wrapper
 interface ExtendedWindow extends Window {
-    myProperty: string;
+    myProperty?: string;
 }
 
 const extWindow = window as ExtendedWindow;
@@ -342,12 +340,12 @@ const config = {
 // config.method is now type "GET", not string
 
 // Non-null assertion (use when you're sure value exists)
-interface Element {
+interface FormElement {
     id: string;
     value: string | null;
 }
 
-function processElement(element: Element): string {
+function processElement(element: FormElement): string {
     // Using ! to assert value is not null
     // Only use when you're certain
     return element.value!.toUpperCase();
@@ -462,7 +460,7 @@ flowchart TD
 4. **Leverage utility types** like `Partial`, `Required`, `Pick`
 5. **Enable strict mode** in tsconfig.json for better error detection
 
-```typescript
+```jsonc
 // tsconfig.json recommendation
 {
     "compilerOptions": {
