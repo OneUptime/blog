@@ -75,8 +75,8 @@ sequenceDiagram
 |--------------|--------------|
 | "Authentication failed: Invalid credentials" | Wrong username or password |
 | "Authentication failed during authentication" | JAAS configuration issue |
-| "No SASL mechanism provided" | Missing security.protocol |
-| "Unable to find LoginModule" | Missing JAAS config file |
+| "No SASL mechanism provided" | Missing sasl.mechanism |
+| "Unable to find LoginModule" | Invalid login module class or missing Kafka client dependencies |
 | "Client SASL mechanism 'X' not enabled" | Mechanism not configured on broker |
 | "Error in SASL handshake" | Protocol mismatch |
 
@@ -391,7 +391,7 @@ KafkaServer {
     principal="kafka/kafka-1.example.com@EXAMPLE.COM";
 };
 
-// For Zookeeper client connection
+// Only for older ZooKeeper-based clusters; omit this section for KRaft clusters
 Client {
     com.sun.security.auth.module.Krb5LoginModule required
     useKeyTab=true
@@ -560,6 +560,8 @@ import javax.security.auth.callback.UnsupportedCallbackException;
 import javax.security.auth.login.AppConfigurationEntry;
 import java.io.IOException;
 import java.net.URI;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -609,10 +611,9 @@ public class OAuthCallbackHandler implements AuthenticateCallbackHandler {
      */
     private OAuthBearerToken fetchToken() throws Exception {
         // Build token request
-        String requestBody = String.format(
-            "grant_type=client_credentials&client_id=%s&client_secret=%s",
-            clientId, clientSecret
-        );
+        String requestBody = "grant_type=client_credentials" +
+            "&client_id=" + URLEncoder.encode(clientId, StandardCharsets.UTF_8) +
+            "&client_secret=" + URLEncoder.encode(clientSecret, StandardCharsets.UTF_8);
 
         HttpRequest request = HttpRequest.newBuilder()
             .uri(URI.create(tokenEndpoint))
@@ -630,7 +631,14 @@ public class OAuthCallbackHandler implements AuthenticateCallbackHandler {
         // Parse response (simplified - use a JSON library in production)
         String body = response.body();
         String accessToken = extractJsonValue(body, "access_token");
-        long expiresIn = Long.parseLong(extractJsonValue(body, "expires_in"));
+        String expiresInValue = extractJsonValue(body, "expires_in");
+        if (accessToken == null || expiresInValue == null) {
+            throw new IOException("Token response missing access_token or expires_in");
+        }
+
+        long expiresIn = Long.parseLong(expiresInValue);
+        final long tokenStartTimeMs = System.currentTimeMillis();
+        final long tokenLifetimeMs = tokenStartTimeMs + (expiresIn * 1000);
 
         return new OAuthBearerToken() {
             @Override
@@ -645,7 +653,7 @@ public class OAuthCallbackHandler implements AuthenticateCallbackHandler {
 
             @Override
             public long lifetimeMs() {
-                return System.currentTimeMillis() + (expiresIn * 1000);
+                return tokenLifetimeMs;
             }
 
             @Override
@@ -655,7 +663,7 @@ public class OAuthCallbackHandler implements AuthenticateCallbackHandler {
 
             @Override
             public Long startTimeMs() {
-                return System.currentTimeMillis();
+                return tokenStartTimeMs;
             }
         };
     }
@@ -727,11 +735,14 @@ public class OAuthProducer {
 
 ```bash
 # For broker
-export KAFKA_OPTS="-Djava.security.auth.login.config=/etc/kafka/jaas.conf -Dorg.apache.kafka.common.security.auth.DEBUG=true"
+export KAFKA_OPTS="-Djava.security.auth.login.config=/etc/kafka/jaas.conf"
+# Configure the broker logger for org.apache.kafka.common.security at DEBUG level.
+# For Kerberos-specific troubleshooting, also add: -Dsun.security.krb5.debug=true
 
 # For client applications
 -Djava.security.auth.login.config=/path/to/jaas.conf
--Dorg.apache.kafka.common.security.auth.DEBUG=true
+# Configure the application logger for org.apache.kafka.common.security at DEBUG level.
+# For Kerberos-specific troubleshooting, also add: -Dsun.security.krb5.debug=true
 ```
 
 ### Diagnostic Script
@@ -759,7 +770,7 @@ echo ""
 # Check config file
 echo "1. Configuration file contents:"
 echo "--------------------------------"
-cat $CONFIG_FILE
+cat "$CONFIG_FILE"
 echo ""
 
 # Test DNS
@@ -780,7 +791,7 @@ echo ""
 # Test SSL (if SASL_SSL)
 echo "4. SSL certificate check:"
 echo "-------------------------"
-echo | openssl s_client -connect $BROKER 2>/dev/null | \
+echo | openssl s_client -connect "$BROKER" -servername "$HOST" 2>/dev/null | \
     openssl x509 -noout -subject -issuer -dates 2>/dev/null || \
     echo "SSL not available or handshake failed"
 echo ""
@@ -789,8 +800,8 @@ echo ""
 echo "5. Kafka broker API versions (tests authentication):"
 echo "----------------------------------------------------"
 kafka-broker-api-versions.sh \
-    --bootstrap-server $BROKER \
-    --command-config $CONFIG_FILE 2>&1
+    --bootstrap-server "$BROKER" \
+    --command-config "$CONFIG_FILE" 2>&1
 
 RESULT=$?
 echo ""
@@ -801,8 +812,8 @@ if [ $RESULT -eq 0 ]; then
     echo ""
     echo "6. Listing topics:"
     kafka-topics.sh \
-        --bootstrap-server $BROKER \
-        --command-config $CONFIG_FILE \
+        --bootstrap-server "$BROKER" \
+        --command-config "$CONFIG_FILE" \
         --list
 else
     echo "FAILURE: Authentication failed!"
