@@ -30,9 +30,9 @@ sequenceDiagram
         Policy-->>Auth: Access Blocked
         Auth-->>Client: access_denied (policy_violation)
     else Scope Not Allowed
-        Auth-->>Client: access_denied (invalid_scope)
+        Auth-->>Client: invalid_scope
     else Client Not Authorized
-        Auth-->>Client: access_denied (unauthorized_client)
+        Auth-->>Client: unauthorized_client
     else Success
         Auth-->>Client: Authorization Code
     end
@@ -49,7 +49,7 @@ flowchart TD
     C --> C2[User closed window]
     C --> C3[Session timeout]
 
-    B --> D[Scope Issues]
+    B --> D[Scope and Consent Issues]
     D --> D1[Requested scope not allowed]
     D --> D2[Scope requires admin consent]
     D --> D3[Scope not configured for client]
@@ -62,7 +62,7 @@ flowchart TD
     B --> F[Client Issues]
     F --> F1[Client not authorized for user]
     F --> F2[Client disabled]
-    F --> F3[Redirect URI not allowed]
+    F --> F3[Redirect URI mismatch]
 ```
 
 ## Cause 1: User Denied Consent
@@ -203,10 +203,10 @@ Requesting scopes that the client is not authorized for or that do not exist.
 ### Diagnosis
 
 ```python
-# Error when requesting unauthorized scope
+# Error when requesting an invalid scope
 {
-    "error": "access_denied",
-    "error_description": "The requested scope is not authorized for this client"
+    "error": "invalid_scope",
+    "error_description": "The requested scope is invalid, unknown, or malformed"
 }
 ```
 
@@ -590,6 +590,7 @@ Implement admin consent flow:
 
 ```python
 import urllib.parse
+from typing import List
 
 class AdminConsentHandler:
     """
@@ -726,49 +727,35 @@ class MicrosoftAdminConsent(AdminConsentHandler):
 
 ## Cause 5: Redirect URI Issues
 
-Mismatched or unregistered redirect URIs can cause access denied errors.
+Mismatched or unregistered redirect URIs can cause OAuth2 authorization failures. In the authorization code flow, the authorization server must not automatically redirect the user-agent to an invalid redirect URI; providers usually display an error or return an `invalid_request` or provider-specific redirect URI error instead of `access_denied`.
 
 ### Solution
 
 ```python
+from typing import List, Optional
+
 class RedirectURIValidator:
     """
-    Validate redirect URIs to prevent access denied errors.
+    Validate redirect URIs to prevent authorization request errors.
     """
 
     def __init__(self, registered_uris: List[str]):
-        self.registered_uris = [self._normalize(uri) for uri in registered_uris]
-
-    def _normalize(self, uri: str) -> str:
-        """Normalize URI for comparison."""
-        from urllib.parse import urlparse, urlunparse
-
-        parsed = urlparse(uri)
-        return urlunparse((
-            parsed.scheme.lower(),
-            parsed.netloc.lower(),
-            parsed.path.rstrip('/') or '/',
-            '',
-            '',
-            ''
-        ))
+        self.registered_uris = registered_uris
 
     def validate(self, redirect_uri: str) -> dict:
         """
         Validate a redirect URI against registered URIs.
         """
-        normalized = self._normalize(redirect_uri)
-
-        if normalized in self.registered_uris:
+        # OAuth2 providers compare registered full redirect URIs exactly.
+        if redirect_uri in self.registered_uris:
             return {"valid": True, "uri": redirect_uri}
 
         # Find closest match for helpful error message
-        closest = self._find_closest_match(normalized)
+        closest = self._find_closest_match(redirect_uri)
 
         return {
             "valid": False,
             "uri": redirect_uri,
-            "normalized": normalized,
             "closest_match": closest,
             "registered_uris": self.registered_uris,
             "error": f"Redirect URI not registered. Closest match: {closest}"
