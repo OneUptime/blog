@@ -43,14 +43,13 @@ flowchart LR
 
 npm install @reduxjs/toolkit react-redux
 
-# For TypeScript projects
-npm install @reduxjs/toolkit react-redux @types/react-redux
+# TypeScript types are included with Redux Toolkit and React-Redux
 ```
 
 ### Basic Store Configuration
 
-```javascript
-// store/index.js
+```typescript
+// store/index.ts
 import { configureStore } from '@reduxjs/toolkit';
 import userReducer from './slices/userSlice';
 import productsReducer from './slices/productsSlice';
@@ -301,6 +300,11 @@ export const fetchUserById = createAsyncThunk(
 
     try {
       const response = await fetch(`/api/users/${userId}`);
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch user');
+      }
+
       return await response.json();
     } catch (error) {
       return rejectWithValue(error.message);
@@ -326,8 +330,9 @@ const usersSlice = createSlice({
     builder
       // fetchUsers
       .addCase(fetchUsers.pending, (state, action) => {
-        if (state.loading === 'idle') {
+        if (state.loading !== 'pending') {
           state.loading = 'pending';
+          state.error = null;
           state.currentRequestId = action.meta.requestId;
         }
       })
@@ -337,6 +342,7 @@ const usersSlice = createSlice({
           state.currentRequestId === action.meta.requestId
         ) {
           state.loading = 'succeeded';
+          state.currentRequestId = undefined;
           // Normalize the data
           action.payload.forEach(user => {
             state.entities[user.id] = user;
@@ -353,6 +359,7 @@ const usersSlice = createSlice({
         ) {
           state.loading = 'failed';
           state.error = action.payload;
+          state.currentRequestId = undefined;
         }
       })
       // createUser
@@ -384,12 +391,12 @@ export const selectUsersError = (state) => state.users.error;
 
 ```typescript
 // store/hooks.ts
-import { TypedUseSelectorHook, useDispatch, useSelector } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import type { RootState, AppDispatch } from './index';
 
 // Use throughout your app instead of plain useDispatch and useSelector
-export const useAppDispatch = () => useDispatch<AppDispatch>();
-export const useAppSelector: TypedUseSelectorHook<RootState> = useSelector;
+export const useAppDispatch = useDispatch.withTypes<AppDispatch>();
+export const useAppSelector = useSelector.withTypes<RootState>();
 ```
 
 ### Component Examples
@@ -723,6 +730,10 @@ function PostList() {
 
   const [deletePost, { isLoading: isDeleting }] = useDeletePostMutation();
 
+  const errorMessage = error && typeof error === 'object' && 'status' in error
+    ? `Request failed with status ${error.status}`
+    : error?.message;
+
   const handleDelete = async (id) => {
     try {
       await deletePost(id).unwrap();
@@ -736,7 +747,7 @@ function PostList() {
   if (isError) {
     return (
       <div>
-        <p>Error: {error.message}</p>
+        <p>Error: {errorMessage}</p>
         <button onClick={refetch}>Retry</button>
       </div>
     );
@@ -777,6 +788,10 @@ function AddPostForm() {
 
   const [addPost, { isLoading, isError, error }] = useAddPostMutation();
 
+  const errorMessage = error && typeof error === 'object' && 'status' in error
+    ? `Request failed with status ${error.status}`
+    : error?.message;
+
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -793,7 +808,7 @@ function AddPostForm() {
     <form onSubmit={handleSubmit}>
       <h3>Add New Post</h3>
 
-      {isError && <p className="error">Error: {error.message}</p>}
+      {isError && <p className="error">Error: {errorMessage}</p>}
 
       <div>
         <label htmlFor="title">Title:</label>
