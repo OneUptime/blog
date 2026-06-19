@@ -8,7 +8,7 @@ Description: Learn how to diagnose and fix null value errors in GraphQL resolver
 
 ---
 
-Null value errors are among the most common issues in GraphQL APIs. They occur when a non-nullable field returns null, causing the entire query to fail. This guide explains why these errors happen and how to fix them systematically.
+Null value errors are among the most common issues in GraphQL APIs. They occur when a non-nullable field returns null, causing GraphQL to null the nearest nullable parent and add an error to the response. If the error propagates all the way to the root, the entire operation's `data` entry becomes null. This guide explains why these errors happen and how to fix them systematically.
 
 ## Understanding Null Value Errors
 
@@ -200,16 +200,16 @@ const resolvers = {
 };
 ```
 
-### Cause 4: Unhandled Promise Rejection
+### Cause 4: Resolver Throws or Rejects
 
-When a promise rejects but is not properly caught, it may result in null.
+When a resolver throws an error or returns a rejected promise, GraphQL treats it as a field error. The field resolves as null, and if the field is non-nullable, the null propagates according to the schema.
 
 ```javascript
-// resolver.js - Problem: unhandled promise rejection
+// resolver.js - Problem: resolver error is not wrapped with useful context
 const resolvers = {
   Query: {
     user: async (_, { id }, { db }) => {
-      // If this throws, the error might not propagate correctly
+      // If this throws, GraphQL adds an error and resolves this field as null
       const user = await db.users.findById(id);
       return user;
     },
@@ -331,8 +331,14 @@ const nullDebugPlugin = {
 
       // Log the response to see what data was returned
       willSendResponse({ response }) {
-        if (response.errors) {
-          console.log('Response with errors:', JSON.stringify(response, null, 2));
+        if (
+          response.body.kind === 'single' &&
+          response.body.singleResult.errors
+        ) {
+          console.log(
+            'Response with errors:',
+            JSON.stringify(response.body.singleResult, null, 2)
+          );
         }
       },
     };
@@ -466,6 +472,7 @@ Create utility functions for null-safe resolving.
 
 ```javascript
 // null-safe.js - Utilities for null-safe resolving
+import { GraphQLError } from 'graphql';
 
 // Wrapper that provides a default value when null
 function withDefault(resolver, defaultValue) {
@@ -512,6 +519,8 @@ const resolvers = {
 
 ```javascript
 // batch-resolver.js - DataLoader with null handling
+import { ApolloServer } from '@apollo/server';
+import { startStandaloneServer } from '@apollo/server/standalone';
 import DataLoader from 'dataloader';
 
 // Create a DataLoader that handles missing records
@@ -541,11 +550,14 @@ const createUserLoader = (db) => {
   });
 };
 
-// Use in context
+// Use in per-request context
 const server = new ApolloServer({
   typeDefs,
   resolvers,
-  context: ({ req }) => ({
+});
+
+await startStandaloneServer(server, {
+  context: async ({ req }) => ({
     loaders: {
       userLoader: createUserLoader(db),
     },
@@ -584,7 +596,7 @@ Fixing null value errors in GraphQL requires understanding:
 
 1. The difference between nullable and non-nullable fields
 2. How null values propagate through the response tree
-3. Common causes: missing data, unhandled errors, missing returns
+3. Common causes: missing data, resolver errors, missing returns
 4. Debugging techniques: logging, plugins, systematic tracing
 5. Schema design patterns: appropriate nullability, result types
 6. Utility functions for null-safe resolving
