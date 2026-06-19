@@ -43,17 +43,17 @@ flowchart TD
 
 ## Built-in Conditional Types
 
-TypeScript provides several utility types built on conditional types:
+TypeScript provides several utility types that are useful with conditional type patterns:
 
 ```typescript
-// Extract types that match a condition
-type Extract<T, U> = T extends U ? T : never;
+// Extract types that match a condition:
+// Extract<T, U> is equivalent to T extends U ? T : never
 
-// Exclude types that match a condition
-type Exclude<T, U> = T extends U ? never : T;
+// Exclude types that match a condition:
+// Exclude<T, U> is equivalent to T extends U ? never : T
 
-// Remove null and undefined
-type NonNullable<T> = T extends null | undefined ? never : T;
+// Remove null and undefined:
+// NonNullable<T> removes null and undefined from T
 
 // Examples
 type Numbers = Extract<string | number | boolean, number>;  // number
@@ -67,23 +67,23 @@ The `infer` keyword lets you extract types from within a conditional:
 
 ```typescript
 // Extract the return type of a function
-type ReturnType<T> = T extends (...args: any[]) => infer R ? R : never;
+type MyReturnType<T> = T extends (...args: any[]) => infer R ? R : never;
 
 // Extract the element type of an array
 type ElementType<T> = T extends (infer E)[] ? E : never;
 
-// Extract promise resolution type
-type Awaited<T> = T extends Promise<infer R> ? R : T;
+// Extract one promise resolution type
+type PromiseValue<T> = T extends Promise<infer R> ? R : T;
 
 // Examples
 type Fn = (x: number) => string;
-type FnReturn = ReturnType<Fn>;  // string
+type FnReturn = MyReturnType<Fn>;  // string
 
 type Arr = number[];
 type ArrElement = ElementType<Arr>;  // number
 
 type Prom = Promise<{ data: string }>;
-type PromResult = Awaited<Prom>;  // { data: string }
+type PromResult = PromiseValue<Prom>;  // { data: string }
 ```
 
 ### Multiple infer Positions
@@ -268,7 +268,7 @@ Change function return types based on input:
 type FormatResult<F extends 'json' | 'string' | 'buffer'> =
   F extends 'json' ? object :
   F extends 'string' ? string :
-  F extends 'buffer' ? Buffer :
+  F extends 'buffer' ? Uint8Array :
   never;
 
 function readFile<F extends 'json' | 'string' | 'buffer'>(
@@ -282,7 +282,7 @@ function readFile<F extends 'json' | 'string' | 'buffer'>(
 // Type-safe usage
 const json = readFile('data.json', 'json');    // object
 const text = readFile('data.txt', 'string');   // string
-const buf = readFile('data.bin', 'buffer');    // Buffer
+const buf = readFile('data.bin', 'buffer');    // Uint8Array
 ```
 
 ### Pattern 5: Filtering Union Members
@@ -291,19 +291,19 @@ Create types that filter unions based on properties:
 
 ```typescript
 // Event types with different payloads
-type Event =
+type AppEvent =
   | { type: 'click'; x: number; y: number }
   | { type: 'keypress'; key: string }
   | { type: 'scroll'; position: number };
 
 // Extract event by type
-type EventByType<T extends Event['type']> = Extract<Event, { type: T }>;
+type EventByType<T extends AppEvent['type']> = Extract<AppEvent, { type: T }>;
 
 type ClickEvent = EventByType<'click'>;  // { type: 'click'; x: number; y: number }
 
 // Handler map with correct payload types
 type EventHandlers = {
-  [E in Event as E['type']]: (event: E) => void;
+  [E in AppEvent as E['type']]: (event: E) => void;
 };
 // {
 //   click: (event: { type: 'click'; x: number; y: number }) => void;
@@ -449,12 +449,11 @@ type B = IsNever<string>;  // false
 // Infer in contravariant position (function parameters)
 type ParamType<T> = T extends (x: infer P) => any ? P : never;
 
-// With union of functions, parameters become intersection
+// With a union of functions, the conditional distributes over each function
 type Fn1 = (x: string) => void;
 type Fn2 = (x: number) => void;
 
-type Param = ParamType<Fn1 | Fn2>;  // string & number = never
-// Not string | number as you might expect
+type Param = ParamType<Fn1 | Fn2>;  // string | number
 ```
 
 ## Summary Table
