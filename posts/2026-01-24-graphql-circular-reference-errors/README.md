@@ -107,7 +107,8 @@ module.exports = { UserType };
 const {
   GraphQLObjectType,
   GraphQLID,
-  GraphQLString
+  GraphQLString,
+  GraphQLList
 } = require("graphql");
 
 const PostType = new GraphQLObjectType({
@@ -488,9 +489,9 @@ const resolvers = {
 };
 ```
 
-### Infinite Loop Prevention
+### Deep Query Prevention
 
-Even with DataLoader, deeply nested queries can cause issues. Implement depth limiting.
+Even with DataLoader, deeply nested cyclic selections can cause performance issues. Implement depth limiting.
 
 ```javascript
 // depth-limiter.js
@@ -518,7 +519,7 @@ const server = new ApolloServer({
 
 ### The Problem
 
-When resolvers return objects with circular references, JSON serialization fails.
+When your application serializes resolver return values directly, or returns circular objects through custom scalar fields or logging hooks, JSON serialization fails.
 
 ```javascript
 // PROBLEMATIC: Objects reference each other
@@ -577,28 +578,28 @@ const resolvers = {
 
 ### Solution: Use GraphQL Response Path
 
-Track the resolution path to detect and break cycles.
+Track the response field path to detect repeated traversal patterns.
 
 ```javascript
 // cycle-detector.js
 class CycleDetector {
   constructor() {
-    this.visitedPaths = new Set();
+    this.maxDepth = 5;
   }
 
-  // Check if we are in a cycle and should stop
+  // Check if a response path is too deep or repeats a field pattern
   shouldStop(info, maxDepth = 5) {
     const path = this.getPath(info);
-    const typeChain = path.split(".").filter(p => !p.match(/^\d+$/));
+    const fieldChain = path.split(".").filter(p => !p.match(/^\d+$/));
 
     // Check depth
-    if (typeChain.length > maxDepth) {
+    if (fieldChain.length > maxDepth) {
       console.warn(`Max depth reached at path: ${path}`);
       return true;
     }
 
-    // Check for repeating patterns (cycles)
-    const pattern = this.detectRepeatingPattern(typeChain);
+    // Check for repeating field patterns
+    const pattern = this.detectRepeatingPattern(fieldChain);
     if (pattern) {
       console.warn(`Cycle detected: ${pattern} at path: ${path}`);
       return true;
@@ -620,7 +621,7 @@ class CycleDetector {
   }
 
   detectRepeatingPattern(chain) {
-    // Look for patterns like [User, Post, User, Post]
+    // Look for patterns like ["posts", "author", "posts", "author"]
     for (let patternLength = 2; patternLength <= chain.length / 2; patternLength++) {
       const pattern = chain.slice(-patternLength);
       const previousPattern = chain.slice(-patternLength * 2, -patternLength);
@@ -655,8 +656,7 @@ const resolvers = {
         // Return minimal author info to break cycle
         return {
           id: post.authorId,
-          name: null,
-          posts: [] // Explicitly empty
+          posts: [] // Only safe if omitted fields are nullable in your schema
         };
       }
 
@@ -670,11 +670,11 @@ const resolvers = {
 
 ### Using Type References
 
-TypeScript can handle circular type references with proper configuration.
+TypeScript interfaces can reference each other as long as the runtime objects you return are shaped consistently.
 
 ```typescript
 // types.ts
-// Forward declare types to handle circular references
+// Interfaces can reference each other
 export interface User {
   id: string;
   name: string;
@@ -688,6 +688,7 @@ export interface Post {
   id: string;
   title: string;
   content: string;
+  authorId: string;
   author: User;
   comments: Comment[];
 }
@@ -728,6 +729,7 @@ export interface CommentRecord {
 // resolvers.ts
 import { Resolvers } from "./generated/graphql";
 import { GraphQLResolveInfo } from "graphql";
+import { User, Post } from "./types";
 
 const resolvers: Resolvers = {
   Query: {
@@ -781,7 +783,7 @@ graph TD
 
     C --> C1[Implement DataLoader for batching]
     C --> C2[Add depth limiting]
-    C --> C3[Use cycle detection in resolvers]
+    C --> C3[Detect repeated traversal patterns]
 
     D --> D1[Keep resolver returns simple]
     D --> D2[Let field resolvers build relations]
@@ -794,7 +796,7 @@ graph TD
 
 2. **Batch with DataLoader**: Always use DataLoader when resolving relationships to prevent N+1 queries.
 
-3. **Limit query depth**: Implement depth limiting to prevent malicious or accidental infinite nesting.
+3. **Limit query depth**: Implement depth limiting to prevent malicious or accidental excessive nesting.
 
 4. **Keep resolvers simple**: Return IDs for relationships and let child resolvers fetch the actual data.
 
@@ -804,6 +806,6 @@ graph TD
 
 ## Conclusion
 
-Circular references are a natural part of data modeling, and GraphQL handles them well when implemented correctly. The key is to use lazy evaluation for type definitions, DataLoader for efficient data fetching, and appropriate safeguards to prevent infinite loops.
+Circular references are a natural part of data modeling, and GraphQL handles them well when implemented correctly. The key is to use lazy evaluation for type definitions, DataLoader for efficient data fetching, and appropriate safeguards to prevent excessive deep traversal.
 
 By following the patterns in this guide, you can build GraphQL APIs that support complex, interconnected data models without falling into the circular reference traps that can cause performance issues or crashes.
