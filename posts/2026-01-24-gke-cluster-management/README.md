@@ -153,10 +153,10 @@ gcloud container clusters update my-cluster \
     --max-nodes 15
 
 # Upgrade node pool to a specific version
-gcloud container node-pools upgrade default-pool \
-    --cluster my-cluster \
+gcloud container clusters upgrade my-cluster \
+    --node-pool default-pool \
     --zone us-central1-a \
-    --cluster-version 1.28.5-gke.1200
+    --cluster-version <available-version>
 ```
 
 ## Cluster Upgrades
@@ -182,10 +182,10 @@ gcloud container get-server-config --zone us-central1-a
 gcloud container clusters upgrade my-cluster \
     --zone us-central1-a \
     --master \
-    --cluster-version 1.28.5-gke.1200
+    --cluster-version <available-version>
 
-# Upgrade node pools with surge settings
-gcloud container node-pools upgrade default-pool \
+# Configure node pool surge upgrade settings
+gcloud container node-pools update default-pool \
     --cluster my-cluster \
     --zone us-central1-a \
     --max-surge-upgrade 2 \
@@ -420,7 +420,7 @@ gcloud services enable gkebackup.googleapis.com
 gcloud beta container backup-restore backup-plans create my-backup-plan \
     --project=my-project \
     --location=us-central1 \
-    --cluster=projects/my-project/locations/us-central1-a/clusters/my-cluster \
+    --cluster=projects/my-project/zones/us-central1-a/clusters/my-cluster \
     --all-namespaces \
     --cron-schedule="0 3 * * *" \
     --backup-retain-days=30
