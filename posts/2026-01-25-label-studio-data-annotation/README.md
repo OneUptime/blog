@@ -58,6 +58,7 @@ services:
       - "8080:8080"
     volumes:
       - label-studio-data:/label-studio/data
+      - ./files:/label-studio/files
     environment:
       - DJANGO_DB=default
       - POSTGRE_NAME=labelstudio
@@ -186,13 +187,13 @@ docker-compose up -d
 Manage projects programmatically:
 
 ```python
-from label_studio_sdk import Client
+from label_studio_sdk import LabelStudio
 
 # Connect to Label Studio
-ls = Client(url='http://localhost:8080', api_key='your-api-key')
+client = LabelStudio(base_url='http://localhost:8080', api_key='your-api-key')
 
 # Create a new project
-project = ls.start_project(
+project = client.projects.create(
     title='Sentiment Analysis',
     label_config='''
     <View>
@@ -215,30 +216,79 @@ tasks = [
     {"text": "It was okay, nothing special."},
 ]
 
-project.import_tasks(tasks)
+client.projects.import_tasks(id=project.id, request=tasks)
 
 # Import from file
-project.import_tasks('data/texts.json')
+import json
+with open('data/texts.json') as f:
+    file_tasks = json.load(f)
+client.projects.import_tasks(id=project.id, request=file_tasks)
 
-# Import from URL
-project.import_tasks('s3://my-bucket/data/texts.json')
+# To import from S3, connect an S3 import storage to the project
+# and sync it from Label Studio or the API.
 ```
 
 ## Exporting Annotations
 
 ```python
-from label_studio_sdk import Client
+from label_studio_sdk import LabelStudio
 
-ls = Client(url='http://localhost:8080', api_key='your-api-key')
-project = ls.get_project(project_id=1)
+client = LabelStudio(base_url='http://localhost:8080', api_key='your-api-key')
+project = client.projects.get(id=1)
 
 # Export all annotations
-annotations = project.export_tasks()
+annotations = client.projects.exports.as_json(project.id)
 
 # Export in specific format
-json_export = project.export_tasks(export_type='JSON')
-csv_export = project.export_tasks(export_type='CSV')
-coco_export = project.export_tasks(export_type='COCO')
+import time
+
+def wait_for_export(export_id, export_type=None):
+    while True:
+        job = client.projects.exports.get(id=project.id, export_pk=export_id)
+
+        if export_type is None:
+            if job.status == 'completed':
+                return
+            if job.status == 'failed':
+                raise RuntimeError('Export failed')
+        else:
+            converted = next(
+                (
+                    item for item in (job.converted_formats or [])
+                    if item.export_type == export_type
+                ),
+                None,
+            )
+            if converted and converted.status == 'completed':
+                return
+            if converted and converted.status == 'failed':
+                raise RuntimeError(f'{export_type} conversion failed')
+
+        time.sleep(1)
+
+export_job = client.projects.exports.create(id=project.id, title='Training export')
+wait_for_export(export_job.id)
+
+for export_type, filename in [
+    ('JSON', 'annotations.json'),
+    ('CSV', 'annotations.csv'),
+    ('COCO', 'annotations-coco.json'),
+]:
+    if export_type != 'JSON':
+        client.projects.exports.convert(
+            id=project.id,
+            export_pk=export_job.id,
+            export_type=export_type,
+        )
+        wait_for_export(export_job.id, export_type)
+
+    with open(filename, 'wb') as f:
+        for chunk in client.projects.exports.download(
+            id=project.id,
+            export_pk=export_job.id,
+            export_type=export_type,
+        ):
+            f.write(chunk)
 
 # Save to file
 import json
@@ -271,7 +321,7 @@ class SentimentBackend(LabelStudioMLBase):
             model="distilbert-base-uncased-finetuned-sst-2-english"
         )
 
-    def predict(self, tasks, **kwargs):
+    def predict(self, tasks, context=None, **kwargs):
         """Generate predictions for tasks."""
         predictions = []
 
@@ -298,14 +348,16 @@ class SentimentBackend(LabelStudioMLBase):
 
         return predictions
 
-    def fit(self, annotations, **kwargs):
+    def fit(self, event, data, **kwargs):
         """Optional: Train/fine-tune on new annotations."""
         # Extract training data from annotations
         training_data = []
-        for annotation in annotations:
-            text = annotation['data']['text']
-            if annotation['annotations']:
-                label = annotation['annotations'][0]['result'][0]['value']['choices'][0]
+        annotation = data.get('annotation') if isinstance(data, dict) else None
+        task = data.get('task') if isinstance(data, dict) else None
+        if annotation and task:
+            text = task['data']['text']
+            if annotation.get('result'):
+                label = annotation['result'][0]['value']['choices'][0]
                 training_data.append({'text': text, 'label': label})
 
         # Fine-tune model (simplified)
@@ -317,60 +369,48 @@ Run the ML backend:
 
 ```bash
 # Start ML backend server
+label-studio-ml create ./ml_backend
 label-studio-ml start ./ml_backend
 
 # Or with Docker
-docker run -p 9090:9090 \
-    -v $(pwd)/ml_backend:/app \
-    heartexlabs/label-studio-ml-backend:latest
+cd ml_backend
+docker-compose up
 ```
 
 Connect the backend in Label Studio settings, then pre-annotations appear automatically.
 
 ## Team Workflows
 
-Set up review workflows for quality control:
+Set up review workflows for quality control. Task assignment and review queues are available in Label Studio Enterprise and Starter Cloud:
 
 ```python
-from label_studio_sdk import Client
+from label_studio_sdk import LabelStudio
 
-ls = Client(url='http://localhost:8080', api_key='your-api-key')
+client = LabelStudio(base_url='http://localhost:8080', api_key='your-api-key')
 
-# Create project with review settings
-project = ls.start_project(
+# Create project with overlap settings for quality control
+project = client.projects.create(
     title='Reviewed Annotations',
     label_config='...',
-    enable_review=True,
-    review_percentage=20,  # 20% of tasks go to review
+    overlap_cohort_percentage=20,  # 20% of tasks are labeled by multiple annotators
 )
 
 # Assign tasks to specific annotators
-project.assign_tasks(
-    task_ids=[1, 2, 3],
-    user_ids=[10, 11]
-)
+for task_id in [1, 2, 3]:
+    client.projects.assignments.assign(
+        id=project.id,
+        task_pk=task_id,
+        type='AN',
+        users=[10, 11],
+    )
 
 # Get annotation statistics
-stats = project.get_project_summary()
-print(f"Total tasks: {stats['task_number']}")
-print(f"Completed: {stats['num_tasks_with_annotations']}")
+stats = client.projects.get(id=project.id)
+print(f"Total tasks: {stats.task_number}")
+print(f"Completed: {stats.num_tasks_with_annotations}")
 
-# Export only reviewed/approved annotations
-reviewed = project.export_tasks(
-    download_all_tasks=False,
-    download_resources=False,
-    filters={
-        "conjunction": "and",
-        "items": [
-            {
-                "filter": "filter:tasks:reviewed",
-                "operator": "equal",
-                "value": True,
-                "type": "Boolean"
-            }
-        ]
-    }
-)
+# Get tasks in the review queue
+reviewed = client.tasks.list(project=project.id, review=True, fields='all')
 ```
 
 ## Kubernetes Deployment
@@ -454,24 +494,24 @@ Build an automated annotation pipeline:
 
 ```python
 import json
-from label_studio_sdk import Client
+from label_studio_sdk import LabelStudio
 from pathlib import Path
 
 def create_annotation_pipeline():
     """End-to-end annotation pipeline."""
 
     # Initialize client
-    ls = Client(url='http://localhost:8080', api_key='your-api-key')
+    client = LabelStudio(base_url='http://localhost:8080', api_key='your-api-key')
 
     # 1. Create or get project
-    projects = ls.list_projects()
+    projects = client.projects.list()
     project = next(
         (p for p in projects if p.title == 'Production Labeling'),
         None
     )
 
     if not project:
-        project = ls.start_project(
+        project = client.projects.create(
             title='Production Labeling',
             label_config='''
             <View>
@@ -488,23 +528,11 @@ def create_annotation_pipeline():
     # 2. Import new data
     new_data = load_new_data_from_queue()
     if new_data:
-        project.import_tasks(new_data)
+        client.projects.import_tasks(id=project.id, request=new_data)
         print(f"Imported {len(new_data)} new tasks")
 
-    # 3. Export completed annotations
-    completed = project.export_tasks(
-        filters={
-            "conjunction": "and",
-            "items": [
-                {
-                    "filter": "filter:tasks:completed",
-                    "operator": "equal",
-                    "value": True,
-                    "type": "Boolean"
-                }
-            ]
-        }
-    )
+    # 3. Export annotations
+    completed = client.projects.exports.as_json(project.id)
 
     # 4. Convert to training format
     training_data = []
