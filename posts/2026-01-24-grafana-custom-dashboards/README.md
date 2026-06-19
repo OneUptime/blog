@@ -23,7 +23,7 @@ A dashboard for on-call engineers needs different information than one for weekl
 
 ## Creating a New Dashboard
 
-Open Grafana and click the **+** icon in the left sidebar, then select **Dashboard**. You start with an empty canvas.
+Open Grafana, click **Dashboards** in the main menu, then click **New** and select **New Dashboard**. You start with an empty canvas.
 
 ### Understanding the Dashboard Grid
 
@@ -141,7 +141,7 @@ Add a row below with two time series panels:
 # Panel 1: Request rate over time (12 columns)
 sum by (status_code) (rate(http_requests_total[5m]))
 
-# Panel 2: Latency percentiles over time (12 columns)
+# Panel 2: Latency percentiles over time (12 columns; add as separate queries)
 histogram_quantile(0.50, sum by (le) (rate(http_request_duration_seconds_bucket[5m])))
 histogram_quantile(0.90, sum by (le) (rate(http_request_duration_seconds_bucket[5m])))
 histogram_quantile(0.99, sum by (le) (rate(http_request_duration_seconds_bucket[5m])))
@@ -179,7 +179,7 @@ This layout follows the principle of progressive disclosure: start with summary,
 
 Rows group related panels and can be collapsed. Add a row:
 
-1. Click **Add** > **Row**
+1. Click **Edit**, then click **+ New row**
 2. Enter a title like "Resource Usage"
 3. Drag panels into the row
 
@@ -245,7 +245,7 @@ rate(http_requests_total[1h])
 
 ## Configuring Dashboard Settings
 
-Click the gear icon to access dashboard settings:
+Click **Edit**, then open the dashboard options sidebar and click **Settings**:
 
 ### General
 - **Name**: Descriptive name for the dashboard
@@ -259,7 +259,9 @@ Add variables for filtering (covered in detail in a separate post):
 ```text
 Name: namespace
 Type: Query
-Query: label_values(http_requests_total, namespace)
+Query type: Label values
+Metric: http_requests_total
+Label: namespace
 ```
 
 ### Links
@@ -293,13 +295,14 @@ query: changes(kube_deployment_status_observed_generation{deployment="myservice"
 
 Every dashboard is stored as JSON. Export it for version control:
 
-1. Dashboard Settings > JSON Model
-2. Copy the JSON
-3. Store in Git alongside your application code
+1. Open the dashboard and click the **Export** icon
+2. Select **Export as code**
+3. Copy the JSON or download the file
+4. Store it in Git alongside your application code
 
 Import from JSON:
 
-1. Click **+** > **Import**
+1. Click **Dashboards** > **New** > **Import dashboard**
 2. Paste JSON or upload file
 3. Select data sources
 
@@ -331,7 +334,7 @@ Share dashboards with your team:
 
 **Share link**: Click Share > Copy link. Viewers need Grafana access.
 
-**Export JSON**: Dashboard Settings > JSON Model > Copy. Import in another Grafana instance.
+**Export JSON**: Click the Export icon > Export as code > Copy to clipboard or Download file. Import in another Grafana instance.
 
 **Publish to grafana.com**: Share with the community by publishing to the Grafana dashboard repository.
 
