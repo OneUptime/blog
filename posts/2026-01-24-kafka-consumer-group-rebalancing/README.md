@@ -22,7 +22,7 @@ When consumers join or leave a consumer group, Kafka redistributes partitions am
 
 ```mermaid
 flowchart TB
-    subgraph Before Rebalance
+    subgraph before["Before Rebalance"]
         direction TB
         C1A[Consumer 1<br/>P0, P1, P2]
         C2A[Consumer 2<br/>P3, P4, P5]
@@ -33,20 +33,20 @@ flowchart TB
         R[Rebalance<br/>Triggered]
     end
 
-    subgraph After Rebalance
+    subgraph after["After Rebalance"]
         direction TB
         C1B[Consumer 1<br/>P0, P1]
         C2B[Consumer 2<br/>P2, P3]
         C3B[Consumer 3<br/>P4, P5]
     end
 
-    Before Rebalance --> R
-    R --> After Rebalance
+    before --> R
+    R --> after
 ```
 
 ### The Rebalancing Process
 
-During a rebalance, all consumers in the group must stop processing and rejoin the group with new partition assignments.
+During an eager rebalance, all consumers in the group must stop processing and rejoin the group with new partition assignments. With cooperative rebalancing, consumers can keep processing partitions that are not being moved.
 
 ```mermaid
 sequenceDiagram
@@ -134,14 +134,14 @@ consumer = KafkaConsumer(
     session_timeout_ms=30000,
 
     # Heartbeat interval: How often to send heartbeats
-    # Should be less than session_timeout_ms / 3
+    # Typically no higher than session_timeout_ms / 3
     heartbeat_interval_ms=10000,
 )
 ```
 
 ### 3. Max Poll Interval Exceeded
 
-If a consumer takes too long between poll() calls, it triggers a rebalance.
+If a dynamic consumer takes too long between poll() calls, it is considered failed and triggers a rebalance. For a static member with `group.instance.id`, partition reassignment is delayed until the session timeout expires.
 
 ```python
 consumer = KafkaConsumer(
@@ -192,25 +192,25 @@ In eager rebalancing, all consumers revoke all partitions before reassignment.
 
 ```mermaid
 flowchart TB
-    subgraph Phase 1: Revoke All
+    subgraph phase1["Phase 1: Revoke All"]
         C1R[Consumer 1<br/>Revokes P0, P1]
         C2R[Consumer 2<br/>Revokes P2, P3]
     end
 
-    subgraph Phase 2: Rejoin
+    subgraph phase2["Phase 2: Rejoin"]
         J[All consumers<br/>rejoin group]
     end
 
-    subgraph Phase 3: Reassign
+    subgraph phase3["Phase 3: Reassign"]
         C1A[Consumer 1<br/>Assigned P0, P2]
         C2A[Consumer 2<br/>Assigned P1, P3]
     end
 
-    Phase 1: Revoke All --> Phase 2: Rejoin --> Phase 3: Reassign
+    phase1 --> phase2 --> phase3
 
-    style Phase 1: Revoke All fill:#ff6b6b
-    style Phase 2: Rejoin fill:#feca57
-    style Phase 3: Reassign fill:#48dbfb
+    style phase1 fill:#ff6b6b
+    style phase2 fill:#feca57
+    style phase3 fill:#48dbfb
 ```
 
 ### Cooperative Rebalancing (Incremental)
@@ -219,30 +219,31 @@ Cooperative rebalancing only revokes partitions that need to move, reducing down
 
 ```mermaid
 flowchart TB
-    subgraph Phase 1: Identify Changes
-        I[Coordinator identifies<br/>partitions to move]
+    subgraph phase1["Phase 1: Identify Changes"]
+        I[Group leader computes<br/>partitions to move]
     end
 
-    subgraph Phase 2: Revoke Only Moving Partitions
+    subgraph phase2["Phase 2: Revoke Only Moving Partitions"]
         C1R[Consumer 1<br/>Keeps P0, Revokes P1]
         C2R[Consumer 2<br/>Keeps P2, P3]
     end
 
-    subgraph Phase 3: Reassign
+    subgraph phase3["Phase 3: Reassign"]
         C1A[Consumer 1<br/>Has P0]
         C2A[Consumer 2<br/>Has P2, P3]
         C3A[Consumer 3<br/>Gets P1]
     end
 
-    Phase 1: Identify Changes --> Phase 2: Revoke Only Moving Partitions --> Phase 3: Reassign
+    phase1 --> phase2 --> phase3
 
-    style Phase 2: Revoke Only Moving Partitions fill:#48dbfb
+    style phase2 fill:#48dbfb
 ```
 
 ### Enabling Cooperative Rebalancing
 
 ```python
 from kafka import KafkaConsumer
+from kafka.coordinator.assignors.cooperative_sticky import CooperativeStickyAssignor
 
 consumer = KafkaConsumer(
     'orders',
@@ -252,7 +253,7 @@ consumer = KafkaConsumer(
     # Use cooperative sticky assignor for incremental rebalancing
     # This minimizes partition movement during rebalances
     partition_assignment_strategy=[
-        'org.apache.kafka.clients.consumer.CooperativeStickyAssignor'
+        CooperativeStickyAssignor
     ],
 )
 ```
@@ -329,7 +330,7 @@ public class RebalanceAwareConsumer {
                 @Override
                 public void onPartitionsLost(Collection<TopicPartition> partitions) {
                     // Called when partitions are lost unexpectedly
-                    // (only with cooperative rebalancing)
+                    // (for example, after a session timeout)
                     System.out.println("Partitions lost: " + partitions);
 
                     // Cannot commit offsets here as partitions are already gone
@@ -373,7 +374,9 @@ public class RebalanceAwareConsumer {
 
                 // Commit periodically
                 if (!pendingOffsets.isEmpty()) {
-                    consumer.commitAsync(pendingOffsets, (offsets, exception) -> {
+                    Map<TopicPartition, OffsetAndMetadata> offsetsToCommit =
+                        new HashMap<>(pendingOffsets);
+                    consumer.commitAsync(offsetsToCommit, (offsets, exception) -> {
                         if (exception != null) {
                             System.err.println("Commit failed: " + exception);
                         }
@@ -396,7 +399,8 @@ public class RebalanceAwareConsumer {
 
 ```python
 from kafka import KafkaConsumer, ConsumerRebalanceListener
-from kafka.structs import TopicPartition
+from kafka.coordinator.assignors.cooperative_sticky import CooperativeStickyAssignor
+from kafka.structs import OffsetAndMetadata, TopicPartition
 import threading
 
 class RebalanceHandler(ConsumerRebalanceListener):
@@ -454,7 +458,7 @@ class RebalanceHandler(ConsumerRebalanceListener):
     def track_offset(self, tp, offset):
         """Track an offset for later commit."""
         with self.lock:
-            self.pending_offsets[tp] = offset + 1
+            self.pending_offsets[tp] = OffsetAndMetadata(offset + 1, '', -1)
 
 
 def create_rebalance_aware_consumer():
@@ -469,7 +473,7 @@ def create_rebalance_aware_consumer():
 
         # Cooperative rebalancing for minimal disruption
         partition_assignment_strategy=[
-            'org.apache.kafka.clients.consumer.CooperativeStickyAssignor'
+            CooperativeStickyAssignor
         ],
     )
 
@@ -498,9 +502,12 @@ def main():
                     handler.track_offset(tp, message.offset)
 
             # Commit offsets asynchronously
-            if handler.pending_offsets:
-                consumer.commit_async()
+            with handler.lock:
+                offsets_to_commit = dict(handler.pending_offsets)
                 handler.pending_offsets.clear()
+
+            if offsets_to_commit:
+                consumer.commit_async(offsets_to_commit)
 
     except KeyboardInterrupt:
         print("Shutting down...")
@@ -520,11 +527,11 @@ Static membership prevents rebalances during short consumer restarts.
 
 ```python
 from kafka import KafkaConsumer
-import uuid
+import socket
 
 # Generate a stable instance ID for this consumer
-# Use the same ID across restarts to avoid rebalances
-INSTANCE_ID = "order-processor-" + get_hostname()  # or use a stable identifier
+# Use the same ID across restarts to avoid rebalances during brief restarts
+INSTANCE_ID = "order-processor-" + socket.gethostname()
 
 consumer = KafkaConsumer(
     'orders',
@@ -574,7 +581,7 @@ consumer = KafkaConsumer(
     session_timeout_ms=45000,  # 45 seconds
 
     # Heartbeat interval: Send heartbeats frequently
-    # Rule: heartbeat_interval < session_timeout / 3
+    # Rule of thumb: heartbeat_interval <= session_timeout / 3
     heartbeat_interval_ms=15000,  # 15 seconds
 
     # Max poll interval: Allow enough time for processing
@@ -594,6 +601,7 @@ Ensure message processing completes within the poll interval.
 ```python
 import concurrent.futures
 from kafka import KafkaConsumer
+from kafka.structs import OffsetAndMetadata
 
 def process_batch_with_parallelism(consumer, max_workers=4):
     """
@@ -615,17 +623,20 @@ def process_batch_with_parallelism(consumer, max_workers=4):
                     futures.append((tp, message.offset, future))
 
             # Wait for all processing to complete
+            processed_offsets = {}
             for tp, offset, future in futures:
                 try:
                     # Set a timeout to avoid exceeding poll interval
                     future.result(timeout=60)
+                    processed_offsets[tp] = OffsetAndMetadata(offset + 1, '', -1)
                 except concurrent.futures.TimeoutError:
                     print(f"Processing timeout for offset {offset}")
                 except Exception as e:
                     print(f"Processing error for offset {offset}: {e}")
 
             # Commit offsets after successful processing
-            consumer.commit()
+            if processed_offsets:
+                consumer.commit(processed_offsets)
 
 
 def process_message(message):
@@ -636,7 +647,7 @@ def process_message(message):
 
 ### 4. Use Pause and Resume
 
-Pause consumption during heavy processing to avoid rebalances.
+Pause consumption during heavy processing and keep polling so the consumer does not exceed `max_poll_interval_ms`.
 
 ```python
 from kafka import KafkaConsumer
@@ -651,7 +662,7 @@ consumer = KafkaConsumer(
 
 def process_with_pause_resume():
     """
-    Pause partitions during heavy processing to maintain heartbeats.
+    Pause partitions during heavy processing and poll periodically.
     """
     while True:
         records = consumer.poll(timeout_ms=100)
@@ -671,8 +682,8 @@ def process_with_pause_resume():
                     # Heavy processing that might take a while
                     process_heavy_message(message)
 
-                    # Periodically poll to send heartbeats
-                    # This empty poll maintains session
+                    # Periodically poll to keep the consumer active
+                    # and avoid exceeding max_poll_interval_ms
                     consumer.poll(timeout_ms=0)
 
         finally:
@@ -695,7 +706,7 @@ def process_heavy_message(message):
 
 ```mermaid
 flowchart TB
-    subgraph Consumer Metrics
+    subgraph consumerMetrics["Consumer Metrics"]
         A[rebalance-total]
         B[rebalance-rate-per-hour]
         C[rebalance-latency-avg]
@@ -703,7 +714,7 @@ flowchart TB
         E[last-rebalance-seconds-ago]
     end
 
-    subgraph Health Indicators
+    subgraph healthIndicators["Health Indicators"]
         F[assigned-partitions]
         G[records-lag-max]
         H[commit-rate]
@@ -719,6 +730,7 @@ flowchart TB
 ```python
 from prometheus_client import Counter, Gauge, Histogram, start_http_server
 from kafka import KafkaConsumer, ConsumerRebalanceListener
+import time
 
 # Define metrics
 REBALANCE_TOTAL = Counter(
@@ -804,7 +816,7 @@ groups:
       # Alert on slow rebalances
       - alert: KafkaConsumerSlowRebalance
         expr: |
-          kafka_consumer_rebalance_duration_seconds > 30
+          histogram_quantile(0.95, sum by (le, group_id) (rate(kafka_consumer_rebalance_duration_seconds_bucket[5m]))) > 30
         for: 1m
         labels:
           severity: warning
@@ -882,14 +894,19 @@ flowchart TD
 ### Configuration Checklist
 
 ```python
+from kafka.coordinator.assignors.cooperative_sticky import CooperativeStickyAssignor
+import socket
+
 # Recommended configuration for production
+hostname = socket.gethostname()
+
 consumer_config = {
     'bootstrap_servers': ['broker1:9092', 'broker2:9092', 'broker3:9092'],
     'group_id': 'order-processors',
 
     # Use cooperative rebalancing
     'partition_assignment_strategy': [
-        'org.apache.kafka.clients.consumer.CooperativeStickyAssignor'
+        CooperativeStickyAssignor
     ],
 
     # Static membership (use stable identifier)
