@@ -39,11 +39,11 @@ governor = "0.6"          # rate limiting
 dashmap = "6"             # concurrent hashmap
 tracing = "0.1"
 tracing-subscriber = "0.3"
-futures = "0.3"
+async-channel = "2"
 anyhow = "1"
 ```
 
-Tokio provides the async runtime. Reqwest handles HTTP with connection pooling built in. Scraper parses HTML using CSS selectors. Governor gives you a token-bucket rate limiter so you don't hammer target servers. DashMap is a concurrent HashMap for tracking visited URLs without a global mutex.
+Tokio provides the async runtime. Reqwest handles HTTP with connection pooling built in. Scraper parses HTML using CSS selectors. Governor gives you an efficient GCRA-based rate limiter so you don't hammer target servers. DashMap is a concurrent HashMap for tracking visited URLs without a global mutex.
 
 ## The Core Crawler Loop
 
@@ -53,13 +53,14 @@ Here is the skeleton:
 
 ```rust
 use anyhow::Result;
+use async_channel::Sender;
 use dashmap::DashSet;
 use governor::{Quota, RateLimiter};
 use reqwest::Client;
 use scraper::{Html, Selector};
 use std::num::NonZeroU32;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
-use tokio::sync::mpsc;
 use url::Url;
 
 // Shared state across all crawler tasks
@@ -81,7 +82,7 @@ impl CrawlerState {
             .build()
             .expect("failed to build HTTP client");
 
-        // Token bucket: refill `requests_per_second` tokens every second
+        // Allow `requests_per_second` cells per second
         let quota = Quota::per_second(NonZeroU32::new(requests_per_second).unwrap());
         let limiter = RateLimiter::direct(quota);
 
@@ -104,7 +105,8 @@ Each crawl task waits for a rate limit token, fetches the page, parses the HTML,
 async fn crawl_page(
     state: Arc<CrawlerState>,
     url: Url,
-    link_tx: mpsc::Sender<Url>,
+    link_tx: Sender<Url>,
+    in_flight: Arc<AtomicUsize>,
 ) -> Result<()> {
     // Wait for rate limit token before making the request
     state.limiter.until_ready().await;
@@ -128,22 +130,34 @@ async fn crawl_page(
     }
 
     let body = response.text().await?;
-    let document = Html::parse_document(&body);
-    let selector = Selector::parse("a[href]").unwrap();
+    let links = {
+        let document = Html::parse_document(&body);
+        let selector = Selector::parse("a[href]").unwrap();
+        let mut links = Vec::new();
 
-    for element in document.select(&selector) {
-        if let Some(href) = element.value().attr("href") {
-            // Resolve relative URLs against the current page
-            if let Ok(absolute) = url.join(href) {
-                // Only follow http/https links
-                if absolute.scheme() == "http" || absolute.scheme() == "https" {
-                    // Skip if already visited
-                    let key = absolute.to_string();
-                    if state.visited.insert(key) {
-                        let _ = link_tx.send(absolute).await;
+        for element in document.select(&selector) {
+            if let Some(href) = element.value().attr("href") {
+                // Resolve relative URLs against the current page
+                if let Ok(absolute) = url.join(href) {
+                    // Only follow http/https links
+                    if absolute.scheme() == "http" || absolute.scheme() == "https" {
+                        // Skip if already visited
+                        let key = absolute.to_string();
+                        if state.visited.insert(key) {
+                            links.push(absolute);
+                        }
                     }
                 }
             }
+        }
+
+        links
+    };
+
+    for link in links {
+        in_flight.fetch_add(1, Ordering::SeqCst);
+        if link_tx.send(link).await.is_err() {
+            in_flight.fetch_sub(1, Ordering::SeqCst);
         }
     }
 
@@ -152,69 +166,11 @@ async fn crawl_page(
 }
 ```
 
-A few details worth noting. We resolve relative URLs with `url.join()` so links like `/about` become fully qualified. The `visited.insert()` call returns true only if the URL was not already present, so we avoid duplicate work without a separate check-then-insert race. And we pass errors up with `anyhow` rather than panicking, because one bad page should not crash the whole crawler.
+A few details worth noting. We resolve relative URLs with `url.join()` so links like `/about` become fully qualified. The `visited.insert()` call returns true only if the URL was not already present, so we avoid duplicate work without a separate check-then-insert race. We collect links before awaiting on the channel because `scraper`'s document and element references are not `Send`, and spawned Tokio tasks need their futures to be `Send`. And we pass errors up with `anyhow` rather than panicking, because one bad page should not crash the whole crawler.
 
 ## Orchestrating Concurrent Tasks
 
-The main loop spawns a pool of worker tasks that pull URLs from a channel:
-
-```rust
-#[tokio::main]
-async fn main() -> Result<()> {
-    tracing_subscriber::fmt::init();
-
-    let state = Arc::new(CrawlerState::new(50)); // 50 requests per second
-    let (link_tx, mut link_rx) = mpsc::channel::<Url>(10_000);
-
-    // Seed the crawler with starting URLs
-    let seeds = vec![
-        "https://example.com",
-        "https://rust-lang.org",
-    ];
-
-    for seed in seeds {
-        let url = Url::parse(seed)?;
-        state.visited.insert(url.to_string());
-        link_tx.send(url).await?;
-    }
-
-    // Spawn a fixed number of worker tasks
-    let num_workers = 100;
-    let mut handles = Vec::with_capacity(num_workers);
-
-    for _ in 0..num_workers {
-        let state = Arc::clone(&state);
-        let link_tx = link_tx.clone();
-        let mut rx = link_rx; // Move receiver into first worker, then recreate channel
-
-        // Actually, we need a different pattern - use a shared receiver
-        // Let's use tokio::sync::Semaphore instead for worker limiting
-    }
-
-    // Better approach: spawn tasks on demand with a semaphore for concurrency control
-    let semaphore = Arc::new(tokio::sync::Semaphore::new(100));
-
-    // Drop original sender so channel closes when all work is done
-    drop(link_tx);
-
-    while let Some(url) = link_rx.recv().await {
-        let permit = semaphore.clone().acquire_owned().await?;
-        let state = Arc::clone(&state);
-        let tx = link_tx.clone(); // This won't work after drop - need different design
-
-        tokio::spawn(async move {
-            let _ = crawl_page(state, url, tx).await;
-            drop(permit);
-        });
-    }
-
-    Ok(())
-}
-```
-
-In practice, you will want a more sophisticated design. The pattern above has a subtle issue: once we drop the sender, we cannot send new links. A common fix is to track in-flight tasks with an atomic counter and only close the channel when both the queue is empty and no tasks are running.
-
-Here is a cleaner version using a work-stealing approach:
+The main loop spawns a pool of worker tasks that compete for URLs from a shared channel. Tokio's `mpsc` channel has only one receiver, so this example uses `async-channel`, whose receivers can be cloned across workers. The in-flight counter lets the last worker close the channel when there are no queued or active URLs left:
 
 ```rust
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -230,9 +186,10 @@ async fn main() -> Result<()> {
     // Seed URLs
     for seed in ["https://example.com", "https://rust-lang.org"] {
         let url = Url::parse(seed)?;
-        state.visited.insert(url.to_string());
-        link_tx.send(url).await?;
-        in_flight.fetch_add(1, Ordering::SeqCst);
+        if state.visited.insert(url.to_string()) {
+            in_flight.fetch_add(1, Ordering::SeqCst);
+            link_tx.send(url).await?;
+        }
     }
 
     // Spawn workers that compete for URLs from the shared channel
@@ -245,12 +202,25 @@ async fn main() -> Result<()> {
 
         handles.push(tokio::spawn(async move {
             while let Ok(url) = rx.recv().await {
-                let _ = crawl_page_v2(&state, url, &tx, &counter).await;
+                if let Err(error) = crawl_page(
+                    Arc::clone(&state),
+                    url,
+                    tx.clone(),
+                    Arc::clone(&counter),
+                )
+                .await
+                {
+                    tracing::warn!(%error, "crawl failed");
+                }
+
+                if counter.fetch_sub(1, Ordering::SeqCst) == 1 {
+                    tx.close();
+                }
             }
         }));
     }
 
-    // Close sender side - workers will exit when channel drains
+    // Drop the original sender; worker clones stay alive until the counter reaches zero
     drop(link_tx);
 
     for handle in handles {
