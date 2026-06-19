@@ -90,9 +90,8 @@ kafka-run-class.sh kafka.tools.JmxTool \
   --object-name kafka.server:type=BrokerTopicMetrics,name=BytesInPerSec \
   --jmx-url service:jmx:rmi:///jndi/rmi://localhost:9999/jmxrmi
 
-# Check controller status
-kafka-metadata.sh --snapshot /var/kafka-logs/__cluster_metadata-0/00000000000000000000.log \
-  --command "cat -all" | grep -i controller
+# Check KRaft metadata quorum status
+kafka-metadata-quorum.sh --bootstrap-server localhost:9092 describe --status
 ```
 
 ### Step 3: Check Client Configuration
@@ -302,19 +301,23 @@ public class AutoReconnectingProducer {
     }
 
     /**
-     * Send message with automatic reconnection on disconnect.
+     * Send message with retry on disconnect.
      */
-    public Future<RecordMetadata> send(String topic, String key, String value) {
+    public RecordMetadata send(String topic, String key, String value) {
         int attempts = 0;
         int maxAttempts = 3;
 
         while (attempts < maxAttempts && !closed) {
             try {
                 ProducerRecord<String, String> record = new ProducerRecord<>(topic, key, value);
-                return getProducer().send(record);
+                return getProducer().send(record).get();
 
-            } catch (Exception e) {
-                if (isDisconnectError(e)) {
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new RuntimeException("Interrupted during send", e);
+            } catch (ExecutionException e) {
+                Throwable cause = e.getCause();
+                if (isDisconnectError(cause)) {
                     attempts++;
                     System.out.println("Disconnect detected, reconnecting... (attempt " +
                         attempts + ")");
@@ -326,8 +329,24 @@ public class AutoReconnectingProducer {
                         Thread.currentThread().interrupt();
                         throw new RuntimeException("Interrupted during reconnect", ie);
                     }
-                } else {
+                    continue;
+                }
+                throw new RuntimeException("Failed to send record", cause);
+            } catch (RuntimeException e) {
+                if (!isDisconnectError(e)) {
                     throw e;
+                }
+
+                attempts++;
+                System.out.println("Disconnect detected, reconnecting... (attempt " +
+                    attempts + ")");
+                reconnect();
+
+                try {
+                    Thread.sleep(1000 * attempts);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    throw new RuntimeException("Interrupted during reconnect", ie);
                 }
             }
         }
@@ -358,7 +377,7 @@ public class AutoReconnectingProducer {
         }
     }
 
-    private boolean isDisconnectError(Exception e) {
+    private boolean isDisconnectError(Throwable e) {
         Throwable cause = e;
         while (cause != null) {
             if (cause instanceof DisconnectException ||
