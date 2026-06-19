@@ -16,11 +16,11 @@ Probes tell Kubernetes about your application's health. Liveness probes detect w
 graph LR
     A[Container Starts] --> B{Startup Probe}
     B -->|Pass| C{Readiness Probe}
+    B -->|Pass| G{Liveness Probe}
     B -->|Fail repeatedly| D[Kill Container]
     C -->|Pass| E[Receive Traffic]
     C -->|Fail| F[Remove from Service]
-    E --> G{Liveness Probe}
-    G -->|Pass| E
+    G -->|Pass| G
     G -->|Fail repeatedly| D
 ```
 
@@ -38,7 +38,7 @@ Use case: Application starting up, loading cache, waiting for dependencies
 
 ### Startup Probe
 
-Gives slow-starting applications time to start. Kubernetes waits for startup probe to pass before starting liveness checks.
+Gives slow-starting applications time to start. Kubernetes waits for startup probe to pass before starting liveness and readiness checks.
 
 Use case: Legacy applications, large data loading, slow initialization
 
@@ -121,7 +121,7 @@ livenessProbe:
 | initialDelaySeconds | Wait before first probe | 0 |
 | periodSeconds | Time between probes | 10 |
 | timeoutSeconds | Probe timeout | 1 |
-| successThreshold | Consecutive successes to be healthy | 1 |
+| successThreshold | Consecutive successes after failure (must be 1 for liveness and startup) | 1 |
 | failureThreshold | Consecutive failures to be unhealthy | 3 |
 
 ## Common Patterns
@@ -213,12 +213,12 @@ containers:
         command:
           - /bin/sh
           - -c
-          - test -f /tmp/healthy
+          - python -c 'import os, sys, time; sys.exit(0 if os.path.exists("/tmp/healthy") and time.time() - os.path.getmtime("/tmp/healthy") < 60 else 1)'
       initialDelaySeconds: 30
       periodSeconds: 10
 ```
 
-Worker must create /tmp/healthy file to indicate health:
+Worker must keep /tmp/healthy fresh to indicate health:
 
 ```python
 # Worker code
@@ -393,10 +393,10 @@ livenessProbe:
   timeoutSeconds: 5
 ```
 
-### Mistake 4: Same Probe for Liveness and Readiness
+### Mistake 4: Dependency-Checking Probe for Liveness and Readiness
 
 ```yaml
-# BAD - identical probes
+# BAD - shared endpoint checks dependencies
 livenessProbe:
   httpGet:
     path: /health
@@ -407,7 +407,7 @@ readinessProbe:
     port: 8080
 ```
 
-These serve different purposes. Design them accordingly.
+These often serve different purposes. If the readiness probe checks dependencies, keep liveness on a simpler process health endpoint.
 
 ## Debugging Probe Failures
 
