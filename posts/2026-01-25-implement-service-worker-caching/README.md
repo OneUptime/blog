@@ -31,7 +31,7 @@ stateDiagram-v2
 | Installing | SW is being installed | Pre-cache critical assets |
 | Waiting | Old SW still controls pages | Wait for pages to close |
 | Activating | SW taking control | Clean up old caches |
-| Activated | SW controls all pages | Handle fetch events |
+| Activated | SW can control pages in scope | Handle fetch events |
 
 ## Basic Service Worker Setup
 
@@ -258,6 +258,12 @@ async function staleWhileRevalidate(request) {
       cache.put(request, response.clone());
     }
     return response;
+  }).catch((error) => {
+    if (cached) {
+      console.error('Background update failed:', error);
+      return cached;
+    }
+    throw error;
   });
 
   // Return cached immediately if available, otherwise wait for network
@@ -265,7 +271,7 @@ async function staleWhileRevalidate(request) {
 }
 ```
 
-### Network Only with Timeout
+### Network with Timeout and Cache Fallback
 
 ```javascript
 async function networkWithTimeout(request, timeout = 5000) {
@@ -336,7 +342,7 @@ async function cachedApiRequest(request) {
 ### Background Sync for Offline Actions
 
 ```javascript
-// In service worker
+// In service worker, where Background Sync is supported
 self.addEventListener('sync', (event) => {
   if (event.tag === 'sync-pending-requests') {
     event.waitUntil(syncPendingRequests());
@@ -376,8 +382,9 @@ async function queueForSync(request, body) {
   });
 
   // Request background sync
-  const registration = await navigator.serviceWorker.ready;
-  await registration.sync.register('sync-pending-requests');
+  if ('sync' in self.registration) {
+    await self.registration.sync.register('sync-pending-requests');
+  }
 }
 ```
 
@@ -413,16 +420,7 @@ async function addToCache(cacheName, request, response) {
 self.addEventListener('fetch', (event) => {
   const request = event.request;
 
-  // Respect Cache-Control headers
-  const cacheControl = request.headers.get('Cache-Control');
-
-  if (cacheControl && cacheControl.includes('no-store')) {
-    // Never cache this request
-    event.respondWith(fetch(request));
-    return;
-  }
-
-  // Check for custom caching header
+  // Check for custom request header
   const customCache = request.headers.get('X-SW-Cache');
 
   if (customCache === 'skip') {
@@ -431,8 +429,26 @@ self.addEventListener('fetch', (event) => {
   }
 
   // Apply default caching strategy
-  event.respondWith(defaultStrategy(request));
+  event.respondWith(cacheRespectingHeaders(request));
 });
+
+async function cacheRespectingHeaders(request) {
+  const cached = await caches.match(request);
+
+  if (cached) {
+    return cached;
+  }
+
+  const response = await fetch(request);
+  const cacheControl = response.headers.get('Cache-Control');
+
+  if (response.ok && (!cacheControl || !cacheControl.includes('no-store'))) {
+    const cache = await caches.open(DYNAMIC_CACHE);
+    await cache.put(request, response.clone());
+  }
+
+  return response;
+}
 ```
 
 ## Workbox Integration
@@ -441,7 +457,7 @@ For complex applications, use Workbox to simplify service worker development:
 
 ```javascript
 // sw.js with Workbox
-importScripts('https://storage.googleapis.com/workbox-cdn/releases/6.5.4/workbox-sw.js');
+importScripts('https://storage.googleapis.com/workbox-cdn/releases/7.4.1/workbox-sw.js');
 
 const { registerRoute } = workbox.routing;
 const { CacheFirst, NetworkFirst, StaleWhileRevalidate } = workbox.strategies;
