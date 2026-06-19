@@ -12,7 +12,7 @@ You try to pull from a remote or merge a branch and git stops you with "fatal: r
 
 ## Understanding the Error
 
-Git tracks project history through a chain of commits. Each commit points to its parent, forming a tree. When you merge, git finds the common ancestor and combines the changes since that point. If there is no common ancestor, git cannot determine how to merge.
+Git tracks project history through a chain of commits. Each commit points to its parent or parents, forming a commit graph. When you merge, git finds the common ancestor and combines the changes since that point. If there is no common ancestor, git refuses the merge by default as a safety check.
 
 ```mermaid
 flowchart TD
@@ -32,7 +32,7 @@ flowchart TD
     style B3 fill:#69f
 ```
 
-The two histories are completely separate. Git refuses to merge because it cannot find where they diverged.
+The two histories are completely separate. Git refuses to merge by default because it cannot find where they diverged.
 
 ---
 
@@ -199,9 +199,9 @@ git fetch origin
 
 # Rebase your commits onto the remote
 git rebase origin/main
-# This will fail with unrelated histories
+# This replays commits onto origin/main and may stop for conflicts
 
-# For unrelated histories, you need to use --onto
+# To explicitly rebase every commit from the root
 git rebase --onto origin/main --root
 
 # This replays all your commits from root onto origin/main
