@@ -75,8 +75,8 @@ docker exec container_name hostname -I
 # Using ip command
 docker exec container_name ip addr show eth0 | grep 'inet ' | awk '{print $2}' | cut -d/ -f1
 
-# Using /proc filesystem (minimal dependencies)
-docker exec container_name cat /proc/net/fib_trie | grep -A 1 "LOCAL" | tail -1 | awk '{print $2}'
+# Using the default route (requires ip command)
+docker exec container_name sh -c "ip route get 1.1.1.1 | awk '{print \$7; exit}'"
 ```
 
 Inside your application code:
@@ -155,8 +155,6 @@ For Docker Compose projects, each service gets a predictable hostname:
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   web:
     image: nginx
@@ -198,7 +196,7 @@ response = requests.get('http://web:80/api')
 #!/bin/bash
 # get-last-container-ip.sh
 
-CONTAINER_ID=$(docker ps -lq)
+CONTAINER_ID=$(docker ps -q | head -n 1)
 if [ -z "$CONTAINER_ID" ]; then
     echo "No running containers"
     exit 1
@@ -221,9 +219,8 @@ if [ -z "$TARGET_IP" ]; then
     exit 1
 fi
 
-docker ps -q | while read container_id; do
-    ip=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$container_id")
-    if [ "$ip" = "$TARGET_IP" ]; then
+for container_id in $(docker ps -q); do
+    if docker inspect -f '{{range .NetworkSettings.Networks}}{{println .IPAddress}}{{end}}' "$container_id" | grep -Fxq "$TARGET_IP"; then
         name=$(docker inspect -f '{{.Name}}' "$container_id")
         echo "Found: $name ($container_id)"
         exit 0
@@ -242,12 +239,12 @@ echo "No container found with IP $TARGET_IP"
 # Export container IPs as environment variables
 # Usage: source ./export-container-ips.sh
 
-docker ps --format "{{.Names}}" | while read name; do
-    # Convert container name to valid env var (replace - with _)
-    var_name=$(echo "$name" | tr '-' '_' | tr '[:lower:]' '[:upper:]')_IP
+while read -r name; do
+    # Convert container name to valid env var
+    var_name=$(echo "$name" | sed 's/[^A-Za-z0-9_]/_/g' | tr '[:lower:]' '[:upper:]')_IP
     ip=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$name")
-    echo "export $var_name=$ip"
-done
+    export "$var_name=$ip"
+done < <(docker ps --format "{{.Names}}")
 ```
 
 ## Multi-Network Containers
@@ -256,8 +253,6 @@ Containers can connect to multiple networks and have different IPs on each:
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   api:
     build: ./api
@@ -340,8 +335,6 @@ Container IPs are dynamic and may change when containers restart. For stable add
 
 ```yaml
 # docker-compose.yml with static IP
-version: '3.8'
-
 services:
   database:
     image: postgres:15
