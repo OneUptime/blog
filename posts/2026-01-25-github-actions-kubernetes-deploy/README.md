@@ -28,13 +28,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       # Set up kubectl
       - name: Set up kubectl
-        uses: azure/setup-kubectl@v3
+        uses: azure/setup-kubectl@v5.1.0
         with:
-          version: 'v1.29.0'
+          version: 'latest'
 
       # Configure kubeconfig
       - name: Configure kubectl
@@ -78,13 +78,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       # Set up Helm
       - name: Set up Helm
-        uses: azure/setup-helm@v4
+        uses: azure/setup-helm@v5.0.0
         with:
-          version: 'v3.14.0'
+          version: 'v3.18.3'
 
       # Configure kubectl
       - name: Configure kubectl
@@ -129,11 +129,11 @@ jobs:
       contents: read
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       # Configure AWS credentials via OIDC
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6.2.0
         with:
           role-to-assume: arn:aws:iam::123456789:role/github-actions-eks
           aws-region: us-east-1
@@ -174,22 +174,22 @@ jobs:
       contents: read
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       # Authenticate to Google Cloud
       - name: Authenticate to GCP
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: projects/123456/locations/global/workloadIdentityPools/github/providers/github
           service_account: deploy@project.iam.gserviceaccount.com
 
       # Set up gcloud CLI
       - name: Set up gcloud
-        uses: google-github-actions/setup-gcloud@v2
+        uses: google-github-actions/setup-gcloud@v3
 
       # Get GKE credentials
       - name: Get GKE credentials
-        uses: google-github-actions/get-gke-credentials@v2
+        uses: google-github-actions/get-gke-credentials@v3
         with:
           cluster_name: my-cluster
           location: us-central1
@@ -217,17 +217,17 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       # Login to Azure
       - name: Azure Login
-        uses: azure/login@v2
+        uses: azure/login@v3
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       # Set up kubectl with AKS
       - name: Set up kubectl
-        uses: azure/aks-set-context@v3
+        uses: azure/aks-set-context@v5.0.0
         with:
           resource-group: myResourceGroup
           cluster-name: myAKSCluster
@@ -253,11 +253,21 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     outputs:
       image-tag: ${{ steps.build.outputs.tag }}
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push
         id: build
@@ -273,7 +283,7 @@ jobs:
     environment: staging
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Configure kubectl
         run: |
@@ -300,7 +310,7 @@ jobs:
     environment: production
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Configure kubectl
         run: |
@@ -333,7 +343,7 @@ jobs:
     environment: production
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Configure kubectl
         run: |
@@ -370,7 +380,7 @@ jobs:
         run: |
           # Update service selector to point to new slot
           kubectl patch service myapp -n production \
-            -p '{"spec":{"selector":{"slot":"${{ steps.slot.outputs.target }}"}}}'
+            -p '{"spec":{"selector":{"app":"myapp","slot":"${{ steps.slot.outputs.target }}"}}}'
 
       - name: Verify switch
         run: |
@@ -382,7 +392,7 @@ jobs:
 
 ## Canary Deployments
 
-Gradual rollout with traffic splitting:
+Gradual rollout by running a small canary deployment alongside stable pods:
 
 ```yaml
 name: Canary Deploy
@@ -397,14 +407,14 @@ jobs:
     environment: production
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Configure kubectl
         run: |
           mkdir -p $HOME/.kube
           echo "${{ secrets.KUBECONFIG }}" | base64 -d > $HOME/.kube/config
 
-      # Deploy canary (10% of pods)
+      # Deploy canary
       - name: Deploy canary
         run: |
           kubectl set image deployment/myapp-canary \
@@ -456,7 +466,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Configure kubectl
         run: |
@@ -466,7 +476,7 @@ jobs:
       - name: Get current revision
         id: current
         run: |
-          REVISION=$(kubectl rollout history deployment/myapp -n production | tail -2 | head -1 | awk '{print $1}')
+          REVISION=$(kubectl rollout history deployment/myapp -n production | awk 'NF && $1 ~ /^[0-9]+$/ { revision=$1 } END { print revision }')
           echo "revision=$REVISION" >> $GITHUB_OUTPUT
 
       - name: Deploy
@@ -515,7 +525,7 @@ jobs:
     environment: ${{ matrix.environment }}
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Configure kubectl
         run: |
@@ -540,29 +550,31 @@ Notify your team about deployments:
 ```yaml
 - name: Notify Slack on success
   if: success()
-  uses: slackapi/slack-github-action@v2
+  uses: slackapi/slack-github-action@v3.0.3
   with:
-    channel-id: 'deployments'
-    slack-message: |
-      :white_check_mark: Deployment successful
-      *Environment:* production
-      *Version:* ${{ github.sha }}
-      *Deployed by:* ${{ github.actor }}
-  env:
-    SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+    method: chat.postMessage
+    token: ${{ secrets.SLACK_BOT_TOKEN }}
+    payload: |
+      channel: ${{ secrets.SLACK_CHANNEL_ID }}
+      text: |
+        :white_check_mark: Deployment successful
+        *Environment:* production
+        *Version:* ${{ github.sha }}
+        *Deployed by:* ${{ github.actor }}
 
 - name: Notify Slack on failure
   if: failure()
-  uses: slackapi/slack-github-action@v2
+  uses: slackapi/slack-github-action@v3.0.3
   with:
-    channel-id: 'deployments'
-    slack-message: |
-      :x: Deployment failed
-      *Environment:* production
-      *Version:* ${{ github.sha }}
-      *Details:* ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-  env:
-    SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+    method: chat.postMessage
+    token: ${{ secrets.SLACK_BOT_TOKEN }}
+    payload: |
+      channel: ${{ secrets.SLACK_CHANNEL_ID }}
+      text: |
+        :x: Deployment failed
+        *Environment:* production
+        *Version:* ${{ github.sha }}
+        *Details:* ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 ```
 
 ---
