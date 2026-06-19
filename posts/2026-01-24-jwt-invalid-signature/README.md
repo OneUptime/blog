@@ -100,10 +100,18 @@ Secrets may be base64 encoded or contain special characters that need proper han
 
 const jwt = require('jsonwebtoken');
 
-// Common scenario: Auth0 and similar services provide base64-encoded secrets
+// Some services provide secrets as base64-encoded random bytes
 const base64Secret = 'c2VjcmV0LWtleS10aGF0LWlzLWJhc2U2NC1lbmNvZGVk';
+const decodedSecret = Buffer.from(base64Secret, 'base64');
 
-// WRONG: Using the base64 string directly
+// Token was signed with the decoded bytes
+const token = jwt.sign(
+    { userId: 123 },
+    decodedSecret,
+    { algorithm: 'HS256' }
+);
+
+// WRONG: Using the base64 text directly when the issuer expects decoded bytes
 try {
     jwt.verify(token, base64Secret);  // Will fail
 } catch (error) {
@@ -111,7 +119,6 @@ try {
 }
 
 // CORRECT: Decode the base64 secret first
-const decodedSecret = Buffer.from(base64Secret, 'base64');
 try {
     const decoded = jwt.verify(token, decodedSecret);
     console.log('Success with decoded secret');
@@ -121,7 +128,7 @@ try {
 
 // Handle secrets with special characters
 function normalizeSecret(secret) {
-    // Check if it's base64 encoded
+    // Only decode base64 if your issuer documents the secret in that format
     if (isBase64(secret)) {
         return Buffer.from(secret, 'base64');
     }
@@ -131,7 +138,7 @@ function normalizeSecret(secret) {
         return Buffer.from(secret, 'hex');
     }
 
-    // Return as-is (UTF-8 string)
+    // Return as-is (UTF-8 string). Special characters do not need escaping.
     return secret;
 }
 
@@ -250,7 +257,7 @@ async function getKeyFromJWKS(jwksUri, kid) {
         throw new Error(`Key with kid "${kid}" not found in JWKS`);
     }
 
-    // Convert JWK to PEM
+    // Convert JWK to a KeyObject that jsonwebtoken can use
     return crypto.createPublicKey({ key, format: 'jwk' });
 }
 
@@ -568,13 +575,15 @@ class JWTDebugger {
 }
 
 // Usage
-const debugger = new JWTDebugger({ verbose: true });
+(async () => {
+    const jwtDebugger = new JWTDebugger({ verbose: true });
 
-// Debug a token
-const result = await debugger.debug(
-    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
-    'your-secret-key'
-);
+    // Debug a token
+    const result = await jwtDebugger.debug(
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+        'your-secret-key'
+    );
+})();
 ```
 
 ## Server-Side Verification Best Practices
@@ -644,15 +653,12 @@ class SecureJWTVerifier {
     }
 
     async getKeyFromJWKS(kid) {
-        return new Promise((resolve, reject) => {
-            this.jwksClient.getSigningKey(kid, (err, key) => {
-                if (err) {
-                    reject(new Error(`Failed to get signing key: ${err.message}`));
-                    return;
-                }
-                resolve(key.getPublicKey());
-            });
-        });
+        try {
+            const key = await this.jwksClient.getSigningKey(kid);
+            return key.getPublicKey();
+        } catch (err) {
+            throw new Error(`Failed to get signing key: ${err.message}`);
+        }
     }
 
     enhanceError(error) {
