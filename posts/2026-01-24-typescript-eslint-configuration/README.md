@@ -37,13 +37,13 @@ TypeScript and ESLint complement each other:
 ```bash
 # Install ESLint and TypeScript ESLint packages
 
-npm install --save-dev eslint @typescript-eslint/parser @typescript-eslint/eslint-plugin
+npm install --save-dev eslint @eslint/js typescript @typescript-eslint/parser @typescript-eslint/eslint-plugin
 
 # Or with yarn
-yarn add --dev eslint @typescript-eslint/parser @typescript-eslint/eslint-plugin
+yarn add --dev eslint @eslint/js typescript @typescript-eslint/parser @typescript-eslint/eslint-plugin
 
 # Or with pnpm
-pnpm add --save-dev eslint @typescript-eslint/parser @typescript-eslint/eslint-plugin
+pnpm add --save-dev eslint @eslint/js typescript @typescript-eslint/parser @typescript-eslint/eslint-plugin
 ```
 
 ### Step 2: Create ESLint Configuration
@@ -107,7 +107,7 @@ For projects using ESLint v8 or earlier, use `.eslintrc.json`:
     "extends": [
         "eslint:recommended",
         "plugin:@typescript-eslint/recommended",
-        "plugin:@typescript-eslint/recommended-requiring-type-checking"
+        "plugin:@typescript-eslint/recommended-type-checked"
     ],
     "parser": "@typescript-eslint/parser",
     "parserOptions": {
@@ -386,7 +386,7 @@ export default [
 
 ```bash
 # Install husky and lint-staged
-npm install --save-dev husky lint-staged
+npm install --save-dev husky lint-staged prettier
 npx husky init
 ```
 
@@ -404,7 +404,7 @@ npx husky init
 
 ```bash
 # .husky/pre-commit
-npm run lint-staged
+npx lint-staged
 ```
 
 ## Workflow Integration
