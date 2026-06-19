@@ -34,15 +34,15 @@ flowchart LR
 
 ## Database Span Attributes
 
-OpenTelemetry uses semantic conventions for database spans:
+OpenTelemetry uses semantic conventions for database spans. Current stable database conventions use these attributes; some existing instrumentation packages still emit older names such as `db.system`, `db.name`, and `db.statement` by default unless you opt in to the stable database semantic conventions.
 
 | Attribute | Description | Example |
 |-----------|-------------|---------|
-| `db.system` | Database type | `postgresql`, `mysql`, `mongodb` |
-| `db.name` | Database name | `users_db` |
-| `db.operation` | Query type | `SELECT`, `INSERT`, `UPDATE` |
-| `db.statement` | Query text (sanitized) | `SELECT * FROM users WHERE id = ?` |
-| `db.user` | Database username | `app_user` |
+| `db.system.name` | Database type | `postgresql`, `mysql`, `mongodb` |
+| `db.namespace` | Database name or namespace | `users_db` |
+| `db.operation.name` | Query type | `SELECT`, `INSERT`, `UPDATE` |
+| `db.query.text` | Query text (sanitized) | `SELECT * FROM users WHERE id = ?` |
+| `db.query.summary` | Low-cardinality query summary | `SELECT users` |
 | `server.address` | Database host | `db.example.com` |
 | `server.port` | Database port | `5432` |
 
@@ -52,8 +52,7 @@ OpenTelemetry uses semantic conventions for database spans:
 
 ```bash
 # Install required packages
-
-npm install @opentelemetry/instrumentation-pg pg
+npm install @opentelemetry/api @opentelemetry/sdk-node @opentelemetry/exporter-trace-otlp-http @opentelemetry/instrumentation-pg @opentelemetry/resources @opentelemetry/semantic-conventions pg
 ```
 
 ```typescript
@@ -61,10 +60,10 @@ npm install @opentelemetry/instrumentation-pg pg
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { PgInstrumentation } from '@opentelemetry/instrumentation-pg';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 import { ATTR_SERVICE_NAME } from '@opentelemetry/semantic-conventions';
 
-const resource = new Resource({
+const resource = resourceFromAttributes({
   [ATTR_SERVICE_NAME]: 'user-service',
 });
 
@@ -96,8 +95,8 @@ const sdk = new NodeSDK({
         }
       },
 
-      // Control whether to add db.statement (query text)
-      // Set to false if you need to hide queries for security
+      // Add sqlcommenter trace context to queries.
+      // Disable this if comments are not acceptable for your database workload.
       addSqlCommenterCommentToQueries: true,
     }),
   ],
@@ -126,7 +125,7 @@ const tracer = trace.getTracer('user-service');
 // Example: Get user by ID with automatic tracing
 export async function getUserById(id: string) {
   // The query is automatically traced by the instrumentation
-  // A span is created with db.statement, db.system, etc.
+  // A span is created with database semantic convention attributes.
   const result = await pool.query(
     'SELECT id, name, email, created_at FROM users WHERE id = $1',
     [id]
@@ -173,7 +172,7 @@ export async function getUserOrders(userId: string, limit: number = 10) {
 ### MySQL with mysql2
 
 ```bash
-npm install @opentelemetry/instrumentation-mysql2 mysql2
+npm install @opentelemetry/sdk-node @opentelemetry/instrumentation-mysql2 mysql2
 ```
 
 ```typescript
@@ -184,13 +183,13 @@ import { MySQL2Instrumentation } from '@opentelemetry/instrumentation-mysql2';
 const sdk = new NodeSDK({
   instrumentations: [
     new MySQL2Instrumentation({
-      // Include the query text in spans
-      enhancedDatabaseReporting: true,
+      // Mask literals in db.statement before adding it to spans
+      maskStatement: true,
 
       responseHook: (span, responseInfo) => {
         // Add affected rows for write operations
-        if (responseInfo.response?.affectedRows !== undefined) {
-          span.setAttribute('db.rows_affected', responseInfo.response.affectedRows);
+        if (responseInfo.queryResults?.affectedRows !== undefined) {
+          span.setAttribute('db.rows_affected', responseInfo.queryResults.affectedRows);
         }
       },
     }),
@@ -258,7 +257,7 @@ export async function createOrder(userId: string, items: Array<{ productId: stri
 ### MongoDB
 
 ```bash
-npm install @opentelemetry/instrumentation-mongodb mongodb
+npm install @opentelemetry/sdk-node @opentelemetry/instrumentation-mongodb mongodb
 ```
 
 ```typescript
@@ -349,7 +348,7 @@ export async function aggregateOrderStats(userId: string) {
 ### Redis
 
 ```bash
-npm install @opentelemetry/instrumentation-redis-4 redis
+npm install @opentelemetry/api @opentelemetry/sdk-node @opentelemetry/instrumentation-redis-4 redis
 ```
 
 ```typescript
@@ -394,7 +393,7 @@ const redis = createClient({
   url: process.env.REDIS_URL || 'redis://localhost:6379',
 });
 
-redis.connect();
+await redis.connect();
 
 const tracer = trace.getTracer('cache-service');
 
@@ -612,7 +611,7 @@ For security, sanitize queries to avoid exposing sensitive data:
 // Simple sanitizer that replaces values with placeholders
 export function sanitizeQuery(query: string): string {
   // Replace string literals
-  let sanitized = query.replace(/'[^']*'/g, "'?'");
+  let sanitized = query.replace(/'[^']*'/g, '?');
 
   // Replace numeric literals
   sanitized = sanitized.replace(/\b\d+\b/g, '?');
@@ -627,8 +626,10 @@ export function sanitizeQuery(query: string): string {
 const pgInstrumentation = new PgInstrumentation({
   requestHook: (span, queryInfo) => {
     if (queryInfo.query?.text) {
-      // Use sanitized query for db.statement
-      span.setAttribute('db.statement', sanitizeQuery(queryInfo.query.text));
+      const sanitizedQuery = sanitizeQuery(queryInfo.query.text);
+      // Set both names during semantic convention migration.
+      span.setAttribute('db.statement', sanitizedQuery);
+      span.setAttribute('db.query.text', sanitizedQuery);
     }
   },
 });
@@ -696,7 +697,7 @@ import {
   SamplingDecision,
   SamplingResult
 } from '@opentelemetry/sdk-trace-base';
-import { Attributes, Context, SpanKind } from '@opentelemetry/api';
+import { Attributes, Context, Link, SpanKind } from '@opentelemetry/api';
 
 export class DatabaseAwareSampler implements Sampler {
   private baseSampler: Sampler;
@@ -710,21 +711,11 @@ export class DatabaseAwareSampler implements Sampler {
     traceId: string,
     spanName: string,
     spanKind: SpanKind,
-    attributes: Attributes
+    attributes: Attributes,
+    links: Link[]
   ): SamplingResult {
-    // Always sample slow queries
-    const duration = attributes['db.duration_ms'];
-    if (typeof duration === 'number' && duration > 100) {
-      return { decision: SamplingDecision.RECORD_AND_SAMPLED };
-    }
-
-    // Always sample errors
-    const errorType = attributes['error.type'];
-    if (errorType) {
-      return { decision: SamplingDecision.RECORD_AND_SAMPLED };
-    }
-
-    // Sample other database spans at a lower rate
+    // Head samplers run when a span starts, so they cannot inspect final
+    // duration or errors. Use tail sampling in the Collector for those rules.
     if (spanName.startsWith('pg.') || spanName.startsWith('mysql.')) {
       if (Math.random() < 0.1) {
         // 10% sampling for DB spans
@@ -734,7 +725,7 @@ export class DatabaseAwareSampler implements Sampler {
     }
 
     // Use base sampler for non-database spans
-    return this.baseSampler.shouldSample(context, traceId, spanName, spanKind, attributes);
+    return this.baseSampler.shouldSample(context, traceId, spanName, spanKind, attributes, links);
   }
 
   toString(): string {
@@ -762,24 +753,20 @@ processors:
     send_batch_size: 512
     timeout: 5s
 
-  # Add latency category attribute
+  # Add a deployment attribute
   attributes:
     actions:
-      - key: db.latency_category
+      - key: deployment.environment
         action: insert
-        from_context: db.duration_ms
-        # This would need custom processor logic
+        value: production
 
   # Filter out noisy spans
   filter:
-    spans:
-      exclude:
-        match_type: regexp
-        attributes:
-          - key: db.statement
-            value: ".*SELECT 1.*"  # Health checks
-          - key: db.statement
-            value: ".*pg_.*"  # System queries
+    error_mode: ignore
+    traces:
+      span:
+        - 'IsMatch(attributes["db.statement"], ".*SELECT 1.*") or IsMatch(attributes["db.query.text"], ".*SELECT 1.*")'
+        - 'IsMatch(attributes["db.statement"], ".*pg_.*") or IsMatch(attributes["db.query.text"], ".*pg_.*")'
 
 exporters:
   otlphttp:
