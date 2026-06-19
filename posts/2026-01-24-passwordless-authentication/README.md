@@ -8,7 +8,7 @@ Description: A practical guide to implementing passwordless authentication using
 
 ---
 
-> Passwords are the weakest link in authentication. They get stolen, reused, forgotten, and phished. Passwordless authentication eliminates these problems while improving user experience.
+> Passwords are the weakest link in authentication. They get stolen, reused, forgotten, and phished. Passwordless authentication reduces these problems while improving user experience.
 
 This guide covers practical implementations of passwordless authentication methods including magic links, WebAuthn passkeys, and one-time codes.
 
@@ -26,8 +26,8 @@ flowchart LR
     end
 
     subgraph Passwordless Benefits
-        E[Phishing resistant]
-        F[No credentials to steal]
+        E[Can be phishing resistant]
+        F[No reusable app passwords to steal]
         G[Better UX]
         H[Lower support costs]
     end
@@ -77,7 +77,8 @@ sequenceDiagram
 ```python
 import secrets
 import hashlib
-from datetime import datetime, timedelta
+import json
+from datetime import datetime, timezone
 from typing import Optional, Tuple
 from dataclasses import dataclass
 import redis
@@ -130,7 +131,7 @@ class MagicLinkAuth:
         # Store token with metadata
         token_data = {
             'email': email,
-            'created_at': datetime.utcnow().isoformat(),
+            'created_at': datetime.now(timezone.utc).isoformat(),
             'attempts': 0,
             'used': False
         }
@@ -422,13 +423,15 @@ from webauthn.helpers.structs import (
     ResidentKeyRequirement,
     AttestationConveyancePreference,
     AuthenticatorAttachment,
+    PublicKeyCredentialDescriptor,
 )
 from webauthn.helpers import (
     bytes_to_base64url,
     base64url_to_bytes,
 )
-from typing import List, Optional, Dict, Any
+from typing import Optional, Dict, Any
 from dataclasses import dataclass
+from datetime import datetime, timezone
 import json
 
 @dataclass
@@ -471,7 +474,9 @@ class PasskeyAuth:
         # Get existing credentials to exclude
         existing_credentials = self.credential_store.get_user_credentials(user_id)
         exclude_credentials = [
-            {"id": base64url_to_bytes(cred["credential_id"]), "type": "public-key"}
+            PublicKeyCredentialDescriptor(
+                id=base64url_to_bytes(cred["credential_id"])
+            )
             for cred in existing_credentials
         ]
 
@@ -533,7 +538,7 @@ class PasskeyAuth:
             "public_key": bytes_to_base64url(verification.credential_public_key),
             "sign_count": verification.sign_count,
             "device_name": device_name or "Unknown Device",
-            "created_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
         }
 
         self.credential_store.save_credential(user_id, credential_data)
@@ -559,7 +564,9 @@ class PasskeyAuth:
             # Get user's credentials
             credentials = self.credential_store.get_user_credentials(user_id)
             allow_credentials = [
-                {"id": base64url_to_bytes(cred["credential_id"]), "type": "public-key"}
+                PublicKeyCredentialDescriptor(
+                    id=base64url_to_bytes(cred["credential_id"])
+                )
                 for cred in credentials
             ]
 
@@ -631,6 +638,12 @@ class PasskeyAuth:
             "success": True,
             "user_id": user_id,
         }
+
+    def user_has_passkeys(self, user_id: str) -> bool:
+        """
+        Check whether a user has registered passkeys.
+        """
+        return bool(self.credential_store.get_user_credentials(user_id))
 ```
 
 ### WebAuthn Frontend Integration
@@ -853,7 +866,8 @@ Email or SMS-based one-time codes provide a familiar passwordless experience.
 ```python
 import secrets
 import hashlib
-from datetime import datetime, timedelta
+import json
+from datetime import datetime, timezone
 from typing import Optional, Tuple
 
 class OTPAuth:
@@ -909,7 +923,7 @@ class OTPAuth:
             'identifier': identifier,
             'channel': channel,
             'attempts': 0,
-            'created_at': datetime.utcnow().isoformat()
+            'created_at': datetime.now(timezone.utc).isoformat()
         }
 
         otp_key = f"otp:{channel}:{identifier}"
@@ -1085,7 +1099,7 @@ class UnifiedPasswordlessAuth:
         if is_phone:
             available_methods.append(AuthMethod.OTP_SMS)
 
-        if user and await self.passkey.user_has_passkeys(user['id']):
+        if user and self.passkey.user_has_passkeys(user['id']):
             available_methods.insert(0, AuthMethod.PASSKEY)
 
         # Select method
@@ -1114,7 +1128,11 @@ class UnifiedPasswordlessAuth:
             if error:
                 return {'success': False, 'error': error}
 
-            await self.email.send_magic_link(identifier, link)
+            self.email.send_magic_link(
+                identifier,
+                link,
+                self.magic_link.config.token_expiry_minutes
+            )
             return {
                 'success': True,
                 'method': method.value,
@@ -1126,7 +1144,7 @@ class UnifiedPasswordlessAuth:
             if error:
                 return {'success': False, 'error': error}
 
-            await self.email.send_otp(identifier, code)
+            self.email.send_otp(identifier, code, self.otp.expiry_minutes)
             return {
                 'success': True,
                 'method': method.value,
@@ -1138,7 +1156,7 @@ class UnifiedPasswordlessAuth:
             if error:
                 return {'success': False, 'error': error}
 
-            await self.sms.send_otp(identifier, code)
+            self.sms.send_otp(identifier, code, self.otp.expiry_minutes)
             return {
                 'success': True,
                 'method': method.value,
@@ -1168,7 +1186,11 @@ class UnifiedPasswordlessAuth:
             return await self._complete_auth(identifier)
 
         elif method == AuthMethod.PASSKEY:
-            result = self.passkey.complete_authentication(credential)
+            user = await self.users.get_by_identifier(identifier)
+            result = self.passkey.complete_authentication(
+                credential,
+                user['id'] if user else None
+            )
             if not result['success']:
                 return result
             user = await self.users.get_by_id(result['user_id'])
@@ -1191,7 +1213,7 @@ class UnifiedPasswordlessAuth:
                 'email': user.get('email'),
             },
             'session_id': session['id'],
-            'has_passkey': await self.passkey.user_has_passkeys(user['id'])
+            'has_passkey': self.passkey.user_has_passkeys(user['id'])
         }
 ```
 
@@ -1202,9 +1224,9 @@ class UnifiedPasswordlessAuth:
 ### Rate Limiting and Abuse Prevention
 
 ```python
+import asyncio
 from functools import wraps
-from flask import request, jsonify
-import time
+from fastapi import Request, HTTPException
 
 class AuthRateLimiter:
     """
@@ -1248,11 +1270,24 @@ def rate_limit_auth(
     def decorator(f):
         @wraps(f)
         async def decorated_function(*args, **kwargs):
+            request = kwargs.get("request")
+            if request is None:
+                request = next(
+                    (arg for arg in args if isinstance(arg, Request)),
+                    None
+                )
+            if request is None:
+                raise RuntimeError("rate_limit_auth requires a FastAPI Request")
+
             limiter = request.app.state.rate_limiter
 
             # Get identifier (IP + email if provided)
-            ip = request.client.host
-            email = (await request.json()).get('email', '')
+            ip = request.client.host if request.client else "unknown"
+            try:
+                body = await request.json()
+            except Exception:
+                body = {}
+            email = body.get('email', '') if isinstance(body, dict) else ''
 
             # Check minute limit
             minute_key = f"auth_rate:minute:{ip}"
@@ -1260,10 +1295,14 @@ def rate_limit_auth(
                 minute_key, requests_per_minute, 60
             )
             if is_limited:
-                return jsonify({
-                    'error': 'Too many requests',
-                    'retry_after': retry_after
-                }), 429
+                raise HTTPException(
+                    status_code=429,
+                    detail={
+                        'error': 'Too many requests',
+                        'retry_after': retry_after
+                    },
+                    headers={'Retry-After': str(retry_after)}
+                )
 
             # Check hour limit
             hour_key = f"auth_rate:hour:{ip}"
@@ -1271,10 +1310,14 @@ def rate_limit_auth(
                 hour_key, requests_per_hour, 3600
             )
             if is_limited:
-                return jsonify({
-                    'error': 'Too many requests',
-                    'retry_after': retry_after
-                }), 429
+                raise HTTPException(
+                    status_code=429,
+                    detail={
+                        'error': 'Too many requests',
+                        'retry_after': retry_after
+                    },
+                    headers={'Retry-After': str(retry_after)}
+                )
 
             # Check per-email limit
             if email:
