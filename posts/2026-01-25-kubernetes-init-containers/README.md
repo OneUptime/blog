@@ -111,8 +111,9 @@ spec:
         - sh
         - -c
         - |
+          set -e
           # Download config from config server
-          curl -o /config/app.yaml http://config-server:8080/config/production
+          curl -f -o /config/app.yaml http://config-server:8080/config/production
           echo "Config downloaded successfully"
       volumeMounts:
         - name: config-volume
