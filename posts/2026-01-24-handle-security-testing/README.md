@@ -69,7 +69,7 @@ def load_data(filename):
 # B506: yaml.load without SafeLoader (code execution risk)
 def parse_config(config_string):
     # VULNERABLE: yaml.load can execute code
-    return yaml.load(config_string)
+    return yaml.load(config_string, Loader=yaml.Loader)
 ```
 
 Run bandit to find these issues:
@@ -133,12 +133,12 @@ def parse_config_safe(config_string):
 
 module.exports = {
     plugins: ['security'],
-    extends: ['plugin:security/recommended'],
+    extends: ['plugin:security/recommended-legacy'],
     rules: {
         // Detect potential RegEx DoS
         'security/detect-unsafe-regex': 'error',
 
-        // Detect buffer() calls (use Buffer.alloc instead)
+        // Detect buffer calls with noAssert enabled
         'security/detect-buffer-noassert': 'error',
 
         // Detect eval() usage
@@ -147,7 +147,7 @@ module.exports = {
         // Detect non-literal require() calls
         'security/detect-non-literal-require': 'warn',
 
-        // Detect SQL injection patterns
+        // Detect potentially timing-sensitive comparisons
         'security/detect-possible-timing-attacks': 'warn',
     }
 };
@@ -233,9 +233,9 @@ if __name__ == '__main__':
 pip install safety pip-audit
 
 # Scan with safety
-safety check --json --output safety-report.json
+safety scan --output json > safety-report.json
 
-# Scan with pip-audit (more up-to-date database)
+# Scan with pip-audit (uses the Python Packaging Advisory Database)
 pip-audit --format json --output pip-audit-report.json
 ```
 
@@ -335,7 +335,7 @@ jobs:
           sleep 30  # Wait for app to be ready
 
       - name: ZAP Baseline Scan
-        uses: zaproxy/action-baseline@v0.10.0
+        uses: zaproxy/action-baseline@v0.15.0
         with:
           target: 'http://localhost:8000'
           rules_file_name: '.zap-rules.tsv'
