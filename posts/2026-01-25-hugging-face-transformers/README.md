@@ -22,14 +22,15 @@ pip install transformers
 # PyTorch backend (recommended)
 pip install torch torchvision
 
-# Or TensorFlow backend
-pip install tensorflow
+# Legacy TensorFlow backend (Transformers v4 only)
+pip install "transformers<5" tensorflow
 
 # Additional utilities
 pip install datasets           # For loading datasets
 pip install accelerate        # For distributed training
 pip install sentencepiece     # For some tokenizers
 pip install safetensors       # For safe model loading
+pip install optimum-onnx      # For ONNX export
 ```
 
 ## Quick Start with Pipelines
@@ -45,7 +46,7 @@ result = classifier("I love using this monitoring tool!")
 print(result)  # [{'label': 'POSITIVE', 'score': 0.9998}]
 
 # Named Entity Recognition
-ner = pipeline("ner", grouped_entities=True)
+ner = pipeline("ner", aggregation_strategy="simple")
 entities = ner("OneUptime is a monitoring platform built in New York.")
 print(entities)
 
@@ -59,7 +60,7 @@ print(answer)
 
 # Text Generation
 generator = pipeline("text-generation", model="gpt2")
-text = generator("The future of observability is", max_length=50)
+text = generator("The future of observability is", max_new_tokens=50)
 print(text)
 
 # Summarization
@@ -285,6 +286,7 @@ Reduce model size and speed up inference:
 
 ```python
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
+from torch.ao.quantization import quantize_dynamic
 import torch
 
 model_name = "distilbert-base-uncased-finetuned-sst-2-english"
@@ -292,7 +294,7 @@ model = AutoModelForSequenceClassification.from_pretrained(model_name)
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 
 # Dynamic quantization (CPU)
-quantized_model = torch.quantization.quantize_dynamic(
+quantized_model = quantize_dynamic(
     model,
     {torch.nn.Linear},
     dtype=torch.qint8
@@ -312,41 +314,23 @@ print(f"Quantized size: {get_model_size(quantized_model):.2f} MB")
 Export models to ONNX for deployment:
 
 ```python
-from transformers import AutoModelForSequenceClassification, AutoTokenizer
-from transformers.onnx import export
-from pathlib import Path
-import torch
+from optimum.onnxruntime import ORTModelForSequenceClassification
+from transformers import AutoTokenizer
 
 model_name = "distilbert-base-uncased-finetuned-sst-2-english"
-model = AutoModelForSequenceClassification.from_pretrained(model_name)
+onnx_dir = "./distilbert-sst2-onnx"
+
+# Export to ONNX and save the tokenizer alongside the model
+model = ORTModelForSequenceClassification.from_pretrained(
+    model_name,
+    export=True
+)
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 
-# Export to ONNX
-onnx_path = Path("model.onnx")
+model.save_pretrained(onnx_dir)
+tokenizer.save_pretrained(onnx_dir)
 
-# Create dummy input
-dummy_input = tokenizer(
-    "Sample text for export",
-    return_tensors="pt",
-    padding="max_length",
-    max_length=128
-)
-
-torch.onnx.export(
-    model,
-    (dummy_input["input_ids"], dummy_input["attention_mask"]),
-    onnx_path,
-    input_names=["input_ids", "attention_mask"],
-    output_names=["logits"],
-    dynamic_axes={
-        "input_ids": {0: "batch_size", 1: "sequence"},
-        "attention_mask": {0: "batch_size", 1: "sequence"},
-        "logits": {0: "batch_size"}
-    },
-    opset_version=14
-)
-
-print(f"Model exported to {onnx_path}")
+print(f"Model exported to {onnx_dir}")
 ```
 
 ## Deploying with FastAPI
@@ -408,7 +392,7 @@ model = AutoModelForCausalLM.from_pretrained(
     "mistralai/Mistral-7B-v0.1",
     torch_dtype=torch.float16,     # Use half precision
     device_map="auto",             # Automatically distribute across GPUs
-    low_cpu_mem_usage=True         # Load directly to GPU
+    low_cpu_mem_usage=True         # Reduce CPU memory during loading
 )
 
 # Monitor memory usage
