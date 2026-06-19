@@ -58,48 +58,47 @@ def process_message(message):
 ```python
 # Correct: Properly extracting context and creating links
 from opentelemetry import trace
-from opentelemetry.trace import Link, SpanContext, TraceFlags
+from opentelemetry.propagate import extract
+from opentelemetry.trace import INVALID_SPAN_CONTEXT, Link
 
 tracer = trace.get_tracer(__name__)
 
 def process_message(message):
-    # Extract the span context from the message headers
-    # This assumes trace context was propagated via message headers
-    trace_id = int(message.headers.get("traceparent-trace-id"), 16)
-    span_id = int(message.headers.get("traceparent-span-id"), 16)
+    # Extract the span context from the message headers.
+    # This assumes W3C trace context was propagated with traceparent/tracestate.
+    extracted_context = extract(message.headers)
+    linked_context = trace.get_current_span(
+        extracted_context
+    ).get_span_context()
 
-    # Create a SpanContext from the extracted values
-    linked_context = SpanContext(
-        trace_id=trace_id,
-        span_id=span_id,
-        is_remote=True,
-        trace_flags=TraceFlags(0x01)  # Sampled flag
-    )
-
-    # Create the span with a link to the producer span
-    link = Link(context=linked_context, attributes={"link.type": "producer"})
+    links = []
+    if linked_context != INVALID_SPAN_CONTEXT:
+        # Create the span with a link to the producer span
+        links.append(Link(
+            context=linked_context,
+            attributes={"link.type": "producer"}
+        ))
 
     with tracer.start_as_current_span(
         "process_message",
-        links=[link]  # Pass the link when creating the span
+        links=links  # Pass the link when creating the span
     ) as span:
         handle_message(message)
 ```
 
-### 2. Links Not Passed During Span Creation
+### 2. Links Added Too Late for Sampling
 
-Span links must be provided when the span is created. They cannot be added after the span has started.
+Span links should be provided when the span is created if the linked context is already available. OpenTelemetry Python also supports adding links after the span has started, but links added later may not be considered by head sampling decisions.
 
 ```python
-# Incorrect: Trying to add links after span creation
+# Less ideal: Adding links after span creation
 with tracer.start_as_current_span("my_span") as span:
-    # This will not work - links cannot be added after creation
-    # span.add_link(link)  # No such method exists
-    pass
+    # This records the link, but sampling decisions have already been made
+    span.add_link(context, attributes={"source": "service-a"})
 ```
 
 ```python
-# Correct: Pass links during span creation
+# Preferred: Pass links during span creation
 links = [
     Link(context=context1, attributes={"source": "service-a"}),
     Link(context=context2, attributes={"source": "service-b"})
@@ -113,10 +112,10 @@ with tracer.start_as_current_span("my_span", links=links) as span:
 
 ### 3. Invalid Span Context in Links
 
-Links with invalid span contexts will be silently dropped by most SDKs.
+Implementations may ignore links with invalid span contexts when attributes and trace state are empty.
 
 ```python
-from opentelemetry.trace import SpanContext, TraceFlags, INVALID_SPAN_CONTEXT
+from opentelemetry.trace import Link, SpanContext, TraceFlags
 
 def create_link_safely(trace_id_hex, span_id_hex):
     """Create a span link with validation."""
@@ -137,7 +136,7 @@ def create_link_safely(trace_id_hex, span_id_hex):
         )
 
         # Check if the context is valid before creating the link
-        if context == INVALID_SPAN_CONTEXT:
+        if not context.is_valid:
             print("Warning: Invalid span context, skipping link")
             return None
 
@@ -204,8 +203,8 @@ When inspecting exported spans, look for the links field.
   "links": [
     {
       "context": {
-        "trace_id": "0x7a8bb6b3e3d983f9432dg48419e7ae03",
-        "span_id": "0x162692cg4dc66d24"
+        "trace_id": "0x7a8bb6b3e3d983f9432df48419e7ae03",
+        "span_id": "0x162692cf4dc66d24"
       },
       "attributes": {
         "link.type": "producer"
@@ -324,7 +323,7 @@ def worker_process(task):
 
 ### Retry Scenarios
 
-When retrying operations, link to the original attempt.
+When retrying operations, link to the previous failed attempt.
 
 ```python
 from opentelemetry import trace
@@ -334,7 +333,7 @@ import time
 tracer = trace.get_tracer(__name__)
 
 def execute_with_retry(operation, max_retries=3):
-    """Execute an operation with retry, linking retry spans to originals."""
+    """Execute an operation with retry, linking retry spans to previous attempts."""
     previous_span_context = None
 
     for attempt in range(max_retries):
@@ -374,7 +373,7 @@ def execute_with_retry(operation, max_retries=3):
 
 ## Collector Configuration for Span Links
 
-Ensure your OpenTelemetry Collector is properly configured to handle span links.
+Ensure your OpenTelemetry Collector pipeline preserves and exports traces that contain span links.
 
 ```yaml
 # otel-collector-config.yaml
@@ -388,7 +387,7 @@ receivers:
 
 processors:
   batch:
-    # Ensure batch size accommodates spans with multiple links
+    # Tune batching for your traffic volume
     send_batch_size: 512
     timeout: 5s
 
@@ -432,7 +431,7 @@ flowchart LR
 
 ### Querying for Spans with Links
 
-Most backends support querying for spans that have links.
+Some backends support querying for spans that have links. Check your backend's API documentation for the exact query syntax.
 
 ```bash
 # Example: Query spans with links using a backend API
