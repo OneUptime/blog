@@ -12,7 +12,7 @@ Ever needed to fix a critical bug on main while in the middle of a feature branc
 
 ## What Are Git Worktrees?
 
-A Git worktree is an additional working directory linked to your repository. Each worktree has its own checked-out branch, but they all share the same Git history. This means you can work on multiple branches simultaneously without any stashing or branch switching.
+A Git worktree is an additional working directory linked to your repository. Each worktree has its own checked-out branch or detached HEAD, but they all share the same Git history. This means you can work on multiple branches simultaneously without any stashing or branch switching.
 
 ```mermaid
 graph TD
@@ -138,7 +138,7 @@ Compare builds between branches or commits.
 # Create worktrees for different versions
 git worktree add ../project-v1 v1.0.0
 git worktree add ../project-v2 v2.0.0
-git worktree add ../project-current main
+git worktree add --detach ../project-current main
 
 # Build each version
 cd ../project-v1 && npm run build
@@ -204,6 +204,9 @@ Each worktree can have its own config for certain settings.
 ```bash
 # In a specific worktree
 cd ../myproject-hotfix
+
+# Enable worktree-specific configuration once in the repository
+git config extensions.worktreeConfig true
 
 # Set worktree-specific configuration
 git config --worktree user.email "hotfix@example.com"
@@ -289,7 +292,7 @@ git worktree add ../new-main main~0  # Detached HEAD at main
 # Error: path already exists
 git worktree add ../existing-dir feature
 
-# Solution: Remove the directory or use --force
+# Solution: Remove the directory if it is not empty
 rm -rf ../existing-dir
 git worktree add ../existing-dir feature
 ```
