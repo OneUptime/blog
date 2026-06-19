@@ -39,7 +39,7 @@ Kubernetes supports three taint effects:
 |--------|----------|
 | `NoSchedule` | New pods without toleration will not be scheduled |
 | `PreferNoSchedule` | Scheduler tries to avoid, but will place if no alternative |
-| `NoExecute` | Existing pods without toleration are evicted |
+| `NoExecute` | New pods without toleration will not be scheduled, and existing pods without toleration are evicted |
 
 ## Adding and Removing Taints
 
@@ -92,7 +92,7 @@ spec:
 
 ## Toleration Operators
 
-Two operators control how tolerations match taints:
+Most tolerations use two operators to match taints:
 
 ```yaml
 # Equal operator: Key, value, and effect must all match
@@ -127,10 +127,14 @@ Use taints to create dedicated node pools for different workloads:
 # Create a pool for database workloads
 kubectl taint nodes db-node-1 db-node-2 db-node-3 \
   workload=database:NoSchedule
+kubectl label nodes db-node-1 db-node-2 db-node-3 \
+  workload-type=database
 
 # Create a pool for high-memory workloads
 kubectl taint nodes mem-node-1 mem-node-2 \
   workload=high-memory:NoSchedule
+kubectl label nodes mem-node-1 mem-node-2 \
+  workload-type=high-memory
 ```
 
 Deploy applications to their dedicated pools:
@@ -158,7 +162,7 @@ spec:
           value: "database"
           effect: "NoSchedule"
 
-      # Also use nodeSelector to prefer these nodes
+      # Also use nodeSelector to require these nodes
       nodeSelector:
         workload-type: database
 
@@ -173,7 +177,7 @@ spec:
 
 ## NoExecute for Eviction
 
-The `NoExecute` effect evicts existing pods that do not tolerate the taint:
+The `NoExecute` effect blocks new pods and evicts existing pods that do not tolerate the taint:
 
 ```bash
 # Mark a node for maintenance - evicts non-tolerating pods
@@ -273,7 +277,7 @@ Safely drain a node for maintenance:
 # Step 1: Cordon the node (prevent new pods)
 kubectl cordon worker-1
 
-# Step 2: Add maintenance taint (triggers tolerationSeconds eviction)
+# Step 2: Add maintenance taint (triggers eviction for pods that do not tolerate it)
 kubectl taint nodes worker-1 maintenance=true:NoExecute
 
 # Step 3: Wait for pods to migrate or drain forcefully
@@ -353,8 +357,7 @@ kubectl get nodes -o custom-columns='NAME:.metadata.name,TAINTS:.spec.taints'
 
 Common error message:
 ```text
-Warning  FailedScheduling  pod has unbound immediate PersistentVolumeClaims
-         0/5 nodes are available: 3 node(s) had taints that the pod didn't tolerate
+Warning  FailedScheduling  0/5 nodes are available: 3 node(s) had taints that the pod didn't tolerate
 ```
 
 ## Best Practices
@@ -365,7 +368,7 @@ Warning  FailedScheduling  pod has unbound immediate PersistentVolumeClaims
 
 3. **Prefer PreferNoSchedule for soft requirements**: When you want scheduling preference but not strict enforcement.
 
-4. **Set tolerationSeconds for NoExecute**: Give pods time to gracefully terminate.
+4. **Set tolerationSeconds for NoExecute**: Give pods time before eviction during transient problems or maintenance.
 
 5. **Combine with Pod Disruption Budgets**: Ensure availability during node maintenance.
 
