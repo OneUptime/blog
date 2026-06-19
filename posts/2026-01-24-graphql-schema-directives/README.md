@@ -167,8 +167,7 @@ type User @auth {
 ```javascript
 // directives/auth.js
 const { mapSchema, getDirective, MapperKind } = require('@graphql-tools/utils');
-const { defaultFieldResolver } = require('graphql');
-const { AuthenticationError, ForbiddenError } = require('apollo-server');
+const { defaultFieldResolver, GraphQLError } = require('graphql');
 
 // Role hierarchy - higher roles include permissions of lower roles
 const roleHierarchy = {
@@ -179,6 +178,8 @@ const roleHierarchy = {
 };
 
 function authDirectiveTransformer(schema, directiveName = 'auth') {
+  const typeDirectiveArgumentMaps = {};
+
   return mapSchema(schema, {
     // Handle directives on object types
     [MapperKind.OBJECT_TYPE]: (type) => {
@@ -186,7 +187,7 @@ function authDirectiveTransformer(schema, directiveName = 'auth') {
 
       if (authDirective) {
         // Store the required role on the type for field-level checks
-        type._requiredRole = authDirective.requires || 'USER';
+        typeDirectiveArgumentMaps[type.name] = authDirective;
       }
 
       return type;
@@ -198,21 +199,22 @@ function authDirectiveTransformer(schema, directiveName = 'auth') {
       const authDirective = getDirective(schema, fieldConfig, directiveName)?.[0];
 
       // Check for type-level directive (inherited)
-      const typeRequiredRole = schema.getType(typeName)?._requiredRole;
+      const typeAuthDirective = typeDirectiveArgumentMaps[typeName];
 
       // Determine the required role (field-level takes precedence)
-      const requiredRole = authDirective?.requires || typeRequiredRole;
+      const requiredRole =
+        authDirective?.requires || typeAuthDirective?.requires || 'USER';
 
-      if (requiredRole) {
+      if (authDirective || typeAuthDirective) {
         const originalResolver = fieldConfig.resolve || defaultFieldResolver;
 
         // Wrap the resolver with auth check
         fieldConfig.resolve = async function (source, args, context, info) {
           // Check if user is authenticated
           if (!context.user) {
-            throw new AuthenticationError(
-              'You must be logged in to access this resource'
-            );
+            throw new GraphQLError('You must be logged in to access this resource', {
+              extensions: { code: 'UNAUTHENTICATED' }
+            });
           }
 
           // Check role hierarchy
@@ -220,8 +222,9 @@ function authDirectiveTransformer(schema, directiveName = 'auth') {
           const requiredRoleLevel = roleHierarchy[requiredRole] || 0;
 
           if (userRoleLevel < requiredRoleLevel) {
-            throw new ForbiddenError(
-              `This action requires ${requiredRole} role or higher`
+            throw new GraphQLError(
+              `This action requires ${requiredRole} role or higher`,
+              { extensions: { code: 'FORBIDDEN' } }
             );
           }
 
@@ -242,7 +245,8 @@ module.exports = { authDirectiveTransformer };
 
 ```javascript
 // server.js
-const { ApolloServer } = require('apollo-server');
+const { ApolloServer } = require('@apollo/server');
+const { startStandaloneServer } = require('@apollo/server/standalone');
 const { makeExecutableSchema } = require('@graphql-tools/schema');
 const { authDirectiveTransformer } = require('./directives/auth');
 
@@ -255,24 +259,31 @@ let schema = makeExecutableSchema({
 // Apply the auth directive transformer
 schema = authDirectiveTransformer(schema, 'auth');
 
-const server = new ApolloServer({
-  schema,
-  context: async ({ req }) => {
-    // Extract and verify JWT token
-    const token = req.headers.authorization?.replace('Bearer ', '');
-    let user = null;
+const server = new ApolloServer({ schema });
 
-    if (token) {
-      try {
-        user = await verifyToken(token);
-      } catch (err) {
-        console.warn('Invalid token:', err.message);
+async function startServer() {
+  const { url } = await startStandaloneServer(server, {
+    context: async ({ req }) => {
+      // Extract and verify JWT token
+      const token = req.headers.authorization?.replace('Bearer ', '');
+      let user = null;
+
+      if (token) {
+        try {
+          user = await verifyToken(token);
+        } catch (err) {
+          console.warn('Invalid token:', err.message);
+        }
       }
-    }
 
-    return { user };
-  }
-});
+      return { user };
+    }
+  });
+
+  console.log(`Server ready at ${url}`);
+}
+
+startServer();
 ```
 
 ---
@@ -320,10 +331,19 @@ input CreatePostInput {
 ```javascript
 // directives/validation.js
 const { mapSchema, getDirective, MapperKind } = require('@graphql-tools/utils');
-const { UserInputError } = require('apollo-server');
+const {
+  defaultFieldResolver,
+  getNamedType,
+  isInputObjectType,
+  isListType,
+  isNonNullType,
+  GraphQLError
+} = require('graphql');
 
 // Length validation directive
 function lengthDirectiveTransformer(schema, directiveName = 'length') {
+  const inputFieldValidations = {};
+
   return mapSchema(schema, {
     [MapperKind.ARGUMENT]: (argumentConfig) => {
       const directive = getDirective(schema, argumentConfig, directiveName)?.[0];
@@ -339,7 +359,7 @@ function lengthDirectiveTransformer(schema, directiveName = 'length') {
       return argumentConfig;
     },
 
-    [MapperKind.INPUT_OBJECT_FIELD]: (fieldConfig) => {
+    [MapperKind.INPUT_OBJECT_FIELD]: (fieldConfig, fieldName, typeName) => {
       const directive = getDirective(schema, fieldConfig, directiveName)?.[0];
 
       if (directive) {
@@ -348,15 +368,18 @@ function lengthDirectiveTransformer(schema, directiveName = 'length') {
           max: directive.max,
           message: directive.message
         };
+        collectInputFieldValidation(inputFieldValidations, typeName, fieldName, '_lengthValidation', {
+          min: directive.min,
+          max: directive.max,
+          message: directive.message
+        });
       }
 
       return fieldConfig;
     },
 
     [MapperKind.OBJECT_FIELD]: (fieldConfig, fieldName, typeName) => {
-      const originalResolver = fieldConfig.resolve;
-
-      if (!originalResolver) return fieldConfig;
+      const originalResolver = fieldConfig.resolve || defaultFieldResolver;
 
       fieldConfig.resolve = async function (source, args, context, info) {
         // Validate arguments
@@ -367,6 +390,15 @@ function lengthDirectiveTransformer(schema, directiveName = 'length') {
           if (validation && argValue != null) {
             validateLength(argName, argValue, validation);
           }
+
+          validateInputFields(
+            argName,
+            argValue,
+            argConfig?.type,
+            inputFieldValidations,
+            validateLength,
+            '_lengthValidation'
+          );
         }
 
         return originalResolver(source, args, context, info);
@@ -377,19 +409,80 @@ function lengthDirectiveTransformer(schema, directiveName = 'length') {
   });
 }
 
+function createUserInputError(message) {
+  return new GraphQLError(message, {
+    extensions: { code: 'BAD_USER_INPUT' }
+  });
+}
+
+function collectInputFieldValidation(inputFieldValidations, typeName, fieldName, key, validation) {
+  inputFieldValidations[typeName] ||= {};
+  inputFieldValidations[typeName][fieldName] ||= {};
+  inputFieldValidations[typeName][fieldName][key] = validation;
+}
+
+function unwrapNonNull(type) {
+  return isNonNullType(type) ? type.ofType : type;
+}
+
+function validateInputFields(fieldPath, value, type, inputFieldValidations, validate, key) {
+  if (value == null || !type) return;
+
+  const nullableType = unwrapNonNull(type);
+
+  if (isListType(nullableType)) {
+    for (const [index, item] of value.entries()) {
+      validateInputFields(
+        `${fieldPath}[${index}]`,
+        item,
+        nullableType.ofType,
+        inputFieldValidations,
+        validate,
+        key
+      );
+    }
+    return;
+  }
+
+  const namedType = getNamedType(nullableType);
+  if (!isInputObjectType(namedType) || typeof value !== 'object') return;
+
+  const fields = namedType.getFields();
+  const validations = inputFieldValidations[namedType.name] || {};
+
+  for (const [inputFieldName, inputField] of Object.entries(fields)) {
+    const inputValue = value[inputFieldName];
+    const validation = validations[inputFieldName]?.[key];
+    const inputFieldPath = `${fieldPath}.${inputFieldName}`;
+
+    if (validation && inputValue != null) {
+      validate(inputFieldPath, inputValue, validation);
+    }
+
+    validateInputFields(
+      inputFieldPath,
+      inputValue,
+      inputField.type,
+      inputFieldValidations,
+      validate,
+      key
+    );
+  }
+}
+
 function validateLength(fieldName, value, { min, max, message }) {
   // Handle arrays
   const length = Array.isArray(value) ? value.length : String(value).length;
   const type = Array.isArray(value) ? 'items' : 'characters';
 
   if (min != null && length < min) {
-    throw new UserInputError(
+    throw createUserInputError(
       message || `${fieldName} must have at least ${min} ${type}`
     );
   }
 
   if (max != null && length > max) {
-    throw new UserInputError(
+    throw createUserInputError(
       message || `${fieldName} must have at most ${max} ${type}`
     );
   }
@@ -397,6 +490,8 @@ function validateLength(fieldName, value, { min, max, message }) {
 
 // Pattern validation directive
 function patternDirectiveTransformer(schema, directiveName = 'pattern') {
+  const inputFieldValidations = {};
+
   return mapSchema(schema, {
     [MapperKind.ARGUMENT]: (argumentConfig) => {
       const directive = getDirective(schema, argumentConfig, directiveName)?.[0];
@@ -411,10 +506,21 @@ function patternDirectiveTransformer(schema, directiveName = 'pattern') {
       return argumentConfig;
     },
 
-    [MapperKind.OBJECT_FIELD]: (fieldConfig) => {
-      const originalResolver = fieldConfig.resolve;
+    [MapperKind.INPUT_OBJECT_FIELD]: (fieldConfig, fieldName, typeName) => {
+      const directive = getDirective(schema, fieldConfig, directiveName)?.[0];
 
-      if (!originalResolver) return fieldConfig;
+      if (directive) {
+        collectInputFieldValidation(inputFieldValidations, typeName, fieldName, '_patternValidation', {
+          regex: new RegExp(directive.regex),
+          message: directive.message
+        });
+      }
+
+      return fieldConfig;
+    },
+
+    [MapperKind.OBJECT_FIELD]: (fieldConfig) => {
+      const originalResolver = fieldConfig.resolve || defaultFieldResolver;
 
       fieldConfig.resolve = async function (source, args, context, info) {
         // Validate pattern on arguments
@@ -423,12 +529,17 @@ function patternDirectiveTransformer(schema, directiveName = 'pattern') {
           const validation = argConfig?._patternValidation;
 
           if (validation && argValue != null) {
-            if (!validation.regex.test(String(argValue))) {
-              throw new UserInputError(
-                validation.message || `${argName} has invalid format`
-              );
-            }
+            validatePattern(argName, argValue, validation);
           }
+
+          validateInputFields(
+            argName,
+            argValue,
+            argConfig?.type,
+            inputFieldValidations,
+            validatePattern,
+            '_patternValidation'
+          );
         }
 
         return originalResolver(source, args, context, info);
@@ -439,9 +550,89 @@ function patternDirectiveTransformer(schema, directiveName = 'pattern') {
   });
 }
 
+function validatePattern(fieldName, value, { regex, message }) {
+  if (!regex.test(String(value))) {
+    throw createUserInputError(message || `${fieldName} has invalid format`);
+  }
+}
+
+// Range validation directive
+function rangeDirectiveTransformer(schema, directiveName = 'range') {
+  const inputFieldValidations = {};
+
+  return mapSchema(schema, {
+    [MapperKind.ARGUMENT]: (argumentConfig) => {
+      const directive = getDirective(schema, argumentConfig, directiveName)?.[0];
+
+      if (directive) {
+        argumentConfig._rangeValidation = {
+          min: directive.min,
+          max: directive.max,
+          message: directive.message
+        };
+      }
+
+      return argumentConfig;
+    },
+
+    [MapperKind.INPUT_OBJECT_FIELD]: (fieldConfig, fieldName, typeName) => {
+      const directive = getDirective(schema, fieldConfig, directiveName)?.[0];
+
+      if (directive) {
+        collectInputFieldValidation(inputFieldValidations, typeName, fieldName, '_rangeValidation', {
+          min: directive.min,
+          max: directive.max,
+          message: directive.message
+        });
+      }
+
+      return fieldConfig;
+    },
+
+    [MapperKind.OBJECT_FIELD]: (fieldConfig) => {
+      const originalResolver = fieldConfig.resolve || defaultFieldResolver;
+
+      fieldConfig.resolve = async function (source, args, context, info) {
+        for (const [argName, argValue] of Object.entries(args)) {
+          const argConfig = fieldConfig.args?.[argName];
+          const validation = argConfig?._rangeValidation;
+
+          if (validation && argValue != null) {
+            validateRange(argName, argValue, validation);
+          }
+
+          validateInputFields(
+            argName,
+            argValue,
+            argConfig?.type,
+            inputFieldValidations,
+            validateRange,
+            '_rangeValidation'
+          );
+        }
+
+        return originalResolver(source, args, context, info);
+      };
+
+      return fieldConfig;
+    }
+  });
+}
+
+function validateRange(fieldName, value, { min, max, message }) {
+  if (min != null && value < min) {
+    throw createUserInputError(message || `${fieldName} must be at least ${min}`);
+  }
+
+  if (max != null && value > max) {
+    throw createUserInputError(message || `${fieldName} must be at most ${max}`);
+  }
+}
+
 module.exports = {
   lengthDirectiveTransformer,
-  patternDirectiveTransformer
+  patternDirectiveTransformer,
+  rangeDirectiveTransformer
 };
 ```
 
@@ -563,6 +754,7 @@ module.exports = { cacheDirectiveTransformer, invalidateCache };
 // directives/cache-redis.js
 const Redis = require('ioredis');
 const { mapSchema, getDirective, MapperKind } = require('@graphql-tools/utils');
+const { defaultFieldResolver } = require('graphql');
 
 const redis = new Redis(process.env.REDIS_URL);
 
@@ -573,9 +765,7 @@ function redisCacheDirectiveTransformer(schema, directiveName = 'cache') {
 
       if (cacheDirective) {
         const { maxAge, scope = 'PUBLIC' } = cacheDirective;
-        const originalResolver = fieldConfig.resolve;
-
-        if (!originalResolver) return fieldConfig;
+        const originalResolver = fieldConfig.resolve || defaultFieldResolver;
 
         fieldConfig.resolve = async function (source, args, context, info) {
           // Build cache key with namespace
@@ -601,7 +791,7 @@ function redisCacheDirectiveTransformer(schema, directiveName = 'cache') {
           const result = await originalResolver(source, args, context, info);
 
           // Store in Redis with expiry
-          await redis.setex(cacheKey, maxAge, JSON.stringify(result));
+          await redis.set(cacheKey, JSON.stringify(result), 'EX', maxAge);
 
           return result;
         };
@@ -775,7 +965,7 @@ type Mutation {
 ```javascript
 // directives/rateLimit.js
 const { mapSchema, getDirective, MapperKind } = require('@graphql-tools/utils');
-const { ApolloError } = require('apollo-server');
+const { defaultFieldResolver, GraphQLError } = require('graphql');
 
 // In-memory rate limit store (use Redis for production)
 const rateLimitStore = new Map();
@@ -787,9 +977,7 @@ function rateLimitDirectiveTransformer(schema, directiveName = 'rateLimit') {
 
       if (directive) {
         const { limit, duration, message } = directive;
-        const originalResolver = fieldConfig.resolve;
-
-        if (!originalResolver) return fieldConfig;
+        const originalResolver = fieldConfig.resolve || defaultFieldResolver;
 
         fieldConfig.resolve = async function (source, args, context, info) {
           // Create unique key for this field and user/IP
@@ -812,10 +1000,14 @@ function rateLimitDirectiveTransformer(schema, directiveName = 'rateLimit') {
           if (entry.count >= limit) {
             const retryAfter = Math.ceil((entry.resetAt - now) / 1000);
 
-            throw new ApolloError(
+            throw new GraphQLError(
               message || `Rate limit exceeded. Try again in ${retryAfter} seconds.`,
-              'RATE_LIMITED',
-              { retryAfter }
+              {
+                extensions: {
+                  code: 'RATE_LIMITED',
+                  retryAfter
+                }
+              }
             );
           }
 
@@ -850,12 +1042,15 @@ Apply multiple directives to create a complete schema.
 
 ```javascript
 // server.js
-const { ApolloServer } = require('apollo-server-express');
+const express = require('express');
+const cors = require('cors');
+const { ApolloServer } = require('@apollo/server');
+const { expressMiddleware } = require('@as-integrations/express4');
 const { makeExecutableSchema } = require('@graphql-tools/schema');
 
 // Import all directive transformers
 const { authDirectiveTransformer } = require('./directives/auth');
-const { lengthDirectiveTransformer, patternDirectiveTransformer } = require('./directives/validation');
+const { lengthDirectiveTransformer, patternDirectiveTransformer, rangeDirectiveTransformer } = require('./directives/validation');
 const { cacheDirectiveTransformer } = require('./directives/cache');
 const { rateLimitDirectiveTransformer } = require('./directives/rateLimit');
 const { uppercaseDirectiveTransformer, dateDirectiveTransformer, maskDirectiveTransformer } = require('./directives/transform');
@@ -872,21 +1067,37 @@ schema = authDirectiveTransformer(schema, 'auth');
 schema = rateLimitDirectiveTransformer(schema, 'rateLimit');
 schema = lengthDirectiveTransformer(schema, 'length');
 schema = patternDirectiveTransformer(schema, 'pattern');
+schema = rangeDirectiveTransformer(schema, 'range');
 schema = cacheDirectiveTransformer(schema, 'cache');
 schema = uppercaseDirectiveTransformer(schema);
 schema = dateDirectiveTransformer(schema);
 schema = maskDirectiveTransformer(schema);
 
 const server = new ApolloServer({
-  schema,
-  context: async ({ req, res }) => {
-    const token = req.headers.authorization?.replace('Bearer ', '');
-    const user = token ? await verifyToken(token) : null;
-    const ip = req.ip || req.connection.remoteAddress;
-
-    return { user, ip, req, res };
-  }
+  schema
 });
+
+async function startServer() {
+  await server.start();
+
+  const app = express();
+
+  app.use('/graphql', cors(), express.json(), expressMiddleware(server, {
+    context: async ({ req, res }) => {
+      const token = req.headers.authorization?.replace('Bearer ', '');
+      const user = token ? await verifyToken(token) : null;
+      const ip = req.ip || req.connection.remoteAddress;
+
+      return { user, ip, req, res };
+    }
+  }));
+
+  app.listen({ port: 4000 }, () => {
+    console.log('Server ready at http://localhost:4000/graphql');
+  });
+}
+
+startServer();
 ```
 
 ---
