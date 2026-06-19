@@ -8,11 +8,11 @@ Description: Learn how to identify and fix prop type validation errors in React 
 
 ---
 
-Prop type validation errors occur when components receive props that do not match their expected types. These warnings help catch bugs early during development by alerting you when data flows incorrectly through your component tree. This guide covers how to fix these errors using both PropTypes and TypeScript.
+Prop type validation errors occur when components receive props that do not match their expected types. These warnings help catch bugs early during development by alerting you when data flows incorrectly through your component tree. This guide covers how to fix these errors using both PropTypes in legacy React projects and TypeScript in modern React projects.
 
 ## Understanding Prop Type Errors
 
-When React detects a prop type mismatch, it logs a warning to the console:
+In React 18 and earlier, when React detects a prop type mismatch, it logs a warning to the console:
 
 ```text
 Warning: Failed prop type: Invalid prop `count` of type `string`
@@ -33,6 +33,8 @@ flowchart TD
 
 ## Using PropTypes
 
+PropTypes are useful for legacy React projects, but they are no longer the recommended type-checking approach for new React applications. In React 19 and later, `propTypes` checks and `defaultProps` on function components are ignored; use TypeScript or another type-checking solution for current React projects.
+
 ### Installation
 
 ```bash
@@ -44,7 +46,7 @@ npm install prop-types
 ```jsx
 import PropTypes from 'prop-types';
 
-function UserCard({ name, age, email, isActive }) {
+function UserCard({ name, age, email, isActive = false }) {
   return (
     <div className={`card ${isActive ? 'active' : ''}`}>
       <h2>{name}</h2>
@@ -61,10 +63,6 @@ UserCard.propTypes = {
   isActive: PropTypes.bool,
 };
 
-UserCard.defaultProps = {
-  isActive: false,
-};
-
 export default UserCard;
 ```
 
@@ -77,6 +75,7 @@ Component.propTypes = {
   // Primitive types
   stringProp: PropTypes.string,
   numberProp: PropTypes.number,
+  bigintProp: PropTypes.bigint,
   boolProp: PropTypes.bool,
   funcProp: PropTypes.func,
   symbolProp: PropTypes.symbol,
@@ -230,14 +229,19 @@ Article.propTypes = {
 // Fix: Always pass required props
 <Article title="My Article" body="Some content" />
 
-// Or provide a default value (but then remove isRequired)
-Article.propTypes = {
+// Or provide a default value with a default parameter
+function ArticleWithDefault({ title = 'Untitled', body }) {
+  return (
+    <article>
+      <h1>{title}</h1>
+      <p>{body}</p>
+    </article>
+  );
+}
+
+ArticleWithDefault.propTypes = {
   title: PropTypes.string,
   body: PropTypes.string.isRequired,
-};
-
-Article.defaultProps = {
-  title: 'Untitled',
 };
 ```
 
@@ -337,7 +341,7 @@ TypeScript provides compile-time type checking, catching errors before runtime.
 
 ```mermaid
 flowchart LR
-    subgraph "PropTypes"
+    subgraph "PropTypes in React 18 and earlier"
         A[Runtime] --> B[Development Only]
         B --> C[Console Warnings]
     end
@@ -379,7 +383,7 @@ export default UserCard;
 ### Common TypeScript Patterns
 
 ```tsx
-import { ReactNode, FC, ComponentType } from 'react';
+import { ReactNode } from 'react';
 
 // Props with children
 interface ContainerProps {
@@ -429,6 +433,10 @@ interface User {
   name: string;
 }
 
+const users: User[] = [
+  { id: 1, name: 'John' },
+];
+
 <List<User>
   items={users}
   renderItem={(user) => <span>{user.name}</span>}
@@ -439,10 +447,17 @@ interface User {
 ### TypeScript Utility Types for Props
 
 ```tsx
-import { ComponentProps, HTMLAttributes } from 'react';
+import { ComponentProps, InputHTMLAttributes } from 'react';
+
+interface User {
+  id: number;
+  name: string;
+  email: string;
+  createdAt: string;
+}
 
 // Extend HTML element props
-interface CustomInputProps extends HTMLAttributes<HTMLInputElement> {
+interface CustomInputProps extends InputHTMLAttributes<HTMLInputElement> {
   label: string;
   error?: string;
 }
@@ -506,7 +521,7 @@ type ButtonProps = LinkButtonProps | ActionButtonProps;
 function Button(props: ButtonProps) {
   if (props.variant === 'link') {
     // TypeScript knows this is LinkButtonProps
-    const { href, target, size, disabled } = props;
+    const { href, target, size } = props;
     return (
       <a href={href} target={target} className={`btn btn-${size}`}>
         Link
@@ -662,7 +677,7 @@ function UserCard({ name, age, email, isActive = false }: UserCardProps) {
   );
 }
 
-// Keep PropTypes during migration for runtime checks
+// In React 18 and earlier, keep PropTypes during migration for runtime checks
 UserCard.propTypes = {
   name: PropTypes.string.isRequired,
   age: PropTypes.number.isRequired,
@@ -682,7 +697,7 @@ Prop type validation errors help catch data flow issues early. Here is a quick r
 
 | Approach | Pros | Cons |
 |----------|------|------|
-| **PropTypes** | Runtime validation, no build step | Development only, runtime cost |
+| **PropTypes** | Runtime validation in legacy React projects, no build step | Development only, ignored on function components in React 19+ |
 | **TypeScript** | Compile-time checks, IDE support | Build step required, learning curve |
 | **Both** | Maximum safety | More code to maintain |
 
