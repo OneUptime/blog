@@ -161,8 +161,8 @@ Sorting:
 
 Filtering:
   u            Filter by user
-  o            Add filter (e.g., COMMAND=apache)
-  O            Add case-insensitive filter
+  o            Add case-insensitive filter (e.g., COMMAND=apache)
+  O            Add case-sensitive filter
   =            Clear filters
 
 Actions:
@@ -180,7 +180,7 @@ View options:
   b            Toggle bold for running tasks
 
 Configuration:
-  W            Write configuration to ~/.toprc
+  W            Write configuration to top rc file
   q            Quit
   ?/h          Help
 ```
@@ -193,7 +193,8 @@ top -d 5
 
 # Save configuration while running top:
 # 1. Configure display as desired
-# 2. Press W to save to ~/.toprc
+# 2. Press W to save to the top rc file
+#    (usually ~/.config/procps/toprc on modern procps, legacy ~/.toprc)
 ```
 
 #### Example: Create Custom View
@@ -326,7 +327,7 @@ Display:
   p            Toggle program path
 
 Sorting:
-  F6/</        Select sort column
+  F6/</>       Select sort column
   I            Invert sort order
   P            Sort by CPU%
   M            Sort by MEM%
@@ -348,7 +349,7 @@ Actions:
 
 Configuration:
   F2/S         Setup (configure meters/display)
-  C            Tag and kill (confirmation)
+  c            Tag current process and children
   F10/q        Quit
 ```
 
@@ -419,9 +420,9 @@ rm ~/.config/htop/htoprc
 |---------|-----|------|
 | Visual CPU meters | No | Yes |
 | Mouse support | No | Yes |
-| Horizontal scroll | No | Yes |
+| Horizontal scroll | Yes | Yes |
 | Tree view | Limited | Full |
-| Process search | Filter only | Search + Filter |
+| Process search | Search + Filter | Search + Filter |
 | Kill signals | Basic | Full list |
 | Color customization | Basic | Extensive |
 | Strace integration | No | Yes |
@@ -503,9 +504,9 @@ flowchart TD
 
 ```bash
 # Load average interpretation:
-# - 1.0 on single CPU = 100% utilized
-# - 1.0 on 4 CPUs = 25% utilized
-# - Values above CPU count indicate overload
+# - The values are average runnable or uninterruptible tasks over 1, 5, and 15 minutes
+# - Compare load average to CPU count as a rough capacity heuristic
+# - Values above CPU count can indicate overload, including CPU pressure or I/O wait
 
 # Get CPU count
 nproc
