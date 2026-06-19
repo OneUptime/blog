@@ -224,7 +224,7 @@ flowchart TD
 
 ## Cursor-Based Pagination
 
-Cursor pagination uses a unique identifier to mark the position in the dataset.
+Cursor pagination uses an opaque cursor, usually derived from a stable sort key, to mark the position in the dataset.
 
 ### Schema Definition
 
@@ -519,14 +519,28 @@ type Query {
 
 ```javascript
 // connection-builder.js - Reusable pagination utilities
+import { Buffer } from 'buffer';
+
+function encodeCursor(value) {
+  return Buffer.from(`cursor:${value}`).toString('base64');
+}
+
+function decodeCursor(cursor) {
+  const decoded = Buffer.from(cursor, 'base64').toString('utf-8');
+  return decoded.replace('cursor:', '');
+}
+
+function normalizeLimit(value, defaultValue = 10) {
+  return Math.min(Math.max(1, value ?? defaultValue), 100);
+}
 
 // Build a connection response from items
 function buildConnection(items, args, totalCount, getCursor) {
   const { first, after, last, before } = args;
 
   // Determine if we're paginating forward or backward
-  const isForward = first !== undefined;
-  const limit = isForward ? first : last;
+  const isForward = last === undefined;
+  const limit = normalizeLimit(isForward ? first : last);
 
   // Check for extra items (to determine hasMore)
   const hasExtraItem = items.length > limit;
@@ -560,18 +574,18 @@ function buildPaginationQuery(args, cursorField = 'id') {
   const { first, after, last, before } = args;
   const query = { where: {}, orderBy: {}, take: 0 };
 
-  if (first !== undefined) {
+  if (last === undefined) {
     // Forward pagination
-    query.take = Math.min(first, 100) + 1;
+    query.take = normalizeLimit(first) + 1;
     query.orderBy[cursorField] = 'asc';
 
     if (after) {
       const afterValue = decodeCursor(after);
       query.where[cursorField] = { gt: afterValue };
     }
-  } else if (last !== undefined) {
+  } else {
     // Backward pagination
-    query.take = Math.min(last, 100) + 1;
+    query.take = normalizeLimit(last) + 1;
     query.orderBy[cursorField] = 'desc';
 
     if (before) {
@@ -583,14 +597,18 @@ function buildPaginationQuery(args, cursorField = 'id') {
   return query;
 }
 
-export { buildConnection, buildPaginationQuery };
+export { buildConnection, buildPaginationQuery, encodeCursor };
 ```
 
 ### Using the Connection Builder
 
 ```javascript
 // resolvers.js - Using the connection builder
-import { buildConnection, buildPaginationQuery } from './connection-builder.js';
+import {
+  buildConnection,
+  buildPaginationQuery,
+  encodeCursor,
+} from './connection-builder.js';
 
 const resolvers = {
   Query: {
@@ -763,7 +781,7 @@ flowchart TD
 | Feature | Offset | Cursor | Relay |
 |---------|--------|--------|-------|
 | Jump to page | Yes | No | No |
-| Performance | O(n) | O(1) | O(1) |
+| Performance | O(offset + limit) | Index-friendly | Index-friendly |
 | Consistent results | No | Yes | Yes |
 | Real-time friendly | No | Yes | Yes |
 | Implementation complexity | Low | Medium | High |
