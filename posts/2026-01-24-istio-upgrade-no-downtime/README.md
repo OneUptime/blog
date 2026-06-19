@@ -49,7 +49,7 @@ istioctl version
 istioctl analyze --all-namespaces
 
 # Check for deprecated APIs your configs might use
-istioctl analyze --use-kube=false --recursive configs/
+istioctl analyze --use-kube=false configs/
 
 # Ensure all proxies are in sync with control plane
 istioctl proxy-status
@@ -68,7 +68,7 @@ cat UPGRADE-NOTES.md
 
 ## Step 1: Install the New Control Plane with a Revision
 
-Install Istio 1.20 alongside your existing 1.19 installation using a revision tag:
+Install Istio 1.20 alongside your existing 1.19 installation using a revision name:
 
 ```bash
 # Install new version with a revision label
@@ -164,7 +164,7 @@ Key metrics to watch:
 
 - `istio_requests_total` - Request counts
 - `istio_request_duration_milliseconds` - Latency
-- `pilot_xds_push_errors` - Control plane push failures
+- `pilot_total_xds_internal_errors` - Control plane XDS internal errors
 - `pilot_proxy_convergence_time` - Time for proxies to sync
 
 ## Step 5: Migrate Remaining Namespaces
@@ -193,32 +193,42 @@ Istio gateways need special attention. Upgrade them after workloads are migrated
 ```bash
 # Check current gateway version
 kubectl get pods -n istio-system -l app=istio-ingressgateway -o jsonpath='{.items[0].spec.containers[0].image}'
-
-# Install new gateway with revision
-istioctl install --set revision=1-20 \
-  --set components.ingressGateways[0].name=istio-ingressgateway-1-20 \
-  --set components.ingressGateways[0].enabled=true
 ```
 
-Gradually shift traffic to the new gateway:
+Create a canary gateway deployment that uses the new revision:
 
 ```yaml
-# Update Gateway to use new ingress gateway
-apiVersion: networking.istio.io/v1beta1
-kind: Gateway
+# New ingress gateway deployment using gateway injection
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: myapp-gateway
+  name: istio-ingressgateway-1-20
+  namespace: istio-system
 spec:
+  replicas: 1
   selector:
-    # Point to new gateway
-    istio: ingressgateway-1-20
-  servers:
-    - port:
-        number: 80
-        name: http
-        protocol: HTTP
-      hosts:
-        - "*"
+    matchLabels:
+      istio: ingressgateway
+      version: 1-20
+  template:
+    metadata:
+      annotations:
+        inject.istio.io/templates: gateway
+      labels:
+        istio: ingressgateway
+        version: 1-20
+        istio.io/rev: 1-20
+    spec:
+      containers:
+        - name: istio-proxy
+          image: auto
+```
+
+Gradually shift traffic by scaling the old and new gateway deployments:
+
+```bash
+kubectl scale deployment istio-ingressgateway-1-20 -n istio-system --replicas=2
+kubectl scale deployment istio-ingressgateway -n istio-system --replicas=1
 ```
 
 ## Step 7: Remove the Old Control Plane
@@ -227,16 +237,17 @@ Once all workloads are migrated and stable, remove the old control plane:
 
 ```bash
 # Verify no pods use the old revision
-istioctl proxy-status | grep -v "1-20"
+istioctl proxy-status
 
-# If empty, safe to remove old control plane
-istioctl uninstall --revision default -y
+# Review the output and confirm no workloads report the old version or old istiod.
+# If the old control plane was non-revisioned, uninstall it using the same profile or file used to install it:
+istioctl uninstall -f manifests/profiles/default.yaml -y
 
-# Or if using a different revision name
+# Or if the old control plane used a revision name:
 istioctl uninstall --revision 1-19 -y
 ```
 
-Clean up old webhooks:
+Clean up the old non-revisioned injection webhook if your old installation used one:
 
 ```bash
 # Remove old mutating webhook
