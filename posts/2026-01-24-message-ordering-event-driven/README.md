@@ -51,13 +51,17 @@ flowchart TD
 ```python
 # ordering_detector.py - Detect and log ordering violations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Dict, List, Optional
 import logging
+import os
 from collections import defaultdict
 
 logger = logging.getLogger(__name__)
+
+class OrderingViolationError(Exception):
+    """Raised when a message cannot be processed because it is out of order."""
 
 @dataclass
 class MessageMetadata:
@@ -231,6 +235,9 @@ from kafka import KafkaProducer, KafkaConsumer
 from kafka.partitioner import Partitioner
 import json
 import hashlib
+import logging
+
+logger = logging.getLogger(__name__)
 
 class EntityPartitioner(Partitioner):
     """Partition by entity ID to ensure ordering."""
@@ -250,7 +257,7 @@ class EntityPartitioner(Partitioner):
 
     def _round_robin(self, partitions):
         if not hasattr(self, '_counter'):
-            self._counter = 0
+            self._counter = -1
         self._counter += 1
         return partitions[self._counter % len(partitions)]
 
@@ -455,7 +462,11 @@ class SequenceBuffer:
             # Peek at smallest sequence in buffer
             next_msg = buffer[0]
 
-            if next_msg.sequence == self.expected_sequence[entity_id]:
+            if next_msg.sequence < self.expected_sequence[entity_id]:
+                # Drop stale duplicates that were buffered before the gap closed.
+                heapq.heappop(buffer)
+
+            elif next_msg.sequence == self.expected_sequence[entity_id]:
                 # Pop and process
                 heapq.heappop(buffer)
                 self._process_message(
@@ -514,7 +525,7 @@ class SequenceBuffer:
 
 ## Pattern 3: Idempotent Processing
 
-Design handlers to be idempotent so order does not matter for final state.
+Design handlers to be idempotent so duplicate deliveries are safe and state-setting operations can tolerate some reordering. For workflows where state transitions depend on order, combine idempotency with versions or gap detection.
 
 ```mermaid
 flowchart TD
@@ -548,6 +559,9 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+class EventGapError(Exception):
+    """Raised when an aggregate receives an event after a missing sequence."""
+
 class IdempotencyStore:
     """Store processed message IDs to prevent duplicates."""
 
@@ -568,10 +582,10 @@ class IdempotencyStore:
             "processed_at": datetime.now().isoformat(),
             "result": result
         })
-        self.redis.setex(
+        self.redis.set(
             self._key(message_id),
-            self.ttl,
-            value
+            value,
+            ex=self.ttl
         )
 
     def get_result(self, message_id: str) -> Optional[dict]:
@@ -623,8 +637,9 @@ class IdempotentMessageHandler:
 class IdempotentAggregateHandler:
     """Handle events idempotently using aggregate version."""
 
-    def __init__(self, repository):
+    def __init__(self, repository, aggregate_factory):
         self.repository = repository
+        self.aggregate_factory = aggregate_factory
 
     def handle(self, event: dict):
         """Apply event to aggregate idempotently."""
@@ -640,7 +655,7 @@ class IdempotentAggregateHandler:
                     f"Received {event['type']} for non-existent entity {entity_id}"
                 )
                 return None
-            aggregate = self._create_aggregate(entity_id)
+            aggregate = self.aggregate_factory(entity_id)
 
         # Check if event already applied
         if event_sequence <= aggregate.version:
@@ -696,10 +711,17 @@ Store events in an ordered log and rebuild state from events.
 ```python
 # event_sourcing.py - Event sourcing with guaranteed ordering
 from dataclasses import dataclass, field
-from typing import List, Dict, Type, Optional
+from typing import List, Dict, Optional
 from datetime import datetime
 import uuid
-from abc import ABC, abstractmethod
+import json
+from abc import ABC
+
+class ConcurrencyError(Exception):
+    """Raised when the stream version has changed before events are appended."""
+
+class InvalidOperationError(Exception):
+    """Raised when a command is not valid for the aggregate's current state."""
 
 @dataclass
 class Event:
@@ -712,7 +734,7 @@ class Event:
     metadata: Dict = field(default_factory=dict)
 
 class EventStore:
-    """Append-only event store with ordering guarantees."""
+    """Append-only event store with per-entity ordering guarantees."""
 
     def __init__(self, db_connection):
         self.db = db_connection
@@ -720,6 +742,8 @@ class EventStore:
     def append(self, entity_id: str, events: List[Event], expected_version: int):
         """Append events with optimistic concurrency control."""
         with self.db.transaction() as txn:
+            # Requires a UNIQUE(entity_id, sequence) constraint to reject
+            # concurrent inserts that race after this version check.
             # Check current version
             current_version = txn.execute("""
                 SELECT COALESCE(MAX(sequence), 0) as version
@@ -804,7 +828,7 @@ class Aggregate(ABC):
             entity_id=self.entity_id,
             event_type=event_type,
             data=data,
-            sequence=self.version + len(self._uncommitted_events) + 1,
+            sequence=self.version + 1,
             timestamp=datetime.now()
         )
 
@@ -913,7 +937,7 @@ groups:
 
       - alert: LargeSequenceGaps
         expr: |
-          histogram_quantile(0.99, message_sequence_gap_bucket) > 100
+          histogram_quantile(0.99, sum by (service, entity_type, le) (rate(message_sequence_gap_bucket[5m]))) > 100
         for: 10m
         labels:
           severity: critical
@@ -963,4 +987,4 @@ processing_lag = Histogram(
 )
 ```
 
-Message ordering is a fundamental challenge in distributed systems. Choose your pattern based on your requirements: partition-based ordering for simplicity, sequence buffers for flexibility, idempotent handlers for resilience, or event sourcing for complete ordering guarantees. Often, combining multiple patterns provides the most robust solution.
+Message ordering is a fundamental challenge in distributed systems. Choose your pattern based on your requirements: partition-based ordering for simplicity, sequence buffers for flexibility, idempotent handlers for resilience, or event sourcing for per-aggregate ordering guarantees. Often, combining multiple patterns provides the most robust solution.
