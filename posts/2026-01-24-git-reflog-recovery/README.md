@@ -12,7 +12,7 @@ Git reflog is your safety net when things go wrong. Accidentally deleted a branc
 
 ## Understanding Git Reflog
 
-The reflog (reference log) is a local journal that records when branch tips and HEAD were updated. Unlike the commit history, reflog entries are not shared with remote repositories and are automatically pruned after 90 days (configurable).
+The reflog (reference log) is a local journal that records when branch tips and HEAD were updated. Unlike the commit history, reflog entries are not shared with remote repositories. Reachable reflog entries are automatically pruned after 90 days by default, while unreachable entries default to 30 days (both configurable).
 
 ```mermaid
 flowchart TD
@@ -113,12 +113,12 @@ You deleted a branch that had unmerged commits.
 git branch -D feature-important
 # Deleted branch feature-important (was a1b2c3d).
 
-# Recovery: Find the commit in reflog
-git reflog | grep feature-important
-# or search for commits around that time
+# Recovery: Use the SHA printed by git branch -D if you still have it
+
+# Or search HEAD's reflog for commits and checkouts around that time
 git reflog --date=relative
 
-# Recreate the branch
+# Recreate the branch from the recovered commit SHA
 git branch feature-important a1b2c3d
 
 # Or checkout directly
@@ -159,7 +159,7 @@ git stash drop
 # Find orphaned stash commits
 git fsck --unreachable | grep commit
 
-# Or search reflog for stash operations
+# Or inspect the stash reflog if the stash reference still exists
 git reflog show stash
 
 # Apply the lost stash by its SHA
@@ -171,9 +171,9 @@ git stash apply <SHA-from-fsck>
 You force pushed and need to restore the remote branch.
 
 ```bash
-# Check your local reflog (if you still have the commits)
+# Check your remote-tracking reflog (if it exists and you still have the commits)
 git reflog show origin/main
-# Shows where origin/main pointed before you fetched
+# Shows previous local values of origin/main
 
 # If you have the commits locally
 git push --force origin <good-commit>:main
@@ -212,7 +212,7 @@ git log -g --grep="authentication" --oneline
 
 ### Using ORIG_HEAD
 
-Git sets `ORIG_HEAD` before destructive operations like merge, rebase, or reset.
+Git sets `ORIG_HEAD` before some operations that move your branch tip, including merge, pull, reset, and the start of rebase. During a rebase, another command can overwrite `ORIG_HEAD`, so use reflog if it does not point where you expect.
 
 ```bash
 # After a merge you want to undo
@@ -379,7 +379,7 @@ The reflog is your time machine for Git. Key points to remember:
 - `git reflog` shows all HEAD movements
 - `HEAD@{n}` references the nth previous position
 - `git reset --hard HEAD@{n}` restores to that state
-- Reflog entries expire after 90 days by default
+- Reachable reflog entries expire after 90 days by default; unreachable entries expire after 30 days by default
 - Always check reflog before panicking about lost commits
 
 When you think you have lost commits, stop and check the reflog before doing anything else. The commits are almost certainly still there, waiting to be recovered.
