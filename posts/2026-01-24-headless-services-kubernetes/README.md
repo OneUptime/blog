@@ -8,11 +8,11 @@ Description: Learn how to create and use headless Services in Kubernetes for dir
 
 ---
 
-Standard Kubernetes Services provide load balancing with a single virtual IP. But sometimes you need to reach individual pods directly, not through a load balancer. Headless Services give you DNS records for each pod, enabling direct pod-to-pod communication. This is essential for stateful applications like databases and distributed systems.
+Standard Kubernetes Services provide load balancing with a single virtual IP. But sometimes you need to reach individual pods directly, not through a load balancer. Headless Services give you DNS records that resolve to pod IPs, enabling direct pod-to-pod communication. This is essential for stateful applications like databases and distributed systems.
 
 ## What Makes a Service Headless?
 
-A Service becomes headless when you set `clusterIP: None`. Instead of getting a single cluster IP that load balances across pods, DNS returns the IP addresses of all backing pods.
+A Service becomes headless when you set `clusterIP: None`. Instead of getting a single cluster IP that load balances across pods, DNS returns the IP addresses of the ready backing pods.
 
 ```mermaid
 flowchart TD
@@ -66,7 +66,7 @@ kubectl get svc my-headless-svc
 
 ## DNS Resolution with Headless Services
 
-When you query a headless Service, DNS returns all pod IPs:
+When you query a headless Service, DNS returns the IPs of the ready pods selected by the Service:
 
 ```bash
 # Create a test pod to check DNS
@@ -208,6 +208,10 @@ Kafka can advertise stable hostnames:
 
 ```yaml
 env:
+- name: POD_NAME
+  valueFrom:
+    fieldRef:
+      fieldPath: metadata.name
 - name: KAFKA_ADVERTISED_LISTENERS
   value: "PLAINTEXT://$(POD_NAME).kafka-headless:9092"
 ```
@@ -301,17 +305,23 @@ spec:
   ports:
   - port: 5432
 ---
-# Manually define endpoints
-apiVersion: v1
-kind: Endpoints
+# Manually define an EndpointSlice
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
 metadata:
-  name: external-db  # Must match Service name
-subsets:
+  name: external-db-1
+  labels:
+    kubernetes.io/service-name: external-db  # Must match Service name
+addressType: IPv4
+ports:
+- name: postgres
+  protocol: TCP
+  port: 5432
+endpoints:
 - addresses:
-  - ip: 192.168.1.100
-  - ip: 192.168.1.101
-  ports:
-  - port: 5432
+  - "192.168.1.100"
+- addresses:
+  - "192.168.1.101"
 ```
 
 ## Verify DNS Records
@@ -333,7 +343,7 @@ dig mysql-0.mysql.default.svc.cluster.local
 dig SRV _http._tcp.my-headless-svc.default.svc.cluster.local
 ```
 
-SRV records are useful when pods expose multiple ports:
+SRV records are useful when Services expose named ports:
 
 ```text
 _http._tcp.my-headless-svc.default.svc.cluster.local. 30 IN SRV 0 50 80 10-244-0-5.my-headless-svc.default.svc.cluster.local.
