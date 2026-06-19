@@ -48,10 +48,10 @@ On Ubuntu or Debian:
 curl https://install.citusdata.com/community/deb.sh | sudo bash
 
 # Install Citus
-sudo apt-get install -y postgresql-16-citus-12.1
+sudo apt-get install -y postgresql-17-citus-13.0
 
 # Enable the extension in postgresql.conf
-echo "shared_preload_libraries = 'citus'" | sudo tee -a /etc/postgresql/16/main/postgresql.conf
+sudo pg_conftool 17 main set shared_preload_libraries citus
 
 # Restart PostgreSQL
 sudo systemctl restart postgresql
@@ -60,14 +60,14 @@ sudo systemctl restart postgresql
 Using Docker for testing:
 
 ```bash
-# Start a Citus cluster with docker-compose
-docker run -d --name citus_coordinator \
+# Start a single-node Citus container for development/testing
+docker run -d --name citus \
   -e POSTGRES_PASSWORD=mypassword \
   -p 5432:5432 \
-  citusdata/citus:12.1
+  citusdata/citus:13.0
 
-# Connect and enable the extension
-psql -h localhost -U postgres -c "CREATE EXTENSION citus;"
+# Verify that Citus is installed
+psql -h localhost -U postgres -d postgres -c "SELECT * FROM citus_version();"
 ```
 
 ## Setting Up a Distributed Cluster
@@ -96,6 +96,7 @@ The key decision is choosing the distribution column. This column determines how
 CREATE TABLE events (
     tenant_id    bigint NOT NULL,
     event_id     bigint NOT NULL,
+    user_id      bigint NOT NULL,
     event_type   varchar(50),
     event_data   jsonb,
     created_at   timestamptz DEFAULT now(),
@@ -125,8 +126,9 @@ SELECT
     nodeport,
     shardminvalue,
     shardmaxvalue
-FROM pg_dist_shard_placement p
+FROM pg_dist_placement p
 JOIN pg_dist_shard s ON p.shardid = s.shardid
+JOIN pg_dist_node n ON p.groupid = n.groupid
 WHERE logicalrelid = 'events'::regclass
 ORDER BY shardid;
 ```
@@ -228,7 +230,7 @@ JOIN events e ON u.tenant_id = e.tenant_id
              AND u.user_id = e.user_id;
 
 -- Bad: UPDATE without distribution column
--- This locks all shards
+-- This touches every shard
 UPDATE events SET event_type = 'processed';
 
 -- Good: Include distribution column
@@ -251,11 +253,11 @@ SELECT citus_rebalance_start();
 -- Monitor progress
 SELECT * FROM citus_rebalance_status();
 
--- For fine-grained control
-SELECT rebalance_table_shards(
-    'events',
-    rebalance_strategy => 'by_disk_size'
-);
+-- Preview the plan before running a rebalance
+SELECT * FROM get_rebalance_table_shards_plan();
+
+-- Run with an explicit strategy
+SELECT citus_rebalance_start(rebalance_strategy => 'by_disk_size');
 ```
 
 ## Monitoring Distributed Queries
@@ -263,14 +265,21 @@ SELECT rebalance_table_shards(
 Track query distribution and performance:
 
 ```sql
--- View distributed query statistics
-SELECT * FROM citus_stat_statements
-ORDER BY total_time DESC
+-- View distributed query statistics (requires pg_stat_statements)
+SELECT
+    css.query,
+    css.executor,
+    css.partition_key,
+    pss.calls,
+    pss.total_exec_time
+FROM citus_stat_statements css
+JOIN pg_stat_statements pss USING (queryid, userid, dbid)
+ORDER BY pss.total_exec_time DESC
 LIMIT 20;
 
 -- Check shard sizes
 SELECT
-    logicalrelid::regclass AS table_name,
+    table_name,
     shardid,
     shard_size
 FROM citus_shards
@@ -306,26 +315,25 @@ ON events (tenant_id, created_at);
 For multi-tenant apps, isolate large tenants on dedicated shards:
 
 ```sql
--- Move a specific tenant to its own shard
-SELECT isolate_tenant_to_new_shard(
-    'events',
-    123,  -- tenant_id to isolate
-    'CASCADE'  -- also isolate colocated tables
-);
-
--- Optionally move that shard to a dedicated worker
+-- Move a specific tenant to its own shard, then move that shard to a dedicated worker
+WITH isolated AS (
+    SELECT isolate_tenant_to_new_shard(
+        'events',
+        123,  -- tenant_id to isolate
+        'CASCADE'  -- also isolate colocated tables
+    ) AS shardid
+)
 SELECT citus_move_shard_placement(
-    (SELECT shardid FROM pg_dist_shard
-     WHERE logicalrelid = 'events'::regclass
-     AND shardminvalue = '123' AND shardmaxvalue = '123'),
+    shardid,
     'worker1.example.com', 5432,
     'dedicated-worker.example.com', 5432
-);
+)
+FROM isolated;
 ```
 
 ## Connection Pooling
 
-Use PgBouncer in front of both coordinator and workers:
+Use PgBouncer in front of the coordinator for application connections:
 
 ```ini
 # pgbouncer.ini
@@ -351,7 +359,8 @@ for worker in worker1 worker2 worker3; do
     pg_dump -h $worker -U postgres -Fc -f ${worker}_backup.dump postgres
 done
 
-# For point-in-time recovery, use pg_basebackup with WAL archiving
+# For point-in-time recovery, create a consistent restore point on all nodes
+psql -h coordinator -U postgres -c "SELECT citus_create_restore_point('before_restore');"
 ```
 
 ## When to Use Citus
