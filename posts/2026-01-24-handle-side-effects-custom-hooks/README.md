@@ -55,7 +55,7 @@ flowchart TD
 A custom hook is a function that uses other hooks. The naming convention is to start with "use".
 
 ```typescript
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 
 // Custom hook for fetching data
 function useFetch<T>(url: string) {
@@ -263,7 +263,7 @@ export default UserList;
 Handle subscriptions to external data sources with proper cleanup.
 
 ```typescript
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 // Generic subscription interface
 interface Subscription<T> {
@@ -388,7 +388,7 @@ import { useEffect, useRef, useCallback, useState } from 'react';
 
 // Hook for setInterval with automatic cleanup
 function useInterval(callback: () => void, delay: number | null) {
-  const savedCallback = useRef<() => void>();
+  const savedCallback = useRef<(() => void) | null>(null);
 
   // Remember the latest callback
   useEffect(() => {
@@ -417,7 +417,7 @@ function useInterval(callback: () => void, delay: number | null) {
 
 // Hook for setTimeout with automatic cleanup
 function useTimeout(callback: () => void, delay: number | null) {
-  const savedCallback = useRef<() => void>();
+  const savedCallback = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     savedCallback.current = callback;
@@ -489,7 +489,7 @@ export { useInterval, useTimeout, useDebounce, useThrottle };
 Usage examples:
 
 ```typescript
-import React, { useState, useCallback } from 'react';
+import React, { useState } from 'react';
 import { useInterval, useDebounce, useThrottle } from './hooks/useTimer';
 
 // Polling data with interval
@@ -575,7 +575,7 @@ export { DataPoller, SearchInput, ScrollTracker };
 Safely add and remove event listeners.
 
 ```typescript
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type RefObject } from 'react';
 
 function useEventListener<K extends keyof WindowEventMap>(
   eventName: K,
@@ -587,21 +587,21 @@ function useEventListener<K extends keyof WindowEventMap>(
 function useEventListener<K extends keyof HTMLElementEventMap>(
   eventName: K,
   handler: (event: HTMLElementEventMap[K]) => void,
-  element: React.RefObject<HTMLElement>,
+  element: RefObject<HTMLElement | null>,
   options?: boolean | AddEventListenerOptions
 ): void;
 
 function useEventListener<K extends keyof DocumentEventMap>(
   eventName: K,
   handler: (event: DocumentEventMap[K]) => void,
-  element: React.RefObject<Document>,
+  element: RefObject<Document | null>,
   options?: boolean | AddEventListenerOptions
 ): void;
 
 function useEventListener(
   eventName: string,
-  handler: (event: Event) => void,
-  element?: React.RefObject<HTMLElement | Document> | undefined,
+  handler: (event: any) => void,
+  element?: RefObject<HTMLElement | Document | null> | undefined,
   options?: boolean | AddEventListenerOptions
 ) {
   // Store handler in ref to avoid recreating listener on handler change
@@ -620,7 +620,7 @@ function useEventListener(
     }
 
     // Create event listener that calls stored handler
-    const eventListener = (event: Event) => {
+    const eventListener: EventListener = (event) => {
       savedHandler.current(event);
     };
 
@@ -715,7 +715,9 @@ export { MouseTracker, KeyboardShortcuts, ClickOutside };
 Persist state to localStorage with automatic synchronization.
 
 ```typescript
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+
+const LOCAL_STORAGE_CHANGE_EVENT = 'local-storage-change';
 
 function useLocalStorage<T>(
   key: string,
@@ -731,6 +733,11 @@ function useLocalStorage<T>(
       return initialValue;
     }
   });
+  const storedValueRef = useRef(storedValue);
+
+  useEffect(() => {
+    storedValueRef.current = storedValue;
+  }, [storedValue]);
 
   // Update localStorage when state changes
   const setValue = useCallback(
@@ -738,53 +745,91 @@ function useLocalStorage<T>(
       try {
         // Allow value to be a function for same API as useState
         const valueToStore =
-          value instanceof Function ? value(storedValue) : value;
+          value instanceof Function ? value(storedValueRef.current) : value;
+        const serializedValue = JSON.stringify(valueToStore);
 
+        storedValueRef.current = valueToStore;
         setStoredValue(valueToStore);
-        window.localStorage.setItem(key, JSON.stringify(valueToStore));
+        window.localStorage.setItem(key, serializedValue);
 
-        // Dispatch custom event for cross-tab synchronization
+        // Notify other hook instances in the same document
         window.dispatchEvent(
-          new StorageEvent('storage', {
-            key,
-            newValue: JSON.stringify(valueToStore)
+          new CustomEvent(LOCAL_STORAGE_CHANGE_EVENT, {
+            detail: { key, newValue: serializedValue }
           })
         );
       } catch (error) {
         console.warn(`Error setting localStorage key "${key}":`, error);
       }
     },
-    [key, storedValue]
+    [key]
   );
 
   // Remove value from localStorage
   const removeValue = useCallback(() => {
     try {
       window.localStorage.removeItem(key);
+      storedValueRef.current = initialValue;
       setStoredValue(initialValue);
+      window.dispatchEvent(
+        new CustomEvent(LOCAL_STORAGE_CHANGE_EVENT, {
+          detail: { key, newValue: null }
+        })
+      );
     } catch (error) {
       console.warn(`Error removing localStorage key "${key}":`, error);
     }
   }, [key, initialValue]);
 
-  // Listen for changes from other tabs
+  // Listen for changes from other tabs and other hook instances
   useEffect(() => {
+    const updateValue = (newValue: string | null) => {
+      if (newValue === null) {
+        storedValueRef.current = initialValue;
+        setStoredValue(initialValue);
+        return;
+      }
+
+      try {
+        const parsedValue = JSON.parse(newValue);
+        storedValueRef.current = parsedValue;
+        setStoredValue(parsedValue);
+      } catch (error) {
+        console.warn('Error parsing storage event:', error);
+      }
+    };
+
     const handleStorageChange = (event: StorageEvent) => {
-      if (event.key === key && event.newValue !== null) {
-        try {
-          setStoredValue(JSON.parse(event.newValue));
-        } catch (error) {
-          console.warn('Error parsing storage event:', error);
-        }
+      if (event.key === key) {
+        updateValue(event.newValue);
+      }
+    };
+
+    const handleLocalStorageChange = (event: Event) => {
+      const customEvent = event as CustomEvent<{
+        key: string;
+        newValue: string | null;
+      }>;
+
+      if (customEvent.detail.key === key) {
+        updateValue(customEvent.detail.newValue);
       }
     };
 
     window.addEventListener('storage', handleStorageChange);
+    window.addEventListener(
+      LOCAL_STORAGE_CHANGE_EVENT,
+      handleLocalStorageChange
+    );
 
     return () => {
       window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener(
+        LOCAL_STORAGE_CHANGE_EVENT,
+        handleLocalStorageChange
+      );
     };
-  }, [key]);
+  }, [key, initialValue]);
 
   return [storedValue, setValue, removeValue];
 }
