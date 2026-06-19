@@ -172,7 +172,7 @@ class NonRetryableError(Exception):
     pass
 
 
-@dramatiq.actor(max_retries=5)
+@dramatiq.actor(max_retries=5, throws=(NonRetryableError,))
 def smart_retry_task(item_id: str):
     """
     Demonstrates smart retry logic.
@@ -210,7 +210,7 @@ dramatiq.set_broker(redis_broker)
 def urgent_notification(user_id: int, message: str):
     """
     High-priority notifications that need immediate delivery.
-    These are processed before normal-priority tasks.
+    These can be processed by dedicated high-priority workers.
     """
     send_push_notification(user_id, message)
 
@@ -219,7 +219,7 @@ def urgent_notification(user_id: int, message: str):
 def standard_email(user_id: int, template: str):
     """
     Standard priority email sending.
-    Processed after high-priority tasks.
+    Processed by workers listening to the default queue.
     """
     send_email_from_template(user_id, template)
 
@@ -338,8 +338,12 @@ Chain tasks together for complex workflows:
 import dramatiq
 from dramatiq.brokers.redis import RedisBroker
 from dramatiq import group, pipeline
+from dramatiq.results import Results
+from dramatiq.results.backends import RedisBackend
 
 redis_broker = RedisBroker(host="localhost")
+result_backend = RedisBackend(host="localhost")
+redis_broker.add_middleware(Results(backend=result_backend))
 dramatiq.set_broker(redis_broker)
 
 
@@ -388,7 +392,7 @@ def process_url_pipeline(url: str, user_email: str):
     pipe.run()
 
 
-@dramatiq.actor
+@dramatiq.actor(store_results=True)
 def process_batch_item(item: dict) -> dict:
     """Process a single item from a batch."""
     result = transform_item(item)
@@ -432,7 +436,6 @@ Handle failed tasks gracefully:
 
 import dramatiq
 from dramatiq.brokers.redis import RedisBroker
-from dramatiq.middleware import Callbacks
 import logging
 
 logger = logging.getLogger(__name__)
@@ -441,42 +444,62 @@ redis_broker = RedisBroker(host="localhost")
 dramatiq.set_broker(redis_broker)
 
 
-def on_task_failure(message, exception):
+@dramatiq.actor
+def on_task_failure(message_data, exception_data):
     """
-    Callback when a task fails permanently.
-    Called after all retries are exhausted.
+    Callback when a task attempt fails.
+    Called even if the message is going to be retried.
     """
     logger.error(
-        f"Task {message.actor_name} failed permanently",
+        f"Task {message_data['actor_name']} failed",
         extra={
-            "message_id": message.message_id,
-            "args": message.args,
-            "kwargs": message.kwargs,
-            "exception": str(exception)
+            "message_id": message_data["message_id"],
+            "args": message_data["args"],
+            "kwargs": message_data["kwargs"],
+            "exception": exception_data["message"]
+        }
+    )
+
+
+@dramatiq.actor
+def on_retries_exhausted(message_data, retry_data):
+    """
+    Callback when a task has exhausted all retries.
+    """
+    logger.error(
+        f"Task {message_data['actor_name']} failed permanently",
+        extra={
+            "message_id": message_data["message_id"],
+            "args": message_data["args"],
+            "kwargs": message_data["kwargs"],
+            "retries": retry_data["retries"],
+            "max_retries": retry_data["max_retries"]
         }
     )
 
     # Store in dead letter queue for manual review
-    store_failed_message(message, exception)
+    store_failed_message(message_data, retry_data)
 
     # Alert on-call team
     send_alert(
-        f"Task {message.actor_name} failed: {exception}"
+        f"Task {message_data['actor_name']} exhausted retries"
     )
 
 
-def on_task_success(message, result):
+@dramatiq.actor
+def on_task_success(message_data, result):
     """Callback when a task completes successfully."""
     logger.info(
-        f"Task {message.actor_name} completed",
-        extra={"message_id": message.message_id}
+        f"Task {message_data['actor_name']} completed",
+        extra={"message_id": message_data["message_id"]}
     )
 
 
 @dramatiq.actor(
     max_retries=3,
-    on_failure=on_task_failure,
-    on_success=on_task_success
+    on_failure="on_task_failure",
+    on_success="on_task_success",
+    on_retry_exhausted="on_retries_exhausted"
 )
 def critical_task(data: dict):
     """
@@ -501,7 +524,7 @@ class PermanentError(TaskError):
     pass
 
 
-@dramatiq.actor(max_retries=5)
+@dramatiq.actor(max_retries=5, throws=(PermanentError,))
 def robust_task(item_id: str):
     """
     Task with sophisticated error handling.
