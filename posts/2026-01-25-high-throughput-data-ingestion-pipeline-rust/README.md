@@ -8,7 +8,7 @@ Description: Learn how to build a data ingestion pipeline in Rust that handles m
 
 ---
 
-When your system needs to ingest millions of events per second, the language and architecture choices matter. Rust has become a go-to choice for high-throughput data pipelines because it gives you C-level performance with memory safety guarantees. No garbage collector pauses, no runtime overhead, and fearless concurrency. This guide walks through building a production-grade ingestion pipeline from scratch.
+When your system needs to ingest millions of events per second, the language and architecture choices matter. Rust has become a go-to choice for high-throughput data pipelines because it gives you C-level performance with memory safety guarantees. No garbage collector pauses, minimal runtime overhead, and fearless concurrency. This guide walks through building a production-grade ingestion pipeline from scratch.
 
 ## Why Rust for Data Ingestion
 
@@ -17,7 +17,7 @@ Before diving into code, let's address why Rust makes sense here. Data ingestion
 - **Predictable latency**: No GC pauses means consistent P99 latency
 - **High throughput**: Zero-cost abstractions let you push hardware limits
 - **Memory efficiency**: Fine-grained control over allocations reduces memory pressure
-- **Safety under load**: The borrow checker catches race conditions at compile time
+- **Safety under load**: The borrow checker and type system prevent data races at compile time
 
 The tradeoff is development speed. Rust has a steeper learning curve, and you'll spend more time fighting the compiler. But for systems where throughput and reliability are non-negotiable, that upfront investment pays dividends.
 
@@ -48,7 +48,8 @@ tokio = { version = "1.35", features = ["full"] }
 async-channel = "2.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-bytes = "1.5"
+bytes = { version = "1.5", features = ["serde"] }
+chrono = "0.4"
 tracing = "0.1"
 tracing-subscriber = "0.3"
 ```
@@ -206,7 +207,7 @@ use tokio::time::sleep;
 
 pub struct Writer {
     rx: Receiver<Vec<Event>>,
-    max_retries: u32,
+    max_attempts: u32,
     base_delay_ms: u64,
 }
 
@@ -214,7 +215,7 @@ impl Writer {
     pub fn new(rx: Receiver<Vec<Event>>) -> Self {
         Self {
             rx,
-            max_retries: 3,
+            max_attempts: 3,
             base_delay_ms: 100,
         }
     }
@@ -237,7 +238,7 @@ impl Writer {
                 }
                 Err(e) => {
                     attempts += 1;
-                    if attempts >= self.max_retries {
+                    if attempts >= self.max_attempts {
                         // Dead letter queue or alert in production
                         warn!(
                             error = %e,
@@ -311,7 +312,7 @@ async fn main() {
 
 After building the basic pipeline, here are the optimizations that make the difference between handling 100k and 1M events per second:
 
-**1. Tune your buffer sizes.** Start with ingest buffers at 10x your expected burst size. Too small and you'll drop events; too large and you waste memory.
+**1. Tune your buffer sizes.** Start with ingest buffers at 10x your expected burst size. Too small and you'll apply backpressure too early or reject at the receiver timeout; too large and you waste memory.
 
 **2. Use object pools.** Allocating and deallocating millions of small objects creates heap fragmentation. Reuse event buffers where possible.
 
