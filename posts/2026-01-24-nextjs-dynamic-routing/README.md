@@ -31,6 +31,8 @@ flowchart TD
 
 ## App Router Dynamic Routes (Next.js 13+)
 
+The App Router examples below use the current async `params` and `searchParams` props from Next.js 15+. In Next.js 14 and earlier, these props were synchronous.
+
 ### Basic Dynamic Segment
 
 Create a dynamic route by adding a folder with square brackets:
@@ -466,6 +468,7 @@ export default function ProductPage() {
 ```typescript
 'use client';
 
+import type { MouseEvent } from 'react';
 import { useRouter } from 'next/navigation';
 
 export default function ProductCard({ product }) {
@@ -476,7 +479,12 @@ export default function ProductCard({ product }) {
     router.push(`/products/${product.id}`);
   };
 
-  const handleFilterChange = (color: string) => {
+  const handleFilterChange = (
+    event: MouseEvent<HTMLButtonElement>,
+    color: string
+  ) => {
+    event.stopPropagation();
+
     // Navigate with query params
     router.push(`/products/${product.id}?color=${color}`);
   };
@@ -484,7 +492,7 @@ export default function ProductCard({ product }) {
   return (
     <div onClick={handleClick}>
       <h3>{product.name}</h3>
-      <button onClick={() => handleFilterChange('red')}>Red</button>
+      <button onClick={(event) => handleFilterChange(event, 'red')}>Red</button>
     </div>
   );
 }
