@@ -18,20 +18,20 @@ A circuit breaker has three states:
 
 - **Closed**: Normal operation. Requests pass through, failures are counted.
 - **Open**: Too many failures detected. Requests are rejected immediately without hitting the backend.
-- **Half-Open**: After a timeout, some requests are allowed through to test if the service has recovered.
+- **Recovering**: After the fallback duration, Traefik progressively sends requests through to test if the service has recovered.
 
 ```mermaid
 stateDiagram-v2
     [*] --> Closed
     Closed --> Open: Failure threshold exceeded
-    Open --> HalfOpen: Recovery timeout elapsed
-    HalfOpen --> Closed: Test requests succeed
-    HalfOpen --> Open: Test requests fail
+    Open --> Recovering: Fallback duration elapsed
+    Recovering --> Closed: Recovery succeeds
+    Recovering --> Open: Recovery fails
 ```
 
 ## Basic Circuit Breaker Configuration
 
-Create a circuit breaker middleware that opens when error rates exceed 50%:
+Create a circuit breaker middleware that opens when network error rates exceed 50%:
 
 ```yaml
 # circuit-breaker-middleware.yaml
@@ -76,7 +76,7 @@ spec:
 Traefik's circuit breaker uses expressions to define trip conditions. Available metrics include:
 
 - `NetworkErrorRatio()`: Ratio of network errors (connection failures, timeouts)
-- `ResponseCodeRatio(from, to, start, end)`: Ratio of responses with codes in [from, to) within [start, end) total responses
+- `ResponseCodeRatio(from, to, dividedByFrom, dividedByTo)`: Ratio of responses with codes in [from, to) divided by responses with codes in [dividedByFrom, dividedByTo)
 - `LatencyAtQuantileMS(quantile)`: Latency at the given quantile in milliseconds
 
 ### Examples of Common Expressions
@@ -132,7 +132,7 @@ spec:
 
 ## Configuring Recovery Parameters
 
-Traefik 3.0 added configuration for recovery behavior:
+Traefik supports configuration for recovery behavior:
 
 ```yaml
 # recovery-config.yaml
@@ -144,11 +144,11 @@ metadata:
 spec:
   circuitBreaker:
     expression: NetworkErrorRatio() > 0.50
-    # Duration to wait before transitioning to half-open
+    # Interval between successive circuit breaker condition checks
     checkPeriod: 10s
-    # Duration circuit stays open before allowing test requests
+    # Duration circuit stays open before entering recovery
     fallbackDuration: 30s
-    # Duration to sample metrics for recovery check
+    # Duration for progressive recovery before closing the circuit
     recoveryDuration: 60s
 ```
 
@@ -260,7 +260,7 @@ spec:
 
 ## Handling Circuit Breaker Responses
 
-When the circuit is open, Traefik returns HTTP 503 Service Unavailable. Your application should handle this gracefully:
+When the circuit is open, Traefik returns HTTP 503 Service Unavailable by default. Your application should handle this gracefully:
 
 ```javascript
 // Example client-side handling
@@ -309,8 +309,8 @@ data:
 Query Prometheus for circuit breaker metrics:
 
 ```promql
-# Track circuit breaker trips
-increase(traefik_service_open_connections_count{service="api-service@kubernetes"}[5m])
+# Track fallback responses while the circuit is open
+increase(traefik_service_requests_total{code="503"}[5m])
 
 # Monitor error ratios that trigger the breaker
 sum(rate(traefik_service_requests_total{code=~"5.."}[5m]))
@@ -323,8 +323,9 @@ sum(rate(traefik_service_requests_total[5m]))
 Verify your circuit breaker configuration works:
 
 ```bash
-# Deploy a test service that fails intermittently
-kubectl run failing-app --image=kennethreitz/httpbin --port=80
+# Deploy and expose a test service
+kubectl create deployment failing-app --image=mccutchen/go-httpbin --port=8080
+kubectl expose deployment failing-app --port=80 --target-port=8080
 
 # Configure it to return errors
 # httpbin has endpoints like /status/500 that return specific codes
