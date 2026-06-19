@@ -47,7 +47,7 @@ Start with a simple Dockerfile for development and testing.
 # Dockerfile
 
 # Base image with Node.js
-FROM node:20-alpine AS base
+FROM node:24-alpine AS base
 
 # Set working directory
 WORKDIR /app
@@ -78,23 +78,23 @@ For production, use multi-stage builds to minimize image size.
 ```dockerfile
 # Dockerfile
 # Stage 1: Dependencies
-FROM node:20-alpine AS deps
+FROM node:24-alpine AS deps
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
 
 # Copy package files
-COPY package.json package-lock.json* ./
+COPY package.json package-lock.json* yarn.lock* pnpm-lock.yaml* ./
 
 # Install dependencies based on lock file
 RUN \
-  if [ -f package-lock.json ]; then npm ci --only=production; \
-  elif [ -f yarn.lock ]; then yarn --frozen-lockfile --production; \
-  elif [ -f pnpm-lock.yaml ]; then corepack enable pnpm && pnpm i --frozen-lockfile --prod; \
+  if [ -f package-lock.json ]; then npm ci; \
+  elif [ -f yarn.lock ]; then corepack enable yarn && yarn install --frozen-lockfile; \
+  elif [ -f pnpm-lock.yaml ]; then corepack enable pnpm && pnpm i --frozen-lockfile; \
   else echo "Lockfile not found." && exit 1; \
   fi
 
 # Stage 2: Builder
-FROM node:20-alpine AS builder
+FROM node:24-alpine AS builder
 WORKDIR /app
 
 # Copy dependencies from deps stage
@@ -106,10 +106,15 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
 
 # Build the application
-RUN npm run build
+RUN \
+  if [ -f package-lock.json ]; then npm run build; \
+  elif [ -f yarn.lock ]; then corepack enable yarn && yarn build; \
+  elif [ -f pnpm-lock.yaml ]; then corepack enable pnpm && pnpm build; \
+  else echo "Lockfile not found." && exit 1; \
+  fi
 
 # Stage 3: Runner
-FROM node:20-alpine AS runner
+FROM node:24-alpine AS runner
 WORKDIR /app
 
 # Set environment for production
@@ -119,6 +124,9 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # Create non-root user for security
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
+
+# Install curl for container health checks
+RUN apk add --no-cache curl
 
 # Copy necessary files from builder
 COPY --from=builder /app/public ./public
@@ -165,11 +173,7 @@ const nextConfig = {
     NEXT_PUBLIC_BUILD_TIME: new Date().toISOString(),
   },
 
-  // Experimental features
-  experimental: {
-    // Instrument for monitoring
-    instrumentationHook: true,
-  },
+  // Add instrumentation.js or instrumentation.ts for monitoring
 };
 
 module.exports = nextConfig;
@@ -181,8 +185,6 @@ Set up Docker Compose for local development and multi-container deployments.
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   nextjs:
     build:
@@ -226,7 +228,7 @@ Create a separate Dockerfile for development with hot reload support.
 
 ```dockerfile
 # Dockerfile.dev
-FROM node:20-alpine
+FROM node:24-alpine
 
 WORKDIR /app
 
@@ -257,7 +259,7 @@ flowchart LR
     subgraph Stage1["Stage 1: deps"]
         A1[Alpine Base] --> A2[Install System Deps]
         A2 --> A3[Copy package.json]
-        A3 --> A4[npm ci --production]
+        A3 --> A4[npm ci]
     end
 
     subgraph Stage2["Stage 2: builder"]
@@ -284,7 +286,7 @@ Handle environment variables properly in Docker builds.
 
 ```dockerfile
 # Dockerfile with build args
-FROM node:20-alpine AS builder
+FROM node:24-alpine AS builder
 WORKDIR /app
 
 # Build arguments for compile-time variables
@@ -398,7 +400,7 @@ Optimize Docker builds with proper layer caching.
 
 ```dockerfile
 # Dockerfile with optimized caching
-FROM node:20-alpine AS deps
+FROM node:24-alpine AS deps
 WORKDIR /app
 
 # Copy only package files first for better caching
@@ -406,9 +408,9 @@ COPY package.json package-lock.json* ./
 
 # Cache mount for npm
 RUN --mount=type=cache,target=/root/.npm \
-    npm ci --only=production
+    npm ci
 
-FROM node:20-alpine AS builder
+FROM node:24-alpine AS builder
 WORKDIR /app
 
 COPY --from=deps /app/node_modules ./node_modules
