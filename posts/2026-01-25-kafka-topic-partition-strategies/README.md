@@ -16,7 +16,7 @@ Every message in Kafka goes to exactly one partition. The partition is determine
 
 1. Explicit partition number (if specified)
 2. Key hash (if key is provided)
-3. Round-robin (if no key)
+3. Sticky partitioning by default (if no key)
 
 ```mermaid
 graph TD
@@ -24,7 +24,7 @@ graph TD
     D -->|Yes| P[Use specified partition]
     D -->|No| K{Has key?}
     K -->|Yes| H[Hash key mod partitions]
-    K -->|No| R[Round-robin]
+    K -->|No| R[Sticky partition]
 
     H --> W[Write to partition]
     P --> W
@@ -111,7 +111,7 @@ public class TimeBasedPartitioner implements Partitioner {
         String hourKey = (String) key;
 
         // Hash the hour to get consistent partition
-        return Math.abs(hourKey.hashCode()) % numPartitions;
+        return Math.floorMod(hourKey.hashCode(), numPartitions);
     }
 
     @Override
@@ -163,9 +163,17 @@ public class GeoPartitioner implements Partitioner {
         }
 
         // Fallback for unknown regions
-        return Math.abs(region.hashCode()) %
-            cluster.partitionCountForTopic(topic);
+        return Math.floorMod(
+            region.hashCode(),
+            cluster.partitionCountForTopic(topic)
+        );
     }
+
+    @Override
+    public void close() {}
+
+    @Override
+    public void configure(Map<String, ?> configs) {}
 }
 ```
 
@@ -176,10 +184,10 @@ Use multiple fields for partition assignment while maintaining ordering within g
 ```java
 public class CompositeKeyStrategy {
 
-    // Partition by tenant, order by event time
+    // Partition by tenant, preserve Kafka's per-partition append order
     public void sendTenantEvent(String tenantId, String eventId, String payload) {
         // Key structure: tenantId (for partitioning)
-        // Include eventId in value for ordering within partition
+        // Include eventId in value for event identification within partition
 
         ProducerRecord<String, String> record = new ProducerRecord<>(
             "tenant-events",
@@ -189,7 +197,7 @@ public class CompositeKeyStrategy {
         producer.send(record);
     }
 
-    // Partition by account, sub-sort by transaction
+    // Partition by account, include transaction ID in the payload
     public void sendTransaction(String accountId, String txnId, Transaction txn) {
         String key = accountId;  // Partition by account
 
@@ -201,7 +209,7 @@ public class CompositeKeyStrategy {
 
 ## Custom Partitioner Implementation
 
-When the default hash partitioner does not fit your needs:
+When the default partitioning logic does not fit your needs:
 
 ```java
 import org.apache.kafka.clients.producer.Partitioner;
@@ -224,6 +232,9 @@ public class PriorityPartitioner implements Partitioner {
                          Object value, byte[] valueBytes, Cluster cluster) {
 
         totalPartitions = cluster.partitionCountForTopic(topic);
+        if (totalPartitions == 1) {
+            return 0;
+        }
 
         // Parse priority from key (format: "priority:entityId")
         String keyStr = (String) key;
@@ -236,10 +247,10 @@ public class PriorityPartitioner implements Partitioner {
 
         // Normal priority: distribute across remaining partitions
         String entityId = parts.length > 1 ? parts[1] : keyStr;
-        int hash = Math.abs(entityId.hashCode());
+        int hash = Math.floorMod(entityId.hashCode(), totalPartitions - 1);
 
         // Use partitions 1 to N-1 for normal priority
-        return 1 + (hash % (totalPartitions - 1));
+        return 1 + hash;
     }
 
     @Override
@@ -261,19 +272,27 @@ Hot partitions occur when one key receives disproportionate traffic.
 ### Detection
 
 ```java
-// Monitor partition distribution
-public void checkPartitionBalance(KafkaProducer<String, String> producer) {
-    Map<MetricName, ? extends Metric> metrics = producer.metrics();
+// Track partition distribution from send acknowledgements
+private final ConcurrentMap<Integer, LongAdder> sendsByPartition =
+    new ConcurrentHashMap<>();
 
-    for (Map.Entry<MetricName, ? extends Metric> entry : metrics.entrySet()) {
-        if (entry.getKey().name().equals("record-send-rate") &&
-            entry.getKey().tags().containsKey("partition")) {
-
-            System.out.printf("Partition %s: %.2f records/sec%n",
-                entry.getKey().tags().get("partition"),
-                entry.getValue().metricValue());
+public void sendAndTrack(ProducerRecord<String, String> record) {
+    producer.send(record, (metadata, exception) -> {
+        if (exception == null) {
+            sendsByPartition
+                .computeIfAbsent(metadata.partition(), ignored -> new LongAdder())
+                .increment();
         }
-    }
+    });
+}
+
+public void printPartitionBalance() {
+    sendsByPartition.forEach((partition, count) ->
+        System.out.printf("Partition %d: %d records%n",
+            partition,
+            count.sum()
+        )
+    );
 }
 ```
 
@@ -344,7 +363,7 @@ Other factors:
 
 - **Consumer parallelism**: At least one partition per consumer
 - **Rebalancing time**: More partitions = longer rebalances
-- **Memory overhead**: Each partition uses ~1MB on brokers
+- **Memory overhead**: Each partition adds broker metadata and memory overhead
 - **Open file handles**: Each partition has multiple segment files
 
 ```bash
@@ -391,7 +410,7 @@ props.put(ConsumerConfig.PARTITION_ASSIGNMENT_STRATEGY_CONFIG,
 
 ## Best Practices
 
-1. **Choose keys that distribute evenly**: Avoid keys with high cardinality skew
+1. **Choose keys that distribute evenly**: Avoid skewed keys that concentrate traffic
 2. **Plan for growth**: Set partition count based on expected peak, not current load
 3. **Do not over-partition**: More partitions is not always better
 4. **Test partition distribution**: Monitor for hot partitions in production
