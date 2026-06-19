@@ -29,11 +29,10 @@ flowchart LR
 First, install the required packages for your Node.js GraphQL server.
 
 ```bash
-# Install Apollo Server and graphql-upload packages
+# Install Apollo Server, Express, and graphql-upload packages
 
 # graphql-upload handles multipart form data parsing
-npm install @apollo/server graphql graphql-upload
-npm install --save-dev @types/graphql-upload
+npm install @apollo/server @as-integrations/express5 express graphql graphql-upload cors
 ```
 
 ## Configuring Apollo Server for File Uploads
@@ -43,8 +42,9 @@ You need to configure Apollo Server to handle multipart requests. Here is how to
 ```javascript
 // server.js - Main server configuration
 import express from 'express';
+import cors from 'cors';
 import { ApolloServer } from '@apollo/server';
-import { expressMiddleware } from '@apollo/server/express4';
+import { expressMiddleware } from '@as-integrations/express5';
 import graphqlUploadExpress from 'graphql-upload/graphqlUploadExpress.mjs';
 import { typeDefs, resolvers } from './schema.js';
 
@@ -66,6 +66,7 @@ await server.start();
 // maxFiles: Maximum number of files per request
 app.use(
   '/graphql',
+  cors(),
   graphqlUploadExpress({ maxFileSize: 10000000, maxFiles: 10 }),
   express.json(),
   expressMiddleware(server)
@@ -132,7 +133,7 @@ Here is how to implement resolvers that handle the file streams.
 // resolvers.js - File upload resolver implementations
 import { createWriteStream, existsSync, mkdirSync } from 'fs';
 import path from 'path';
-import { finished } from 'stream/promises';
+import { pipeline } from 'stream/promises';
 import GraphQLUpload from 'graphql-upload/GraphQLUpload.mjs';
 
 // Ensure the uploads directory exists
@@ -158,11 +159,10 @@ async function processUpload(upload) {
   // Pipe the upload stream to the file system
   // createReadStream() returns a Node.js readable stream
   const readStream = createReadStream();
-  readStream.pipe(writeStream);
 
   // Wait for the stream to finish writing
-  // This ensures the file is completely saved before returning
-  await finished(writeStream);
+  // This ensures stream errors are handled before returning
+  await pipeline(readStream, writeStream);
 
   // Return file metadata including the access URL
   return {
@@ -235,7 +235,7 @@ sequenceDiagram
     A->>R: Call mutation resolver
     R->>R: await file promise
     R->>FS: createWriteStream()
-    R->>FS: pipe(readStream)
+    R->>FS: pipeline(readStream, writeStream)
     FS-->>R: File saved
     R-->>A: Return file metadata
     A-->>C: GraphQL response
@@ -248,12 +248,15 @@ Here is how to send file uploads from the client using Apollo Client.
 ```javascript
 // client.js - Apollo Client configuration for file uploads
 import { ApolloClient, InMemoryCache } from '@apollo/client';
-import { createUploadLink } from 'apollo-upload-client';
+import UploadHttpLink from 'apollo-upload-client/UploadHttpLink.mjs';
 
 // Create an upload link instead of the standard HTTP link
 // This link handles multipart form data for file uploads
-const uploadLink = createUploadLink({
+const uploadLink = new UploadHttpLink({
   uri: 'http://localhost:4000/graphql',
+  headers: {
+    'Apollo-Require-Preflight': 'true',
+  },
 });
 
 // Create the Apollo Client with the upload link
@@ -269,7 +272,8 @@ Here is a React component that handles file uploads.
 
 ```jsx
 // FileUpload.jsx - React component for file uploads
-import { useMutation, gql } from '@apollo/client';
+import { gql } from '@apollo/client';
+import { useMutation } from '@apollo/client/react';
 import { useState } from 'react';
 
 // Define the upload mutation
