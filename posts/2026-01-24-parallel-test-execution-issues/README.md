@@ -197,7 +197,8 @@ Database conflicts are the most common source of parallel test failures.
 module.exports = {
   maxWorkers: 4,
   globalSetup: './test/setup/createDatabases.js',
-  globalTeardown: './test/setup/dropDatabases.js'
+  globalTeardown: './test/setup/dropDatabases.js',
+  setupFiles: ['./test/setup/setupFile.js']
 };
 
 // test/setup/createDatabases.js
@@ -222,10 +223,8 @@ module.exports = async () => {
 };
 
 // test/setup/setupFile.js (runs before each test file)
-beforeAll(() => {
-  const workerId = process.env.JEST_WORKER_ID || '1';
-  process.env.DATABASE_NAME = `test_db_worker_${workerId}`;
-});
+const workerId = process.env.JEST_WORKER_ID || '1';
+process.env.DATABASE_NAME = `test_db_worker_${workerId}`;
 ```
 
 ### Strategy 2: Transaction Rollback
@@ -378,12 +377,12 @@ describe('Config Manager', () => {
 });
 ```
 
-### Using Jest's Built-in Temp Directories
+### Creating Per-Worker Temp Directories
 
 ```javascript
 // jest.config.js
 module.exports = {
-  // Each worker gets isolated temp directory
+  // Cache directory is for Jest's internal cache, not test output
   cacheDirectory: '<rootDir>/.jest-cache',
 
   // Custom setup to create per-worker temp dirs
@@ -426,14 +425,11 @@ test('starts server on port 3000', async () => {
 
 ```javascript
 // test/helpers/dynamicPort.js
-const net = require('net');
-
-async function getAvailablePort() {
+async function listenOnAvailablePort(app) {
   return new Promise((resolve, reject) => {
-    const server = net.createServer();
-    server.listen(0, () => {
+    const server = app.listen(0, () => {
       const port = server.address().port;
-      server.close(() => resolve(port));
+      resolve({ server, port });
     });
     server.on('error', reject);
   });
@@ -445,12 +441,16 @@ describe('API Server', () => {
   let port;
 
   beforeAll(async () => {
-    port = await getAvailablePort();
-    server = app.listen(port);
+    ({ server, port } = await listenOnAvailablePort(app));
   });
 
-  afterAll(() => {
-    server.close();
+  afterAll(async () => {
+    await new Promise((resolve, reject) => {
+      server.close((error) => {
+        if (error) reject(error);
+        else resolve();
+      });
+    });
   });
 
   test('responds to health check', async () => {
@@ -547,14 +547,6 @@ module.exports = CustomSequencer;
 # conftest.py
 
 import pytest
-import os
-
-@pytest.fixture(scope="session")
-def worker_id(request):
-    """Get xdist worker ID or 'master' if not running in parallel."""
-    if hasattr(request.config, 'workerinput'):
-        return request.config.workerinput['workerid']
-    return 'master'
 
 @pytest.fixture(scope="session")
 def test_database(worker_id):
@@ -588,8 +580,8 @@ def db_session(test_database):
 addopts = -n auto  # Automatic worker count
 # Or fixed: -n 4
 
-# Distribute tests by file (default)
-# Or by test: --dist=loadfile
+# Default distribution sends pending tests to any available worker
+# Group tests by file: --dist=loadfile
 ```
 
 ### Playwright Configuration
@@ -683,19 +675,19 @@ describe('User Service', () => {
 ### Using Test Annotations
 
 ```javascript
-// Mark tests that cannot run in parallel
-describe.serial('Database migrations', () => {
+// Playwright: mark tests that cannot run in parallel
+test.describe.configure({ mode: 'serial' });
+
+test.describe('Database migrations', () => {
   // These tests run sequentially
 });
 
 // Or with Jest
-describe('Tests requiring sequential execution', () => {
-  beforeAll(() => {
-    if (process.env.JEST_WORKER_ID !== '1') {
-      throw new Error('These tests must run on worker 1 only');
-    }
-  });
-});
+// Put these tests in a separate file or project and run them with --runInBand
+```
+
+```bash
+npx jest tests/database-migrations.test.js --runInBand
 ```
 
 ---
@@ -787,7 +779,7 @@ describe('Legacy database tests', () => {
     "test": "jest",
     "test:parallel": "jest --maxWorkers=4",
     "test:sequential": "jest --runInBand",
-    "test:integration": "jest --runInBand --testPathPattern=integration"
+    "test:integration": "jest --runInBand --testPathPatterns=integration"
   }
 }
 ```
