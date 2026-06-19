@@ -588,11 +588,11 @@ function PostList({ posts }: PostListProps) {
 
 ## Fragment Masking Pattern
 
-Apollo Client 3 supports fragment masking to ensure components only access their declared fields.
+Apollo Client 3.12+ supports data masking with fragments to ensure components only access their declared fields when data masking is enabled.
 
 ```typescript
 // Using fragment masking with useFragment hook
-import { useFragment, gql } from '@apollo/client';
+import { useFragment, useQuery, gql } from '@apollo/client';
 
 // Define the fragment
 const USER_CARD_FRAGMENT = gql`
@@ -608,6 +608,7 @@ const GET_USERS = gql`
   ${USER_CARD_FRAGMENT}
   query GetUsers {
     users {
+      id
       ...UserCard_user
       # Additional fields used by parent
       email
@@ -622,6 +623,7 @@ interface UserCardProps {
 }
 
 function UserCard({ user }: UserCardProps) {
+  // Assumes ApolloClient was configured with dataMasking: true
   // Only fields from UserCard_user fragment are accessible
   const { data } = useFragment({
     fragment: USER_CARD_FRAGMENT,
@@ -632,12 +634,12 @@ function UserCard({ user }: UserCardProps) {
     <div>
       <img src={data.avatarUrl} alt={data.name} />
       <span>{data.name}</span>
-      {/* data.email would be undefined - not in fragment */}
+      {/* data.email is not exposed by the fragment's masked type */}
     </div>
   );
 }
 
-// Parent component has access to all fields
+// Parent component has access to fields it selected directly
 function UserList() {
   const { data } = useQuery(GET_USERS);
 
@@ -662,7 +664,7 @@ Here is a systematic approach to debugging fragment issues.
 
 ```typescript
 // Debug utility for fragment validation
-import { parse, validate, TypeInfo, visitWithTypeInfo, visit } from 'graphql';
+import { parse, validate, TypeInfo, visitWithTypeInfo, visit, GraphQLSchema } from 'graphql';
 
 function debugFragmentSpreads(schema: GraphQLSchema, query: string) {
   // Parse the query
