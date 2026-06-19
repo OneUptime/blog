@@ -240,13 +240,6 @@ processors:
     # Maximum batch size
     send_batch_max_size: 1500
 
-  # Retry on failures
-  retry_on_failure:
-    enabled: true
-    initial_interval: 5s
-    max_interval: 30s
-    max_elapsed_time: 300s
-
 exporters:
   otlp:
     endpoint: backend:4317
@@ -282,7 +275,7 @@ extensions:
   pprof:
     endpoint: 0.0.0.0:1777
 
-  # Prometheus metrics
+  # zPages for live in-process debugging (traces, pipelines, extensions)
   zpages:
     endpoint: 0.0.0.0:55679
 
