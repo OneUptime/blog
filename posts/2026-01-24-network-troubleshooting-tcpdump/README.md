@@ -155,7 +155,7 @@ sudo tcpdump -i eth0 ip6
 sudo tcpdump -i eth0 -nn -A -s 0 'tcp port 80'
 
 # Capture HTTP GET requests
-sudo tcpdump -i eth0 -nn -A -s 0 'tcp port 80 and (((ip[2:2] - ((ip[0]&0xf)<<2)) - ((tcp[12]&0xf0)>>2)) != 0)'
+sudo tcpdump -i eth0 -nn -A -s 0 'tcp port 80 and tcp[((tcp[12]&0xf0)>>2):4] = 0x47455420'
 
 # Capture specific HTTP host
 sudo tcpdump -i eth0 -nn -A -s 0 'tcp port 80' | grep -i 'host:'
@@ -179,12 +179,12 @@ sequenceDiagram
     Client->>Server: TCP SYN
     Server->>Client: TCP SYN-ACK
     Client->>Server: TCP ACK
-    Client->>Server: TLS Client Hello
-    Server->>Client: TLS Server Hello
+    Client->>Server: TLS ClientHello
+    Server->>Client: TLS ServerHello
+    Server->>Client: EncryptedExtensions
     Server->>Client: Certificate
-    Client->>Server: Client Key Exchange
-    Client->>Server: Change Cipher Spec
-    Server->>Client: Change Cipher Spec
+    Server->>Client: Finished
+    Client->>Server: Finished
     Note over Client,Server: Encrypted Communication
 ```
 
@@ -211,7 +211,7 @@ sudo tcpdump -i eth0 -nn -w dns-capture.pcap port 53
 sudo tcpdump -i eth0 -nn port 22
 
 # Watch SSH connection establishment
-sudo tcpdump -i eth0 -nn 'tcp port 22 and (tcp-syn|tcp-ack) != 0'
+sudo tcpdump -i eth0 -nn 'tcp port 22 and tcp[tcpflags] & (tcp-syn|tcp-ack) != 0'
 
 # Debug SSH connection to specific host
 sudo tcpdump -i eth0 -nn host 192.168.1.100 and port 22 -c 100
@@ -323,7 +323,7 @@ sudo tcpdump -i eth0 -c 10000 -w capture.pcap
 # Save with time limit (run for 60 seconds)
 timeout 60 sudo tcpdump -i eth0 -w capture.pcap
 
-# Rotate capture files (100MB each, keep 10 files)
+# Rotate capture files hourly, keep 10 files
 sudo tcpdump -i eth0 -w capture-%Y%m%d-%H%M%S.pcap -G 3600 -W 10
 
 # Save only specific traffic
@@ -370,7 +370,7 @@ sudo tcpdump -r capture.pcap -nn 'tcp' | \
 # Capture for analysis
 sudo tcpdump -i eth0 -nn -c 1000 -w bandwidth-test.pcap
 
-# Quick bandwidth check (packets per second)
+# Quick capture summary
 sudo tcpdump -i eth0 -nn -c 1000 2>&1 | tail -1
 ```
 
@@ -380,8 +380,8 @@ sudo tcpdump -i eth0 -nn -c 1000 2>&1 | tail -1
 # Watch new connections being established
 sudo tcpdump -i eth0 -nn 'tcp[tcpflags] == tcp-syn'
 
-# Count active connections to a port
-sudo tcpdump -i eth0 -nn 'tcp port 443 and tcp-syn' -c 100 2>&1 | \
+# Count new connection attempts to a port
+sudo tcpdump -i eth0 -nn 'tcp port 443 and tcp[tcpflags] & tcp-syn != 0' -c 100 2>&1 | \
     grep "packets captured"
 ```
 
@@ -433,8 +433,9 @@ echo "Testing connection to $TARGET_HOST:$TARGET_PORT for $DURATION seconds"
 echo "Starting packet capture..."
 
 # Start tcpdump in background
+CAPTURE_FILE="/tmp/conn-test-$(date +%Y%m%d-%H%M%S).pcap"
 sudo tcpdump -i any -nn host "$TARGET_HOST" and port "$TARGET_PORT" \
-    -w "/tmp/conn-test-$(date +%Y%m%d-%H%M%S).pcap" &
+    -w "$CAPTURE_FILE" &
 TCPDUMP_PID=$!
 
 # Wait a moment for tcpdump to start
@@ -443,15 +444,15 @@ sleep 1
 # Attempt connection
 echo "Attempting connection..."
 timeout "$DURATION" bash -c "while true; do
-    nc -zv $TARGET_HOST $TARGET_PORT 2>&1
+    nc -zv \"\$0\" \"\$1\" 2>&1
     sleep 1
-done"
+done" "$TARGET_HOST" "$TARGET_PORT"
 
 # Stop tcpdump
 sudo kill $TCPDUMP_PID 2>/dev/null
 
 echo "Capture saved. Results:"
-sudo tcpdump -r "/tmp/conn-test-*.pcap" -nn 2>/dev/null | tail -20
+sudo tcpdump -r "$CAPTURE_FILE" -nn 2>/dev/null | tail -20
 ```
 
 ### Traffic Monitor
@@ -472,7 +473,8 @@ timeout "$DURATION" sudo tcpdump -i "$INTERFACE" -nn -c 10000 2>/dev/null | \
         # Extract protocol
         if ($0 ~ /ICMP/) proto="ICMP"
         else if ($0 ~ /UDP/) proto="UDP"
-        else proto="TCP"
+        else if ($0 ~ /Flags/) proto="TCP"
+        else proto="OTHER"
 
         # Count protocols
         count[proto]++
