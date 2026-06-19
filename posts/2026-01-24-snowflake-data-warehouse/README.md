@@ -62,16 +62,28 @@ Start with proper account-level settings that affect all users and workloads.
 USE ROLE ACCOUNTADMIN;
 
 -- Enable multi-factor authentication requirement
-ALTER ACCOUNT SET REQUIRE_MFA = TRUE;
+CREATE DATABASE IF NOT EXISTS security;
+CREATE SCHEMA IF NOT EXISTS security.policies;
 
--- Configure session timeout (in seconds)
-ALTER ACCOUNT SET SESSION_TIMEOUT = 14400;  -- 4 hours
+CREATE AUTHENTICATION POLICY security.policies.require_mfa_authentication_policy
+    MFA_ENROLLMENT = 'REQUIRED'
+    CLIENT_TYPES = ('SNOWFLAKE_UI', 'SNOWFLAKE_CLI', 'SNOWSQL', 'DRIVERS')
+    MFA_POLICY = (
+        ENFORCE_MFA_ON_EXTERNAL_AUTHENTICATION = 'ALL'
+    );
+
+ALTER ACCOUNT SET AUTHENTICATION POLICY security.policies.require_mfa_authentication_policy;
+
+-- Configure idle session timeout (in minutes)
+CREATE SESSION POLICY security.policies.account_session_policy
+    SESSION_IDLE_TIMEOUT_MINS = 240
+    SESSION_UI_IDLE_TIMEOUT_MINS = 240
+    COMMENT = 'Default 4-hour idle timeout for account sessions';
+
+ALTER ACCOUNT SET SESSION POLICY security.policies.account_session_policy;
 
 -- Set default timezone
 ALTER ACCOUNT SET TIMEZONE = 'UTC';
-
--- Enable query acceleration (helps with ad-hoc queries)
-ALTER ACCOUNT SET ENABLE_QUERY_ACCELERATION = TRUE;
 
 -- Configure statement timeout to prevent runaway queries
 ALTER ACCOUNT SET STATEMENT_TIMEOUT_IN_SECONDS = 3600;  -- 1 hour max
@@ -183,8 +195,8 @@ CREATE WAREHOUSE data_science_warehouse
     MAX_CLUSTER_COUNT = 1          -- Single cluster to control costs
     COMMENT = 'Machine learning and advanced analytics';
 
--- Serverless warehouse for variable workloads
-CREATE WAREHOUSE serverless_warehouse
+-- Snowpark-optimized warehouse for variable workloads
+CREATE WAREHOUSE snowpark_warehouse
     WAREHOUSE_TYPE = 'SNOWPARK-OPTIMIZED'
     WAREHOUSE_SIZE = 'MEDIUM'
     AUTO_SUSPEND = 60
@@ -371,13 +383,16 @@ class SnowflakeLoader:
             copy_sql = f"""
                 COPY INTO {table}
                 FROM @{stage}
-                FILE_FORMAT = (FORMAT_NAME = '{file_format}')
-                ON_ERROR = 'CONTINUE'
-                PURGE = TRUE
             """
 
             if pattern:
                 copy_sql += f" PATTERN = '{pattern}'"
+
+            copy_sql += f"""
+                FILE_FORMAT = (FORMAT_NAME = '{file_format}')
+                ON_ERROR = 'CONTINUE'
+                PURGE = TRUE
+            """
 
             cursor = conn.cursor()
             cursor.execute(copy_sql)
@@ -523,9 +538,10 @@ CREATE TABLE analytics.sales.transactions (
 )
 -- Cluster by most common filter columns
 CLUSTER BY (transaction_date, region, store_id)
--- Enable search optimization for ad-hoc queries
-ENABLE_SEARCH_OPTIMIZATION = TRUE
 COMMENT = 'Sales transaction fact table';
+
+-- Enable search optimization for ad-hoc queries
+ALTER TABLE analytics.sales.transactions ADD SEARCH OPTIMIZATION;
 
 -- Create materialized view for common aggregations
 CREATE MATERIALIZED VIEW analytics.sales.daily_sales_summary AS
@@ -539,15 +555,7 @@ SELECT
 FROM analytics.sales.transactions
 GROUP BY transaction_date, region, store_id;
 
--- Create a task to refresh summaries
-CREATE TASK refresh_sales_summary
-    WAREHOUSE = etl_warehouse
-    SCHEDULE = 'USING CRON 0 */4 * * * America/New_York'
-AS
-    ALTER MATERIALIZED VIEW analytics.sales.daily_sales_summary RESUME;
-
--- Enable the task
-ALTER TASK refresh_sales_summary RESUME;
+-- Materialized views are maintained automatically by Snowflake.
 
 -- Query optimization example
 -- Bad: Full table scan
@@ -620,6 +628,11 @@ GROUP BY usage_date, database_name
 ORDER BY usage_date DESC;
 
 -- Create alert for high credit usage
+CREATE NOTIFICATION INTEGRATION data_team_email
+    TYPE=EMAIL
+    ENABLED=TRUE
+    ALLOWED_RECIPIENTS=('data-team@company.com');
+
 CREATE ALERT high_credit_usage_alert
     WAREHOUSE = etl_warehouse
     SCHEDULE = 'USING CRON 0 9 * * * America/New_York'
@@ -631,6 +644,7 @@ CREATE ALERT high_credit_usage_alert
     ))
     THEN
         CALL SYSTEM$SEND_EMAIL(
+            'data_team_email',
             'data-team@company.com',
             'High Snowflake Credit Usage Alert',
             'Daily credit usage exceeded 100 credits yesterday.'
