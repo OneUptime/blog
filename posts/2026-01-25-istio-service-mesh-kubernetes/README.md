@@ -8,7 +8,7 @@ Description: Learn how to install and configure Istio service mesh on Kubernetes
 
 ---
 
-Istio is a service mesh that provides traffic management, security, and observability for microservices running on Kubernetes. It works by injecting sidecar proxies (Envoy) into your Pods, which intercept all network traffic and apply policies. This guide walks through installing Istio and configuring its core features.
+Istio is a service mesh that provides traffic management, security, and observability for microservices running on Kubernetes. In sidecar mode, it works by injecting sidecar proxies (Envoy) into your Pods, which mediate and control traffic between mesh services. This guide walks through installing Istio and configuring its core features.
 
 ## Understanding Istio Architecture
 
@@ -47,7 +47,7 @@ Download and install the Istio CLI:
 curl -L https://istio.io/downloadIstio | sh -
 
 # Move to the Istio directory
-cd istio-1.20.0
+cd istio-1.30.1
 
 # Add istioctl to your PATH
 export PATH=$PWD/bin:$PATH
@@ -59,7 +59,7 @@ istioctl version
 Install Istio on your cluster using a profile:
 
 ```bash
-# Install with the default profile (production-ready)
+# Install with the default profile (a good starting point for production)
 istioctl install --set profile=default -y
 
 # Or use the demo profile for testing (includes more features)
@@ -87,7 +87,7 @@ kubectl get namespace production --show-labels
 kubectl rollout restart deployment -n production
 ```
 
-To inject sidecars manually or for specific deployments:
+To enable sidecar injection for specific deployments:
 
 ```yaml
 # deployment-with-sidecar.yaml
@@ -105,7 +105,6 @@ spec:
     metadata:
       labels:
         app: api-server
-      annotations:
         # Explicitly enable sidecar injection for this pod
         sidecar.istio.io/inject: "true"
     spec:
@@ -126,7 +125,7 @@ Virtual services define how requests are routed:
 
 ```yaml
 # virtualservice.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-server
@@ -135,6 +134,16 @@ spec:
   hosts:
     - api-server  # Kubernetes service name
   http:
+    # Route based on headers
+    - match:
+        - headers:
+            x-canary:
+              exact: "true"
+      route:
+        - destination:
+            host: api-server
+            subset: v2
+
     # Route 90% to v1, 10% to v2 (canary)
     - match:
         - uri:
@@ -149,16 +158,6 @@ spec:
             subset: v2
           weight: 10
 
-    # Route based on headers
-    - match:
-        - headers:
-            x-canary:
-              exact: "true"
-      route:
-        - destination:
-            host: api-server
-            subset: v2
-
     # Default route
     - route:
         - destination:
@@ -172,7 +171,7 @@ Destination rules define policies for traffic to a service:
 
 ```yaml
 # destinationrule.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: api-server
@@ -216,7 +215,7 @@ Gateways expose services to external traffic:
 
 ```yaml
 # gateway.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: api-gateway
@@ -240,10 +239,10 @@ spec:
         - "api.example.com"
       tls:
         mode: SIMPLE
-        credentialName: api-tls-cert  # Kubernetes secret with TLS cert
+        credentialName: api-tls-cert  # TLS secret in the ingress gateway namespace
 ---
 # virtualservice-gateway.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-external
@@ -270,7 +269,7 @@ Istio can automatically encrypt traffic between services:
 
 ```yaml
 # peerauthentication.yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -281,12 +280,12 @@ spec:
     # PERMISSIVE: Accept both mTLS and plain text (migration mode)
     mode: STRICT
 ---
-# Apply mTLS cluster-wide
-apiVersion: security.istio.io/v1beta1
+# Apply mTLS cluster-wide when istio-system is the root namespace
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
-  namespace: istio-system  # Applies to all namespaces
+  namespace: istio-system
 spec:
   mtls:
     mode: STRICT
@@ -298,7 +297,7 @@ Add resilience with automatic retries:
 
 ```yaml
 # virtualservice-resilience.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-server
@@ -327,16 +326,16 @@ Istio automatically collects telemetry. Install the observability stack:
 
 ```bash
 # Install Kiali (service mesh dashboard)
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/kiali.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/kiali.yaml
 
 # Install Prometheus for metrics
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/prometheus.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/prometheus.yaml
 
 # Install Grafana for dashboards
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/grafana.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/grafana.yaml
 
 # Install Jaeger for distributed tracing
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/jaeger.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/jaeger.yaml
 
 # Access Kiali dashboard
 istioctl dashboard kiali
@@ -348,7 +347,7 @@ Mirror production traffic to a test service:
 
 ```yaml
 # virtualservice-mirror.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-server
@@ -399,14 +398,16 @@ istioctl x describe pod <source-pod> -n production
 
 1. **Start with permissive mTLS**: Use `PERMISSIVE` mode during migration, then switch to `STRICT`
 
-2. **Set resource limits for sidecars**:
+2. **Set resource requests and limits for sidecars**:
 ```yaml
 annotations:
   sidecar.istio.io/proxyCPU: "100m"
+  sidecar.istio.io/proxyCPULimit: "500m"
   sidecar.istio.io/proxyMemory: "128Mi"
+  sidecar.istio.io/proxyMemoryLimit: "512Mi"
 ```
 
-3. **Exclude services that do not need mesh**: Use annotations to skip injection for databases or legacy services
+3. **Exclude services that do not need mesh**: Use labels to skip injection for databases or legacy services
 
 4. **Monitor sidecar resource usage**: Sidecars consume CPU and memory that you need to account for
 
