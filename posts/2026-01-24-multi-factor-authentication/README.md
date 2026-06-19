@@ -256,9 +256,11 @@ from webauthn import (
     verify_registration_response,
     generate_authentication_options,
     verify_authentication_response,
+    options_to_json,
 )
 from webauthn.helpers.structs import (
     AuthenticatorSelectionCriteria,
+    PublicKeyCredentialDescriptor,
     UserVerificationRequirement,
     ResidentKeyRequirement,
 )
@@ -294,7 +296,9 @@ class WebAuthnManager:
         exclude_credentials = []
         if existing_credentials:
             exclude_credentials = [
-                {"id": cred["credential_id"], "type": "public-key"}
+                PublicKeyCredentialDescriptor(
+                    id=base64url_to_bytes(cred["credential_id"])
+                )
                 for cred in existing_credentials
             ]
 
@@ -325,6 +329,7 @@ class WebAuthnManager:
             expected_challenge=expected_challenge,
             expected_rp_id=self.rp_id,
             expected_origin=self.origin,
+            require_user_verification=True,
         )
 
         # Return credential data to store in database
@@ -343,10 +348,9 @@ class WebAuthnManager:
             user_credentials: List of user's registered credentials
         """
         allow_credentials = [
-            {
-                "id": base64url_to_bytes(cred["credential_id"]),
-                "type": "public-key",
-            }
+            PublicKeyCredentialDescriptor(
+                id=base64url_to_bytes(cred["credential_id"])
+            )
             for cred in user_credentials
         ]
 
@@ -373,6 +377,7 @@ class WebAuthnManager:
                 stored_credential["public_key"]
             ),
             credential_current_sign_count=stored_credential["sign_count"],
+            require_user_verification=True,
         )
 
         # Return new sign count to update in database
@@ -409,7 +414,7 @@ def webauthn_register_start():
     # Store challenge for verification
     session['webauthn_challenge'] = bytes_to_base64url(options.challenge)
 
-    return jsonify(options)
+    return jsonify(json.loads(options_to_json(options)))
 
 @app.route('/api/webauthn/register/complete', methods=['POST'])
 def webauthn_register_complete():
@@ -443,6 +448,7 @@ While less secure than TOTP or WebAuthn, SMS remains widely used. Implement it w
 ```python
 import secrets
 import time
+import json
 from datetime import datetime, timedelta
 
 class SMSVerification:
@@ -489,7 +495,7 @@ class SMSVerification:
         }
 
         # Store with expiration
-        self.redis.setex(code_key, self.code_expiry, json.dumps(code_data))
+        self.redis.set(code_key, json.dumps(code_data), ex=self.code_expiry)
 
         # Update rate limit counter
         pipe = self.redis.pipeline()
@@ -528,10 +534,10 @@ class SMSVerification:
 
         # Increment attempts
         data['attempts'] += 1
-        self.redis.setex(
+        self.redis.set(
             code_key,
-            self.code_expiry - int(time.time() - data['created_at']),
-            json.dumps(data)
+            json.dumps(data),
+            ex=self.code_expiry - int(time.time() - data['created_at'])
         )
 
         # Constant-time comparison to prevent timing attacks
@@ -663,9 +669,10 @@ CREATE TABLE webauthn_credentials (
     sign_count INTEGER DEFAULT 0,
     device_name VARCHAR(100),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    last_used_at TIMESTAMP,
-    INDEX idx_user_credentials (user_id)
+    last_used_at TIMESTAMP
 );
+
+CREATE INDEX idx_user_credentials ON webauthn_credentials (user_id);
 
 -- Backup codes
 CREATE TABLE backup_codes (
@@ -674,9 +681,10 @@ CREATE TABLE backup_codes (
     code_hash VARCHAR(64) NOT NULL,
     used BOOLEAN DEFAULT FALSE,
     used_at TIMESTAMP,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_user_backup_codes (user_id, used)
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE INDEX idx_user_backup_codes ON backup_codes (user_id, used);
 
 -- MFA audit log
 CREATE TABLE mfa_audit_log (
@@ -687,9 +695,10 @@ CREATE TABLE mfa_audit_log (
     success BOOLEAN,
     ip_address INET,
     user_agent TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_user_mfa_audit (user_id, created_at)
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE INDEX idx_user_mfa_audit ON mfa_audit_log (user_id, created_at);
 ```
 
 ---
@@ -700,7 +709,7 @@ CREATE TABLE mfa_audit_log (
 
 ```python
 from functools import wraps
-from flask import request, jsonify
+from flask import request, jsonify, session
 import time
 
 class MFARateLimiter:
@@ -747,7 +756,7 @@ class MFARateLimiter:
                 self.max_lockout
             )
             lockout_until = time.time() + lockout_duration
-            self.redis.setex(lockout_key, int(lockout_duration) + 1, lockout_until)
+            self.redis.set(lockout_key, lockout_until, ex=int(lockout_duration) + 1)
 
     def record_success(self, user_id: str):
         """
