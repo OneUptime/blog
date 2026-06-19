@@ -130,10 +130,10 @@ Download and configure the JMX exporter:
 
 ```bash
 # Download JMX exporter
-wget https://repo1.maven.org/maven2/io/prometheus/jmx/jmx_prometheus_javaagent/0.19.0/jmx_prometheus_javaagent-0.19.0.jar
+wget https://repo1.maven.org/maven2/io/prometheus/jmx/jmx_prometheus_javaagent/1.6.0/jmx_prometheus_javaagent-1.6.0.jar
 
 # Add to Kafka startup
-export KAFKA_OPTS="-javaagent:/opt/jmx_prometheus_javaagent-0.19.0.jar=7071:/etc/kafka/jmx-exporter.yaml"
+export KAFKA_OPTS="$KAFKA_OPTS -javaagent:/opt/jmx_prometheus_javaagent-1.6.0.jar=7071:/etc/kafka/jmx-exporter.yaml"
 ```
 
 ### JMX Exporter Configuration
@@ -302,7 +302,7 @@ flowchart TB
 | Request queue size | `kafka.network:type=RequestChannel,name=RequestQueueSize` | Pending requests | > 10 |
 | Response queue size | `kafka.network:type=RequestChannel,name=ResponseQueueSize` | Pending responses | > 10 |
 | Produce latency 99th | `kafka.network:type=RequestMetrics,name=TotalTimeMs,request=Produce` | Produce request time | > 100ms |
-| Fetch latency 99th | `kafka.network:type=RequestMetrics,name=TotalTimeMs,request=Fetch` | Fetch request time | > 100ms |
+| Fetch latency 99th | `kafka.network:type=RequestMetrics,name=TotalTimeMs,request=FetchConsumer` | Consumer fetch request time | > 100ms |
 
 ### Throughput Metrics
 
@@ -432,7 +432,7 @@ groups:
 
       # High fetch latency
       - alert: KafkaHighFetchLatency
-        expr: kafka_network_requestmetrics_totaltime_ms{request="Fetch", quantile="0.99"} > 500
+        expr: kafka_network_requestmetrics_totaltime_ms{request="FetchConsumer", quantile="0.99"} > 500
         for: 5m
         labels:
           severity: warning
@@ -442,7 +442,7 @@ groups:
 
       # Low disk space
       - alert: KafkaLowDiskSpace
-        expr: kafka_log_log_size_bytes / node_filesystem_size_bytes * 100 > 80
+        expr: 100 * (1 - (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"})) > 80
         for: 5m
         labels:
           severity: warning
@@ -454,23 +454,13 @@ groups:
     rules:
       # High consumer lag
       - alert: KafkaConsumerLag
-        expr: kafka_consumergroup_lag > 10000
+        expr: kafka_consumergroup_group_lag > 10000
         for: 5m
         labels:
           severity: warning
         annotations:
           summary: "High Kafka consumer lag"
-          description: "Consumer group {{ $labels.consumergroup }} has lag of {{ $value }}"
-
-      # Consumer group not active
-      - alert: KafkaConsumerGroupInactive
-        expr: kafka_consumergroup_members == 0
-        for: 10m
-        labels:
-          severity: warning
-        annotations:
-          summary: "Kafka consumer group has no members"
-          description: "Consumer group {{ $labels.consumergroup }} has no active members"
+          description: "Consumer group {{ $labels.group }} has lag of {{ $value }}"
 ```
 
 ## Grafana Dashboard
@@ -563,8 +553,8 @@ Create a comprehensive Kafka dashboard:
         "type": "graph",
         "targets": [
           {
-            "expr": "sum(kafka_consumergroup_lag) by (consumergroup)",
-            "legendFormat": "{{ consumergroup }}"
+            "expr": "sum(kafka_consumergroup_group_lag) by (group)",
+            "legendFormat": "{{ group }}"
           }
         ]
       },
@@ -602,12 +592,25 @@ Monitor consumer lag with the Kafka Lag Exporter:
 services:
   kafka-lag-exporter:
     image: seglo/kafka-lag-exporter:latest
-    environment:
-      KAFKA_LAG_EXPORTER_BOOTSTRAP_SERVERS: kafka-1:9092,kafka-2:9092,kafka-3:9092
-      KAFKA_LAG_EXPORTER_CLUSTERS_0_NAME: main-cluster
-      KAFKA_LAG_EXPORTER_CLUSTERS_0_BOOTSTRAP_SERVERS: kafka-1:9092,kafka-2:9092,kafka-3:9092
+    volumes:
+      - ./kafka-lag-exporter.conf:/opt/docker/conf/application.conf
+    command:
+      - /opt/docker/bin/kafka-lag-exporter
+      - -Dconfig.file=/opt/docker/conf/application.conf
     ports:
       - "8000:8000"
+```
+
+```hocon
+# kafka-lag-exporter.conf
+kafka-lag-exporter {
+  clusters = [
+    {
+      name = "main-cluster"
+      bootstrap-brokers = "kafka-1:9092,kafka-2:9092,kafka-3:9092"
+    }
+  ]
+}
 ```
 
 Or use Burrow for advanced lag monitoring:
@@ -692,9 +695,11 @@ services:
 
   kafka-lag-exporter:
     image: seglo/kafka-lag-exporter:latest
-    environment:
-      KAFKA_LAG_EXPORTER_CLUSTERS_0_NAME: main
-      KAFKA_LAG_EXPORTER_CLUSTERS_0_BOOTSTRAP_SERVERS: kafka-1:9092,kafka-2:9092,kafka-3:9092
+    volumes:
+      - ./kafka-lag-exporter.conf:/opt/docker/conf/application.conf
+    command:
+      - /opt/docker/bin/kafka-lag-exporter
+      - -Dconfig.file=/opt/docker/conf/application.conf
     ports:
       - "8000:8000"
 
