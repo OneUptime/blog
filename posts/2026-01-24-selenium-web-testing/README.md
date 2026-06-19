@@ -40,12 +40,12 @@ The WebDriver API sends commands to a browser-specific driver (like ChromeDriver
 
 ### Basic Installation
 
-Start by installing Selenium and a WebDriver manager to handle driver binaries automatically.
+Start by installing Selenium. Selenium Manager handles driver binaries automatically in current Selenium releases.
 
 ```bash
-# Install Selenium and webdriver-manager
+# Install Selenium
 
-pip install selenium webdriver-manager
+pip install selenium
 ```
 
 ### Configuring ChromeDriver
@@ -55,9 +55,7 @@ The most common setup uses Chrome with ChromeDriver.
 ```python
 # selenium_config.py
 from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
-from webdriver_manager.chrome import ChromeDriverManager
 
 def create_chrome_driver(headless=False):
     """
@@ -87,13 +85,8 @@ def create_chrome_driver(headless=False):
     options.add_argument('--disable-blink-features=AutomationControlled')
     options.add_experimental_option('excludeSwitches', ['enable-automation'])
 
-    # Use webdriver-manager to handle driver installation
-    service = Service(ChromeDriverManager().install())
-
-    driver = webdriver.Chrome(service=service, options=options)
-
-    # Set implicit wait for element finding
-    driver.implicitly_wait(10)
+    # Selenium Manager handles driver installation automatically
+    driver = webdriver.Chrome(options=options)
 
     return driver
 ```
@@ -105,9 +98,7 @@ Firefox setup follows a similar pattern.
 ```python
 # firefox_config.py
 from selenium import webdriver
-from selenium.webdriver.firefox.service import Service
 from selenium.webdriver.firefox.options import Options
-from webdriver_manager.firefox import GeckoDriverManager
 
 def create_firefox_driver(headless=False):
     """Create a configured Firefox WebDriver instance."""
@@ -126,9 +117,7 @@ def create_firefox_driver(headless=False):
     options.set_preference('browser.helperApps.neverAsk.saveToDisk',
                           'application/pdf,text/csv')
 
-    service = Service(GeckoDriverManager().install())
-    driver = webdriver.Firefox(service=service, options=options)
-    driver.implicitly_wait(10)
+    driver = webdriver.Firefox(options=options)
 
     return driver
 ```
@@ -140,9 +129,6 @@ def create_firefox_driver(headless=False):
 ```bash
 # Install Selenium WebDriver
 npm install selenium-webdriver
-
-# Install ChromeDriver
-npm install chromedriver
 ```
 
 ### JavaScript Configuration
@@ -184,7 +170,6 @@ async function createChromeDriver(headless = false) {
 
   // Set timeouts
   await driver.manage().setTimeouts({
-    implicit: 10000,
     pageLoad: 30000,
     script: 30000
   });
@@ -211,7 +196,6 @@ async function createFirefoxDriver(headless = false) {
     .build();
 
   await driver.manage().setTimeouts({
-    implicit: 10000,
     pageLoad: 30000
   });
 
@@ -267,7 +251,9 @@ class SmartWaits:
         timeout = timeout or self.default_timeout
         wait = WebDriverWait(self.driver, timeout)
         return wait.until(
-            lambda d: d.execute_script('return jQuery.active == 0')
+            lambda d: d.execute_script(
+                'return window.jQuery ? jQuery.active == 0 : true'
+            )
         )
 
 # Usage example
@@ -386,8 +372,10 @@ FROM python:3.11-slim
 RUN apt-get update && apt-get install -y \
     wget \
     gnupg \
-    && wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | apt-key add - \
-    && echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list \
+    ca-certificates \
+    && install -d -m 0755 /etc/apt/keyrings \
+    && wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /etc/apt/keyrings/google-linux-signing-keyring.gpg \
+    && echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/google-linux-signing-keyring.gpg] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list \
     && apt-get update \
     && apt-get install -y google-chrome-stable \
     && rm -rf /var/lib/apt/lists/*
@@ -401,7 +389,8 @@ COPY . /app
 WORKDIR /app
 
 # Run tests
-CMD ["pytest", "tests/", "-v", "--headless"]
+ENV HEADLESS=true
+CMD ["pytest", "tests/", "-v"]
 ```
 
 ### GitHub Actions Configuration
@@ -435,7 +424,7 @@ jobs:
 
       - name: Run Selenium tests
         run: |
-          pytest tests/ -v --headless
+          pytest tests/ -v
         env:
           HEADLESS: 'true'
 
@@ -455,6 +444,8 @@ Elements can become stale when the DOM changes. Handle this gracefully.
 
 ```python
 from selenium.common.exceptions import StaleElementReferenceException
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 
 def click_with_retry(driver, locator, max_attempts=3):
     """Click an element with retry for stale references."""
@@ -510,7 +501,7 @@ Follow these guidelines for reliable Selenium tests:
 - Use the Page Object pattern for maintainable code
 - Run tests in headless mode in CI environments
 - Capture screenshots and logs on test failure
-- Use a WebDriver manager to handle driver versions
+- Use Selenium Manager or a pinned driver strategy to handle driver versions
 - Close the browser in test teardown to prevent resource leaks
 - Use unique, stable selectors (IDs, data attributes) over fragile ones (XPath with indexes)
 - Set reasonable timeouts for your application's performance
