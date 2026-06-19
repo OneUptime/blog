@@ -26,7 +26,7 @@ flowchart LR
 
 ## Creating Your First Trigger
 
-MySQL supports six types of triggers based on timing (BEFORE/AFTER) and event (INSERT/UPDATE/DELETE). Here is a basic trigger that logs all changes to an audit table.
+MySQL supports six types of triggers based on timing (BEFORE/AFTER) and event (INSERT/UPDATE/DELETE). Here is a basic trigger that logs salary changes to an audit table.
 
 ```sql
 -- Create an audit table to track changes
@@ -118,6 +118,7 @@ END//
 DELIMITER ;
 
 -- Update order total when items are modified
+DELIMITER //
 CREATE TRIGGER order_items_after_update
 AFTER UPDATE ON order_items
 FOR EACH ROW
@@ -130,10 +131,22 @@ BEGIN
     ),
     updated_at = NOW()
     WHERE id = NEW.order_id;
+
+    IF OLD.order_id <> NEW.order_id THEN
+        UPDATE orders
+        SET total_amount = (
+            SELECT COALESCE(SUM(quantity * unit_price), 0)
+            FROM order_items
+            WHERE order_id = OLD.order_id
+        ),
+        updated_at = NOW()
+        WHERE id = OLD.order_id;
+    END IF;
 END//
 DELIMITER ;
 
 -- Update order total when items are deleted
+DELIMITER //
 CREATE TRIGGER order_items_after_delete
 AFTER DELETE ON order_items
 FOR EACH ROW
@@ -152,16 +165,16 @@ DELIMITER ;
 
 ## Handling Soft Deletes
 
-Many applications use soft deletes instead of physically removing records. A trigger can automatically handle this pattern.
+Many applications use soft deletes instead of physically removing records. Triggers can help by archiving hard deletes or preventing them entirely.
 
 ```sql
--- Instead of deleting, mark records as deleted
+-- Before deleting, archive the record
 DELIMITER //
 CREATE TRIGGER products_before_delete
 BEFORE DELETE ON products
 FOR EACH ROW
 BEGIN
-    -- Archive the product instead of deleting
+    -- Archive the product before deletion
     INSERT INTO products_archive
     SELECT *, NOW() as archived_at
     FROM products
@@ -170,6 +183,7 @@ END//
 DELIMITER ;
 
 -- Alternative: prevent hard deletes entirely
+DELIMITER //
 CREATE TRIGGER prevent_hard_delete
 BEFORE DELETE ON important_records
 FOR EACH ROW
@@ -188,7 +202,7 @@ View all triggers in your database and understand their current state.
 -- List all triggers
 SHOW TRIGGERS;
 
--- Show triggers for a specific table
+-- Show triggers for a specific table name pattern
 SHOW TRIGGERS LIKE 'employees';
 
 -- Get detailed trigger information
@@ -204,8 +218,8 @@ WHERE TRIGGER_SCHEMA = DATABASE();
 -- Drop a trigger
 DROP TRIGGER IF EXISTS employees_after_update;
 
--- Temporarily disable triggers by removing privileges
--- (no direct DISABLE TRIGGER in MySQL)
+-- MySQL has no direct DISABLE TRIGGER statement
+-- Temporarily disable a trigger by dropping it and recreating it later
 ```
 
 ## Debugging Triggers
@@ -315,7 +329,7 @@ flowchart TD
     A --> D[Hidden Business Logic]
     A --> E[Replication Problems]
 
-    B --> B1[Trigger A updates Table B<br>Trigger B updates Table A<br>= Infinite Loop]
+    B --> B1[Trigger A updates Table B<br>Trigger B updates Table A<br>= Error 1442]
     C --> C1[Complex queries in triggers<br>Bulk operations become slow]
     D --> D1[Logic hidden from developers<br>Hard to debug applications]
     E --> E1[Triggers may not fire<br>on replicas as expected]
@@ -323,7 +337,7 @@ flowchart TD
 
 Avoid these common mistakes:
 
-1. **Recursive triggers**: A trigger on table A modifies table B, whose trigger modifies table A. MySQL prevents this within the same trigger but not across different triggers.
+1. **Recursive trigger chains**: A trigger on table A modifies table B, whose trigger modifies table A. MySQL prevents a trigger from modifying a table already being used by the statement that invoked it, so these chains can fail with an error.
 
 2. **Heavy operations**: Keep trigger logic minimal. Move complex processing to application code or background jobs.
 
@@ -334,10 +348,10 @@ Avoid these common mistakes:
 Always test triggers with various scenarios before deploying to production.
 
 ```sql
--- Test INSERT trigger
+-- Test INSERT validation and normalization trigger
 START TRANSACTION;
-INSERT INTO employees (name, email, salary) VALUES ('Test User', 'test@example.com', 50000);
-SELECT * FROM employees_audit WHERE employee_id = LAST_INSERT_ID();
+INSERT INTO users (email) VALUES ('TEST@EXAMPLE.COM');
+SELECT email FROM users WHERE id = LAST_INSERT_ID();
 ROLLBACK;
 
 -- Test UPDATE trigger
