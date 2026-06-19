@@ -180,6 +180,10 @@ type Post {
   title: String!
   author: User!
 }
+
+type Query {
+  posts: [Post!]!
+}
 ```
 
 ```graphql
@@ -286,21 +290,29 @@ relay-compiler
 npx get-graphql-schema http://localhost:4000/graphql > schema.graphql
 ```
 
-### Cause 7: Conditional Fields Based on Arguments
+### Cause 7: Fields Hidden by Authorization-Specific Schemas
 
-Some fields might only be available with certain arguments.
+Some servers expose different schemas based on the current user's role. In that case, a field might be completely absent from the schema returned to a non-admin client, causing a "Cannot query field" error. If the field is present in the schema, authorization failures happen at execution time instead and should return `null` or an authorization error.
 
 ```graphql
 # Schema with directive limiting field access
+directive @auth(requires: Role!) on FIELD_DEFINITION
+
+enum Role {
+  ADMIN
+  USER
+}
+
 type User {
   id: ID!
   name: String!
-  email: String! @auth(requires: ADMIN)  # Only available to admins
+  email: String @auth(requires: ADMIN)  # Only available to admins
 }
 ```
 
 ```javascript
 // Server-side directive implementation
+const { defaultFieldResolver } = require('graphql');
 const { mapSchema, getDirective, MapperKind } = require('@graphql-tools/utils');
 
 function authDirective(schema) {
@@ -318,7 +330,8 @@ function authDirective(schema) {
             // Return null or throw error for unauthorized access
             return null;
           }
-          return resolve(source, args, context, info);
+          const resolver = resolve || defaultFieldResolver;
+          return resolver(source, args, context, info);
         };
       }
       return fieldConfig;
@@ -363,15 +376,14 @@ query {
 
 ### 2. Use GraphQL IDE Auto-Complete
 
-Tools like GraphiQL, Apollo Studio, or GraphQL Playground provide auto-completion that shows available fields:
+Tools like GraphiQL, Apollo Sandbox, or Apollo Studio Explorer provide auto-completion that shows available fields:
 
 ```javascript
-// Apollo Server with GraphQL Playground enabled
+// Apollo Server with introspection enabled for local development
 const server = new ApolloServer({
   typeDefs,
   resolvers,
-  introspection: true,  // Enable in development
-  playground: true       // Enable GraphQL Playground
+  introspection: process.env.NODE_ENV !== 'production'
 });
 ```
 
@@ -452,7 +464,7 @@ validateQuery(schema, query);
 
 ### Pattern 1: Use TypeScript with Generated Types
 
-```typescript
+```tsx
 // Generated types ensure compile-time safety
 import { useQuery, gql } from '@apollo/client';
 import { GetUserQuery, GetUserQueryVariables } from './generated/graphql';
@@ -548,7 +560,7 @@ Here are common variations of the error and their meanings:
 | `Cannot query field "x" on type "Y"` | Field "x" does not exist on type "Y" |
 | `Field "x" of type "Y" must have a selection of subfields` | "x" is an object type; you must select fields from it |
 | `Unknown argument "x" on field "Y.z"` | The argument "x" is not defined for the field |
-| `Field "x" argument "y" of type "Z" is required` | Missing required argument |
+| `Field "x" argument "y" of type "Z!" is required, but it was not provided` | Missing required argument |
 
 ## Conclusion
 
