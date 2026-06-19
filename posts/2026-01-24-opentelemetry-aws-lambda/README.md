@@ -75,8 +75,8 @@ functions:
     # Add the OpenTelemetry Lambda layer
     layers:
       # Use the appropriate ARN for your region
-      # Check https://github.com/open-telemetry/opentelemetry-lambda for latest versions
-      - arn:aws:lambda:us-east-1:901920570463:layer:aws-otel-nodejs-amd64-ver-1-18-1:1
+      # Check https://github.com/aws-observability/aws-otel-lambda for latest AWS-managed versions
+      - arn:aws:lambda:us-east-1:901920570463:layer:aws-otel-nodejs-amd64-ver-1-30-2:1
 ```
 
 For Python Lambda functions:
@@ -101,7 +101,7 @@ functions:
     handler: handler.process
     layers:
       # Python OpenTelemetry layer
-      - arn:aws:lambda:us-east-1:901920570463:layer:aws-otel-python-amd64-ver-1-21-0:1
+      - arn:aws:lambda:us-east-1:901920570463:layer:aws-otel-python-amd64-ver-1-32-0:1
 ```
 
 ### Step 2: Configure Your Handler
@@ -143,8 +143,7 @@ const { NodeTracerProvider } = require('@opentelemetry/sdk-trace-node');
 const { BatchSpanProcessor } = require('@opentelemetry/sdk-trace-base');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
 const { AWSXRayIdGenerator } = require('@opentelemetry/id-generator-aws-xray');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 const { AwsInstrumentation } = require('@opentelemetry/instrumentation-aws-sdk');
 const { HttpInstrumentation } = require('@opentelemetry/instrumentation-http');
 const { registerInstrumentations } = require('@opentelemetry/instrumentation');
@@ -152,21 +151,23 @@ const { registerInstrumentations } = require('@opentelemetry/instrumentation');
 // Initialize OpenTelemetry - call this BEFORE importing other modules
 function initTracing() {
     // Create a resource that identifies this Lambda function
-    const resource = new Resource({
-        [SemanticResourceAttributes.SERVICE_NAME]: process.env.OTEL_SERVICE_NAME || 'lambda-function',
-        [SemanticResourceAttributes.SERVICE_VERSION]: process.env.AWS_LAMBDA_FUNCTION_VERSION,
-        [SemanticResourceAttributes.FAAS_NAME]: process.env.AWS_LAMBDA_FUNCTION_NAME,
-        [SemanticResourceAttributes.FAAS_VERSION]: process.env.AWS_LAMBDA_FUNCTION_VERSION,
-        [SemanticResourceAttributes.CLOUD_PROVIDER]: 'aws',
-        [SemanticResourceAttributes.CLOUD_REGION]: process.env.AWS_REGION,
+    const resource = resourceFromAttributes({
+        'service.name': process.env.OTEL_SERVICE_NAME || 'lambda-function',
+        'service.version': process.env.AWS_LAMBDA_FUNCTION_VERSION,
+        'faas.name': process.env.AWS_LAMBDA_FUNCTION_NAME,
+        'faas.version': process.env.AWS_LAMBDA_FUNCTION_VERSION,
+        'cloud.provider': 'aws',
+        'cloud.region': process.env.AWS_REGION,
     });
 
     // Configure the OTLP exporter
     const exporter = new OTLPTraceExporter({
-        url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT + '/v1/traces',
+        url: `${process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4318'}/v1/traces`,
         headers: {
             // Add authentication headers if required
-            'Authorization': process.env.OTEL_EXPORTER_OTLP_HEADERS_AUTH
+            ...(process.env.OTEL_EXPORTER_OTLP_HEADERS_AUTH
+                ? { Authorization: process.env.OTEL_EXPORTER_OTLP_HEADERS_AUTH }
+                : {}),
         }
     });
 
@@ -175,16 +176,17 @@ function initTracing() {
         resource: resource,
         // Use X-Ray ID generator for compatibility with AWS tracing
         idGenerator: new AWSXRayIdGenerator(),
+        // Use BatchSpanProcessor for efficient batching
+        // Configure for Lambda's short execution times
+        spanProcessors: [
+            new BatchSpanProcessor(exporter, {
+                maxQueueSize: 100,           // Smaller queue for Lambda
+                maxExportBatchSize: 50,      // Smaller batches
+                scheduledDelayMillis: 500,   // Flush more frequently
+                exportTimeoutMillis: 5000,   // Shorter timeout
+            }),
+        ],
     });
-
-    // Use BatchSpanProcessor for efficient batching
-    // Configure for Lambda's short execution times
-    provider.addSpanProcessor(new BatchSpanProcessor(exporter, {
-        maxQueueSize: 100,           // Smaller queue for Lambda
-        maxExportBatchSize: 50,      // Smaller batches
-        scheduledDelayMillis: 500,   // Flush more frequently
-        exportTimeoutMillis: 5000,   // Shorter timeout
-    }));
 
     // Register the provider globally
     provider.register();
@@ -359,13 +361,14 @@ def init_tracing():
 # handler.py - Lambda handler with manual instrumentation
 import json
 import os
-import boto3
 from opentelemetry import trace
 from opentelemetry.trace import SpanKind, Status, StatusCode
 
-# Initialize tracing before other imports that might make network calls
+# Initialize tracing before importing instrumented libraries such as boto3
 from tracing import init_tracing
 tracer_provider = init_tracing()
+
+import boto3
 
 # Get a tracer instance
 tracer = trace.get_tracer(__name__)
@@ -472,7 +475,7 @@ Resources:
       Runtime: python3.11
       Layers:
         # Add collector as Lambda extension layer
-        - !Sub arn:aws:lambda:${AWS::Region}:901920570463:layer:aws-otel-collector-amd64-ver-0-88-0:1
+        - !Sub arn:aws:lambda:${AWS::Region}:901920570463:layer:aws-otel-collector-amd64-ver-0-117-0:1
       Environment:
         Variables:
           # Point to local collector extension
@@ -517,7 +520,7 @@ exporters:
     headers:
       Authorization: "Bearer ${OTEL_AUTH_TOKEN}"
 
-  # Also send to CloudWatch for AWS-native visibility
+  # Also send traces to AWS X-Ray for AWS-native visibility
   awsxray:
     region: ${AWS_REGION}
 
@@ -612,6 +615,11 @@ function extractContext(event) {
         return propagation.extract(context.active(), traceHeaders);
     }
 
+    // Handle direct Lambda invocation payloads
+    if (event._traceContext) {
+        return propagation.extract(context.active(), event._traceContext);
+    }
+
     return context.active();
 }
 
@@ -690,7 +698,9 @@ Create custom metrics to monitor Lambda-specific performance:
 ```python
 # metrics.py - Lambda performance metrics
 import os
+from typing import Iterable
 from opentelemetry import metrics
+from opentelemetry.metrics import CallbackOptions, Observation
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
@@ -698,7 +708,7 @@ from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExp
 def init_metrics():
     """Initialize metrics for Lambda monitoring."""
     exporter = OTLPMetricExporter(
-        endpoint=os.environ.get('OTEL_EXPORTER_OTLP_ENDPOINT') + '/v1/metrics'
+        endpoint=os.environ.get('OTEL_EXPORTER_OTLP_ENDPOINT', 'http://localhost:4318') + '/v1/metrics'
     )
 
     # Use shorter export interval for Lambda
@@ -711,6 +721,29 @@ def init_metrics():
     metrics.set_meter_provider(provider)
 
     return provider
+
+def record_invocation(function_name, status, duration_ms):
+    """Record Lambda invocation metrics."""
+    attributes = {
+        'faas.name': function_name,
+        'faas.status': status,  # success, error, timeout
+    }
+
+    invocation_counter.add(1, attributes)
+    duration_histogram.record(duration_ms, attributes)
+
+def get_memory_usage():
+    """Get current memory usage for gauge callback."""
+    import resource
+    usage = resource.getrusage(resource.RUSAGE_SELF)
+    # Convert to MB
+    return usage.ru_maxrss / 1024
+
+def observe_memory_usage(options: CallbackOptions) -> Iterable[Observation]:
+    """Observe current memory usage for the async gauge."""
+    yield Observation(get_memory_usage())
+
+metrics_provider = init_metrics()
 
 # Create Lambda-specific metrics
 meter = metrics.get_meter('lambda-metrics')
@@ -732,27 +765,10 @@ duration_histogram = meter.create_histogram(
 # Memory usage gauge
 memory_gauge = meter.create_observable_gauge(
     'lambda.memory_used',
-    callbacks=[lambda options: get_memory_usage()],
+    callbacks=[observe_memory_usage],
     description='Memory used by Lambda function',
     unit='MB',
 )
-
-def record_invocation(function_name, status, duration_ms):
-    """Record Lambda invocation metrics."""
-    attributes = {
-        'faas.name': function_name,
-        'faas.status': status,  # success, error, timeout
-    }
-
-    invocation_counter.add(1, attributes)
-    duration_histogram.record(duration_ms, attributes)
-
-def get_memory_usage():
-    """Get current memory usage for gauge callback."""
-    import resource
-    usage = resource.getrusage(resource.RUSAGE_SELF)
-    # Convert to MB
-    return usage.ru_maxrss / 1024
 ```
 
 ## Summary
