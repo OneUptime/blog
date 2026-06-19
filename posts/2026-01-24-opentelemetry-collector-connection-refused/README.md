@@ -21,7 +21,7 @@ Error: UNAVAILABLE: Connection refused
 Error: connect ECONNREFUSED 127.0.0.1:4317
 ```
 
-This error means that the TCP connection attempt to the Collector's endpoint was rejected. The server is either not running, not listening on the expected port, or network configuration is preventing the connection.
+This error means that the TCP connection attempt to the Collector's endpoint was rejected. The server is either not running, not listening on the expected port, or network configuration is rejecting the connection.
 
 ```mermaid
 flowchart TB
@@ -48,8 +48,8 @@ flowchart TB
     Firewall -->|"Check rules"| Port
     Port -->|"Connect to port"| Receiver
 
-    DNS -.->|"DNS failure"| Error1[Connection Refused]
-    Firewall -.->|"Blocked"| Error1
+    DNS -.->|"DNS failure"| Error1[Connection Error]
+    Firewall -.->|"Rejected"| Error1
     Port -.->|"Not listening"| Error1
 ```
 
@@ -230,8 +230,6 @@ environment:
 
 ```yaml
 # docker-compose.yaml
-version: '3.8'
-
 services:
   # Your application
   my-app:
@@ -356,7 +354,13 @@ kind: Deployment
 metadata:
   name: my-app
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
+    metadata:
+      labels:
+        app: my-app
     spec:
       containers:
         - name: my-app
@@ -515,7 +519,7 @@ echo ""
 
 # Check 2: Port connectivity
 echo "[2/6] Checking port connectivity..."
-if nc -zv "$COLLECTOR_HOST" "$COLLECTOR_PORT" 2>&1 | grep -q "succeeded"; then
+if nc -z "$COLLECTOR_HOST" "$COLLECTOR_PORT" >/dev/null 2>&1; then
     echo "    OK: Port $COLLECTOR_PORT is reachable"
 else
     echo "    FAIL: Cannot connect to $COLLECTOR_HOST:$COLLECTOR_PORT"
@@ -549,13 +553,13 @@ else
 fi
 echo ""
 
-# Check 5: gRPC health check
-echo "[5/6] Checking gRPC health..."
+# Check 5: gRPC reflection check
+echo "[5/6] Checking gRPC reflection..."
 if command -v grpcurl &> /dev/null; then
     if grpcurl -plaintext "$COLLECTOR_HOST:$COLLECTOR_PORT" list 2>/dev/null; then
-        echo "    OK: gRPC endpoint is responding"
+        echo "    OK: gRPC endpoint is responding and reflection is enabled"
     else
-        echo "    FAIL: gRPC endpoint not responding"
+        echo "    WARN: grpcurl could not list services (endpoint may still be healthy if reflection is disabled)"
     fi
 else
     echo "    SKIP: grpcurl not installed"
