@@ -103,8 +103,8 @@ InnoDB problems are the most common cause of "Unknown storage engine" errors.
 
 ```sql
 -- Check if InnoDB is disabled
-SHOW VARIABLES LIKE 'have_innodb';
--- If it shows DISABLED, InnoDB is turned off
+SHOW ENGINES;
+-- In current MySQL releases, InnoDB should show Support = DEFAULT or YES
 ```
 
 **Fix**: Remove or comment out the disable option in your MySQL configuration.
@@ -113,8 +113,8 @@ Check `/etc/mysql/mysql.conf.d/mysqld.cnf` or `/etc/my.cnf`:
 
 ```ini
 # Remove or comment out these lines:
+# skip-innodb is deprecated and has no effect in MySQL 8.0+
 # skip-innodb
-# innodb = OFF
 # disabled_storage_engines = "InnoDB"
 ```
 
@@ -210,29 +210,28 @@ FEDERATED is disabled by default:
 
 ```ini
 [mysqld]
-federated = ON
-```
-
-Or load dynamically:
-
-```sql
-INSTALL PLUGIN FEDERATED SONAME 'ha_federated.so';
+federated
 ```
 
 ### Enable ARCHIVE Engine
+
+ARCHIVE is included in MySQL binary distributions. If it is missing from a custom source build, rebuild MySQL with `-DWITH_ARCHIVE_STORAGE_ENGINE`.
 
 ```sql
 -- Check if available
 SHOW PLUGINS;
 
--- If not loaded, install it
-INSTALL PLUGIN ARCHIVE SONAME 'ha_archive.so';
+-- Or check storage-engine support directly
+SHOW ENGINES;
 ```
 
 ### Enable BLACKHOLE Engine
 
+If BLACKHOLE is missing from a custom source build, rebuild MySQL with `-DWITH_BLACKHOLE_STORAGE_ENGINE`.
+
 ```sql
-INSTALL PLUGIN BLACKHOLE SONAME 'ha_blackhole.so';
+-- Check if available
+SHOW ENGINES;
 ```
 
 ## Handling Tables with Unavailable Engines
@@ -245,7 +244,7 @@ SELECT TABLE_NAME, ENGINE
 FROM INFORMATION_SCHEMA.TABLES
 WHERE TABLE_SCHEMA = 'your_database';
 
--- Or from the .frm file (MySQL 5.7)
+-- Or ask MySQL to show the table definition
 SHOW CREATE TABLE your_table;
 ```
 
@@ -322,25 +321,28 @@ CALL convert_all_to_innodb();
 
 MySQL 8.0 removed support for some features:
 
-```sql
--- Check for incompatible table types before upgrade
-mysqlcheck --all-databases --check-upgrade
+```bash
+# Check for incompatible table types before upgrade from MySQL 5.7
+mysqlcheck -u root -p --all-databases --check-upgrade
+```
 
--- Fix issues
-mysql_upgrade --force
+For MySQL 8.0.16 and later, `mysql_upgrade` is deprecated; server startup performs upgrade tasks automatically. Use MySQL Shell's upgrade checker before upgrading:
+
+```javascript
+util.checkForServerUpgrade()
 ```
 
 ### Handling Removed Engines
 
-Some engines were removed in newer versions:
+Some older storage engines or engine names are not available as table engines in MySQL 8.0:
 
 | Engine | Status in MySQL 8.0 |
 |--------|---------------------|
-| PARTITION | Merged into InnoDB |
+| PARTITION | Replaced by native partitioning; only InnoDB supports native partitioning in MySQL 8.0 |
 | HEAP | Use MEMORY instead |
 | ISAM | Removed (use MyISAM) |
 | BDB | Removed |
-| MERGE | Renamed to MRG_MYISAM |
+| MERGE | Displayed as MRG_MYISAM |
 
 ## Prevention Strategies
 
