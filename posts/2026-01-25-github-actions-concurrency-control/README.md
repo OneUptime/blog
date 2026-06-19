@@ -12,7 +12,7 @@ When multiple workflows run simultaneously, things can break. Two deployments ta
 
 ## Understanding Concurrency Groups
 
-Concurrency groups prevent workflows or jobs from running simultaneously. When a new run starts, it either waits for the current run to complete or cancels it.
+Concurrency groups prevent workflows or jobs from running simultaneously. When a new run starts, it either becomes pending, replaces an existing pending run, or cancels the current run, depending on your settings.
 
 ```mermaid
 flowchart TD
@@ -43,6 +43,7 @@ on:
 concurrency:
   group: production-deploy
   cancel-in-progress: false
+  queue: max
 
 jobs:
   deploy:
@@ -55,7 +56,8 @@ jobs:
 With this configuration:
 - Only one workflow runs at a time in the `production-deploy` group
 - New runs wait for the current run to complete
-- Runs execute in order (first in, first out)
+- Pending runs are kept instead of replaced
+- Runs are processed based on when they start waiting on the concurrency group, though exact dispatch order is not guaranteed
 
 ## Cancel In-Progress Runs
 
@@ -116,6 +118,7 @@ concurrency:
 concurrency:
   group: deploy-${{ github.event.inputs.environment }}
   cancel-in-progress: false
+  queue: max
 
 # For CI: cancel outdated per branch
 concurrency:
@@ -126,6 +129,7 @@ concurrency:
 concurrency:
   group: release-${{ github.ref_name }}
   cancel-in-progress: false
+  queue: max
 ```
 
 ## Job-Level Concurrency
@@ -154,6 +158,7 @@ jobs:
     concurrency:
       group: production
       cancel-in-progress: false
+      queue: max
 
     steps:
       - run: ./deploy.sh
@@ -179,6 +184,7 @@ jobs:
     concurrency:
       group: staging-deploy
       cancel-in-progress: false
+      queue: max
 
     steps:
       - uses: actions/checkout@v6
@@ -191,6 +197,7 @@ jobs:
     concurrency:
       group: production-deploy
       cancel-in-progress: false
+      queue: max
 
     steps:
       - uses: actions/checkout@v6
@@ -269,7 +276,7 @@ jobs:
 
 ## Queue Management
 
-When `cancel-in-progress: false`, runs queue up. Manage queue behavior:
+When `cancel-in-progress: false`, one pending run is kept by default. Use `queue: max` when you want multiple runs to wait instead of replacing older pending runs:
 
 ```yaml
 name: Deploy
@@ -281,11 +288,12 @@ on:
 concurrency:
   group: deploy
   cancel-in-progress: false
+  queue: max
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    # Timeout prevents runs from waiting forever
+    # Timeout limits deployment execution after the job starts
     timeout-minutes: 60
 
     steps:
@@ -314,8 +322,8 @@ on:
 
 concurrency:
   # PRs: cancel outdated runs
-  # Main: queue runs (don't cancel deployments)
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  # Main: don't cancel deployments in progress
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -347,6 +355,7 @@ jobs:
     concurrency:
       group: database-migration-prod
       cancel-in-progress: false
+      queue: max
 
     steps:
       - uses: actions/checkout@v6
@@ -405,6 +414,7 @@ on:
 concurrency:
   group: deploy
   cancel-in-progress: false
+  queue: max
 
 jobs:
   deploy:
@@ -413,7 +423,7 @@ jobs:
       environment: production
 ```
 
-The reusable workflow inherits the caller's concurrency settings.
+The caller's concurrency setting gates the job that invokes the reusable workflow. Add concurrency inside the reusable workflow too if the called workflow needs its own concurrency group.
 
 ## Best Practices
 
@@ -438,6 +448,7 @@ concurrency:
 concurrency:
   group: deploy-${{ inputs.environment }}
   cancel-in-progress: false
+  queue: max
 ```
 
 ### Test Concurrency Configuration
@@ -459,4 +470,4 @@ Watch the Actions tab to confirm runs cancel or queue as expected.
 
 ---
 
-Concurrency control prevents the chaos of uncoordinated parallel execution. Use `cancel-in-progress: true` for PR builds where you want fast feedback on the latest code. Use `cancel-in-progress: false` for deployments where you never want to interrupt a release in progress. The right concurrency settings depend on your workflow, so think through what should happen when multiple runs compete for the same resources.
+Concurrency control prevents the chaos of uncoordinated parallel execution. Use `cancel-in-progress: true` for PR builds where you want fast feedback on the latest code. Use `cancel-in-progress: false` with `queue: max` for deployments where you never want to interrupt a release in progress or replace pending releases. The right concurrency settings depend on your workflow, so think through what should happen when multiple runs compete for the same resources.
