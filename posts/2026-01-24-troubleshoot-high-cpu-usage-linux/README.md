@@ -18,7 +18,7 @@ flowchart TD
     A --> C[Kernel Space]
     A --> D[Idle]
     B --> E[us: User Processes]
-    B --> F[ni: Nice Processes]
+    B --> F[ni: Niced Processes]
     C --> G[sy: System/Kernel]
     C --> H[si: Software Interrupts]
     C --> I[hi: Hardware Interrupts]
@@ -33,9 +33,9 @@ flowchart TD
 |--------|-------------|---------------------|
 | %us | User space processes | Application workload |
 | %sy | Kernel operations | System calls, drivers |
-| %ni | Nice (low priority) processes | Background tasks |
+| %ni | Niced user processes | Workloads with adjusted priority |
 | %wa | Waiting for I/O | Disk/network bottleneck |
-| %hi | Hardware interrupts | Hardware issues |
+| %hi | Hardware interrupts | High device interrupt load |
 | %si | Software interrupts | Network processing |
 | %st | Steal time (VMs) | Host overcommitment |
 | %id | Idle | Available capacity |
@@ -50,7 +50,7 @@ top -o %CPU
 # Better interactive view
 htop
 
-# One-shot CPU stats
+# Sample CPU stats five times
 mpstat 1 5
 
 # Per-CPU breakdown
@@ -77,13 +77,13 @@ uptime
 nproc
 ```
 
-**Interpretation**: If load average exceeds the number of CPU cores, the system is overloaded.
+**Interpretation**: If load average exceeds the number of CPU cores, the system may be CPU-bound or waiting heavily on I/O. Use CPU breakdown and process state to confirm the cause.
 
 ```mermaid
 flowchart LR
     A[Load Average] --> B{Compare to CPU Count}
-    B -->|Load < CPUs| C[System OK]
-    B -->|Load > CPUs| D[System Overloaded]
+    B -->|Load < CPUs| C[Likely OK]
+    B -->|Load > CPUs| D[Investigate CPU or I/O Wait]
     D --> E[Identify Top Consumers]
 ```
 
@@ -96,10 +96,10 @@ ps aux --sort=-%cpu | head -20
 # Real-time view with process tree
 htop
 
-# Top processes with refresh
-top -b -n 1 | head -20
+# Top processes in batch mode
+top -b -n 1 -o %CPU | head -20
 
-# Watch specific process
+# Watch per-process CPU usage
 pidstat -u 1 5
 ```
 
@@ -162,7 +162,8 @@ procs -----------memory---------- ---swap-- -----io---- -system-- ------cpu-----
 
 ```bash
 # Install perf (if not available)
-sudo apt install linux-tools-common linux-tools-generic   # Debian/Ubuntu
+sudo apt install linux-perf                               # Debian
+sudo apt install linux-tools-common linux-tools-generic   # Ubuntu
 sudo yum install perf                                      # RHEL/CentOS
 
 # Profile the process for 30 seconds
@@ -213,8 +214,9 @@ sudo renice 19 -p 12345
 sudo apt install cpulimit
 sudo cpulimit -p 12345 -l 50    # Limit to 50% CPU
 
-# Use cgroups for persistent limits
+# Use cgroups v1 for persistent limits
 sudo cgcreate -g cpu:/limited
+echo 100000 | sudo tee /sys/fs/cgroup/cpu/limited/cpu.cfs_period_us
 echo 50000 | sudo tee /sys/fs/cgroup/cpu/limited/cpu.cfs_quota_us
 sudo cgclassify -g cpu:/limited 12345
 
@@ -274,7 +276,7 @@ pkill -u problematic_user
 
 ### Cause 4: High I/O Wait
 
-**Symptoms**: High %wa in top/vmstat, CPU seems busy but processes are waiting
+**Symptoms**: High %wa in top/vmstat, load may be high while tasks wait for I/O
 
 ```mermaid
 flowchart TD
@@ -316,7 +318,7 @@ sudo smartctl -a /dev/sda
 
 ```bash
 # Check kernel worker processes
-ps aux | grep kworker
+ps aux | grep '[k]worker'
 
 # Identify which subsystem is busy
 sudo perf top
@@ -332,7 +334,7 @@ watch -n 1 'cat /proc/interrupts'
 sudo apt update && sudo apt upgrade
 
 # Check dmesg for errors
-dmesg | grep -i error
+sudo dmesg | grep -i error
 
 # Disable problematic hardware if identified
 # (varies by hardware type)
