@@ -57,7 +57,7 @@ Some accessibility aspects cannot be automated:
 Install the required packages for testing React components with axe-core:
 
 ```bash
-npm install --save-dev jest-axe @testing-library/react @testing-library/jest-dom axe-core
+npm install --save-dev jest jest-axe jest-environment-jsdom @testing-library/react @testing-library/jest-dom axe-core babel-jest identity-obj-proxy
 ```
 
 For TypeScript projects, add the type definitions:
@@ -373,7 +373,6 @@ export const Modal: React.FC<ModalProps> = ({
     <div
       className="modal-overlay"
       onClick={onClose}
-      aria-hidden="true"
     >
       <div
         ref={modalRef}
@@ -485,7 +484,6 @@ export const Navigation: React.FC<NavigationProps> = ({ items, currentPath }) =>
             <button
               type="button"
               aria-expanded={isExpanded}
-              aria-haspopup="true"
               onClick={() => toggleMenu(item.label)}
               className="nav-button"
             >
@@ -495,7 +493,7 @@ export const Navigation: React.FC<NavigationProps> = ({ items, currentPath }) =>
               </span>
             </button>
             {isExpanded && (
-              <ul role="menu" aria-label={`${item.label} submenu`}>
+              <ul aria-label={`${item.label} submenu`}>
                 {item.children?.map((child) => renderNavItem(child, level + 1))}
               </ul>
             )}
@@ -503,7 +501,6 @@ export const Navigation: React.FC<NavigationProps> = ({ items, currentPath }) =>
         ) : (
           <a
             href={item.href}
-            role="menuitem"
             aria-current={isCurrent ? 'page' : undefined}
             className={isCurrent ? 'active' : ''}
           >
@@ -516,7 +513,7 @@ export const Navigation: React.FC<NavigationProps> = ({ items, currentPath }) =>
 
   return (
     <nav aria-label="Main navigation">
-      <ul role="menubar">
+      <ul>
         {items.map((item) => renderNavItem(item))}
       </ul>
     </nav>
@@ -566,7 +563,7 @@ describe('Navigation', () => {
   it('should mark current page with aria-current', () => {
     render(<Navigation items={mockNavItems} currentPath="/about" />);
 
-    const aboutLink = screen.getByRole('menuitem', { name: 'About' });
+    const aboutLink = screen.getByRole('link', { name: 'About' });
     expect(aboutLink).toHaveAttribute('aria-current', 'page');
   });
 });
@@ -606,11 +603,9 @@ import { configureAxe } from 'jest-axe';
 
 // Only run specific rules
 const axeWithSpecificRules = configureAxe({
-  rules: {
-    'label': { enabled: true },
-    'button-name': { enabled: true },
-    'image-alt': { enabled: true },
-    // Disable all others by setting them in runOnly
+  runOnly: {
+    type: 'rule',
+    values: ['label', 'button-name', 'image-alt'],
   },
 });
 
@@ -624,23 +619,26 @@ describe('Form accessibility', () => {
 });
 ```
 
-### Excluding Elements from Testing
+### Scoping Elements Under Test
 
 ```tsx
 import { axe } from 'jest-axe';
 
-describe('Component with excluded elements', () => {
-  it('should pass excluding third-party components', async () => {
+describe('Component with scoped accessibility testing', () => {
+  it('should pass when testing only owned component markup', async () => {
     const { container } = render(
       <div>
-        <MyComponent />
+        <div data-testid="content-under-test">
+          <MyComponent />
+        </div>
         <ThirdPartyWidget data-testid="widget" />
       </div>
     );
 
-    const results = await axe(container, {
-      exclude: ['.third-party-widget', '[data-testid="widget"]'],
-    });
+    const contentUnderTest = container.querySelector(
+      '[data-testid="content-under-test"]'
+    ) as HTMLElement;
+    const results = await axe(contentUnderTest);
     expect(results).toHaveNoViolations();
   });
 });
@@ -648,7 +646,7 @@ describe('Component with excluded elements', () => {
 
 ## Testing Color Contrast
 
-Color contrast is critical for users with visual impairments:
+Color contrast is critical for users with visual impairments. The `color-contrast` rule does not work in JSDOM and is turned off in jest-axe, so use browser-based axe testing or manual contrast checks for actual color contrast validation. The following component can still be covered by jest-axe for non-contrast accessibility rules:
 
 ```tsx
 // ColorContrastTest.tsx
@@ -689,7 +687,7 @@ import { render } from '@testing-library/react';
 import { axe } from 'jest-axe';
 import { Alert } from './Alert';
 
-describe('Alert color contrast', () => {
+describe('Alert accessibility', () => {
   const alertTypes: Array<'success' | 'warning' | 'error' | 'info'> = [
     'success',
     'warning',
@@ -698,7 +696,7 @@ describe('Alert color contrast', () => {
   ];
 
   alertTypes.forEach((type) => {
-    it(`should have sufficient color contrast for ${type} alerts`, async () => {
+    it(`should have no non-contrast accessibility violations for ${type} alerts`, async () => {
       const { container } = render(
         <Alert type={type} message={`This is a ${type} message`} />
       );
@@ -716,7 +714,7 @@ Dynamic content updates need proper ARIA live region handling:
 
 ```tsx
 // LiveRegion.tsx
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 
 interface Notification {
   id: string;
@@ -742,7 +740,6 @@ export const NotificationArea: React.FC<NotificationAreaProps> = ({
         <div
           key={notification.id}
           className={`notification notification-${notification.type}`}
-          role="alert"
         >
           {notification.message}
         </div>
@@ -939,9 +936,9 @@ jobs:
 {
   "scripts": {
     "test": "jest",
-    "test:a11y": "jest --testPathPattern='\\.a11y\\.test\\.(ts|tsx)$'",
-    "test:a11y:watch": "jest --testPathPattern='\\.a11y\\.test\\.(ts|tsx)$' --watch",
-    "test:a11y:coverage": "jest --testPathPattern='\\.a11y\\.test\\.(ts|tsx)$' --coverage"
+    "test:a11y": "jest --testPathPatterns='\\.a11y\\.test\\.(ts|tsx)$'",
+    "test:a11y:watch": "jest --testPathPatterns='\\.a11y\\.test\\.(ts|tsx)$' --watch",
+    "test:a11y:coverage": "jest --testPathPatterns='\\.a11y\\.test\\.(ts|tsx)$' --coverage"
   }
 }
 ```
@@ -1067,7 +1064,7 @@ export const Dropdown: React.FC<DropdownProps> = ({
   useEffect(() => {
     if (isOpen && focusedIndex >= 0 && listRef.current) {
       const focusedElement = listRef.current.children[focusedIndex] as HTMLElement;
-      focusedElement?.scrollIntoView({ block: 'nearest' });
+      focusedElement?.scrollIntoView?.({ block: 'nearest' });
     }
   }, [focusedIndex, isOpen]);
 
@@ -1129,7 +1126,6 @@ export const Dropdown: React.FC<DropdownProps> = ({
 // Dropdown.test.tsx
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { axe } from 'jest-axe';
 import { Dropdown } from './Dropdown';
 
