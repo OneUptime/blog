@@ -20,7 +20,7 @@ IPvlan vs Macvlan
 │  Different MAC per container│  Same MAC as parent interface │
 │  More isolated              │  Better for VLAN-heavy envs   │
 │  May hit MAC limits         │  No MAC address issues        │
-│  Works with DHCP            │  Requires static IPs (L3)     │
+│  External DHCP possible     │  Requires routed subnets (L3) │
 └────────────────────────────────────────────────────────────┘
 ```
 
@@ -66,7 +66,7 @@ docker network create -d ipvlan \
   ipvlan-l3-2
 ```
 
-## L3S Mode (L3 with Source Validation)
+## L3S Mode (L3 Symmetric with Conntrack)
 
 ```bash
 # Create L3S IPvlan network
@@ -80,8 +80,6 @@ docker network create -d ipvlan \
 ## Docker Compose with L2
 
 ```yaml
-version: '3.8'
-
 services:
   web:
     image: nginx:alpine
@@ -111,8 +109,6 @@ networks:
 ## Docker Compose with L3
 
 ```yaml
-version: '3.8'
-
 services:
   frontend:
     image: nginx:alpine
@@ -181,8 +177,6 @@ docker network create -d ipvlan \
 ```
 
 ```yaml
-version: '3.8'
-
 services:
   app:
     image: myapp:latest
@@ -205,8 +199,6 @@ networks:
 ## Multi-Network Setup
 
 ```yaml
-version: '3.8'
-
 services:
   loadbalancer:
     image: haproxy:2.8
@@ -268,8 +260,6 @@ ip route add 10.0.1.0/24 dev eth0
 ## Complete Production Setup
 
 ```yaml
-version: '3.8'
-
 services:
   # Frontend on L2 for direct LAN access
   nginx:
@@ -372,7 +362,6 @@ modinfo ipvlan
 |------|----------|---------|
 | L2 | Same subnet as LAN | Switch/Router |
 | L3 | Isolated subnets | Host as router |
-| L3S | L3 with security | Host as router + validation |
+| L3S | L3 with conntrack | Host as router + conntrack |
 
 IPvlan networks are ideal when you have MAC address limitations or need better performance with VLANs. Use L2 mode for direct LAN access and L3 mode for isolated routing. For service discovery, see our post on [Docker Network Aliases](https://oneuptime.com/blog/post/2026-01-16-docker-network-aliases/view).
-
