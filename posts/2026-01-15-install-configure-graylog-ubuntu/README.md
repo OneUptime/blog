@@ -511,8 +511,8 @@ curl -u admin:password http://localhost:9000/api/system/cluster/nodes
 ### Input Not Receiving Data
 
 ```bash
-# Check if port is open
-ss -tlnp | grep 5140
+# Check if port is open (Syslog UDP input listens on UDP)
+ss -ulnp | grep 5140
 
 # Test syslog input
 logger -n localhost -P 5140 "Test message"
