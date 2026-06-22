@@ -46,7 +46,7 @@ Before installing iRedMail, ensure you have the following:
 
 ### System Requirements
 
-- A clean Ubuntu installation (20.04 LTS, 22.04 LTS, or 24.04 LTS recommended)
+- A clean Ubuntu installation (22.04 LTS, 24.04 LTS, or 26.04 LTS; 24.04 LTS is recommended)
 - Minimum 4 GB RAM (8 GB recommended for production)
 - At least 20 GB disk space
 - Root or sudo access
@@ -87,9 +87,8 @@ _dmarc.example.com.  IN    TXT     "v=DMARC1; p=quarantine; rua=mailto:dmarc@exa
 Set your server's hostname before installation:
 
 ```bash
-# Set the hostname to your mail server's fully qualified domain name (FQDN)
-# This is crucial - iRedMail uses this hostname during installation
-sudo hostnamectl set-hostname mail.example.com
+# Set the short hostname. The FQDN is resolved through /etc/hosts.
+sudo hostnamectl set-hostname mail
 
 # Verify the hostname was set correctly
 hostname -f
@@ -109,11 +108,9 @@ Add the following entries:
 # /etc/hosts
 # Format: IP_ADDRESS    FQDN    SHORT_HOSTNAME
 
-127.0.0.1       localhost
-203.0.113.10    mail.example.com    mail
+127.0.0.1       mail.example.com mail localhost localhost.localdomain
 
-# The second line maps your public IP to the FQDN and short hostname
-# Replace 203.0.113.10 with your actual server IP
+# List the FQDN before the short hostname so hostname -f returns mail.example.com.
 ```
 
 ---
@@ -129,19 +126,21 @@ sudo apt update && sudo apt upgrade -y
 
 # Install required utilities
 # wget: for downloading files
-# bzip2: for extracting the iRedMail archive
-sudo apt install -y wget bzip2
+# gzip: for extracting the iRedMail archive
+# dialog: required by the interactive installer
+sudo apt install -y wget gzip dialog
 ```
 
 ### Step 2: Download the Latest iRedMail Release
 
 ```bash
-# Navigate to a temporary directory for the download
-cd /tmp
+# Navigate to root's home directory for the download
+sudo -i
+cd /root
 
 # Download the latest iRedMail version
 # Check https://www.iredmail.org/download.html for the current version
-IREDMAIL_VERSION="1.7.1"
+IREDMAIL_VERSION="1.8.2"
 wget "https://github.com/iredmail/iRedMail/archive/refs/tags/${IREDMAIL_VERSION}.tar.gz"
 
 # Extract the downloaded archive
@@ -161,7 +160,7 @@ chmod +x iRedMail.sh
 # Verify you're ready for installation
 # Check that you're in the correct directory
 pwd
-# Output: /tmp/iRedMail-1.7.1
+# Output: /root/iRedMail-1.8.2
 
 # List the contents to confirm extraction was successful
 ls -la
@@ -485,18 +484,10 @@ sudo nano /etc/sogo/sogo.conf
     SOGoLanguage = English;
 
     // Mail settings
-    SOGoMailDomain = "example.com";
     SOGoForceExternalLoginWithEmail = YES;
 
     // Calendar settings
     SOGoEnablePublicAccess = NO;
-    SOGoCalendarDefaultRoles = (
-        PublicDAndTViewer,
-        ConfidentialDAndTViewer
-    );
-
-    // ActiveSync settings (for mobile devices)
-    SOGoEASyncEnable = YES;
 }
 
 # After making changes, restart SOGo
@@ -521,8 +512,8 @@ INSERT INTO domain (
     domain,           -- Domain name
     description,      -- Human-readable description
     transport,        -- Mail transport method
-    maxquota,         -- Maximum quota per user (MB), 0 = unlimited
-    quota,            -- Total domain quota (MB), 0 = unlimited
+    maxquota,         -- Maximum quota per user in bytes, 0 = unlimited
+    quota,            -- Historical field, keep 0
     backupmx,         -- Is this a backup MX? (0 = no)
     created,          -- Creation timestamp
     active            -- Is domain active? (1 = yes)
@@ -530,9 +521,9 @@ INSERT INTO domain (
 VALUES (
     'newdomain.com',
     'New Domain for Company',
-    'virtual',
-    2048,             -- 2GB max quota per user
-    0,                -- Unlimited total domain quota
+    'dovecot',
+    2147483648,       -- 2GB max quota per user
+    0,
     0,
     NOW(),
     1
@@ -547,64 +538,23 @@ EXIT;
 ### Adding a New User via Command Line
 
 ```bash
-# First, generate a password hash
-# Save this output for the next step
-doveadm pw -s SSHA512 -p 'UserPassword123!'
+# Use iRedMail's helper script from the extracted installer directory.
+# Always quote the password with single quotes.
+cd /root/iRedMail-1.8.2/tools/
+bash create_mail_user_SQL.sh john@example.com 'UserPassword123!' > /tmp/john.sql
 
 # Connect to the database
 sudo mysql -u root -p
 
 USE vmail;
 
-# Add a new mailbox user
-INSERT INTO mailbox (
-    username,         -- Full email address
-    password,         -- Hashed password (from doveadm output)
-    name,             -- Display name
-    maildir,          -- Mail storage path (relative to /var/vmail/vmail1)
-    quota,            -- Mailbox quota in bytes (1073741824 = 1GB)
-    domain,           -- Domain this user belongs to
-    local_part,       -- Part before @ in email
-    created,          -- Creation timestamp
-    active            -- Is account active? (1 = yes)
-)
-VALUES (
-    'john@example.com',
-    '{SSHA512}YOUR_GENERATED_HASH_HERE',
-    'John Smith',
-    'example.com/j/o/h/john-2026.01.15.10.30.00/',
-    1073741824,
-    'example.com',
-    'john',
-    NOW(),
-    1
-);
-
-# Add the user to the forwardings table for local delivery
-INSERT INTO forwardings (
-    address,
-    forwarding,
-    domain,
-    dest_domain,
-    is_forwarding,
-    active
-)
-VALUES (
-    'john@example.com',
-    'john@example.com',
-    'example.com',
-    'example.com',
-    0,
-    1
-);
+# Import the SQL generated by iRedMail's helper.
+SOURCE /tmp/john.sql;
 
 EXIT;
 
-# Create the maildir structure
-# This directory will be created automatically on first email
-# but you can create it manually if needed:
-sudo mkdir -p /var/vmail/vmail1/example.com/j/o/h/john-2026.01.15.10.30.00/
-sudo chown -R vmail:vmail /var/vmail/vmail1/example.com/
+# Remove the temporary SQL file because it contains a password hash.
+rm -f /tmp/john.sql
 ```
 
 ### Adding Email Aliases
@@ -617,41 +567,26 @@ USE vmail;
 
 # Create an alias that forwards to another address
 # This forwards all mail from info@example.com to john@example.com
-INSERT INTO alias (
-    address,          -- The alias address
-    goto,             -- Where to forward (can be multiple, comma-separated)
-    domain,           -- Domain of the alias
-    created,          -- Creation timestamp
-    active            -- Is alias active?
-)
-VALUES (
-    'info@example.com',
-    'john@example.com',
-    'example.com',
-    NOW(),
-    1
-);
+INSERT INTO alias (address, domain, active)
+VALUES ('info@example.com', 'example.com', 1);
+
+INSERT INTO forwardings (address, forwarding, domain, dest_domain, is_list, active)
+VALUES ('info@example.com', 'john@example.com', 'example.com', 'example.com', 1, 1);
 
 # Create an alias that forwards to multiple addresses
-INSERT INTO alias (address, goto, domain, created, active)
-VALUES (
-    'sales@example.com',
-    'john@example.com,jane@example.com,manager@example.com',
-    'example.com',
-    NOW(),
-    1
-);
+INSERT INTO alias (address, domain, active)
+VALUES ('sales@example.com', 'example.com', 1);
+
+INSERT INTO forwardings (address, forwarding, domain, dest_domain, is_list, active)
+VALUES
+    ('sales@example.com', 'john@example.com', 'example.com', 'example.com', 1, 1),
+    ('sales@example.com', 'jane@example.com', 'example.com', 'example.com', 1, 1),
+    ('sales@example.com', 'manager@example.com', 'example.com', 'example.com', 1, 1);
 
 # Create a catch-all alias (receives all mail to non-existent addresses)
 # Use with caution - this can attract spam
-INSERT INTO alias (address, goto, domain, created, active)
-VALUES (
-    '@example.com',           -- @ prefix makes it a catch-all
-    'postmaster@example.com',
-    'example.com',
-    NOW(),
-    1
-);
+INSERT INTO forwardings (address, forwarding, domain, dest_domain)
+VALUES ('example.com', 'postmaster@example.com', 'example.com', 'example.com');
 
 EXIT;
 ```
@@ -668,89 +603,50 @@ iRedMail includes self-signed certificates by default, but for production use, y
 # Install Certbot for Let's Encrypt certificates
 sudo apt install -y certbot
 
-# Stop Nginx temporarily (required for standalone verification)
-sudo systemctl stop nginx
+# Test the request first with iRedMail's existing webroot.
+sudo certbot certonly --webroot --dry-run \
+    -w /opt/www/well_known \
+    -d mail.example.com
 
-# Request certificates for your mail server hostname
-# Certbot will verify domain ownership via HTTP challenge
-sudo certbot certonly --standalone \
-    -d mail.example.com \
-    --agree-tos \
-    --email admin@example.com \
-    --non-interactive
+# If the dry run succeeds, request the real certificate.
+sudo certbot certonly --webroot \
+    -w /opt/www/well_known \
+    -d mail.example.com
 
 # The certificates will be stored in:
 # /etc/letsencrypt/live/mail.example.com/fullchain.pem (certificate + chain)
 # /etc/letsencrypt/live/mail.example.com/privkey.pem (private key)
+
+# Allow mail services to traverse Certbot's live/archive directories.
+sudo chmod 0755 /etc/letsencrypt/{live,archive}
 ```
 
 ### Configuring Postfix for SSL
 
 ```bash
-# Edit Postfix main configuration
-sudo nano /etc/postfix/main.cf
-
-# Update SSL certificate paths
-# Find and replace the existing certificate settings:
-
-smtpd_tls_cert_file = /etc/letsencrypt/live/mail.example.com/fullchain.pem
-smtpd_tls_key_file = /etc/letsencrypt/live/mail.example.com/privkey.pem
-smtpd_tls_CAfile = /etc/letsencrypt/live/mail.example.com/chain.pem
-
-# Security settings for TLS
-smtpd_tls_security_level = may
-smtpd_tls_loglevel = 1
-smtpd_tls_session_cache_database = btree:${data_directory}/smtpd_scache
-
-# Require TLS for authenticated connections
-smtpd_tls_auth_only = yes
-
-# Modern TLS protocols only (disable SSLv3 and older)
-smtpd_tls_mandatory_protocols = !SSLv2, !SSLv3, !TLSv1, !TLSv1.1
-smtpd_tls_protocols = !SSLv2, !SSLv3, !TLSv1, !TLSv1.1
+# iRedMail's Postfix config already points at these files on Ubuntu:
+# smtpd_tls_cert_file = /etc/ssl/certs/iRedMail.crt
+# smtpd_tls_key_file = /etc/ssl/private/iRedMail.key
+# Replace the self-signed files with symlinks to Let's Encrypt.
+sudo mv /etc/ssl/certs/iRedMail.crt /etc/ssl/certs/iRedMail.crt.bak
+sudo mv /etc/ssl/private/iRedMail.key /etc/ssl/private/iRedMail.key.bak
+sudo ln -s /etc/letsencrypt/live/mail.example.com/fullchain.pem /etc/ssl/certs/iRedMail.crt
+sudo ln -s /etc/letsencrypt/live/mail.example.com/privkey.pem /etc/ssl/private/iRedMail.key
 ```
 
 ### Configuring Dovecot for SSL
 
 ```bash
-# Edit Dovecot SSL configuration
-sudo nano /etc/dovecot/conf.d/10-ssl.conf
-
-# Update SSL certificate paths
-ssl_cert = </etc/letsencrypt/live/mail.example.com/fullchain.pem
-ssl_key = </etc/letsencrypt/live/mail.example.com/privkey.pem
-
-# SSL/TLS settings
-ssl = required
-ssl_min_protocol = TLSv1.2
-ssl_prefer_server_ciphers = yes
+# iRedMail's Dovecot config also uses the same iRedMail.crt and iRedMail.key
+# symlinks, so no Dovecot-specific certificate path change is required.
+sudo doveconf -n | grep -E 'ssl_(cert|key)'
 ```
 
 ### Configuring Nginx for SSL
 
 ```bash
-# Edit Nginx SSL configuration
-sudo nano /etc/nginx/sites-available/00-default-ssl.conf
-
-# Update SSL certificate paths in the server block
-server {
-    listen 443 ssl http2;
-    server_name mail.example.com;
-
-    # SSL certificates
-    ssl_certificate /etc/letsencrypt/live/mail.example.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/mail.example.com/privkey.pem;
-
-    # Modern SSL configuration
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256;
-    ssl_prefer_server_ciphers off;
-
-    # HSTS (optional but recommended)
-    add_header Strict-Transport-Security "max-age=31536000" always;
-
-    # ... rest of configuration
-}
+# iRedMail's Nginx SSL template uses the same certificate symlinks:
+sudo grep -E 'ssl_certificate|ssl_certificate_key' /etc/nginx/templates/ssl.tmpl
 ```
 
 ### Restart Services
@@ -778,9 +674,8 @@ sudo nano /etc/letsencrypt/renewal-hooks/deploy/restart-mail-services.sh
 # This script runs after certificate renewal
 # Restart services to pick up new certificates
 
-systemctl restart postfix
-systemctl restart dovecot
-systemctl restart nginx
+ln -sf /etc/letsencrypt/live/mail.example.com/privkey.pem /etc/ssl/private/iRedMail.key
+systemctl restart postfix dovecot nginx
 
 # Make the script executable
 sudo chmod +x /etc/letsencrypt/renewal-hooks/deploy/restart-mail-services.sh
@@ -803,7 +698,7 @@ iRedMail includes SpamAssassin and Amavisd for spam filtering. Here's how to cus
 
 ```bash
 # Main SpamAssassin configuration file
-sudo nano /etc/spamassassin/local.cf
+sudo nano /etc/mail/spamassassin/local.cf
 
 # Add or modify these settings:
 
@@ -842,8 +737,8 @@ use_razor2 1
 use_pyzor 1
 
 # Save and exit
-# After making changes, restart SpamAssassin
-sudo systemctl restart spamassassin
+# iRedMail runs SpamAssassin through Amavisd on Ubuntu.
+sudo systemctl restart amavis
 ```
 
 ### Amavisd Configuration
@@ -934,26 +829,19 @@ sudo amavisd-new testkeys
 ### Greylisting Configuration
 
 ```bash
-# iRedMail uses iRedAPD for greylisting
-# Configuration file:
-sudo nano /opt/iredapd/settings.py
+# iRedMail uses iRedAPD for greylisting.
+cd /opt/iredapd/tools
 
-# Enable or disable greylisting
-# Greylisting temporarily rejects unknown senders
-# Legitimate servers retry, spam bots usually don't
-ENABLE_GREYLISTING = True
+# List current greylisting settings.
+sudo python3 greylisting_admin.py --list
 
-# Greylist duration in seconds (default: 5 minutes)
-GREYLISTING_DELAY = 300
+# Enable greylisting for all senders to the example.com domain.
+sudo python3 greylisting_admin.py --enable --to '@example.com'
 
-# Whitelist domains from greylisting (trusted senders)
-GREYLISTING_WHITELIST_DOMAINS = [
-    'gmail.com',
-    'outlook.com',
-    'yahoo.com',
-]
+# Whitelist a sender domain from greylisting.
+sudo python3 greylisting_admin.py --whitelist-domain --from '@trustedpartner.com'
 
-# Restart iRedAPD after changes
+# Restart iRedAPD after changes.
 sudo systemctl restart iredapd
 ```
 
@@ -1021,12 +909,12 @@ tar -czf configs.tar.gz \
     /etc/postfix/ \
     /etc/dovecot/ \
     /etc/amavis/ \
-    /etc/spamassassin/ \
+    /etc/mail/spamassassin/ \
     /etc/nginx/ \
     /opt/www/roundcubemail/config/ \
     /etc/sogo/ \
     /opt/iredapd/settings.py \
-    /opt/iredmail/
+    /etc/iredmail-release
 
 # 4. Backup SSL certificates
 echo "Backing up SSL certificates..."
@@ -1043,7 +931,7 @@ iRedMail Backup Manifest
 ========================
 Date: $(date)
 Hostname: $(hostname -f)
-iRedMail Version: $(cat /opt/iredmail/.iredmail_version 2>/dev/null || echo "Unknown")
+iRedMail Version: $(cat /etc/iredmail-release 2>/dev/null || echo "Unknown")
 
 Files in this backup:
 $(ls -la)
@@ -1054,7 +942,7 @@ EOF
 
 # 7. Clean up old backups
 echo "Cleaning up backups older than ${RETENTION_DAYS} days..."
-find "${BACKUP_DIR}" -maxdepth 1 -type d -mtime +${RETENTION_DAYS} -exec rm -rf {} \;
+find "${BACKUP_DIR}" -mindepth 1 -maxdepth 1 -type d -mtime +${RETENTION_DAYS} -exec rm -rf {} \;
 
 # 8. Calculate total backup size
 TOTAL_SIZE=$(du -sh "${BACKUP_DIR}/${DATE}" | cut -f1)
