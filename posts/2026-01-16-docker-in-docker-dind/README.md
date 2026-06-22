@@ -48,18 +48,25 @@ flowchart TB
 
 ```bash
 # Run official DinD image
+docker network create dind-network
 
-docker run --privileged --name dind -d docker:dind
+docker run --privileged --name dind -d \
+  --network dind-network --network-alias docker \
+  -e DOCKER_TLS_CERTDIR=/certs \
+  -v dind-certs-ca:/certs/ca \
+  -v dind-certs-client:/certs/client \
+  docker:dind
 
 # Connect a client container to it
-docker run --rm --link dind:docker docker:latest docker ps
+docker run --rm --network dind-network \
+  -e DOCKER_TLS_CERTDIR=/certs \
+  -v dind-certs-client:/certs/client:ro \
+  docker:latest docker ps
 ```
 
 ### DinD with Docker Compose
 
 ```yaml
-version: '3.8'
-
 services:
   dind:
     image: docker:dind
@@ -223,7 +230,7 @@ variables:
   DOCKER_HOST: tcp://docker:2376
   DOCKER_TLS_CERTDIR: "/certs"
   DOCKER_CERT_PATH: "/certs/client"
-  DOCKER_TLS_VERIFY: 1
+  DOCKER_TLS_VERIFY: "1"
 
 build:
   stage: build
@@ -249,15 +256,14 @@ jobs:
         options: --privileged
         env:
           DOCKER_TLS_CERTDIR: ""
-
-    container:
-      image: docker:latest
-      env:
-        DOCKER_HOST: tcp://dind:2375
+        ports:
+          - 2375:2375
 
     steps:
       - uses: actions/checkout@v4
       - run: docker build -t myimage .
+        env:
+          DOCKER_HOST: tcp://localhost:2375
 ```
 
 ### Jenkins with DinD
@@ -284,8 +290,6 @@ pipeline {
 ## Complete DinD CI Pipeline Example
 
 ```yaml
-version: '3.8'
-
 services:
   # Docker-in-Docker daemon
   dind:
@@ -346,13 +350,13 @@ networks:
 | Performance | Overhead | Native speed |
 | Caching | Separate cache | Shared cache |
 | Complexity | More complex | Simple |
-| Clean state | Each run is fresh | Persists state |
+| Clean state | Fresh if storage is not persisted | Persists state |
 
 ## When to Use Each
 
 **Use DinD when:**
 - You need complete isolation between builds
-- Running untrusted code
+- Running less-trusted code on dedicated or ephemeral hosts
 - Testing Docker-in-Docker scenarios
 - You want fresh state for each build
 
@@ -406,10 +410,9 @@ docker run -v /var/run/docker.sock:/var/run/docker.sock \
 | Feature | DinD | Socket Binding | Socket Proxy |
 |---------|------|----------------|--------------|
 | Security | Medium | Low | Medium-High |
-| Isolation | Full | None | Partial |
+| Isolation | Better | None | Partial |
 | Performance | Lower | Native | Native |
 | Setup | Complex | Simple | Medium |
 | Recommended for | CI/CD, Testing | Trusted pipelines | Production CI |
 
 For CI/CD pipelines, DinD provides better isolation at the cost of complexity and performance. Socket binding is simpler but requires trust in the executed code. Using a socket proxy provides a middle ground with restricted API access. Choose based on your security requirements and trust model.
-
