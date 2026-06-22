@@ -83,8 +83,8 @@ export interface Spec extends TurboModule {
     callback: (error: string | null, data: string | null) => void
   ): void;
 
-  // Optional method (may not be implemented on all platforms)
-  getCarrierName?(): string;
+  // Nullable result for data that may not be available on all platforms
+  getCarrierName(): string | null;
 
   // Constants exposed to JavaScript
   getConstants(): {
@@ -94,7 +94,7 @@ export interface Spec extends TurboModule {
   };
 }
 
-export default TurboModuleRegistry.getEnforcing<Spec>('DeviceInfo');
+export default TurboModuleRegistry.getEnforcing<Spec>('NativeDeviceInfo');
 ```
 
 ### Generated Types
@@ -103,8 +103,7 @@ When you run Codegen, it generates native interfaces that match your TypeScript 
 
 ```bash
 # iOS
-
-cd ios && pod install
+cd ios && bundle exec pod install
 
 # Android
 cd android && ./gradlew generateCodegenArtifactsFromSchema
@@ -160,8 +159,8 @@ declare module 'react-native' {
   }
 }
 
-// Export typed module for direct import
-export const CameraModule = NativeModules.CameraModule as CameraModuleInterface;
+// Export typed module for direct import from a .d.ts file
+export const CameraModule: CameraModuleInterface;
 ```
 
 ### Creating a Type-Safe Wrapper
@@ -372,6 +371,7 @@ Native components (ViewManagers) require careful prop typing to ensure the JavaS
 
 ```typescript
 // components/NativeMap.tsx
+import React from 'react';
 import {
   requireNativeComponent,
   ViewProps,
@@ -471,7 +471,6 @@ import {
   UIManager,
   findNodeHandle,
   ViewProps,
-  Platform,
   NativeSyntheticEvent,
 } from 'react-native';
 
@@ -499,7 +498,7 @@ interface ErrorEvent {
 
 // Props interface
 interface NativeVideoPlayerProps extends ViewProps {
-  source: { uri: string } | { require: number };
+  source: { uri: string } | number;
   autoPlay?: boolean;
   loop?: boolean;
   muted?: boolean;
@@ -583,7 +582,7 @@ Native modules often emit events to JavaScript. Properly typing these events is 
 import { NativeModules, NativeEventEmitter, EmitterSubscription } from 'react-native';
 
 // Define all possible events and their payloads
-interface BluetoothEventMap {
+export interface BluetoothEventMap {
   deviceDiscovered: {
     id: string;
     name: string;
@@ -663,13 +662,13 @@ export const Bluetooth = {
 
 ```typescript
 // hooks/useBluetoothEvent.ts
-import { useEffect } from 'react';
+import { useEffect, type DependencyList } from 'react';
 import { Bluetooth, BluetoothEventMap } from '../modules/BluetoothModule';
 
 export function useBluetoothEvent<E extends keyof BluetoothEventMap>(
   eventName: E,
   callback: (event: BluetoothEventMap[E]) => void,
-  deps: React.DependencyList = []
+  deps: DependencyList = []
 ): void {
   useEffect(() => {
     const subscription = Bluetooth.addListener(eventName, callback);
@@ -698,7 +697,7 @@ React Native applications often have platform-specific native code. Type definit
 
 ```typescript
 // types/platform-specific.ts
-import { Platform } from 'react-native';
+import { NativeModules, Platform } from 'react-native';
 
 // iOS-specific types
 interface IOSHaptics {
@@ -761,7 +760,7 @@ export function triggerHapticFeedback(type: 'light' | 'medium' | 'heavy'): void 
 
 ```typescript
 // components/NativeDatePicker.tsx
-import { Platform, ViewProps } from 'react-native';
+import { ViewProps } from 'react-native';
 
 // Common props
 interface BaseDatePickerProps extends ViewProps {
@@ -787,10 +786,17 @@ interface AndroidDatePickerProps extends BaseDatePickerProps {
   is24Hour?: boolean;
 }
 
-// Platform-conditional type
-type DatePickerProps = Platform['OS'] extends 'ios'
+// Platform-conditional type for APIs that accept an explicit platform type
+type DatePickerPropsFor<TPlatform extends 'ios' | 'android'> =
+  TPlatform extends 'ios'
   ? IOSDatePickerProps
   : AndroidDatePickerProps;
+
+type IOSOnlyDatePickerProps = DatePickerPropsFor<'ios'>;
+type AndroidOnlyDatePickerProps = DatePickerPropsFor<'android'>;
+
+// For runtime platform checks, use a union
+type DatePickerProps = IOSDatePickerProps | AndroidDatePickerProps;
 
 // Or use a discriminated union for runtime checking
 type PlatformDatePickerProps =
@@ -1049,10 +1055,10 @@ import { z } from 'zod';
 
 // Define runtime validators that match TypeScript types
 const PhotoResultSchema = z.object({
-  uri: z.string().url(),
+  uri: z.string().min(1),
   width: z.number().positive(),
   height: z.number().positive(),
-  exif: z.record(z.unknown()).optional(),
+  exif: z.record(z.string(), z.unknown()).optional(),
 });
 
 const VideoResultSchema = z.object({
@@ -1219,6 +1225,14 @@ function createDeviceId(id: string): DeviceId {
   return id as DeviceId;
 }
 
+function createServiceUUID(uuid: string): ServiceUUID {
+  return uuid as ServiceUUID;
+}
+
+function createCharacteristicUUID(uuid: string): CharacteristicUUID {
+  return uuid as CharacteristicUUID;
+}
+
 // Now methods can require specific ID types
 interface BluetoothModule {
   connect(deviceId: DeviceId): Promise<void>;
@@ -1232,6 +1246,7 @@ interface BluetoothModule {
 // This prevents mixing up different ID types
 const deviceId = createDeviceId('AA:BB:CC:DD:EE:FF');
 const serviceUuid = createServiceUUID('180D');
+const characteristicUuid = createCharacteristicUUID('2A37');
 
 // TypeScript error: Cannot assign CharacteristicUUID to ServiceUUID parameter
 // Bluetooth.readCharacteristic(deviceId, characteristicUuid, serviceUuid);
