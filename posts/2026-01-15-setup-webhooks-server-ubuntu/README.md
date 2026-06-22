@@ -62,7 +62,7 @@ webhook --version
 ```bash
 # Download the latest release for Linux amd64
 # Check https://github.com/adnanh/webhook/releases for the latest version
-WEBHOOK_VERSION="2.8.1"
+WEBHOOK_VERSION="2.8.3"
 wget https://github.com/adnanh/webhook/releases/download/${WEBHOOK_VERSION}/webhook-linux-amd64.tar.gz
 
 # Extract the binary
@@ -92,7 +92,7 @@ git clone https://github.com/adnanh/webhook.git
 cd webhook
 
 # Build the binary
-go build -o webhook
+go build github.com/adnanh/webhook
 
 # Install system-wide
 sudo mv webhook /usr/local/bin/
@@ -577,13 +577,15 @@ For complex scenarios, pass the entire JSON payload:
     "command-working-directory": "/tmp",
     "pass-file-to-command": [
       {
-        "source": "payload",
-        "name": "payload.json"
+        "source": "entire-payload",
+        "envname": "PAYLOAD_FILE"
       }
     ]
   }
 ]
 ```
+
+The script can then read the temporary payload file from the `PAYLOAD_FILE` environment variable.
 
 ## 7. Security: Secrets and Signatures
 
@@ -649,9 +651,9 @@ Never expose webhook endpoints without authentication. Most services support HMA
 
 ### Using Environment Variables for Secrets
 
-Instead of hardcoding secrets in your configuration, use environment variables:
+Instead of hardcoding secrets in your configuration, use environment variables. Start `webhook` with the `-template` flag so the `getenv` template function is evaluated:
 
-```json
+```text
 [
   {
     "id": "env-secret-hook",
@@ -660,7 +662,7 @@ Instead of hardcoding secrets in your configuration, use environment variables:
     "trigger-rule": {
       "match": {
         "type": "payload-hmac-sha256",
-        "secret": "{{ getenv \"WEBHOOK_SECRET\" }}",
+        "secret": "{{ getenv "WEBHOOK_SECRET" | js }}",
         "parameter": {
           "source": "header",
           "name": "X-Hub-Signature-256"
@@ -674,6 +676,8 @@ Instead of hardcoding secrets in your configuration, use environment variables:
 ### IP Whitelisting
 
 Combine signature verification with IP restrictions for defense in depth:
+
+When `webhook` is exposed directly, use the built-in `ip-whitelist` trigger rule:
 
 ```json
 [
@@ -704,6 +708,8 @@ Combine signature verification with IP restrictions for defense in depth:
   }
 ]
 ```
+
+If you run `webhook` behind Nginx as shown below, enforce IP restrictions in Nginx instead. The `ip-whitelist` trigger rule checks the address of the reverse proxy, not the original client IP.
 
 ### Security Best Practices
 
@@ -770,8 +776,9 @@ EnvironmentFile=/etc/webhook/secrets.env
 # -hotreload: Reload hooks.json when it changes (no restart needed)
 # -hooks: Path to configuration file
 # -port: Port to listen on (use high port, reverse proxy handles 80/443)
-# -secure: Only bind to localhost (reverse proxy handles external traffic)
-ExecStart=/usr/local/bin/webhook -verbose -hotreload -hooks /etc/webhook/hooks.json -port 9000 -ip 127.0.0.1
+# -ip: Bind to localhost only (reverse proxy handles external traffic)
+# -template: Evaluate getenv/cat/credential template functions in hooks.json
+ExecStart=/usr/local/bin/webhook -verbose -hotreload -template -hooks /etc/webhook/hooks.json -port 9000 -ip 127.0.0.1
 
 # Restart policy - always restart on failure
 Restart=always
@@ -979,8 +986,9 @@ server {
 
 # HTTPS server
 server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
     server_name webhooks.yourdomain.com;
 
     # SSL certificate paths (managed by Certbot)
@@ -1034,7 +1042,7 @@ server {
 
 ### Use Case 1: Automated Git Deployment
 
-```json
+```text
 [
   {
     "id": "git-auto-deploy",
@@ -1055,7 +1063,7 @@ server {
         {
           "match": {
             "type": "payload-hmac-sha256",
-            "secret": "{{ getenv \"GITHUB_WEBHOOK_SECRET\" }}",
+            "secret": "{{ getenv "GITHUB_WEBHOOK_SECRET" | js }}",
             "parameter": {
               "source": "header",
               "name": "X-Hub-Signature-256"
@@ -1160,7 +1168,7 @@ log "=== Deployment completed successfully ==="
 
 ### Use Case 2: CI/CD Pipeline Trigger
 
-```json
+```text
 [
   {
     "id": "trigger-ci-pipeline",
@@ -1189,7 +1197,7 @@ log "=== Deployment completed successfully ==="
         {
           "match": {
             "type": "payload-hmac-sha256",
-            "secret": "{{ getenv \"GITHUB_WEBHOOK_SECRET\" }}",
+            "secret": "{{ getenv "GITHUB_WEBHOOK_SECRET" | js }}",
             "parameter": {
               "source": "header",
               "name": "X-Hub-Signature-256"
@@ -1278,7 +1286,7 @@ log "CI trigger completed for PR #$PR_NUMBER"
 
 ### Use Case 3: Slack Notifications
 
-```json
+```text
 [
   {
     "id": "slack-deployment-notify",
@@ -1309,7 +1317,7 @@ log "CI trigger completed for PR #$PR_NUMBER"
     "trigger-rule": {
       "match": {
         "type": "payload-hmac-sha256",
-        "secret": "{{ getenv \"GITHUB_WEBHOOK_SECRET\" }}",
+        "secret": "{{ getenv "GITHUB_WEBHOOK_SECRET" | js }}",
         "parameter": {
           "source": "header",
           "name": "X-Hub-Signature-256"
@@ -1396,7 +1404,7 @@ echo "Slack notification sent"
 
 ### Use Case 4: Database Backup on Schedule
 
-```json
+```text
 [
   {
     "id": "trigger-backup",
@@ -1411,7 +1419,7 @@ echo "Slack notification sent"
     "trigger-rule": {
       "match": {
         "type": "value",
-        "value": "{{ getenv \"BACKUP_API_KEY\" }}",
+        "value": "{{ getenv "BACKUP_API_KEY" | js }}",
         "parameter": {
           "source": "header",
           "name": "X-API-Key"
@@ -1461,8 +1469,8 @@ Create a debug hook to see exactly what data you're receiving:
     "command-working-directory": "/tmp",
     "pass-file-to-command": [
       {
-        "source": "payload",
-        "name": "payload.json"
+        "source": "entire-payload",
+        "envname": "PAYLOAD_FILE"
       }
     ],
     "include-command-output-in-response": true
@@ -1475,9 +1483,9 @@ Debug script:
 ```bash
 #!/bin/bash
 # debug-webhook.sh - Debug script to inspect incoming webhook payloads
-# The payload is passed as a file path in $1
+# The payload file path is passed in the PAYLOAD_FILE environment variable
 
-PAYLOAD_FILE="$1"
+PAYLOAD_FILE="${PAYLOAD_FILE:-}"
 DEBUG_LOG="/var/log/webhook-debug.log"
 TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
 
@@ -1627,7 +1635,7 @@ Add a health check hook:
 
 Here's a complete, production-ready `hooks.json` with multiple hooks:
 
-```json
+```text
 [
   {
     "id": "github-production-deploy",
@@ -1657,7 +1665,7 @@ Here's a complete, production-ready `hooks.json` with multiple hooks:
         {
           "match": {
             "type": "payload-hmac-sha256",
-            "secret": "{{ getenv \"GITHUB_WEBHOOK_SECRET\" }}",
+            "secret": "{{ getenv "GITHUB_WEBHOOK_SECRET" | js }}",
             "parameter": {
               "source": "header",
               "name": "X-Hub-Signature-256"
@@ -1703,7 +1711,7 @@ Here's a complete, production-ready `hooks.json` with multiple hooks:
         {
           "match": {
             "type": "payload-hmac-sha256",
-            "secret": "{{ getenv \"GITHUB_WEBHOOK_SECRET\" }}",
+            "secret": "{{ getenv "GITHUB_WEBHOOK_SECRET" | js }}",
             "parameter": {
               "source": "header",
               "name": "X-Hub-Signature-256"
@@ -1757,7 +1765,7 @@ Here's a complete, production-ready `hooks.json` with multiple hooks:
     "trigger-rule": {
       "match": {
         "type": "payload-hmac-sha256",
-        "secret": "{{ getenv \"GITHUB_WEBHOOK_SECRET\" }}",
+        "secret": "{{ getenv "GITHUB_WEBHOOK_SECRET" | js }}",
         "parameter": {
           "source": "header",
           "name": "X-Hub-Signature-256"
