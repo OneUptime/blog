@@ -200,21 +200,24 @@ on:
 jobs:
   changelog:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
           
       - name: Generate Changelog
-        uses: orhun/git-cliff-action@v3
+        uses: orhun/git-cliff-action@v4
         with:
           config: cliff.toml
           args: --verbose
         env:
           OUTPUT: charts/myapp/CHANGELOG.md
+          GITHUB_REPO: ${{ github.repository }}
           
       - name: Commit Changelog
-        uses: stefanzweifel/git-auto-commit-action@v5
+        uses: stefanzweifel/git-auto-commit-action@v7
         with:
           commit_message: 'docs: update changelog'
           file_pattern: charts/*/CHANGELOG.md
@@ -332,13 +335,16 @@ on:
 jobs:
   release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
           
       - name: Setup Helm
-        uses: azure/setup-helm@v3
+        uses: azure/setup-helm@v5.0.0
         
       - name: Extract Version
         id: version
@@ -353,16 +359,20 @@ jobs:
       - name: Package Chart
         run: |
           helm package charts/myapp
+
+      - name: Login to OCI Registry
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io \
+            -u "${{ github.actor }}" \
+            --password-stdin
           
       - name: Push to OCI Registry
         run: |
           helm push myapp-${{ steps.version.outputs.version }}.tgz \
             oci://ghcr.io/${{ github.repository_owner }}/charts
-        env:
-          HELM_REGISTRY_CONFIG: ~/.docker/config.json
           
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v3
         with:
           files: myapp-${{ steps.version.outputs.version }}.tgz
           generate_release_notes: true
@@ -383,7 +393,7 @@ jobs:
   check-version:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
           
@@ -447,7 +457,7 @@ helm dependency list charts/myapp
 
 ### RELEASE-NOTES.md Template
 
-```markdown
+````markdown
 # Release Notes - v2.1.0
 
 ## Highlights
@@ -464,7 +474,7 @@ externalSecrets:
   enabled: true
   provider: aws-secrets-manager
   secretRef: my-secret
-```bash
+```
 
 ### Prometheus ServiceMonitor
 Enable metrics scraping:
@@ -473,7 +483,7 @@ metrics:
   serviceMonitor:
     enabled: true
     interval: 30s
-```bash
+```
 
 ## Upgrade Notes
 
@@ -490,7 +500,7 @@ See [Migration Guide](./MIGRATION.md) for breaking changes.
 ## Contributors
 
 Thanks to all contributors who made this release possible!
-```text
+````
 
 ## Best Practices
 
@@ -510,7 +520,7 @@ Thanks to all contributors who made this release possible!
 helm list -A --output json | jq '.[] | {name, chart, app_version}'
 
 # Compare versions
-helm search repo myapp --versions
+helm search repo myapp --versions --devel
 
 # Verify chart version
 helm show chart myapp/myapp --version 2.1.0
