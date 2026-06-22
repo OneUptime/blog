@@ -31,22 +31,19 @@ docker run -it --rm \
 ### Secure X11 Forwarding
 
 ```bash
-# More secure: allow only specific container
-CONTAINER_ID=$(docker run -d \
+# More secure: allow only your local user, then run the container as that user
+xhost +SI:localuser:$(id -un)
+
+docker run -it --rm \
     -e DISPLAY=$DISPLAY \
     -v /tmp/.X11-unix:/tmp/.X11-unix \
     --user $(id -u):$(id -g) \
-    firefox)
-
-# Grant access to specific container
-xhost +local:$(docker inspect --format='{{ .Config.Hostname }}' $CONTAINER_ID)
+    firefox
 ```
 
 ### Docker Compose with X11
 
 ```yaml
-version: '3.8'
-
 services:
   gui-app:
     image: my-gui-app
@@ -135,8 +132,6 @@ CMD ["vncserver", "-localhost", "no", "-geometry", "1920x1080", "-depth", "24", 
 ### Docker Compose with VNC
 
 ```yaml
-version: '3.8'
-
 services:
   vnc-desktop:
     build: .
@@ -217,8 +212,6 @@ tail -f /dev/null
 ### Docker Compose with noVNC
 
 ```yaml
-version: '3.8'
-
 services:
   desktop:
     build: .
@@ -262,8 +255,6 @@ docker run -it --rm \
 ### Docker Compose for macOS
 
 ```yaml
-version: '3.8'
-
 services:
   gui-app:
     image: my-gui-app
@@ -285,6 +276,8 @@ docker run -it --rm \
     -e DISPLAY=$DISPLAY \
     -v /tmp/.X11-unix:/tmp/.X11-unix \
     -e WAYLAND_DISPLAY=$WAYLAND_DISPLAY \
+    -e XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR \
+    -e PULSE_SERVER=$PULSE_SERVER \
     -v /mnt/wslg:/mnt/wslg \
     firefox
 ```
@@ -316,6 +309,9 @@ ENV DEBIAN_FRONTEND=noninteractive
 # Install full desktop
 RUN apt-get update && apt-get install -y \
     ubuntu-desktop \
+    xfce4 \
+    xfce4-goodies \
+    dbus-x11 \
     tigervnc-standalone-server \
     novnc \
     websockify \
@@ -362,8 +358,6 @@ exec tail -f /dev/null
 ### Development Environment with IDE
 
 ```yaml
-version: '3.8'
-
 services:
   dev-desktop:
     build:
@@ -401,8 +395,11 @@ RUN apt-get update && apt-get install -y \
 
 # Development tools
 RUN apt-get update && apt-get install -y \
+    ca-certificates \
     curl \
     git \
+    gnupg \
+    sudo \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
@@ -453,6 +450,8 @@ docker run -it --rm \
 services:
   multimedia:
     image: my-multimedia-app
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       - DISPLAY=${DISPLAY}
       - PULSE_SERVER=tcp:host.docker.internal:4713
@@ -472,7 +471,7 @@ docker run -it --rm \
     -v /tmp/.X11-unix:/tmp/.X11-unix \
     -e NVIDIA_DRIVER_CAPABILITIES=all \
     nvidia/opengl:1.2-glvnd-runtime-ubuntu22.04 \
-    glxgears
+    bash -lc "apt-get update && apt-get install -y mesa-utils && glxgears"
 ```
 
 ### Dockerfile with GPU and GUI
@@ -567,4 +566,3 @@ services:
 | noVNC | Browser access, no client | Any |
 
 Choose X11 forwarding for best performance on Linux, VNC for cross-platform compatibility and better isolation, and noVNC for easy browser-based access without client installation. For production use cases, always secure VNC connections with strong passwords and TLS.
-
