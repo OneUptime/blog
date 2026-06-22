@@ -136,11 +136,12 @@ const REFRESH_TOKEN_KEY = 'refresh_token';
 
 // Token storage functions
 export const setTokens = (accessToken: string, refreshToken: string): void => {
-  // Store access token in memory or sessionStorage for better security
+  // Prefer in-memory storage for access tokens. sessionStorage avoids persistence
+  // across browser restarts, but it is still readable by JavaScript.
   sessionStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
 
-  // Refresh token can be stored in localStorage for persistence
-  // Or better: use httpOnly cookies set by the server
+  // Avoid storing refresh tokens in Web Storage for production applications.
+  // Prefer Secure, SameSite, httpOnly cookies set by the server.
   localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
 };
 
@@ -157,7 +158,7 @@ export const clearTokens = (): void => {
   localStorage.removeItem(REFRESH_TOKEN_KEY);
 };
 
-// Token validation functions
+// Token decoding and expiration helper functions
 export const decodeToken = (token: string): JWTPayload | null => {
   try {
     return jwtDecode<JWTPayload>(token);
@@ -392,19 +393,7 @@ Create a React context for managing authentication state:
 import { createContext, useContext } from 'react';
 import type { AuthContextType } from '../types/auth.types';
 
-const defaultContext: AuthContextType = {
-  user: null,
-  isAuthenticated: false,
-  isLoading: true,
-  error: null,
-  login: async () => {},
-  register: async () => {},
-  logout: () => {},
-  refreshAuth: async () => {},
-  clearError: () => {},
-};
-
-export const AuthContext = createContext<AuthContextType>(defaultContext);
+export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const useAuth = (): AuthContextType => {
   const context = useContext(AuthContext);
@@ -424,7 +413,7 @@ Implement the authentication provider with full token lifecycle management:
 ```typescript
 // src/auth/AuthProvider.tsx
 
-import React, { useState, useEffect, useCallback, useMemo, ReactNode } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef, ReactNode } from 'react';
 import { AuthContext } from './AuthContext';
 import { authApi } from '../api/authApi';
 import {
@@ -436,7 +425,6 @@ import {
   getTimeUntilExpiration,
 } from '../utils/tokenUtils';
 import type {
-  User,
   LoginCredentials,
   RegisterData,
   AuthState,
@@ -454,13 +442,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     error: null,
   });
 
-  const [refreshTimeout, setRefreshTimeout] = useState<NodeJS.Timeout | null>(null);
+  const refreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const refreshAuthRef = useRef<(() => Promise<void>) | null>(null);
+  const logoutRef = useRef<(() => void) | null>(null);
 
   // Schedule token refresh before expiration
   const scheduleTokenRefresh = useCallback((accessToken: string) => {
     // Clear any existing timeout
-    if (refreshTimeout) {
-      clearTimeout(refreshTimeout);
+    if (refreshTimeoutRef.current) {
+      clearTimeout(refreshTimeoutRef.current);
     }
 
     const timeUntilExpiry = getTimeUntilExpiration(accessToken);
@@ -471,16 +461,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     if (refreshTime > 0) {
       const timeout = setTimeout(async () => {
         try {
-          await refreshAuth();
+          await refreshAuthRef.current?.();
         } catch (error) {
           console.error('Failed to refresh token:', error);
-          logout();
+          logoutRef.current?.();
         }
       }, refreshTime);
 
-      setRefreshTimeout(timeout);
+      refreshTimeoutRef.current = timeout;
     }
-  }, [refreshTimeout]);
+  }, []);
 
   // Refresh authentication
   const refreshAuth = useCallback(async (): Promise<void> => {
@@ -515,6 +505,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       throw error;
     }
   }, [scheduleTokenRefresh]);
+  refreshAuthRef.current = refreshAuth;
 
   // Initialize auth state on mount
   useEffect(() => {
@@ -559,11 +550,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     initializeAuth();
 
     return () => {
-      if (refreshTimeout) {
-        clearTimeout(refreshTimeout);
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current);
       }
     };
-  }, []);
+  }, [refreshAuth, scheduleTokenRefresh]);
 
   // Login function
   const login = useCallback(async (credentials: LoginCredentials): Promise<void> => {
@@ -624,9 +615,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     const refreshToken = getRefreshToken();
 
     // Clear timeout
-    if (refreshTimeout) {
-      clearTimeout(refreshTimeout);
-      setRefreshTimeout(null);
+    if (refreshTimeoutRef.current) {
+      clearTimeout(refreshTimeoutRef.current);
+      refreshTimeoutRef.current = null;
     }
 
     // Invalidate refresh token on server (fire and forget)
@@ -642,7 +633,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       isLoading: false,
       error: null,
     });
-  }, [refreshTimeout]);
+  }, []);
+  logoutRef.current = logout;
 
   // Clear error
   const clearError = useCallback((): void => {
@@ -851,6 +843,7 @@ import { Register } from './components/Register';
 import { Dashboard } from './components/Dashboard';
 import { AdminPanel } from './components/AdminPanel';
 import { Profile } from './components/Profile';
+import { Reports } from './components/Reports';
 import { Unauthorized } from './components/Unauthorized';
 
 const App: React.FC = () => {
@@ -932,7 +925,7 @@ export const useTokenRefresh = (options: UseTokenRefreshOptions = {}) => {
   } = options;
 
   const { refreshAuth, isAuthenticated, logout } = useAuth();
-  const intervalRef = useRef<NodeJS.Timer | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const checkAndRefresh = useCallback(async () => {
     if (!isAuthenticated) return;
@@ -1002,20 +995,19 @@ class InMemoryStorage {
 
 export const secureStorage = new InMemoryStorage();
 
-// Option 2: Encrypted localStorage (compromise between security and persistence)
-const ENCRYPTION_KEY = 'your-encryption-key'; // In practice, derive from user input
+// Option 2: Encoded localStorage (persistence only; not secure against XSS)
 
-export const encryptedStorage = {
+export const encodedStorage = {
   setItem: (key: string, value: string): void => {
-    const encrypted = btoa(encodeURIComponent(value)); // Simple encoding, use proper encryption in production
-    localStorage.setItem(key, encrypted);
+    const encoded = btoa(encodeURIComponent(value)); // Encoding is not encryption
+    localStorage.setItem(key, encoded);
   },
 
   getItem: (key: string): string | null => {
-    const encrypted = localStorage.getItem(key);
-    if (!encrypted) return null;
+    const encoded = localStorage.getItem(key);
+    if (!encoded) return null;
     try {
-      return decodeURIComponent(atob(encrypted));
+      return decodeURIComponent(atob(encoded));
     } catch {
       return null;
     }
@@ -1079,7 +1071,9 @@ axiosInstance.interceptors.request.use((config) => {
 });
 ```
 
-### Rate Limiting on Client
+### Client-Side Attempt Throttling
+
+Client-side throttling can improve user experience, but it is easy to bypass. Enforce authentication rate limits on the server.
 
 ```typescript
 // src/utils/rateLimiter.ts
@@ -1345,13 +1339,13 @@ describe('AuthProvider', () => {
 
 | Component | Purpose | Key Features |
 |-----------|---------|--------------|
-| **Token Storage** | Secure token persistence | sessionStorage for access tokens, localStorage/httpOnly cookies for refresh tokens |
+| **Token Storage** | Token persistence trade-offs | in-memory/sessionStorage for access tokens, httpOnly cookies for refresh tokens |
 | **Axios Interceptors** | Automatic token handling | Attach tokens to requests, handle 401 responses, queue failed requests during refresh |
 | **AuthContext** | Global auth state | User data, authentication status, loading states, error handling |
 | **AuthProvider** | Auth logic implementation | Login, logout, register, automatic token refresh scheduling |
 | **ProtectedRoute** | Route protection | Authentication checks, role-based access, permission-based access |
 | **Token Refresh** | Session management | Automatic refresh before expiration, queue management for concurrent requests |
-| **Security Measures** | Attack prevention | XSS protection, CSRF tokens, rate limiting, input sanitization |
+| **Security Measures** | Attack prevention | XSS protection, CSRF tokens, server-side rate limiting, input sanitization |
 | **Session Expiry UI** | User experience | Countdown warnings, session extension prompts |
 
 JWT authentication in React requires careful attention to token lifecycle, secure storage, and user experience. By implementing proper interceptors, automatic refresh mechanisms, and security measures, you can build authentication systems that are both secure and user-friendly. Remember to always validate tokens on the server side, use HTTPS in production, and consider using httpOnly cookies for refresh tokens when possible.
