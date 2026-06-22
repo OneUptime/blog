@@ -22,7 +22,7 @@ TFTP (Trivial File Transfer Protocol) is a simple file transfer protocol used fo
 
 - Ubuntu 18.04 or later
 - Root or sudo access
-- Firewall access on UDP port 69
+- Firewall access on UDP port 69 and the UDP transfer ports used by the server
 
 ## Install TFTP Server
 
@@ -57,7 +57,7 @@ sudo nano /etc/default/tftpd-hpa
 TFTP_USERNAME="tftp"
 TFTP_DIRECTORY="/srv/tftp"
 TFTP_ADDRESS=":69"
-TFTP_OPTIONS="--secure --create --verbose"
+TFTP_OPTIONS="--secure --create --verbose --port-range 50000:50100"
 ```
 
 ### Configuration Options
@@ -68,7 +68,9 @@ TFTP_OPTIONS="--secure --create --verbose"
 | `--create` | Allow file creation (uploads) |
 | `--verbose` | Enable verbose logging |
 | `--permissive` | Allow any file to be read/written |
-| `--timeout N` | Set timeout in seconds |
+| `--timeout N` | Set inetd idle timeout in seconds; ignored in standalone mode |
+| `--retransmit N` | Set the first retransmission timeout in microseconds |
+| `--port-range A:B` | Restrict transfer ports to a specific UDP range |
 
 ### Create TFTP Directory
 
@@ -136,7 +138,7 @@ sudo nano /etc/default/tftpd-hpa
 ```
 
 ```bash
-TFTP_OPTIONS="--secure --create --verbose"
+TFTP_OPTIONS="--secure --create --verbose --port-range 50000:50100"
 ```
 
 ### Pre-create Files for Upload
@@ -152,7 +154,7 @@ sudo chmod 666 /srv/tftp/config.txt
 ### Alternative: Use --permissive
 
 ```bash
-TFTP_OPTIONS="--secure --create --permissive --verbose"
+TFTP_OPTIONS="--secure --create --permissive --verbose --port-range 50000:50100"
 ```
 
 ## Firewall Configuration
@@ -160,8 +162,11 @@ TFTP_OPTIONS="--secure --create --permissive --verbose"
 ### Using UFW
 
 ```bash
-# Allow TFTP
+# Allow TFTP control port
 sudo ufw allow 69/udp
+
+# Allow the transfer port range configured with --port-range
+sudo ufw allow 50000:50100/udp
 
 # Verify rule
 sudo ufw status
@@ -170,10 +175,14 @@ sudo ufw status
 ### Using iptables
 
 ```bash
-# Allow TFTP
+# Allow TFTP control port
 sudo iptables -A INPUT -p udp --dport 69 -j ACCEPT
 
+# Allow the transfer port range configured with --port-range
+sudo iptables -A INPUT -p udp --dport 50000:50100 -j ACCEPT
+
 # Save rules
+sudo apt install iptables-persistent -y
 sudo iptables-save | sudo tee /etc/iptables/rules.v4
 ```
 
@@ -283,7 +292,7 @@ sudo nano /etc/default/tftpd-hpa
 ```
 
 ```bash
-TFTP_OPTIONS="--secure --create --verbose --verbosity 5"
+TFTP_OPTIONS="--secure --create --verbose --verbosity 5 --port-range 50000:50100"
 ```
 
 ### View Logs
@@ -319,10 +328,13 @@ sudo systemctl restart rsyslog
 ```bash
 # UFW example
 sudo ufw allow from 192.168.1.0/24 to any port 69 proto udp
+sudo ufw allow from 192.168.1.0/24 to any port 50000:50100 proto udp
 
 # iptables example
 sudo iptables -A INPUT -p udp -s 192.168.1.0/24 --dport 69 -j ACCEPT
+sudo iptables -A INPUT -p udp -s 192.168.1.0/24 --dport 50000:50100 -j ACCEPT
 sudo iptables -A INPUT -p udp --dport 69 -j DROP
+sudo iptables -A INPUT -p udp --dport 50000:50100 -j DROP
 ```
 
 ### Limit File Access
@@ -330,14 +342,14 @@ sudo iptables -A INPUT -p udp --dport 69 -j DROP
 ```bash
 # Use --secure to chroot
 # Only files in TFTP_DIRECTORY are accessible
-TFTP_OPTIONS="--secure"
+TFTP_OPTIONS="--secure --port-range 50000:50100"
 ```
 
 ### Read-Only Mode
 
 ```bash
 # Remove --create for read-only
-TFTP_OPTIONS="--secure --verbose"
+TFTP_OPTIONS="--secure --verbose --port-range 50000:50100"
 ```
 
 ## Running in xinetd
@@ -362,7 +374,7 @@ service tftp
     wait            = yes
     user            = root
     server          = /usr/sbin/in.tftpd
-    server_args     = -s /srv/tftp -c
+    server_args     = -s -c -R 50000:50100 /srv/tftp
     disable         = no
     per_source      = 11
     cps             = 100 2
@@ -387,13 +399,13 @@ FROM ubuntu:22.04
 RUN apt-get update && apt-get install -y tftpd-hpa
 RUN mkdir -p /srv/tftp && chown tftp:tftp /srv/tftp
 EXPOSE 69/udp
-CMD ["/usr/sbin/in.tftpd", "-L", "-s", "/srv/tftp"]
+CMD ["/usr/sbin/in.tftpd", "-L", "--port-range", "50000:50100", "-s", "/srv/tftp"]
 ```
 
 ```bash
 # Build and run
 docker build -t tftp-server .
-docker run -d -p 69:69/udp -v /data/tftp:/srv/tftp tftp-server
+docker run -d -p 69:69/udp -p 50000-50100:50000-50100/udp -v /data/tftp:/srv/tftp tftp-server
 ```
 
 ## Troubleshooting
@@ -456,10 +468,10 @@ ls -la /srv/tftp/
 ping tftp-server-ip
 
 # Check for firewall blocking
-sudo tcpdump -i any port 69 -n
+sudo tcpdump -i any 'udp and (port 69 or portrange 50000-50100)' -n
 
-# Increase timeout
-TFTP_OPTIONS="--secure --timeout 60"
+# Increase retransmission timeout
+TFTP_OPTIONS="--secure --retransmit 60000000 --port-range 50000:50100"
 ```
 
 ---
