@@ -168,6 +168,11 @@ sudo apt upgrade -y
 ### Install DRBD Utilities and Kernel Module
 
 ```bash
+# For DRBD 9 packages on Ubuntu LTS, enable the LINBIT PPA first:
+sudo apt install -y software-properties-common
+sudo add-apt-repository ppa:linbit/linbit-drbd9-stack
+sudo apt update
+
 # Install DRBD packages
 # drbd-utils: User-space tools for managing DRBD
 # drbd-dkms: Dynamic Kernel Module Support for DRBD kernel module
@@ -264,6 +269,9 @@ common {
         cram-hmac-alg sha256;
         shared-secret "YourSecureSharedSecretHere123!";
 
+        # Enable resource-level fencing when using the Pacemaker fence-peer handler
+        fencing resource-only;
+
         # Timeout settings (in 0.1 second units)
         # ping-timeout: Time to wait for ping response
         ping-timeout 10;
@@ -285,9 +293,9 @@ common {
         # call-local-io-error: Call helper script
         on-io-error detach;
 
-        # Resync rate - limit synchronization speed
+        # Dynamic resync controller - limit synchronization speed
         # Adjust based on your network capacity
-        resync-rate 100M;
+        c-max-rate 100M;
 
         # Activity log settings for crash recovery
         # Larger values mean faster recovery but more memory usage
@@ -326,8 +334,8 @@ common {
         split-brain "/usr/lib/drbd/notify-split-brain.sh root";
 
         # Fence peer to prevent dual-primary during split-brain
-        fence-peer "/usr/lib/drbd/crm-fence-peer.sh";
-        unfence-peer "/usr/lib/drbd/crm-unfence-peer.sh";
+        fence-peer "/usr/lib/drbd/crm-fence-peer.9.sh";
+        unfence-peer "/usr/lib/drbd/crm-unfence-peer.9.sh";
     }
 }
 ```
@@ -504,7 +512,7 @@ sudo drbdadm status data
 sudo drbdsetup status data --verbose --statistics
 ```
 
-**Note**: Initial synchronization time depends on disk size and configured resync-rate. A 100GB disk at 100MB/s will take approximately 17 minutes.
+**Note**: Initial synchronization time depends on disk size and configured resync limits. A 100GB disk at 100MB/s will take approximately 17 minutes.
 
 ## Managing Primary and Secondary Roles
 
@@ -635,7 +643,7 @@ sudo drbdadm secondary data
 sudo drbdadm disconnect data
 
 # 3. Mark this node as a sync target (discard local changes)
-sudo drbdadm connect --discard-my-data data
+sudo drbdadm -- --discard-my-data connect data
 
 # === On the SURVIVOR node (node with data to keep) ===
 
@@ -734,9 +742,9 @@ common {
 # In /etc/drbd.d/global_common.conf
 common {
     disk {
-        # Resync rate - balance between sync speed and application performance
+        # Fixed resync rate - only used when c-plan-ahead is 0
         # Set to approximately 1/3 of available bandwidth
-        resync-rate 200M;
+        # resync-rate 200M;
 
         # Activity log extents - larger values speed up recovery
         # Each extent tracks 4MB of dirty data
@@ -759,6 +767,7 @@ common {
         # Bitmap optimization
         c-plan-ahead 20;
         c-fill-target 100k;
+        c-max-rate 200M;
         c-min-rate 50M;
     }
 }
@@ -863,10 +872,10 @@ sudo pcs cluster status
 # Create DRBD primitive resource
 sudo pcs resource create drbd_data ocf:linbit:drbd \
     drbd_resource=data \
-    op monitor interval=30s role=Master \
-    op monitor interval=60s role=Slave
+    op monitor interval=30s role=Promoted \
+    op monitor interval=60s role=Unpromoted
 
-# Create master/slave (promotable) clone
+# Create promotable clone
 sudo pcs resource promotable drbd_data \
     promoted-max=1 \
     promoted-node-max=1 \
@@ -894,7 +903,7 @@ sudo pcs resource group add grp_data fs_data vip_data
 sudo pcs constraint order promote drbd_data-clone then start grp_data
 
 # Add colocation constraint (filesystem must be on DRBD primary)
-sudo pcs constraint colocation add grp_data with drbd_data-clone INFINITY with-rsc-role=Master
+sudo pcs constraint colocation add grp_data with drbd_data-clone INFINITY with-rsc-role=Promoted
 ```
 
 ### Verify Cluster Configuration
@@ -904,8 +913,8 @@ sudo pcs constraint colocation add grp_data with drbd_data-clone INFINITY with-r
 sudo pcs status
 
 # Expected output shows:
-# - drbd_data resource running as Master on one node, Slave on other
-# - fs_data mounted on the same node as DRBD Master
+# - drbd_data resource running as Promoted on one node, Unpromoted on other
+# - fs_data mounted on the same node as the promoted DRBD resource
 # - vip_data configured on the same node
 
 # View all constraints
@@ -1073,7 +1082,7 @@ sudo dmesg | grep -i error
 
 # 4. Verify resync rate isn't too low
 # Temporarily increase it:
-sudo drbdadm disk-options --resync-rate=500M data
+sudo drbdadm disk-options --c-max-rate=500M data
 
 # 5. Check network throughput between nodes
 iperf3 -s  # On one node
@@ -1220,7 +1229,7 @@ common {
 
     disk {
         on-io-error detach;
-        resync-rate 200M;
+        c-max-rate 200M;
         al-extents 6433;
 
         # Checksumming for efficient resync
@@ -1281,7 +1290,7 @@ resource database {
 
     disk {
         # More aggressive settings for database workloads
-        resync-rate 300M;
+        c-max-rate 300M;
         al-extents 6433;
     }
 
