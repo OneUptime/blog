@@ -38,7 +38,7 @@ Exponential backoff solves this by:
 The basic formula for exponential backoff is:
 
 ```text
-delay = baseDelay * (2 ^ attemptNumber)
+delay = baseDelay * (2 ^ (attemptNumber - 1))
 ```
 
 For example, with a base delay of 1 second:
@@ -101,17 +101,24 @@ function sleep(ms: number): Promise<void> {
 ```typescript
 async function fetchUserData(userId: string) {
   const response = await retryWithExponentialBackoff(
-    () => fetch(`/api/users/${userId}`),
+    async () => {
+      const response = await fetch(`/api/users/${userId}`);
+
+      if (!response.ok) {
+        throw Object.assign(
+          new Error(`HTTP error! status: ${response.status}`),
+          { status: response.status }
+        );
+      }
+
+      return response;
+    },
     {
       maxAttempts: 5,
       baseDelay: 1000,
       maxDelay: 30000
     }
   );
-
-  if (!response.ok) {
-    throw new Error(`HTTP error! status: ${response.status}`);
-  }
 
   return response.json();
 }
@@ -257,7 +264,8 @@ function useRetry<T>(
   });
 
   const cancelledRef = useRef(false);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const delayResolveRef = useRef<(() => void) | null>(null);
 
   const calculateDelay = useCallback((attempt: number): number => {
     const exponentialDelay = Math.min(
@@ -272,6 +280,33 @@ function useRetry<T>(
     return exponentialDelay;
   }, [baseDelay, maxDelay, jitter]);
 
+  const clearPendingDelay = useCallback(() => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+
+    if (delayResolveRef.current) {
+      delayResolveRef.current();
+      delayResolveRef.current = null;
+    }
+  }, []);
+
+  const waitForDelay = useCallback((delay: number): Promise<void> => {
+    return new Promise<void>(resolve => {
+      delayResolveRef.current = () => {
+        timeoutRef.current = null;
+        resolve();
+      };
+
+      timeoutRef.current = setTimeout(() => {
+        timeoutRef.current = null;
+        delayResolveRef.current = null;
+        resolve();
+      }, delay);
+    });
+  }, []);
+
   const execute = useCallback(async (): Promise<T | null> => {
     cancelledRef.current = false;
 
@@ -284,6 +319,7 @@ function useRetry<T>(
     }));
 
     let lastError: Error | null = null;
+    let attemptsMade = 0;
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       if (cancelledRef.current) {
@@ -313,6 +349,7 @@ function useRetry<T>(
         return result;
       } catch (error) {
         lastError = error as Error;
+        attemptsMade = attempt + 1;
 
         const shouldRetry = retryCondition(lastError);
         const hasMoreAttempts = attempt < maxAttempts - 1;
@@ -329,9 +366,9 @@ function useRetry<T>(
 
           const delay = calculateDelay(attempt);
 
-          await new Promise<void>(resolve => {
-            timeoutRef.current = setTimeout(resolve, delay);
-          });
+          await waitForDelay(delay);
+        } else {
+          break;
         }
       }
     }
@@ -341,19 +378,17 @@ function useRetry<T>(
         data: null,
         error: lastError,
         isLoading: false,
-        attempt: maxAttempts,
+        attempt: attemptsMade,
         isRetrying: false
       });
     }
 
     return null;
-  }, [asyncFunction, maxAttempts, calculateDelay, onRetry, retryCondition]);
+  }, [asyncFunction, maxAttempts, calculateDelay, waitForDelay, onRetry, retryCondition]);
 
   const reset = useCallback(() => {
     cancelledRef.current = true;
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-    }
+    clearPendingDelay();
     setState({
       data: null,
       error: null,
@@ -361,28 +396,24 @@ function useRetry<T>(
       attempt: 0,
       isRetrying: false
     });
-  }, []);
+  }, [clearPendingDelay]);
 
   const cancel = useCallback(() => {
     cancelledRef.current = true;
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-    }
+    clearPendingDelay();
     setState(prev => ({
       ...prev,
       isLoading: false,
       isRetrying: false
     }));
-  }, []);
+  }, [clearPendingDelay]);
 
   useEffect(() => {
     return () => {
       cancelledRef.current = true;
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
+      clearPendingDelay();
     };
-  }, []);
+  }, [clearPendingDelay]);
 
   return {
     ...state,
@@ -398,7 +429,7 @@ export default useRetry;
 ### Using the useRetry Hook
 
 ```typescript
-import React, { useEffect } from 'react';
+import React, { useCallback, useEffect } from 'react';
 import useRetry from './useRetry';
 
 interface User {
@@ -407,7 +438,34 @@ interface User {
   email: string;
 }
 
+interface HttpError extends Error {
+  status?: number;
+}
+
 function UserProfile({ userId }: { userId: string }) {
+  const fetchUser = useCallback(async (): Promise<User> => {
+    const response = await fetch(`/api/users/${userId}`);
+
+    if (!response.ok) {
+      throw Object.assign(
+        new Error(`HTTP ${response.status}`),
+        { status: response.status }
+      ) as HttpError;
+    }
+
+    return response.json();
+  }, [userId]);
+
+  const handleRetry = useCallback((attempt: number, error: Error) => {
+    console.log(`Retry attempt ${attempt} after error: ${error.message}`);
+  }, []);
+
+  const shouldRetry = useCallback((error: HttpError) => {
+    // Only retry on network errors or 5xx responses
+    return error.status === undefined ||
+           error.status >= 500;
+  }, []);
+
   const {
     data: user,
     error,
@@ -417,23 +475,14 @@ function UserProfile({ userId }: { userId: string }) {
     execute,
     cancel
   } = useRetry<User>(
-    () => fetch(`/api/users/${userId}`).then(res => {
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return res.json();
-    }),
+    fetchUser,
     {
       maxAttempts: 5,
       baseDelay: 1000,
       maxDelay: 16000,
       jitter: true,
-      onRetry: (attempt, error) => {
-        console.log(`Retry attempt ${attempt} after error: ${error.message}`);
-      },
-      retryCondition: (error) => {
-        // Only retry on network errors or 5xx responses
-        return error.message.includes('fetch') ||
-               error.message.includes('5');
-      }
+      onRetry: handleRetry,
+      retryCondition: shouldRetry
     }
   );
 
@@ -543,7 +592,9 @@ function useRetryQuery<T>(options: QueryOptions<T>): QueryResult<T> {
   const [failureCount, setFailureCount] = useState(0);
 
   const abortControllerRef = useRef<AbortController | null>(null);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const delayResolveRef = useRef<(() => void) | null>(null);
+  const dataRef = useRef<T | undefined>(undefined);
   const lastFetchTimeRef = useRef<number>(0);
 
   const retryConfig = useMemo((): RetryConfig => {
@@ -588,15 +639,43 @@ function useRetryQuery<T>(options: QueryOptions<T>): QueryResult<T> {
     return jitter ? Math.random() * exponentialDelay : exponentialDelay;
   }, [retryDelay, retryConfig]);
 
+  const clearPendingRetryDelay = useCallback(() => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+
+    if (delayResolveRef.current) {
+      delayResolveRef.current();
+      delayResolveRef.current = null;
+    }
+  }, []);
+
+  const waitForRetryDelay = useCallback((delay: number): Promise<void> => {
+    return new Promise<void>((resolve) => {
+      delayResolveRef.current = () => {
+        timeoutRef.current = null;
+        resolve();
+      };
+
+      timeoutRef.current = setTimeout(() => {
+        timeoutRef.current = null;
+        delayResolveRef.current = null;
+        resolve();
+      }, delay);
+    });
+  }, []);
+
   const fetchWithRetry = useCallback(async () => {
     const { maxAttempts } = retryConfig;
 
     // Check if data is still fresh
-    if (data && Date.now() - lastFetchTimeRef.current < staleTime) {
+    if (dataRef.current !== undefined && Date.now() - lastFetchTimeRef.current < staleTime) {
       return;
     }
 
-    abortControllerRef.current = new AbortController();
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
     setStatus('loading');
     setError(null);
     setFailureCount(0);
@@ -604,18 +683,19 @@ function useRetryQuery<T>(options: QueryOptions<T>): QueryResult<T> {
     let lastError: Error | null = null;
 
     for (let attempt = 0; attempt <= maxAttempts; attempt++) {
-      if (abortControllerRef.current?.signal.aborted) {
+      if (abortController.signal.aborted) {
         return;
       }
 
       try {
         const result = await queryFn();
 
-        if (abortControllerRef.current?.signal.aborted) {
+        if (abortController.signal.aborted) {
           return;
         }
 
         setData(result);
+        dataRef.current = result;
         setStatus('success');
         setError(null);
         lastFetchTimeRef.current = Date.now();
@@ -625,21 +705,19 @@ function useRetryQuery<T>(options: QueryOptions<T>): QueryResult<T> {
         lastError = err as Error;
         setFailureCount(attempt + 1);
 
-        if (attempt < maxAttempts && !abortControllerRef.current?.signal.aborted) {
+        if (attempt < maxAttempts && !abortController.signal.aborted) {
           setStatus('retrying');
           setError(lastError);
           onRetry?.(attempt + 1, lastError);
 
           const delay = calculateRetryDelay(attempt, lastError);
 
-          await new Promise<void>((resolve) => {
-            timeoutRef.current = setTimeout(resolve, delay);
-          });
+          await waitForRetryDelay(delay);
         }
       }
     }
 
-    if (!abortControllerRef.current?.signal.aborted) {
+    if (!abortController.signal.aborted) {
       setStatus('error');
       setError(lastError);
       onError?.(lastError!);
@@ -648,8 +726,8 @@ function useRetryQuery<T>(options: QueryOptions<T>): QueryResult<T> {
     queryFn,
     retryConfig,
     staleTime,
-    data,
     calculateRetryDelay,
+    waitForRetryDelay,
     onSuccess,
     onError,
     onRetry
@@ -662,14 +740,13 @@ function useRetryQuery<T>(options: QueryOptions<T>): QueryResult<T> {
 
   const remove = useCallback(() => {
     abortControllerRef.current?.abort();
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-    }
+    clearPendingRetryDelay();
+    dataRef.current = undefined;
     setData(undefined);
     setError(null);
     setStatus('idle');
     setFailureCount(0);
-  }, []);
+  }, [clearPendingRetryDelay]);
 
   useEffect(() => {
     if (enabled) {
@@ -678,17 +755,16 @@ function useRetryQuery<T>(options: QueryOptions<T>): QueryResult<T> {
 
     return () => {
       abortControllerRef.current?.abort();
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
+      clearPendingRetryDelay();
     };
-  }, [enabled, fetchWithRetry]);
+  }, [enabled, fetchWithRetry, clearPendingRetryDelay]);
 
   // Cache cleanup
   useEffect(() => {
     if (status === 'success' && cacheTime > 0) {
       const cleanupTimeout = setTimeout(() => {
         if (Date.now() - lastFetchTimeRef.current > cacheTime) {
+          dataRef.current = undefined;
           setData(undefined);
         }
       }, cacheTime);
@@ -992,7 +1068,7 @@ Here is a comprehensive implementation suitable for production use.
 ### RetryService Class
 
 ```typescript
-interface RetryServiceOptions {
+export interface RetryServiceOptions {
   maxAttempts: number;
   baseDelay: number;
   maxDelay: number;
@@ -1143,7 +1219,7 @@ export default RetryService;
 
 ```typescript
 import React, { createContext, useContext, useMemo, ReactNode } from 'react';
-import RetryService from './RetryService';
+import RetryService, { type RetryServiceOptions } from './RetryService';
 
 interface RetryContextValue {
   retryService: RetryService;
@@ -1195,17 +1271,17 @@ import { RetryProvider, useRetryService } from './RetryContext';
 
 // App setup
 function App() {
+  const retryOptions = React.useMemo(() => ({
+    maxAttempts: 5,
+    baseDelay: 1000,
+    jitter: true,
+    onRetry: ({ attempt, error }: { attempt: number; error: Error }) => {
+      console.log(`Retry ${attempt}: ${error.message}`);
+    }
+  }), []);
+
   return (
-    <RetryProvider
-      options={{
-        maxAttempts: 5,
-        baseDelay: 1000,
-        jitter: true,
-        onRetry: ({ attempt, error }) => {
-          console.log(`Retry ${attempt}: ${error.message}`);
-        }
-      }}
-    >
+    <RetryProvider options={retryOptions}>
       <Dashboard />
     </RetryProvider>
   );
@@ -1214,29 +1290,37 @@ function App() {
 // Component using retry service
 function Dashboard() {
   const retryService = useRetryService();
-  const [data, setData] = React.useState(null);
+  const [data, setData] = React.useState<unknown>(null);
   const [loading, setLoading] = React.useState(false);
-  const [error, setError] = React.useState(null);
+  const [error, setError] = React.useState<Error | null>(null);
 
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = React.useCallback(async () => {
     setLoading(true);
     setError(null);
 
     try {
       const result = await retryService.execute(
-        () => fetch('/api/dashboard').then(r => r.json())
+        async () => {
+          const response = await fetch('/api/dashboard');
+
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+          }
+
+          return response.json();
+        }
       );
       setData(result);
     } catch (err) {
-      setError(err);
+      setError(err as Error);
     } finally {
       setLoading(false);
     }
-  };
+  }, [retryService]);
 
   React.useEffect(() => {
     fetchDashboardData();
-  }, []);
+  }, [fetchDashboardData]);
 
   if (loading) return <div>Loading...</div>;
   if (error) return <div>Error: {error.message}</div>;
@@ -1395,8 +1479,8 @@ describe('useRetry', () => {
 ### Integration Tests
 
 ```typescript
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { rest } from 'msw';
+import { render, screen, waitFor } from '@testing-library/react';
+import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 import UserProfile from './UserProfile';
 
@@ -1411,12 +1495,12 @@ describe('UserProfile with retry', () => {
     let attempts = 0;
 
     server.use(
-      rest.get('/api/users/:id', (req, res, ctx) => {
+      http.get('/api/users/:id', () => {
         attempts++;
         if (attempts < 3) {
-          return res(ctx.status(500));
+          return new HttpResponse(null, { status: 500 });
         }
-        return res(ctx.json({ id: '1', name: 'John', email: 'john@test.com' }));
+        return HttpResponse.json({ id: '1', name: 'John', email: 'john@test.com' });
       })
     );
 
@@ -1431,8 +1515,8 @@ describe('UserProfile with retry', () => {
 
   it('should show error after max retries', async () => {
     server.use(
-      rest.get('/api/users/:id', (req, res, ctx) => {
-        return res(ctx.status(500));
+      http.get('/api/users/:id', () => {
+        return new HttpResponse(null, { status: 500 });
       })
     );
 
