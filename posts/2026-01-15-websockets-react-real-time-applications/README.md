@@ -117,7 +117,8 @@ function ChatComponent(): React.ReactElement {
           type="text"
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
-          onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
+          onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
+          placeholder="Type a message..."
           disabled={!isConnected}
         />
         <button onClick={sendMessage} disabled={!isConnected}>
@@ -188,7 +189,7 @@ export function useWebSocket(options: UseWebSocketOptions): UseWebSocketReturn {
 
   const socketRef = useRef<WebSocket | null>(null);
   const reconnectCountRef = useRef<number>(0);
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const shouldReconnectRef = useRef<boolean>(true);
 
   // Clear any pending reconnect timeout
@@ -316,7 +317,7 @@ export { ReadyState };
 ### Using the Custom Hook
 
 ```typescript
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useWebSocket } from './hooks/useWebSocket';
 
 interface ChatMessage {
@@ -330,18 +331,24 @@ function ChatApp(): React.ReactElement {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState<string>('');
 
-  const { sendMessage, lastMessage, isConnected, reconnect } = useWebSocket({
+  const handleMessage = useCallback((data: unknown) => {
+    const message = data as ChatMessage;
+    setMessages((prev) => [...prev, message]);
+  }, []);
+
+  const handleOpen = useCallback(() => {
+    console.log('Chat connected');
+  }, []);
+
+  const handleClose = useCallback(() => {
+    console.log('Chat disconnected');
+  }, []);
+
+  const { sendMessage, isConnected, reconnect } = useWebSocket({
     url: 'wss://api.example.com/chat',
-    onMessage: (data) => {
-      const message = data as ChatMessage;
-      setMessages((prev) => [...prev, message]);
-    },
-    onOpen: () => {
-      console.log('Chat connected');
-    },
-    onClose: () => {
-      console.log('Chat disconnected');
-    },
+    onMessage: handleMessage,
+    onOpen: handleOpen,
+    onClose: handleClose,
     reconnect: true,
     reconnectAttempts: 10,
     reconnectInterval: 2000,
@@ -380,7 +387,7 @@ function ChatApp(): React.ReactElement {
         <input
           value={inputText}
           onChange={(e) => setInputText(e.target.value)}
-          onKeyPress={(e) => e.key === 'Enter' && handleSend()}
+          onKeyDown={(e) => e.key === 'Enter' && handleSend()}
           placeholder="Type a message..."
           disabled={!isConnected}
         />
@@ -401,7 +408,7 @@ Production applications need sophisticated reconnection strategies. Exponential 
 
 ```typescript
 // hooks/useWebSocketWithBackoff.ts
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 
 interface BackoffOptions {
   initialDelay: number;
@@ -466,7 +473,15 @@ export function useWebSocketWithBackoff(
     backoff: backoffOptions,
   } = options;
 
-  const backoff: BackoffOptions = { ...defaultBackoff, ...backoffOptions };
+  const backoff: BackoffOptions = useMemo(
+    () => ({ ...defaultBackoff, ...backoffOptions }),
+    [
+      backoffOptions?.initialDelay,
+      backoffOptions?.maxDelay,
+      backoffOptions?.multiplier,
+      backoffOptions?.jitter,
+    ]
+  );
 
   const [connectionState, setConnectionState] = useState<ConnectionState>({
     status: 'disconnected',
@@ -476,7 +491,7 @@ export function useWebSocketWithBackoff(
   const [lastMessage, setLastMessage] = useState<unknown>(null);
 
   const socketRef = useRef<WebSocket | null>(null);
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const shouldReconnectRef = useRef<boolean>(true);
   const urlRef = useRef<string>(url);
 
@@ -618,22 +633,20 @@ export function useWebSocketWithBackoff(
 ### Using the Backoff Hook
 
 ```typescript
-import React from 'react';
+import React, { useCallback } from 'react';
 import { useWebSocketWithBackoff } from './hooks/useWebSocketWithBackoff';
 
 function LiveDashboard(): React.ReactElement {
+  const handleMessage = useCallback((data: unknown) => {
+    console.log('Dashboard update:', data);
+  }, []);
+
   const {
-    sendMessage,
-    lastMessage,
     connectionState,
-    isConnected,
-    isReconnecting,
     reconnect,
   } = useWebSocketWithBackoff({
     url: 'wss://api.example.com/dashboard',
-    onMessage: (data) => {
-      console.log('Dashboard update:', data);
-    },
+    onMessage: handleMessage,
     maxReconnectAttempts: 15,
     backoff: {
       initialDelay: 500,
@@ -709,6 +722,8 @@ export function useWebSocketWithQueue(options: UseWebSocketWithQueueOptions) {
   const socketRef = useRef<WebSocket | null>(null);
   const messageQueueRef = useRef<QueuedMessage[]>([]);
   const pendingAcksRef = useRef<Map<string, QueuedMessage>>(new Map());
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const shouldReconnectRef = useRef<boolean>(true);
 
   // Generate unique message ID
   const generateMessageId = useCallback(() => {
@@ -802,7 +817,9 @@ export function useWebSocketWithQueue(options: UseWebSocketWithQueueOptions) {
       setQueueSize(messageQueueRef.current.length);
 
       // Reconnect after delay
-      setTimeout(connect, 3000);
+      if (shouldReconnectRef.current) {
+        reconnectTimeoutRef.current = setTimeout(connect, 3000);
+      }
     };
 
     ws.onerror = (error) => {
@@ -850,8 +867,13 @@ export function useWebSocketWithQueue(options: UseWebSocketWithQueueOptions) {
   }, [generateMessageId, maxQueueSize]);
 
   useEffect(() => {
+    shouldReconnectRef.current = true;
     connect();
     return () => {
+      shouldReconnectRef.current = false;
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
       socketRef.current?.close();
     };
   }, [connect]);
@@ -918,7 +940,7 @@ export function WebSocketProvider({
   const subscribersRef = useRef<Map<string, Set<(payload: unknown) => void>>>(
     new Map()
   );
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Subscribe to specific message types
   const subscribe = useCallback(
@@ -988,7 +1010,9 @@ export function WebSocketProvider({
     setConnectionState('connecting');
 
     // Append auth token to URL if provided
-    const wsUrl = authToken ? `${url}?token=${authToken}` : url;
+    const wsUrl = authToken
+      ? `${url}${url.includes('?') ? '&' : '?'}token=${encodeURIComponent(authToken)}`
+      : url;
     const ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
@@ -1162,7 +1186,7 @@ Detect stale connections that appear open but have stopped receiving data.
 
 ```typescript
 // hooks/useWebSocketWithHeartbeat.ts
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 
 interface HeartbeatOptions {
   pingInterval: number;      // How often to send ping
@@ -1180,15 +1204,20 @@ export function useWebSocketWithHeartbeat(
   url: string,
   options?: Partial<HeartbeatOptions>
 ) {
-  const heartbeatOptions = { ...defaultHeartbeat, ...options };
+  const heartbeatOptions = useMemo(
+    () => ({ ...defaultHeartbeat, ...options }),
+    [options?.pingInterval, options?.pongTimeout, options?.reconnectOnTimeout]
+  );
 
   const [isConnected, setIsConnected] = useState<boolean>(false);
   const [isHealthy, setIsHealthy] = useState<boolean>(true);
   const [latency, setLatency] = useState<number | null>(null);
 
   const socketRef = useRef<WebSocket | null>(null);
-  const pingIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const pongTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const pingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pongTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const shouldReconnectRef = useRef<boolean>(true);
   const lastPingTimeRef = useRef<number>(0);
 
   const clearTimers = useCallback(() => {
@@ -1199,6 +1228,10 @@ export function useWebSocketWithHeartbeat(
     if (pongTimeoutRef.current) {
       clearTimeout(pongTimeoutRef.current);
       pongTimeoutRef.current = null;
+    }
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
     }
   }, []);
 
@@ -1271,15 +1304,19 @@ export function useWebSocketWithHeartbeat(
       clearTimers();
 
       // Reconnect
-      setTimeout(connect, 5000);
+      if (shouldReconnectRef.current) {
+        reconnectTimeoutRef.current = setTimeout(connect, 5000);
+      }
     };
 
     socketRef.current = ws;
   }, [url, heartbeatOptions.pingInterval, sendPing, handlePong, clearTimers]);
 
   useEffect(() => {
+    shouldReconnectRef.current = true;
     connect();
     return () => {
+      shouldReconnectRef.current = false;
       clearTimers();
       socketRef.current?.close();
     };
@@ -1297,14 +1334,14 @@ export function useWebSocketWithHeartbeat(
 
 ```typescript
 // Server-side (Node.js)
-import WebSocket from 'ws';
+import WebSocket, { RawData } from 'ws';
 
 const wss = new WebSocket.Server({ port: 8080 });
 
 wss.on('connection', (ws: WebSocket) => {
-  ws.on('message', (message: string) => {
+  ws.on('message', (message: RawData) => {
     try {
-      const data = JSON.parse(message);
+      const data = JSON.parse(message.toString());
 
       // Respond to ping with pong
       if (data.type === '__ping__') {
@@ -1371,7 +1408,6 @@ export function useWebSocketBinary(url: string) {
 
   const handleBinaryMessage = useCallback((data: ArrayBuffer) => {
     // First 36 bytes contain transfer ID (UUID)
-    const headerView = new DataView(data, 0, 36);
     const decoder = new TextDecoder();
     const transferId = decoder.decode(new Uint8Array(data, 0, 36));
 
@@ -1404,7 +1440,6 @@ export function useWebSocketBinary(url: string) {
       }
 
       const transferId = crypto.randomUUID();
-      const chunkSize = 64 * 1024; // 64KB chunks
 
       // Create transfer record
       setTransfers((prev) => {
@@ -1510,9 +1545,13 @@ type ErrorHandler = (event: Event) => void;
 
 export class MockWebSocket {
   static instances: MockWebSocket[] = [];
+  static CONNECTING = 0;
+  static OPEN = 1;
+  static CLOSING = 2;
+  static CLOSED = 3;
 
   url: string;
-  readyState: number = WebSocket.CONNECTING;
+  readyState: number = MockWebSocket.CONNECTING;
 
   onopen: OpenHandler | null = null;
   onclose: CloseHandler | null = null;
@@ -1527,20 +1566,20 @@ export class MockWebSocket {
 
     // Simulate async connection
     setTimeout(() => {
-      this.readyState = WebSocket.OPEN;
+      this.readyState = MockWebSocket.OPEN;
       this.onopen?.();
     }, 0);
   }
 
   send(data: string): void {
-    if (this.readyState !== WebSocket.OPEN) {
+    if (this.readyState !== MockWebSocket.OPEN) {
       throw new Error('WebSocket is not open');
     }
     this.messageQueue.push(data);
   }
 
   close(code?: number, reason?: string): void {
-    this.readyState = WebSocket.CLOSED;
+    this.readyState = MockWebSocket.CLOSED;
     this.onclose?.({
       code: code || 1000,
       reason: reason || '',
@@ -1559,7 +1598,7 @@ export class MockWebSocket {
   }
 
   simulateClose(code: number = 1000): void {
-    this.readyState = WebSocket.CLOSED;
+    this.readyState = MockWebSocket.CLOSED;
     this.onclose?.({ code, reason: '', wasClean: true } as CloseEvent);
   }
 
@@ -1582,7 +1621,7 @@ export class MockWebSocket {
 }
 
 // Replace global WebSocket
-(global as unknown as { WebSocket: typeof MockWebSocket }).WebSocket = MockWebSocket;
+(globalThis as unknown as { WebSocket: typeof MockWebSocket }).WebSocket = MockWebSocket;
 ```
 
 ### Writing Tests
@@ -1636,7 +1675,7 @@ describe('ChatComponent', () => {
     render(<ChatComponent />);
 
     await waitFor(() => {
-      expect(MockWebSocket.instances.length).toBe(1);
+      expect(screen.getByText('Status: Connected')).toBeInTheDocument();
     });
 
     const input = screen.getByPlaceholderText('Type a message...');
@@ -1659,14 +1698,14 @@ describe('ChatComponent', () => {
     render(<ChatComponent />);
 
     await waitFor(() => {
-      expect(screen.getByText('Online')).toBeInTheDocument();
+      expect(screen.getByText('Status: Connected')).toBeInTheDocument();
     });
 
     const ws = MockWebSocket.getLastInstance()!;
     ws.simulateClose(1006);
 
     await waitFor(() => {
-      expect(screen.getByText('Offline')).toBeInTheDocument();
+      expect(screen.getByText('Status: Disconnected')).toBeInTheDocument();
     });
   });
 
@@ -1784,8 +1823,9 @@ export function useResilientWebSocket(url: string) {
   const [reconnectAttempt, setReconnectAttempt] = useState(0);
 
   const socketRef = useRef<WebSocket | null>(null);
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const shouldReconnectRef = useRef(true);
+  const reconnectAttemptRef = useRef(0);
 
   const connect = useCallback(() => {
     try {
@@ -1795,6 +1835,7 @@ export function useResilientWebSocket(url: string) {
         setIsConnected(true);
         setError(null);
         setReconnectAttempt(0);
+        reconnectAttemptRef.current = 0;
       };
 
       ws.onclose = (event) => {
@@ -1811,8 +1852,9 @@ export function useResilientWebSocket(url: string) {
         });
 
         if (willReconnect) {
-          const delay = getReconnectDelay(event.code, reconnectAttempt);
-          setReconnectAttempt((prev) => prev + 1);
+          const delay = getReconnectDelay(event.code, reconnectAttemptRef.current);
+          reconnectAttemptRef.current += 1;
+          setReconnectAttempt(reconnectAttemptRef.current);
 
           reconnectTimeoutRef.current = setTimeout(() => {
             connect();
@@ -1834,7 +1876,7 @@ export function useResilientWebSocket(url: string) {
         willReconnect: false,
       });
     }
-  }, [url, reconnectAttempt]);
+  }, [url]);
 
   const disconnect = useCallback(() => {
     shouldReconnectRef.current = false;
@@ -1869,7 +1911,7 @@ Optimize WebSocket handling for high-frequency updates.
 
 ```typescript
 // hooks/useThrottledWebSocket.ts
-import { useCallback, useRef, useState, useEffect } from 'react';
+import { useCallback, useRef, useState, useEffect, useMemo } from 'react';
 
 interface ThrottleOptions {
   interval: number;           // Minimum time between updates
@@ -1888,13 +1930,16 @@ export function useThrottledWebSocket<T>(
   onBatch: (messages: T[]) => void,
   options?: Partial<ThrottleOptions>
 ) {
-  const opts = { ...defaultOptions, ...options };
+  const opts = useMemo(
+    () => ({ ...defaultOptions, ...options }),
+    [options?.interval, options?.maxBatchSize, options?.immediate]
+  );
   const [isConnected, setIsConnected] = useState(false);
 
   const socketRef = useRef<WebSocket | null>(null);
   const batchRef = useRef<T[]>([]);
   const lastFlushRef = useRef<number>(0);
-  const flushTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const flushTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Flush batched messages to handler
   const flush = useCallback(() => {
