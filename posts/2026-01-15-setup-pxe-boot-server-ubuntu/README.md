@@ -25,7 +25,9 @@ sequenceDiagram
     T->>C: Send boot file
     C->>T: Request configuration
     T->>C: Send PXE menu
-    C->>H: Download kernel/initrd
+    C->>T: Request kernel/initrd
+    T->>C: Send kernel/initrd
+    C->>H: Download ISO/autoinstall files
     H->>C: Send installation files
 ```
 
@@ -44,8 +46,8 @@ sequenceDiagram
 
 sudo apt update
 
-# Install TFTP server, DHCP server, and Apache
-sudo apt install tftpd-hpa isc-dhcp-server apache2 -y
+# Install TFTP server, TFTP client, DHCP server, Apache, and password hash tools
+sudo apt install tftpd-hpa tftp-hpa isc-dhcp-server apache2 whois -y
 
 # Install syslinux for PXE boot files
 sudo apt install syslinux pxelinux syslinux-common syslinux-efi -y
@@ -75,7 +77,7 @@ sudo cp /usr/lib/syslinux/modules/bios/*.c32 /srv/tftp/
 # Copy UEFI boot files (if needed)
 sudo mkdir -p /srv/tftp/efi64
 sudo cp /usr/lib/SYSLINUX.EFI/efi64/syslinux.efi /srv/tftp/efi64/
-sudo cp /usr/lib/syslinux/modules/efi64/*.e64 /srv/tftp/efi64/
+sudo cp /usr/lib/syslinux/modules/efi64/* /srv/tftp/efi64/
 ```
 
 ### Configure TFTP Server
@@ -107,6 +109,7 @@ sudo nano /etc/dhcp/dhcpd.conf
 
 ```conf
 # Global options
+option architecture-type code 93 = unsigned integer 16;
 option domain-name "pxe.local";
 option domain-name-servers 8.8.8.8, 8.8.4.4;
 default-lease-time 600;
@@ -126,7 +129,7 @@ subnet 192.168.1.0 netmask 255.255.255.0 {
     filename "pxelinux.0";
 
     # For UEFI clients, use conditional:
-    # if option architecture-type = 00:07 {
+    # if option architecture-type = 00:07 or option architecture-type = 00:09 {
     #     filename "efi64/syslinux.efi";
     # } else {
     #     filename "pxelinux.0";
@@ -174,13 +177,13 @@ LABEL ubuntu-22.04
     MENU LABEL Install Ubuntu 22.04 Server
     KERNEL images/ubuntu-22.04/vmlinuz
     INITRD images/ubuntu-22.04/initrd
-    APPEND ip=dhcp url=http://192.168.1.10/ubuntu-22.04/ubuntu-22.04-live-server-amd64.iso autoinstall ds=nocloud-net;s=http://192.168.1.10/autoinstall/
+    APPEND ip=dhcp url=http://192.168.1.10/ubuntu-22.04/ubuntu-22.04.5-live-server-amd64.iso autoinstall ds=nocloud;s=http://192.168.1.10/autoinstall/
 
 LABEL ubuntu-22.04-manual
     MENU LABEL Install Ubuntu 22.04 Server (Manual)
     KERNEL images/ubuntu-22.04/vmlinuz
     INITRD images/ubuntu-22.04/initrd
-    APPEND ip=dhcp url=http://192.168.1.10/ubuntu-22.04/ubuntu-22.04-live-server-amd64.iso
+    APPEND ip=dhcp url=http://192.168.1.10/ubuntu-22.04/ubuntu-22.04.5-live-server-amd64.iso
 
 LABEL memtest
     MENU LABEL Memtest86+
@@ -198,7 +201,7 @@ sudo mkdir -p /var/www/html/ubuntu-22.04
 
 # Download Ubuntu Server ISO
 cd /var/www/html/ubuntu-22.04
-sudo wget https://releases.ubuntu.com/22.04/ubuntu-22.04.3-live-server-amd64.iso
+sudo wget https://releases.ubuntu.com/22.04/ubuntu-22.04.5-live-server-amd64.iso
 ```
 
 ### Extract Boot Files
@@ -234,7 +237,7 @@ sudo nano /var/www/html/autoinstall/user-data
 #cloud-config
 autoinstall:
   version: 1
-  locale: en_US
+  locale: en_US.UTF-8
   keyboard:
     layout: us
 
@@ -283,11 +286,8 @@ mkpasswd -m sha-512
 ## Configure Apache
 
 ```bash
-# Enable required modules
-sudo a2enmod proxy proxy_http
-
-# Restart Apache
-sudo systemctl restart apache2
+# Ensure Apache is enabled and serving /var/www/html
+sudo systemctl enable --now apache2
 ```
 
 ## Multiple OS Support
@@ -327,9 +327,7 @@ For Windows deployment, use iPXE or Windows Deployment Services (WDS).
 # Copy UEFI files
 sudo mkdir -p /srv/tftp/efi64
 sudo cp /usr/lib/SYSLINUX.EFI/efi64/syslinux.efi /srv/tftp/efi64/
-sudo cp /usr/lib/syslinux/modules/efi64/ldlinux.e64 /srv/tftp/efi64/
-sudo cp /usr/lib/syslinux/modules/efi64/menu.c32 /srv/tftp/efi64/
-sudo cp /usr/lib/syslinux/modules/efi64/libutil.c32 /srv/tftp/efi64/
+sudo cp /usr/lib/syslinux/modules/efi64/* /srv/tftp/efi64/
 
 # Create UEFI menu
 sudo mkdir -p /srv/tftp/efi64/pxelinux.cfg
@@ -340,12 +338,12 @@ sudo cp /srv/tftp/pxelinux.cfg/default /srv/tftp/efi64/pxelinux.cfg/
 
 ```conf
 # Add to dhcpd.conf
+option architecture-type code 93 = unsigned integer 16;
+
 class "pxeclient" {
     match if substring (option vendor-class-identifier, 0, 9) = "PXEClient";
 
-    if option architecture-type = 00:07 {
-        filename "efi64/syslinux.efi";
-    } elsif option architecture-type = 00:09 {
+    if option architecture-type = 00:07 or option architecture-type = 00:09 {
         filename "efi64/syslinux.efi";
     } else {
         filename "pxelinux.0";
