@@ -25,7 +25,7 @@ Before starting, ensure your Ubuntu system meets these requirements:
 sudo apt update && sudo apt upgrade -y
 
 # Install essential dependencies
-sudo apt install -y curl git unzip xz-utils zip libglu1-mesa
+sudo apt install -y curl git unzip xz-utils zip libglu1-mesa tree
 
 # Install additional dependencies for Linux desktop development
 sudo apt install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libstdc++-12-dev
@@ -45,14 +45,14 @@ mkdir -p ~/development
 cd ~/development
 
 # Download the latest stable Flutter SDK
-# Visit https://docs.flutter.dev/release/archive for the latest version
-wget https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_3.24.0-stable.tar.xz
+# Visit https://docs.flutter.dev/install/archive for the latest version
+wget https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_3.44.3-stable.tar.xz
 
 # Extract the Flutter archive
-tar xf flutter_linux_3.24.0-stable.tar.xz
+tar xf flutter_linux_3.44.3-stable.tar.xz
 
 # Remove the archive to save space
-rm flutter_linux_3.24.0-stable.tar.xz
+rm flutter_linux_3.44.3-stable.tar.xz
 ```
 
 ### Method 2: Using Snap (Quick Installation)
@@ -127,7 +127,7 @@ Example output:
 
 ```text
 Doctor summary (to see all details, run flutter doctor -v):
-[✓] Flutter (Channel stable, 3.24.0, on Ubuntu 22.04.3 LTS 6.2.0-39-generic, locale en_US.UTF-8)
+[✓] Flutter (Channel stable, 3.44.3, on Ubuntu 24.04.2 LTS 6.8.0-60-generic, locale en_US.UTF-8)
 [✗] Android toolchain - develop for Android devices
     ✗ Unable to locate Android SDK.
 [✗] Chrome - develop for the web (Cannot find Chrome executable at google-chrome)
@@ -154,8 +154,9 @@ Android Studio provides the Android SDK, emulator, and essential tools for Andro
 # Method 1: Install via Snap (Recommended)
 sudo snap install android-studio --classic
 
-# Method 2: Install via official repository
+# Method 2: Install via community PPA
 # Add the Android Studio PPA
+sudo apt install -y software-properties-common
 sudo add-apt-repository ppa:maarten-fonville/android-studio
 sudo apt update
 sudo apt install android-studio
@@ -220,7 +221,7 @@ egrep -c '(vmx|svm)' /proc/cpuinfo
 # Output > 0 means virtualization is supported
 
 # Install KVM and related packages
-sudo apt install -y qemu-kvm libvirt-daemon-system libvirt-clients bridge-utils
+sudo apt install -y qemu-kvm libvirt-daemon-system libvirt-clients bridge-utils cpu-checker
 
 # Add your user to the kvm group
 sudo adduser $USER kvm
@@ -517,7 +518,9 @@ flutter run -d linux
 flutter config --enable-web
 
 # Install Chrome if not already installed
-sudo apt install google-chrome-stable
+wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+sudo apt install ./google-chrome-stable_current_amd64.deb
+rm google-chrome-stable_current_amd64.deb
 
 # Run on Chrome
 flutter run -d chrome
@@ -650,9 +653,8 @@ flutter build ipa --release
 # Build for web (production)
 flutter build web --release
 
-# Build with specific renderer
-flutter build web --web-renderer html      # Better compatibility
-flutter build web --web-renderer canvaskit # Better performance
+# Build with WebAssembly support
+flutter build web --wasm
 
 # Build with custom base href (for subdirectory deployment)
 flutter build web --base-href /my-app/
@@ -728,14 +730,10 @@ Flutter DevTools is a suite of debugging and performance tools.
 
 ```bash
 # Launch DevTools from command line
-flutter pub global activate devtools
-flutter pub global run devtools
+dart devtools
 
 # Or open DevTools while app is running
 # Press 'd' in the terminal when app is running with 'flutter run'
-
-# Open DevTools in browser
-dart devtools
 ```
 
 ### DevTools Features
@@ -785,6 +783,7 @@ dart devtools
 // lib/utils/debug_helper.dart
 import 'dart:developer' as developer;
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 
 class DebugHelper {
   // Use debugPrint for logging (automatically truncates long messages)
@@ -847,6 +846,7 @@ class MyWidget extends StatelessWidget {
 ```dart
 // lib/main.dart
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 
 void main() {
   // Enable debug paint for visual debugging
@@ -900,8 +900,8 @@ fvm --version
 fvm releases
 
 # Install a specific Flutter version
+fvm install 3.44.3
 fvm install 3.24.0
-fvm install 3.19.0
 fvm install stable
 fvm install beta
 
@@ -910,16 +910,16 @@ fvm list
 
 # Set Flutter version for current project
 cd my_first_app
-fvm use 3.24.0
+fvm use 3.44.3
 
 # This creates .fvm directory with version configuration
 # Add .fvm/flutter_sdk to .gitignore
 
 # Set global Flutter version
-fvm global 3.24.0
+fvm global 3.44.3
 
 # Remove a Flutter version
-fvm remove 3.19.0
+fvm remove 3.24.0
 ```
 
 ### FVM Configuration
@@ -927,7 +927,7 @@ fvm remove 3.19.0
 ```json
 // .fvm/fvm_config.json (auto-generated)
 {
-  "flutterSdkVersion": "3.24.0",
+  "flutterSdkVersion": "3.44.3",
   "flavors": {}
 }
 ```
@@ -1034,13 +1034,13 @@ dart format lib/
 dart format .
 
 # Run code generators (build_runner)
-flutter pub run build_runner build
+dart run build_runner build
 
 # Run code generators and watch for changes
-flutter pub run build_runner watch
+dart run build_runner watch
 
 # Delete generated files
-flutter pub run build_runner clean
+dart run build_runner clean
 ```
 
 ### Testing
@@ -1059,6 +1059,7 @@ flutter test test/widget_test.dart
 flutter test --name "should display"
 
 # Generate coverage report
+sudo apt install -y lcov
 genhtml coverage/lcov.info -o coverage/html
 ```
 
@@ -1133,7 +1134,10 @@ flutter build appbundle --analyze-size
 # Profile the app
 flutter run --profile
 
-# Enable Skia performance overlay
+# Show the performance overlay
+flutter run --show-performance-overlay
+
+# Force software rendering for troubleshooting
 flutter run --enable-software-rendering
 ```
 
