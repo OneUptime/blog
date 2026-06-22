@@ -182,7 +182,7 @@ Now TypeScript enforces the correct props for each variant:
 Sometimes you need more than one level of discrimination. Consider an Alert component that varies by both severity and dismissibility:
 
 ```typescript
-import React, { useState } from 'react';
+import React from 'react';
 
 // Severity variants
 type InfoAlert = {
@@ -483,7 +483,6 @@ type DateFieldProps = BaseFieldProps & {
   onChange: (value: Date | null) => void;
   minDate?: Date;
   maxDate?: Date;
-  disabledDates?: Date[];
 };
 
 // The discriminated union
@@ -766,13 +765,14 @@ type ModalProps<T = unknown> =
 export function Modal<T = unknown>(props: ModalProps<T>) {
   const { isOpen, onClose, title, size = 'medium', variant } = props;
   const [isSubmitting, setIsSubmitting] = React.useState(false);
-  const [formValues, setFormValues] = React.useState<T | null>(null);
+  const [formValues, setFormValues] = React.useState<T | undefined>(undefined);
+  const initialValues = variant === 'form' ? props.initialValues : undefined;
 
   React.useEffect(() => {
-    if (variant === 'form' && isOpen) {
-      setFormValues(props.initialValues);
+    if (isOpen && initialValues !== undefined) {
+      setFormValues(initialValues);
     }
-  }, [isOpen, variant]);
+  }, [isOpen, initialValues]);
 
   if (!isOpen) return null;
 
@@ -819,7 +819,7 @@ export function Modal<T = unknown>(props: ModalProps<T>) {
         const { onSubmit, submitLabel, cancelLabel, children } = props;
 
         const handleSubmit = async () => {
-          if (!formValues) return;
+          if (formValues === undefined) return;
           setIsSubmitting(true);
           try {
             await onSubmit(formValues);
@@ -832,7 +832,7 @@ export function Modal<T = unknown>(props: ModalProps<T>) {
         return (
           <>
             <div className="p-4">
-              {formValues &&
+              {formValues !== undefined &&
                 children({
                   values: formValues,
                   setValues: setFormValues as React.Dispatch<React.SetStateAction<T>>,
