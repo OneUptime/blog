@@ -43,7 +43,7 @@ sudo useradd -r -s /usr/sbin/nologin kafka
 
 # Download Kafka (check for latest version)
 cd /opt
-sudo wget https://downloads.apache.org/kafka/3.6.1/kafka_2.13-3.6.1.tgz
+sudo wget https://archive.apache.org/dist/kafka/3.6.1/kafka_2.13-3.6.1.tgz
 
 # Extract
 sudo tar -xzf kafka_2.13-3.6.1.tgz
@@ -427,8 +427,8 @@ export KAFKA_JMX_OPTS="-Dcom.sun.management.jmxremote -Dcom.sun.management.jmxre
 ### Check Broker Health
 
 ```bash
-# Check cluster metadata
-/opt/kafka/bin/kafka-metadata.sh --snapshot /var/lib/kafka/data/__cluster_metadata-0/00000000000000000000.log --command "cat"
+# Check cluster metadata (interactive shell: use ls, cat, exit)
+/opt/kafka/bin/kafka-metadata-shell.sh --snapshot /var/lib/kafka/data/__cluster_metadata-0/00000000000000000000.log
 ```
 
 ## Performance Tuning
