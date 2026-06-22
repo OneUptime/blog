@@ -73,6 +73,11 @@ sudo systemctl status libvirtd
 ## Verify KVM Installation
 
 ```bash
+# Tell libvirt to use the system-wide QEMU hypervisor
+# instead of using session mode that runs VMs under
+# your personal user account
+export LIBVIRT_DEFAULT_URI='qemu:///system'
+
 # Check KVM is working
 virsh list --all
 
@@ -82,11 +87,6 @@ virsh net-list --all
 # If default network is inactive, start it
 sudo virsh net-start default
 sudo virsh net-autostart default
-
-# Tell libvert to use the system-wide QEMU hypervisor
-# instead of using session mode that runs VMs under
-# your personal user account
-export LIBVIRT_DEFAULT_URI='qemu:///system'
 ```
 
 ## Create Virtual Machine
@@ -298,7 +298,7 @@ virsh snapshot-revert ubuntu-vm snap1
 virsh snapshot-delete ubuntu-vm snap1
 ```
 
-Resource Management
+## Resource Management
 
 ### CPU and Memory
 
@@ -324,7 +324,7 @@ Pin vCPUs to specific host CPUs:
 virsh edit ubuntu-vm
 ```
 
-Add to `<vcpu>` section:
+Add to the domain XML:
 ```xml
 <cputune>
   <vcpupin vcpu='0' cpuset='0'/>
