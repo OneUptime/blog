@@ -48,7 +48,7 @@ Key characteristics:
 | Format | Text-based (UTF-8) |
 | Reconnection | Automatic with configurable retry |
 | Browser Support | All modern browsers |
-| Connection | Persistent, single TCP connection |
+| Connection | Persistent HTTP connection or HTTP/2 stream |
 
 SSE uses a simple text format:
 
@@ -63,7 +63,7 @@ id: 12346
 ```
 
 Each message can include:
-- `data`: The actual payload (required)
+- `data`: The actual payload (needed for a message to be dispatched)
 - `event`: Custom event type (optional, defaults to "message")
 - `id`: Message ID for reconnection tracking (optional)
 - `retry`: Reconnection delay in milliseconds (optional)
@@ -322,6 +322,16 @@ function useSSE<T = any>(options: UseSSEOptions): UseSSEReturn<T> {
   const [isConnected, setIsConnected] = useState(false);
 
   const eventSourceRef = useRef<EventSource | null>(null);
+  const onMessageRef = useRef(onMessage);
+  const onErrorRef = useRef(onError);
+  const onOpenRef = useRef(onOpen);
+  const eventTypesKey = eventTypes.join('\u0000');
+
+  useEffect(() => {
+    onMessageRef.current = onMessage;
+    onErrorRef.current = onError;
+    onOpenRef.current = onOpen;
+  }, [onMessage, onError, onOpen]);
 
   const connect = useCallback(() => {
     // Close existing connection if any
@@ -335,13 +345,13 @@ function useSSE<T = any>(options: UseSSEOptions): UseSSEReturn<T> {
     eventSource.onopen = () => {
       setIsConnected(true);
       setError(null);
-      onOpen?.();
+      onOpenRef.current?.();
     };
 
     eventSource.onerror = (event) => {
       setIsConnected(false);
       setError(event);
-      onError?.(event);
+      onErrorRef.current?.(event);
     };
 
     // Handler for processing incoming data
@@ -349,7 +359,7 @@ function useSSE<T = any>(options: UseSSEOptions): UseSSEReturn<T> {
       try {
         const parsedData = parseJson ? JSON.parse(event.data) : event.data;
         setData(parsedData);
-        onMessage?.(parsedData);
+        onMessageRef.current?.(parsedData);
       } catch (err) {
         console.error('Failed to parse SSE data:', err);
       }
@@ -364,7 +374,7 @@ function useSSE<T = any>(options: UseSSEOptions): UseSSEReturn<T> {
     });
 
     return eventSource;
-  }, [url, withCredentials, onMessage, onError, onOpen, eventTypes, parseJson]);
+  }, [url, withCredentials, eventTypesKey, parseJson]);
 
   const close = useCallback(() => {
     if (eventSourceRef.current) {
@@ -477,8 +487,9 @@ function useSSEWithReconnect<T>(options: ReconnectOptions) {
   >('connecting');
 
   const eventSourceRef = useRef<EventSource | null>(null);
-  const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastEventIdRef = useRef<string | null>(null);
+  const retryCountRef = useRef(0);
 
   const calculateRetryDelay = useCallback((attempt: number): number => {
     // Exponential backoff with jitter
@@ -492,11 +503,15 @@ function useSSEWithReconnect<T>(options: ReconnectOptions) {
   }, [initialRetryDelay, backoffMultiplier, maxRetryDelay]);
 
   const connect = useCallback(() => {
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+    }
+
     // Build URL with Last-Event-ID for resumption
     let connectionUrl = url;
     if (lastEventIdRef.current) {
       const separator = url.includes('?') ? '&' : '?';
-      connectionUrl = `${url}${separator}lastEventId=${lastEventIdRef.current}`;
+      connectionUrl = `${url}${separator}lastEventId=${encodeURIComponent(lastEventIdRef.current)}`;
     }
 
     const eventSource = new EventSource(connectionUrl);
@@ -504,6 +519,7 @@ function useSSEWithReconnect<T>(options: ReconnectOptions) {
 
     eventSource.onopen = () => {
       setIsConnected(true);
+      retryCountRef.current = 0;
       setRetryCount(0);
       setConnectionState('connected');
     };
@@ -526,14 +542,15 @@ function useSSEWithReconnect<T>(options: ReconnectOptions) {
       setIsConnected(false);
       eventSource.close();
 
-      if (retryCount < maxRetries) {
+      if (retryCountRef.current < maxRetries) {
         setConnectionState('reconnecting');
-        const delay = calculateRetryDelay(retryCount);
+        const delay = calculateRetryDelay(retryCountRef.current);
 
-        console.log(`Reconnecting in ${delay}ms (attempt ${retryCount + 1}/${maxRetries})`);
+        console.log(`Reconnecting in ${delay}ms (attempt ${retryCountRef.current + 1}/${maxRetries})`);
 
         retryTimeoutRef.current = setTimeout(() => {
-          setRetryCount((prev) => prev + 1);
+          retryCountRef.current += 1;
+          setRetryCount(retryCountRef.current);
           connect();
         }, delay);
       } else {
@@ -543,9 +560,17 @@ function useSSEWithReconnect<T>(options: ReconnectOptions) {
     };
 
     return eventSource;
-  }, [url, retryCount, maxRetries, calculateRetryDelay]);
+  }, [url, maxRetries, calculateRetryDelay]);
 
   const manualReconnect = useCallback(() => {
+    if (retryTimeoutRef.current) {
+      clearTimeout(retryTimeoutRef.current);
+      retryTimeoutRef.current = null;
+    }
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+    }
+    retryCountRef.current = 0;
     setRetryCount(0);
     setConnectionState('connecting');
     connect();
@@ -562,7 +587,7 @@ function useSSEWithReconnect<T>(options: ReconnectOptions) {
         eventSourceRef.current.close();
       }
     };
-  }, []);
+  }, [connect]);
 
   return {
     data,
@@ -578,7 +603,7 @@ export default useSSEWithReconnect;
 
 ### Using Last-Event-ID for Message Recovery
 
-The `Last-Event-ID` header allows the server to resume from where the client left off:
+The `Last-Event-ID` header allows the server to resume from where the client left off. Browsers send this header during EventSource-managed reconnection; if you close and recreate the EventSource manually, pass the last ID yourself, such as with the `lastEventId` query parameter used in the hook above:
 
 ```tsx
 function LiveFeed() {
@@ -638,6 +663,24 @@ export function SSEProvider({ url, children }: SSEProviderProps) {
 
   const eventSourceRef = useRef<EventSource | null>(null);
   const handlersRef = useRef<Map<string, Set<(data: any) => void>>>(new Map());
+  const eventListenersRef = useRef<Map<string, EventListener>>(new Map());
+
+  const addEventListenerForType = useCallback((eventType: string) => {
+    if (eventType === 'message' || !eventSourceRef.current || eventListenersRef.current.has(eventType)) {
+      return;
+    }
+
+    const eventHandler = ((event: MessageEvent) => {
+      const handlers = handlersRef.current.get(eventType);
+      if (handlers) {
+        const data = JSON.parse(event.data);
+        handlers.forEach((h) => h(data));
+      }
+    }) as EventListener;
+
+    eventSourceRef.current.addEventListener(eventType, eventHandler);
+    eventListenersRef.current.set(eventType, eventHandler);
+  }, []);
 
   useEffect(() => {
     const eventSource = new EventSource(url);
@@ -666,28 +709,26 @@ export function SSEProvider({ url, children }: SSEProviderProps) {
       }
     };
 
+    handlersRef.current.forEach((_, eventType) => {
+      addEventListenerForType(eventType);
+    });
+
     return () => {
+      eventListenersRef.current.forEach((listener, eventType) => {
+        eventSource.removeEventListener(eventType, listener);
+      });
+      eventListenersRef.current.clear();
       eventSource.close();
     };
-  }, [url]);
+  }, [url, addEventListenerForType]);
 
   const subscribe = useCallback((eventType: string, handler: (data: any) => void) => {
     // Get or create handler set for this event type
     if (!handlersRef.current.has(eventType)) {
       handlersRef.current.set(eventType, new Set());
-
-      // Add event listener for custom event types
-      if (eventType !== 'message' && eventSourceRef.current) {
-        const eventHandler = (event: MessageEvent) => {
-          const handlers = handlersRef.current.get(eventType);
-          if (handlers) {
-            const data = JSON.parse(event.data);
-            handlers.forEach((h) => h(data));
-          }
-        };
-        eventSourceRef.current.addEventListener(eventType, eventHandler as EventListener);
-      }
     }
+
+    addEventListenerForType(eventType);
 
     // Add this handler
     handlersRef.current.get(eventType)!.add(handler);
@@ -699,7 +740,7 @@ export function SSEProvider({ url, children }: SSEProviderProps) {
         handlers.delete(handler);
       }
     };
-  }, []);
+  }, [addEventListenerForType]);
 
   const value: SSEContextValue = {
     isConnected,
@@ -748,6 +789,7 @@ function App() {
 }
 
 // Dashboard.tsx
+import { useState } from 'react';
 import { useSSEContext, useSSEEvent } from './context/SSEContext';
 
 function Dashboard() {
@@ -856,37 +898,34 @@ function useRobustSSE<T>(options: UseRobustSSEOptions) {
       };
 
       eventSource.onerror = (event) => {
-        const isClosing = eventSource.readyState === EventSource.CLOSED;
-
-        if (isClosing) {
-          // Connection was closed
-          if (reconnectAttempts.current < maxReconnectAttempts) {
-            reconnectAttempts.current++;
-            updateStatus('reconnecting');
-
-            // Let EventSource handle automatic reconnection
-            addError({
-              type: 'network',
-              message: `Connection lost, attempt ${reconnectAttempts.current}/${maxReconnectAttempts}`,
-              timestamp: new Date(),
-              recoverable: true,
-            });
-          } else {
-            updateStatus('error');
-            addError({
-              type: 'network',
-              message: 'Max reconnection attempts reached',
-              timestamp: new Date(),
-              recoverable: false,
-            });
-          }
-        } else {
-          // Temporary error, EventSource will reconnect
+        if (eventSource.readyState === EventSource.CLOSED) {
+          updateStatus('error');
           addError({
             type: 'network',
-            message: 'Temporary connection error, reconnecting...',
+            message: 'Connection closed and will not reconnect automatically',
+            timestamp: new Date(),
+            recoverable: false,
+          });
+          return;
+        }
+
+        if (reconnectAttempts.current < maxReconnectAttempts) {
+          reconnectAttempts.current++;
+          updateStatus('reconnecting');
+          addError({
+            type: 'network',
+            message: `Connection lost, attempt ${reconnectAttempts.current}/${maxReconnectAttempts}`,
             timestamp: new Date(),
             recoverable: true,
+          });
+        } else {
+          eventSource.close();
+          updateStatus('error');
+          addError({
+            type: 'network',
+            message: 'Max reconnection attempts reached',
+            timestamp: new Date(),
+            recoverable: false,
           });
         }
       };
@@ -919,7 +958,7 @@ function useRobustSSE<T>(options: UseRobustSSEOptions) {
   useEffect(() => {
     connect();
     return () => disconnect();
-  }, []);
+  }, [connect, disconnect]);
 
   return {
     data,
@@ -1171,8 +1210,18 @@ function useFetchSSE<T>(options: UseFetchSSEOptions) {
   const [error, setError] = useState<Error | null>(null);
 
   const abortControllerRef = useRef<AbortController | null>(null);
+  const onMessageRef = useRef(onMessage);
+  const headersKey = JSON.stringify(headers);
+
+  useEffect(() => {
+    onMessageRef.current = onMessage;
+  }, [onMessage]);
 
   const connect = useCallback(async () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+
     abortControllerRef.current = new AbortController();
 
     try {
@@ -1208,28 +1257,29 @@ function useFetchSSE<T>(options: UseFetchSSEOptions) {
 
         buffer += decoder.decode(value, { stream: true });
 
-        // Process complete events (separated by double newlines)
-        const events = buffer.split('\n\n');
+        // Process complete events (separated by a blank line)
+        const events = buffer.split(/\r?\n\r?\n/);
         buffer = events.pop() || ''; // Keep incomplete event in buffer
 
         for (const event of events) {
           if (!event.trim()) continue;
 
           // Parse SSE format
-          const lines = event.split('\n');
-          let eventData = '';
+          const lines = event.split(/\r?\n/);
+          const eventDataLines: string[] = [];
 
           for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              eventData += line.slice(6);
+            if (line.startsWith('data:')) {
+              eventDataLines.push(line.startsWith('data: ') ? line.slice(6) : line.slice(5));
             }
           }
 
-          if (eventData) {
+          if (eventDataLines.length > 0) {
             try {
+              const eventData = eventDataLines.join('\n');
               const parsed = JSON.parse(eventData) as T;
               setData(parsed);
-              onMessage?.(parsed);
+              onMessageRef.current?.(parsed);
             } catch (err) {
               console.error('Parse error:', err);
             }
@@ -1242,7 +1292,7 @@ function useFetchSSE<T>(options: UseFetchSSEOptions) {
         setIsConnected(false);
       }
     }
-  }, [url, headers, onMessage]);
+  }, [url, headersKey]);
 
   const disconnect = useCallback(() => {
     if (abortControllerRef.current) {
@@ -1401,8 +1451,14 @@ app.get('/api/events', (req, res) => {
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
 
-  // Check for Last-Event-ID header (sent on reconnection)
-  const lastEventId = req.headers['last-event-id'];
+  // Check for Last-Event-ID header (sent by EventSource-managed reconnection)
+  // or a query parameter supplied by manual reconnection code.
+  const lastEventId =
+    typeof req.headers['last-event-id'] === 'string'
+      ? req.headers['last-event-id']
+      : typeof req.query.lastEventId === 'string'
+        ? req.query.lastEventId
+        : null;
 
   if (lastEventId) {
     // Client is reconnecting - send missed messages
@@ -1543,22 +1599,27 @@ function useSSEWithVisibility(url: string) {
 // __mocks__/EventSource.ts
 class MockEventSource {
   static instances: MockEventSource[] = [];
+  static CONNECTING = 0;
+  static OPEN = 1;
+  static CLOSED = 2;
 
   url: string;
-  readyState: number = 0; // CONNECTING
+  withCredentials: boolean;
+  readyState: number = MockEventSource.CONNECTING;
   onopen: ((event: Event) => void) | null = null;
   onmessage: ((event: MessageEvent) => void) | null = null;
   onerror: ((event: Event) => void) | null = null;
 
   private eventListeners: Map<string, Set<EventListener>> = new Map();
 
-  constructor(url: string) {
+  constructor(url: string, eventSourceInitDict?: EventSourceInit) {
     this.url = url;
+    this.withCredentials = eventSourceInitDict?.withCredentials ?? false;
     MockEventSource.instances.push(this);
 
     // Simulate connection
     setTimeout(() => {
-      this.readyState = 1; // OPEN
+      this.readyState = MockEventSource.OPEN;
       this.onopen?.(new Event('open'));
     }, 0);
   }
@@ -1575,7 +1636,7 @@ class MockEventSource {
   }
 
   close() {
-    this.readyState = 2; // CLOSED
+    this.readyState = MockEventSource.CLOSED;
     const index = MockEventSource.instances.indexOf(this);
     if (index > -1) {
       MockEventSource.instances.splice(index, 1);
@@ -1599,7 +1660,7 @@ class MockEventSource {
 
   // Test helper: simulate error
   simulateError() {
-    this.readyState = 2;
+    this.readyState = MockEventSource.CLOSED;
     this.onerror?.(new Event('error'));
   }
 
@@ -1690,7 +1751,7 @@ describe('LiveMessages', () => {
 
 ### 1. Connection Limits
 
-Browsers limit the number of concurrent connections per domain. Keep SSE connections minimal:
+Browsers limit the number of concurrent HTTP/1.x connections per domain. HTTP/2 uses negotiated stream limits, but you should still keep SSE connections minimal:
 
 ```tsx
 // Use a single connection with event routing instead of multiple connections
@@ -1710,7 +1771,7 @@ Handle high-frequency updates without overwhelming the UI:
 function useThrottledSSE<T>(url: string, throttleMs = 100) {
   const [data, setData] = useState<T | null>(null);
   const latestDataRef = useRef<T | null>(null);
-  const throttleTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const throttleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const eventSource = new EventSource(url);
@@ -1855,11 +1916,11 @@ function Component() {
 ### Pitfall 3: State Updates After Unmount
 
 ```tsx
-// Wrong: May update state after unmount
+// Wrong: May process messages after cleanup starts
 useEffect(() => {
   const eventSource = new EventSource('/api/events');
   eventSource.onmessage = (event) => {
-    setData(JSON.parse(event.data)); // May cause warning
+    setData(JSON.parse(event.data));
   };
   return () => eventSource.close();
 }, []);
