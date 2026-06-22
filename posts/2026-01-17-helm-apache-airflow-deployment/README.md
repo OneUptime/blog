@@ -112,10 +112,9 @@ webserver:
     email: admin@example.com
     firstName: Admin
     lastName: User
-    password: ""
-  # Use secret for password
-  webserverSecretKey: webserver-secret-key
-  webserverSecretKeySecretName: airflow-webserver-secret
+    password: "change-me"
+# Use secret for webserver session signing
+webserverSecretKeySecretName: airflow-webserver-secret
 
 # Scheduler configuration
 scheduler:
@@ -168,14 +167,9 @@ postgresql:
 
 # Or use external database
 # data:
-#   metadataConnection:
-#     user: airflow
-#     pass: ""
-#     existingSecret: airflow-db-secret
-#     existingSecretKey: password
-#     host: postgres.database.svc.cluster.local
-#     port: 5432
-#     db: airflow
+#   metadataSecretName: airflow-db-secret
+# Secret must contain:
+# connection=postgresql://airflow:password@postgres.database.svc.cluster.local:5432/airflow
 
 # Redis (for CeleryExecutor)
 redis:
@@ -191,9 +185,9 @@ dags:
     branch: main
     subPath: dags
     wait: 60
-    # For private repos
-    credentialsSecret: git-credentials
-    sshKeySecret: git-ssh-key
+    # For private repos, use one of these options
+    # credentialsSecret: git-credentials
+    # sshKeySecret: git-ssh-key
 
 # Logs configuration
 logs:
@@ -228,11 +222,10 @@ config:
   AIRFLOW__CORE__MAX_ACTIVE_RUNS_PER_DAG: '16'
   AIRFLOW__SCHEDULER__DAG_DIR_LIST_INTERVAL: '30'
   AIRFLOW__WEBSERVER__EXPOSE_CONFIG: 'False'
-  AIRFLOW__WEBSERVER__RBAC: 'True'
   AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth'
 
 # Extra environment variables
-extraEnv:
+extraEnv: |-
   - name: AIRFLOW__SECRETS__BACKEND
     value: airflow.providers.hashicorp.secrets.vault.VaultBackend
   - name: AIRFLOW__SECRETS__BACKEND_KWARGS
@@ -283,7 +276,9 @@ kubectl create secret generic airflow-postgresql-secret \
 kubectl create secret generic git-credentials \
   --namespace airflow \
   --from-literal=GIT_SYNC_USERNAME=username \
-  --from-literal=GIT_SYNC_PASSWORD=token
+  --from-literal=GIT_SYNC_PASSWORD=token \
+  --from-literal=GITSYNC_USERNAME=username \
+  --from-literal=GITSYNC_PASSWORD=token
 
 # Or SSH key
 kubectl create secret generic git-ssh-key \
@@ -322,9 +317,6 @@ podTemplate: |
       - name: base
         image: apache/airflow:2.8.0
         imagePullPolicy: IfNotPresent
-        env:
-          - name: AIRFLOW__CORE__EXECUTOR
-            value: LocalExecutor
         resources:
           requests:
             cpu: 500m
@@ -390,14 +382,9 @@ executor: CeleryExecutor
 # Redis for Celery
 redis:
   enabled: true
-  auth:
+  persistence:
     enabled: true
-    existingSecret: airflow-redis-secret
-    existingSecretPasswordKey: redis-password
-  master:
-    persistence:
-      enabled: true
-      size: 5Gi
+    size: 5Gi
 
 # Workers
 workers:
@@ -472,7 +459,7 @@ docker push myregistry.io/airflow:2.8.0-custom
 
 ```yaml
 # airflow-values.yaml
-extraEnvFrom:
+extraEnvFrom: |-
   - configMapRef:
       name: airflow-connections
       
@@ -586,12 +573,14 @@ extraObjects:
     spec:
       selector:
         matchLabels:
-          app: airflow
+          tier: airflow
+          component: statsd
+          release: airflow
       namespaceSelector:
         matchNames:
           - airflow
       endpoints:
-        - port: statsd-ingest
+        - port: statsd-scrape
           interval: 30s
 ```
 
@@ -634,7 +623,7 @@ kubectl logs -n airflow -l component=scheduler -c git-sync
 
 # Database migration
 kubectl exec -it -n airflow deploy/airflow-scheduler -- \
-  airflow db upgrade
+  airflow db migrate
 
 # Test DAG
 kubectl exec -it -n airflow deploy/airflow-scheduler -- \
