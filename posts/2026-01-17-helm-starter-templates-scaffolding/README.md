@@ -59,8 +59,8 @@ my-starter/
 ├── values.schema.json
 ├── .helmignore
 ├── README.md
-├── NOTES.txt
 └── templates/
+    ├── NOTES.txt
     ├── _helpers.tpl
     ├── deployment.yaml
     ├── service.yaml
@@ -453,11 +453,10 @@ metadata:
   labels:
     {{- include "<CHARTNAME>.labels" . | nindent 4 }}
 spec:
-  {{- if .Values.podDisruptionBudget.minAvailable }}
-  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
-  {{- end }}
   {{- if .Values.podDisruptionBudget.maxUnavailable }}
   maxUnavailable: {{ .Values.podDisruptionBudget.maxUnavailable }}
+  {{- else if .Values.podDisruptionBudget.minAvailable }}
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
   {{- end }}
   selector:
     matchLabels:
@@ -579,7 +578,7 @@ affinity:
         podAffinityTerm:
           labelSelector:
             matchLabels:
-              app.kubernetes.io/name: "{{ .Chart.Name }}"
+              app.kubernetes.io/name: <CHARTNAME>
           topologyKey: kubernetes.io/hostname
 
 metrics:
@@ -666,7 +665,8 @@ spec:
 helm env | grep HELM_DATA_HOME
 
 # List available starters
-ls $(helm env | grep HELM_DATA_HOME | cut -d= -f2)/starters/
+HELM_DATA_HOME=$(helm env | sed -n 's/^HELM_DATA_HOME="\(.*\)"$/\1/p')
+ls "$HELM_DATA_HOME/starters/"
 
 # Test starter manually
 helm create test-chart --starter my-starter
