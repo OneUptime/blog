@@ -356,7 +356,7 @@ export function AnalyticsNavigationContainer({ children }: ScreenTrackingProps) 
 ```typescript
 // hooks/useScreenTracking.ts
 
-import { useEffect } from 'react';
+import { useCallback } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import { analytics } from '../analytics/AnalyticsService';
 import { AnalyticsEvents } from '../analytics/events';
@@ -370,17 +370,21 @@ interface ScreenTrackingOptions {
 export function useScreenTracking(options: ScreenTrackingOptions) {
   const { screenName, screenClass, additionalProperties = {} } = options;
 
-  useFocusEffect(() => {
-    const trackScreen = async () => {
-      await analytics.track(AnalyticsEvents.SCREEN_VIEWED, {
-        screen_name: screenName,
-        screen_class: screenClass || screenName,
-        ...additionalProperties,
-      });
-    };
+  // Wrap the callback in useCallback so useFocusEffect only re-runs when
+  // the dependencies change, not on every render while the screen is focused.
+  useFocusEffect(
+    useCallback(() => {
+      const trackScreen = async () => {
+        await analytics.track(AnalyticsEvents.SCREEN_VIEWED, {
+          screen_name: screenName,
+          screen_class: screenClass || screenName,
+          ...additionalProperties,
+        });
+      };
 
-    trackScreen();
-  });
+      trackScreen();
+    }, [screenName, screenClass])
+  );
 }
 
 // Usage in a component
