@@ -8,11 +8,11 @@ Description: Learn how to implement Web Workers in React applications to offload
 
 ---
 
-JavaScript runs on a single thread in the browser. CPU-intensive tasks like data processing, complex calculations, or image manipulation block the main thread, causing the UI to freeze. Web Workers provide a way to run JavaScript in background threads, enabling true parallelism while keeping your React application responsive.
+JavaScript that runs on the main thread in the browser can be blocked by CPU-intensive tasks like data processing, complex calculations, or image manipulation, causing the UI to freeze. Web Workers provide a way to run JavaScript in background threads, enabling true parallelism while keeping your React application responsive.
 
 ## Understanding Web Workers
 
-Web Workers are a browser API that spawns background threads. These threads run in isolation from the main thread and communicate through message passing. They cannot directly access the DOM but can perform any computation and return results.
+Web Workers are a browser API that spawns background threads. These threads run in isolation from the main thread and communicate through message passing. They cannot directly access the DOM but can perform computation with worker-supported APIs and return results.
 
 ### Key Characteristics
 
@@ -22,7 +22,7 @@ Web Workers are a browser API that spawns background threads. These threads run 
 | **No DOM Access** | Cannot manipulate the DOM directly |
 | **Message Passing** | Communicates via `postMessage` and `onmessage` |
 | **Own Global Scope** | Uses `self` instead of `window` |
-| **Memory Isolation** | Data must be serialized for transfer |
+| **Memory Isolation** | Data is copied with the structured clone algorithm unless transferable objects are used |
 
 ## When to Use Web Workers
 
@@ -320,7 +320,7 @@ function StreamProcessor(): React.ReactElement {
 
 ## Transferable Objects for Large Data
 
-Use transferable objects to avoid expensive copying when passing large ArrayBuffers.
+Use transferable objects to avoid expensive copying when passing large ArrayBuffers. Transferring an ArrayBuffer moves ownership to the receiving context and detaches it from the sender.
 
 **Image Processing Worker:**
 
@@ -423,6 +423,9 @@ class WorkerPool<T = unknown, R = unknown> {
       worker.onerror = (error) => {
         const task = (worker as any).currentTask;
         if (task) {
+          (worker as any).currentTask = null;
+          this.freeWorkers.push(worker);
+          this.processQueue();
           task.reject(new Error(error.message));
         }
       };
@@ -472,13 +475,23 @@ export default WorkerPool;
 import React, { useState, useEffect, useRef } from 'react';
 import WorkerPool from '../utils/WorkerPool';
 
+interface CalculationRequest {
+  type: 'CALCULATE';
+  payload: { numbers: number[]; operation: 'fibonacci' };
+}
+
+interface CalculationResponse {
+  type: 'RESULT';
+  payload: number[];
+}
+
 function ParallelProcessor(): React.ReactElement {
-  const [results, setResults] = useState<any[]>([]);
+  const [results, setResults] = useState<number[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
-  const poolRef = useRef<WorkerPool | null>(null);
+  const poolRef = useRef<WorkerPool<CalculationRequest, CalculationResponse> | null>(null);
 
   useEffect(() => {
-    poolRef.current = new WorkerPool(
+    poolRef.current = new WorkerPool<CalculationRequest, CalculationResponse>(
       () => new Worker(new URL('../workers/heavyCalculation.worker.ts', import.meta.url)),
       4
     );
@@ -487,10 +500,16 @@ function ParallelProcessor(): React.ReactElement {
 
   const processItems = async () => {
     setIsProcessing(true);
-    const tasks = Array.from({ length: 20 }, (_, i) => ({ id: i, value: 35 + (i % 5) }));
-    const results = await poolRef.current!.execBatch(tasks);
-    setResults(results);
-    setIsProcessing(false);
+    try {
+      const tasks = Array.from({ length: 20 }, (_, i) => ({
+        type: 'CALCULATE' as const,
+        payload: { numbers: [35 + (i % 5)], operation: 'fibonacci' as const },
+      }));
+      const responses = await poolRef.current!.execBatch(tasks);
+      setResults(responses.flatMap(response => response.payload));
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   return (
