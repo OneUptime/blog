@@ -186,7 +186,7 @@ COPY package*.json ./
 
 # These stages run in parallel
 FROM base AS deps-prod
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 FROM base AS deps-dev
 RUN npm ci
@@ -310,10 +310,10 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Build with Cache
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           cache-from: type=gha
@@ -363,7 +363,6 @@ DOCKER_BUILDKIT=1 docker build --progress=plain -t myapp . 2>&1 | tee build.log
 # Generate build profile
 docker build \
   --progress=plain \
-  --build-arg BUILDKIT_PROGRESS=plain \
   -t myapp . 2>&1 | tee build-profile.log
 
 # Analyze cache hits
@@ -378,7 +377,6 @@ grep -E "CACHED|DONE" build-profile.log
 # ===== Base Stage =====
 FROM node:20-alpine AS base
 WORKDIR /app
-ENV NODE_ENV=production
 
 # ===== Dependencies Stage =====
 FROM base AS deps
@@ -386,7 +384,7 @@ FROM base AS deps
 COPY package*.json ./
 # Use cache mount for npm cache
 RUN --mount=type=cache,target=/root/.npm \
-    npm ci --only=production
+    npm ci --omit=dev
 
 # ===== Development Dependencies =====
 FROM base AS deps-dev
@@ -401,6 +399,7 @@ RUN npm run build
 
 # ===== Production Stage =====
 FROM base AS production
+ENV NODE_ENV=production
 # Copy production dependencies
 COPY --from=deps /app/node_modules ./node_modules
 # Copy built application
@@ -426,4 +425,3 @@ CMD ["node", "dist/index.js"]
 | Parallel stages | Medium | Medium |
 
 Effective build optimization combines proper Dockerfile structure with BuildKit features. Start with instruction ordering and .dockerignore, then add cache mounts and registry caching for CI/CD environments. For more on layer caching in CI/CD, see our post on [Docker Layer Caching in CI/CD](https://oneuptime.com/blog/post/2026-01-16-docker-layer-caching-cicd/view).
-
