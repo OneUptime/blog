@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: DNSSEC, Testing, DNS, Security, QA, DevOps
 
-Description: A comprehensive guide to validating your DNSSEC configuration using industry-standard tools and procedures to prevent outages before enabling signature validation in production.
+Description: A comprehensive guide to validating your DNSSEC configuration using industry-standard tools and procedures to prevent outages before publishing DNSSEC delegation records in production.
 
 ---
 
-DNSSEC (Domain Name System Security Extensions) protects your users from DNS spoofing and cache poisoning attacks by cryptographically signing DNS records. But a misconfigured DNSSEC deployment can take your entire domain offline. Unlike most security features where a mistake causes degraded security, a DNSSEC mistake causes complete service unavailability.
+DNSSEC (Domain Name System Security Extensions) protects your users from DNS spoofing and cache poisoning attacks by cryptographically signing DNS records. But a misconfigured DNSSEC deployment can make your domain fail for validating resolvers. Unlike most security features where a mistake causes degraded security, a DNSSEC mistake can cause service unavailability for users behind validating resolvers.
 
 This guide covers the essential testing procedures, validation tools, and common pitfalls to check before you flip the switch on DNSSEC in production.
 
@@ -63,9 +63,9 @@ dig @your-nameserver.com example.com MX +dnssec +multi
 ```
 
 Expected output should include:
-- At least two DNSKEY records (KSK and ZSK)
+- At least one DNSKEY record (or at least two if you use separate KSK and ZSK keys)
 - RRSIG records with valid timestamps
-- Flags: 256 for ZSK, 257 for KSK
+- Flags: 256 for ZSK, 257 for KSK or CSK
 
 ### 2. Signature Expiration Check
 
@@ -103,10 +103,10 @@ dig example.com DNSKEY +short | awk '{print $3}'
 | Algorithm | Number | Support Level | Recommendation |
 |-----------|--------|---------------|----------------|
 | RSA/SHA-256 | 8 | Universal | Good default |
-| RSA/SHA-512 | 10 | Universal | Good default |
+| RSA/SHA-512 | 10 | Universal validation support | Avoid for new signing |
 | ECDSA P-256 | 13 | Very High | Recommended |
-| ECDSA P-384 | 14 | Very High | Recommended |
-| Ed25519 | 15 | Growing | Future-proof |
+| ECDSA P-384 | 14 | High | Use when P-384 is required |
+| Ed25519 | 15 | High | Recommended where supported |
 | Ed448 | 16 | Limited | Avoid for now |
 
 ## Essential Testing Tools
@@ -173,7 +173,7 @@ dig example.com DNSKEY +dnssec +multi
 dig example.com A +dnssec | grep flags
 ```
 
-The AD flag in the response indicates the resolver validated DNSSEC:
+The AD flag in the response indicates the resolver considers the answer and authority data authenticated under its DNSSEC validation policy:
 ```text
 ;; flags: qr rd ra ad; QUERY: 1, ANSWER: 2, AUTHORITY: 0, ADDITIONAL: 1
                    ^^
@@ -230,9 +230,10 @@ At this stage, your zone is signed but the DS record is not yet at the parent. T
 # Verify DNSKEY records exist
 dig @ns1.example.com example.com DNSKEY +short
 
-# Should return something like:
+# Split KSK/ZSK setups return something like:
 # 257 3 13 oJMRESz5E4... (KSK)
 # 256 3 13 2b3fL8jM9K... (ZSK)
+# Single-key CSK setups may return only one 257 DNSKEY.
 
 # Verify RRSIG records exist for A record
 dig @ns1.example.com example.com A +dnssec +short
@@ -333,13 +334,13 @@ test_check() {
 # 1. Check DNSKEY records
 echo "--- Checking DNSKEY Records ---"
 DNSKEY_COUNT=$(dig $DOMAIN DNSKEY +short | wc -l)
-test_check "DNSKEY records present" $([ $DNSKEY_COUNT -ge 2 ] && echo 0 || echo 1)
+test_check "DNSKEY records present" $([ $DNSKEY_COUNT -ge 1 ] && echo 0 || echo 1)
 
-KSK_COUNT=$(dig $DOMAIN DNSKEY +short | grep "^257" | wc -l)
-test_check "KSK (flag 257) present" $([ $KSK_COUNT -ge 1 ] && echo 0 || echo 1)
+SEP_COUNT=$(dig $DOMAIN DNSKEY +short | grep "^257" | wc -l)
+test_check "KSK/CSK (flag 257) present" $([ $SEP_COUNT -ge 1 ] && echo 0 || echo 1)
 
-ZSK_COUNT=$(dig $DOMAIN DNSKEY +short | grep "^256" | wc -l)
-test_check "ZSK (flag 256) present" $([ $ZSK_COUNT -ge 1 ] && echo 0 || echo 1)
+SIGNING_KEY_COUNT=$(dig $DOMAIN DNSKEY +short | grep -E "^(256|257)" | wc -l)
+test_check "DNSSEC signing key present" $([ $SIGNING_KEY_COUNT -ge 1 ] && echo 0 || echo 1)
 
 # 2. Check DS record at parent
 echo "--- Checking DS Record at Parent ---"
@@ -369,7 +370,7 @@ done
 echo "--- Checking Denial of Existence ---"
 NSEC3_PARAM=$(dig $DOMAIN NSEC3PARAM +short)
 if [ -n "$NSEC3_PARAM" ]; then
-    echo "  Using NSEC3 (recommended)"
+    echo "  Using NSEC3 (useful when zone walking is a concern)"
     test_check "NSEC3PARAM record present" 0
 else
     NSEC_TYPE=$(dig $DOMAIN NSEC +short | head -1)
@@ -465,7 +466,7 @@ Key rollovers are high-risk operations. Test them thoroughly.
 ### ZSK Rollover Testing
 
 ```bash
-# Pre-rollover state
+# Pre-rollover state in a split KSK/ZSK setup
 dig example.com DNSKEY +short | wc -l  # Should be 2
 
 # During double-signature rollover
@@ -531,7 +532,7 @@ Configure OneUptime to monitor your DNSSEC deployment:
 ### DS Record
 
 - [ ] DS record is generated from KSK
-- [ ] DS uses SHA-256 digest (algorithm 2)
+- [ ] DS uses SHA-256 digest (digest type 2)
 - [ ] DS is ready to upload to registrar
 - [ ] Registrar supports DNSSEC DS management
 
@@ -569,7 +570,7 @@ Configure OneUptime to monitor your DNSSEC deployment:
 | drill | DNSSEC tracing | `apt install ldnsutils` | N/A |
 | unbound-host | Resolver validation | `apt install unbound` | N/A |
 | DNSSEC Analyzer | Zone analysis | N/A | dnssec-analyzer.verisignlabs.com |
-| Zonemaster | Comprehensive DNS testing | `pip install zonemaster` | zonemaster.net |
+| Zonemaster | Comprehensive DNS testing | `apt install zonemaster-cli`, CPAN, or Docker | zonemaster.net |
 
 ## Conclusion
 
@@ -577,7 +578,7 @@ DNSSEC testing is not optional - it is essential. A single misconfiguration can 
 
 Key takeaways:
 
-1. **Test before publishing DS**: Once the DS record is at the parent zone, validation is enforced. Test everything while you can still back out easily.
+1. **Test before publishing DS**: Once the DS record is at the parent zone, validating resolvers will enforce the chain of trust. Test everything while you can still back out easily.
 
 2. **Use multiple tools**: Different tools catch different issues. DNSViz for visualization, delv for validation, dig for quick checks.
 
