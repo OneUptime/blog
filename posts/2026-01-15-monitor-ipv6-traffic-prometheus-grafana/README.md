@@ -91,8 +91,11 @@ cd node_exporter-1.8.0.linux-amd64
   --collector.netstat \
   --collector.conntrack \
   --collector.sockstat \
+  --collector.netstat.fields='^(Ip6?_(InReceives|OutRequests|InOctets|OutOctets|InDelivers|InDiscards|OutDiscards|InHdrErrors|InAddrErrors|InUnknownProtos|InTruncatedPkts|InNoRoutes|OutNoRoutes|FragOKs|FragFails|FragCreates|ReasmReqds|ReasmOKs|ReasmFails)|Icmp6?_.*|Udp6?_(InDatagrams|OutDatagrams|NoPorts|RcvbufErrors|SndbufErrors)|Tcp_(ActiveOpens|PassiveOpens|CurrEstab|InSegs|OutSegs|RetransSegs))$' \
   --web.listen-address=":9100"
 ```
+
+> **Important:** The `netstat` collector reads `/proc/net/snmp6`, but its default `--collector.netstat.fields` filter only exposes a small subset of IPv6 fields (`Ip6_InOctets`, `Ip6_OutOctets`, `Icmp6_InMsgs`, `Icmp6_OutMsgs`, and the `Udp6_*` datagram counters). The packet-count and error/drop/fragmentation metrics used throughout this guide — `Ip6_InReceives`, `Ip6_OutRequests`, `Ip6_InHdrErrors`, `Ip6_InDiscards`, and so on (as well as the IPv4 `Ip_*` counters used for comparison) — are **not** exposed unless you override `--collector.netstat.fields` with a regex like the one above. Without it, queries against those metrics return no data.
 
 Create a systemd service for production:
 
@@ -111,6 +114,7 @@ ExecStart=/usr/local/bin/node_exporter \
   --collector.conntrack \
   --collector.sockstat \
   --collector.tcpstat \
+  --collector.netstat.fields="^(Ip6?_(InReceives|OutRequests|InOctets|OutOctets|InDelivers|InDiscards|OutDiscards|InHdrErrors|InAddrErrors|InUnknownProtos|InTruncatedPkts|InNoRoutes|OutNoRoutes|FragOKs|FragFails|FragCreates|ReasmReqds|ReasmOKs|ReasmFails)|Icmp6?_.*|Udp6?_(InDatagrams|OutDatagrams|NoPorts|RcvbufErrors|SndbufErrors)|Tcp_(ActiveOpens|PassiveOpens|CurrEstab|InSegs|OutSegs|RetransSegs))$$" \
   --web.listen-address="[::]:9100"
 
 [Install]
@@ -164,8 +168,8 @@ Create an SNMP exporter configuration for IPv6:
 modules:
   ipv6_traffic:
     walk:
-      - 1.3.6.1.2.1.55      # IP-MIB (IPv6)
-      - 1.3.6.1.2.1.56      # IPv6-ICMP-MIB
+      - 1.3.6.1.2.1.55      # IPV6-MIB (RFC 2465)
+      - 1.3.6.1.2.1.56      # IPV6-ICMP-MIB (RFC 2466)
       - 1.3.6.1.2.1.4.31    # IP-FORWARD-MIB (IPv6 routes)
     metrics:
       - name: ipv6IfStatsInReceives
@@ -185,7 +189,7 @@ modules:
             type: Integer
 
       - name: ipv6IfStatsInAddrErrors
-        oid: 1.3.6.1.2.1.55.1.6.1.4
+        oid: 1.3.6.1.2.1.55.1.6.1.5
         type: counter
         help: IPv6 packets discarded due to address errors
         indexes:
@@ -193,7 +197,7 @@ modules:
             type: Integer
 
       - name: ipv6IfStatsOutForwDatagrams
-        oid: 1.3.6.1.2.1.55.1.6.1.11
+        oid: 1.3.6.1.2.1.55.1.6.1.10
         type: counter
         help: IPv6 datagrams forwarded
         indexes:
@@ -201,7 +205,7 @@ modules:
             type: Integer
 
       - name: ipv6IfStatsOutDiscards
-        oid: 1.3.6.1.2.1.55.1.6.1.15
+        oid: 1.3.6.1.2.1.55.1.6.1.12
         type: counter
         help: IPv6 output packets discarded
         indexes:
@@ -209,7 +213,7 @@ modules:
             type: Integer
 
       - name: ipv6IfStatsOutFragOKs
-        oid: 1.3.6.1.2.1.55.1.6.1.16
+        oid: 1.3.6.1.2.1.55.1.6.1.13
         type: counter
         help: IPv6 packets successfully fragmented
         indexes:
@@ -217,7 +221,7 @@ modules:
             type: Integer
 
       - name: ipv6IfStatsOutFragFails
-        oid: 1.3.6.1.2.1.55.1.6.1.17
+        oid: 1.3.6.1.2.1.55.1.6.1.14
         type: counter
         help: IPv6 packets that couldn't be fragmented
         indexes:
@@ -1161,7 +1165,7 @@ Organize your IPv6 monitoring dashboard into logical sections:
 | **TCP6 Sockets** | `node_sockstat_TCP6_inuse` | `node_sockstat_TCP6_inuse` | > 50,000 |
 | **UDP6 Sockets** | `node_sockstat_UDP6_inuse` | `node_sockstat_UDP6_inuse` | > 10,000 |
 | **Probe Success** | `probe_success` | `probe_success{job=~"blackbox.*ipv6.*"}` | == 0 for > 2min |
-| **Probe Latency** | `probe_duration_seconds` | `histogram_quantile(0.99, ...)` | > 2 seconds |
+| **Probe Latency** | `probe_duration_seconds` | `max_over_time(probe_duration_seconds[5m])` | > 2 seconds |
 | **ICMPv6 Errors** | `node_netstat_Icmp6_InErrors` | `rate(node_netstat_Icmp6_InErrors[5m])` | > 100/sec |
 | **IPv6 Ratio** | Calculated | `ipv6_packets / (ipv4_packets + ipv6_packets)` | Drop > 10% |
 
