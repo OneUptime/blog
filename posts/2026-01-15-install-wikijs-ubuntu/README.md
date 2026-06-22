@@ -826,13 +826,13 @@ Sync Interval: 5 minutes
 Setting up Git storage:
 
 ```bash
-# Generate SSH key for Wiki.js (on server)
-sudo -u wikijs ssh-keygen -t ed25519 -C "wikijs@yourdomain.com" -f /var/www/wikijs/.ssh/id_ed25519 -N ""
-
-# Create .ssh directory if it doesn't exist
+# Create the .ssh directory first (ssh-keygen will not create it)
 sudo mkdir -p /var/www/wikijs/.ssh
 sudo chown -R wikijs:wikijs /var/www/wikijs/.ssh
 sudo chmod 700 /var/www/wikijs/.ssh
+
+# Generate SSH key for Wiki.js (on server)
+sudo -u wikijs ssh-keygen -t ed25519 -C "wikijs@yourdomain.com" -f /var/www/wikijs/.ssh/id_ed25519 -N ""
 
 # Display the public key to add to GitHub/GitLab
 sudo cat /var/www/wikijs/.ssh/id_ed25519.pub
