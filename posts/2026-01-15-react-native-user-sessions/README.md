@@ -33,6 +33,7 @@ Before implementing session tracking, you need to establish a solid foundation. 
 
 ```typescript
 // src/services/SessionManager.ts
+import 'react-native-get-random-values';
 import { AppState, AppStateStatus, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { v4 as uuidv4 } from 'uuid';
@@ -279,6 +280,21 @@ class SessionManager {
     this.currentScreen = screenName;
   }
 
+  public trackScreenView(
+    screenName: string,
+    previousScreen: string | null,
+    duration: number = 0
+  ): void {
+    if (!this.currentSession) return;
+
+    this.currentSession.screenViews.push({
+      screenName,
+      timestamp: Date.now(),
+      duration,
+      previousScreen,
+    });
+  }
+
   public cleanup(): void {
     if (this.appStateSubscription) {
       this.appStateSubscription.remove();
@@ -408,7 +424,7 @@ Tracking how users navigate through your app is essential for understanding thei
 
 ```typescript
 // src/navigation/NavigationTracker.tsx
-import React, { useRef, useEffect } from 'react';
+import React, { useRef } from 'react';
 import { NavigationContainer, NavigationState } from '@react-navigation/native';
 import SessionManager from '../services/SessionManager';
 
@@ -466,6 +482,7 @@ class NavigationTracker {
 
     // Update session manager with current screen
     this.sessionManager.setCurrentScreen(currentScreen);
+    this.sessionManager.trackScreenView(currentScreen, previousScreen);
 
     // Track screen enter event
     this.sessionManager.trackEvent('screen_view', {
@@ -1380,7 +1397,7 @@ class UserIdentificationService {
   }
 
   public isIdentified(): boolean {
-    return this.identity?.userId !== null;
+    return this.identity?.userId != null;
   }
 }
 
@@ -1395,7 +1412,6 @@ Session replay provides visual recordings of user sessions, offering deep insigh
 
 ```typescript
 // src/services/SessionReplay.ts
-import { AppState, AppStateStatus } from 'react-native';
 import SessionManager from './SessionManager';
 
 interface ReplayEvent {
@@ -2005,7 +2021,7 @@ class JourneyOptimizer {
 
     // Deterministic variant assignment based on userId
     const hash = this.hashString(userId + testId);
-    const normalizedHash = hash / 0xffffffff;
+    const normalizedHash = hash / 0x7fffffff;
 
     let cumulativeWeight = 0;
     for (const variant of test.variants) {
