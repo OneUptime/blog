@@ -71,8 +71,6 @@ docker logs mysql 2>&1 | grep "GENERATED ROOT PASSWORD"
 ### Basic MySQL Setup
 
 ```yaml
-version: '3.8'
-
 services:
   mysql:
     image: mysql:8
@@ -100,8 +98,6 @@ volumes:
 ### Production MariaDB Setup
 
 ```yaml
-version: '3.8'
-
 services:
   mariadb:
     image: mariadb:11
@@ -178,7 +174,7 @@ long_query_time = 2
 # Binary logging for replication
 log_bin = mysql-bin
 binlog_format = ROW
-expire_logs_days = 7
+binlog_expire_logs_seconds = 604800
 
 # Character set
 character-set-server = utf8mb4
@@ -248,7 +244,11 @@ CREATE TABLE orders (
 # init-scripts/02-seed.sh
 set -e
 
-mysql -u root -p"$MYSQL_ROOT_PASSWORD" <<-EOSQL
+client="${MARIADB_VERSION:+mariadb}"
+client="${client:-mysql}"
+root_password="${MYSQL_ROOT_PASSWORD:-$MARIADB_ROOT_PASSWORD}"
+
+"$client" -u root -p"$root_password" <<-EOSQL
     USE myapp;
     INSERT INTO users (email) VALUES ('admin@example.com');
 EOSQL
@@ -261,12 +261,17 @@ EOSQL
 # init-scripts/00-databases.sh
 set -e
 
-mysql -u root -p"$MYSQL_ROOT_PASSWORD" <<-EOSQL
+client="${MARIADB_VERSION:+mariadb}"
+client="${client:-mysql}"
+root_password="${MYSQL_ROOT_PASSWORD:-$MARIADB_ROOT_PASSWORD}"
+app_user="${MYSQL_USER:-$MARIADB_USER}"
+
+"$client" -u root -p"$root_password" <<-EOSQL
     CREATE DATABASE IF NOT EXISTS app_staging;
     CREATE DATABASE IF NOT EXISTS app_test;
 
-    GRANT ALL PRIVILEGES ON app_staging.* TO '$MYSQL_USER'@'%';
-    GRANT ALL PRIVILEGES ON app_test.* TO '$MYSQL_USER'@'%';
+    GRANT ALL PRIVILEGES ON app_staging.* TO '$app_user'@'%';
+    GRANT ALL PRIVILEGES ON app_test.* TO '$app_user'@'%';
 
     FLUSH PRIVILEGES;
 EOSQL
@@ -281,7 +286,7 @@ EOSQL
 mysql -h 127.0.0.1 -P 3306 -u myapp -p myapp
 
 # Connection string
-mysql://myapp:password@127.0.0.1:3306/myapp
+mysql://myapp:mypassword@127.0.0.1:3306/myapp
 ```
 
 ### From Another Container
@@ -296,10 +301,10 @@ services:
   app:
     image: my-app
     environment:
-      DATABASE_URL: mysql://myapp:password@mysql:3306/myapp
+      DATABASE_URL: mysql://myapp:mypassword@mysql:3306/myapp
     depends_on:
       mysql:
-        condition: service_healthy
+        condition: service_started
     networks:
       - app-network
 
@@ -312,9 +317,11 @@ networks:
 ```bash
 # MySQL/MariaDB shell
 docker exec -it mysql mysql -u root -p
+docker exec -it mariadb mariadb -u root -p
 
 # Specific database
 docker exec -it mysql mysql -u myapp -p myapp
+docker exec -it mariadb mariadb -u myapp -p myapp
 ```
 
 ## Backup and Restore
@@ -354,8 +361,6 @@ gunzip -c myapp.sql.gz | docker exec -i mysql mysql -u root -p"$PASSWORD" myapp
 ### Automated Backup Service
 
 ```yaml
-version: '3.8'
-
 services:
   mysql:
     image: mysql:8
@@ -388,12 +393,12 @@ volumes:
 
 ### Authentication Plugin
 
-MySQL 8 uses `caching_sha2_password` by default. For compatibility with older clients:
+MySQL 8 uses `caching_sha2_password` by default. For compatibility with older clients on MySQL 8.0, you can pin the 8.0 image and use the older native password plugin:
 
 ```yaml
 services:
   mysql:
-    image: mysql:8
+    image: mysql:8.0
     command:
       - --default-authentication-plugin=mysql_native_password
 ```
@@ -403,6 +408,8 @@ Or in my.cnf:
 [mysqld]
 default-authentication-plugin=mysql_native_password
 ```
+
+**Note**: `mysql_native_password` is deprecated as of MySQL 8.0.34, disabled by default in MySQL 8.4, and removed in MySQL 9.0. Prefer updating older clients to support `caching_sha2_password`.
 
 ### Lowercase Table Names
 
@@ -485,7 +492,7 @@ docker logs --tail 100 -f mysql
 | Can't connect from host | Not binding to 0.0.0.0 | Check bind-address config |
 | Authentication failed | Wrong password or auth plugin | Check password and authentication plugin |
 | Data lost after restart | No volume configured | Add volume for /var/lib/mysql |
-| Slow startup | Large innodb_log_file_size change | Delete ib_logfile* and restart |
+| Slow startup | Large redo log resize or recovery | Check logs and allow a clean restart; restore from backup if redo logs are corrupt |
 
 ### Debug Mode
 
