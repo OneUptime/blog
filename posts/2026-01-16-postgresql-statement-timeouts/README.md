@@ -12,7 +12,7 @@ A single bad query can bring down your database. A missing WHERE clause, an acci
 
 ## Understanding Timeout Settings
 
-PostgreSQL has three main timeout settings:
+PostgreSQL has several timeout settings. This guide focuses on three commonly used ones:
 
 | Setting | Scope | Purpose |
 |---------|-------|---------|
@@ -38,6 +38,8 @@ Set in `postgresql.conf` for all connections:
 
 statement_timeout = '30s'  # Kill queries after 30 seconds
 ```
+
+PostgreSQL's documentation recommends avoiding `statement_timeout` in `postgresql.conf` when possible because it affects all sessions. Prefer per-database, per-role, or application connection settings when different workloads need different limits.
 
 Reload configuration:
 
@@ -95,7 +97,10 @@ Override for the current session:
 SET statement_timeout = '5s';
 
 -- Set for this transaction only
+BEGIN;
 SET LOCAL statement_timeout = '60s';
+-- Run transaction statements here
+COMMIT;
 ```
 
 ## Timeout in Application Code
@@ -111,10 +116,11 @@ conn = psycopg2.connect(
     "options='-c statement_timeout=10000'"  # 10 seconds in ms
 )
 
-# Or set per-query
-cursor = conn.cursor()
-cursor.execute("SET statement_timeout = '5s'")
-cursor.execute("SELECT * FROM large_table WHERE complex_condition")
+# Or set for a single transaction
+with conn:
+    cursor = conn.cursor()
+    cursor.execute("SET LOCAL statement_timeout = '5s'")
+    cursor.execute("SELECT * FROM large_table WHERE complex_condition")
 ```
 
 ### Node.js with pg
@@ -134,8 +140,17 @@ const pool = new Pool({
 async function queryWithTimeout(sql, timeout) {
     const client = await pool.connect();
     try {
-        await client.query(`SET statement_timeout = '${timeout}ms'`);
-        return await client.query(sql);
+        await client.query('BEGIN');
+        await client.query(
+            'SELECT set_config($1, $2, true)',
+            ['statement_timeout', `${timeout}ms`]
+        );
+        const result = await client.query(sql);
+        await client.query('COMMIT');
+        return result;
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
     } finally {
         client.release();
     }
@@ -147,6 +162,7 @@ async function queryWithTimeout(sql, timeout) {
 ```java
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.ResultSet;
 import java.sql.Statement;
 
 // Set in connection URL
@@ -227,6 +243,7 @@ except errors.LockNotAvailable as e:
 ```python
 import time
 from functools import wraps
+from psycopg2 import errors
 
 def retry_on_timeout(max_retries=3, delay=1):
     def decorator(func):
@@ -342,29 +359,11 @@ class DatabasePool:
 ## Per-Query Timeout Wrapper
 
 ```sql
--- Create a function that wraps queries with timeout
-CREATE OR REPLACE FUNCTION execute_with_timeout(
-    query_text text,
-    timeout_ms integer
-) RETURNS SETOF record AS $$
-DECLARE
-    original_timeout text;
-BEGIN
-    -- Save original timeout
-    original_timeout := current_setting('statement_timeout');
-
-    -- Set new timeout
-    EXECUTE format('SET LOCAL statement_timeout = %L', timeout_ms || 'ms');
-
-    -- Execute query
-    RETURN QUERY EXECUTE query_text;
-
-    -- Restore original (LOCAL settings reset at transaction end anyway)
-EXCEPTION
-    WHEN query_canceled THEN
-        RAISE EXCEPTION 'Query exceeded timeout of % ms', timeout_ms;
-END;
-$$ LANGUAGE plpgsql;
+-- Apply a timeout to one client-issued statement
+BEGIN;
+SET LOCAL statement_timeout = '5000ms';
+SELECT * FROM reports WHERE id = 123;
+COMMIT;
 ```
 
 ## Recommended Settings
