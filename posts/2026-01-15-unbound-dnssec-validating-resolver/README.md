@@ -8,7 +8,7 @@ Description: A comprehensive guide to deploying Unbound as a recursive DNS resol
 
 ---
 
-DNS is the backbone of every network request your applications make, yet it remains one of the most commonly overlooked attack vectors. Man-in-the-middle attacks, DNS spoofing, and cache poisoning can redirect your traffic to malicious servers without triggering a single firewall alert. DNSSEC (Domain Name System Security Extensions) cryptographically signs DNS records at the source, letting resolvers verify that the response they received is authentic and untampered. Unbound, the high-performance recursive resolver from NLnet Labs, makes DNSSEC validation straightforward while remaining lightweight enough for everything from edge nodes to enterprise data centers.
+DNS is the backbone of every network request your applications make, yet it remains one of the most commonly overlooked attack vectors. Man-in-the-middle attacks, DNS spoofing, and cache poisoning can redirect your traffic to malicious servers without triggering a single firewall alert. DNSSEC (Domain Name System Security Extensions) cryptographically signs DNS RRsets at the source, letting resolvers verify the origin and integrity of signed DNS data. Unbound, the high-performance recursive resolver from NLnet Labs, makes DNSSEC validation straightforward while remaining lightweight enough for everything from edge nodes to enterprise data centers.
 
 This guide walks through a production-ready Unbound deployment with full DNSSEC validation, trust anchor automation, query logging, access controls, and monitoring hooks. By the end, you will have a resolver that rejects forged DNS responses and integrates cleanly with your observability stack.
 
@@ -21,9 +21,9 @@ Before diving into configuration, understand what DNSSEC actually protects again
 | Cache Poisoning | Attacker injects false records into resolver cache | Signatures fail validation; poisoned records rejected |
 | Man-in-the-Middle | Attacker intercepts and modifies DNS responses | Cryptographic signatures detect tampering |
 | DNS Spoofing | Attacker responds faster than authoritative server | Forged response lacks valid RRSIG; discarded |
-| Zone Enumeration | Walking NSEC records to list all names in zone | NSEC3 provides hashed denial of existence |
+| Zone Enumeration | Walking NSEC records to list all names in zone | Not a resolver-side protection; signed zones can use NSEC3 to make enumeration harder |
 
-Without DNSSEC, your resolver trusts whatever response arrives first on UDP port 53. With DNSSEC, it cryptographically verifies every answer using a chain of trust rooted at the DNS root zone.
+Without DNSSEC, your resolver trusts whatever response arrives first on UDP port 53. With DNSSEC, it cryptographically verifies signed answers, or authenticated denial of existence, using a chain of trust rooted at the DNS root zone.
 
 ## Prerequisites
 
@@ -105,7 +105,7 @@ The root trust anchor changes rarely (KSK-2017 has signed the root since 2018, a
 ### Initialize the Trust Anchor
 
 ```bash
-sudo unbound-anchor -a /var/lib/unbound/root.key
+sudo -u unbound unbound-anchor -a /var/lib/unbound/root.key
 ```
 
 This command:
@@ -829,7 +829,7 @@ fi
 sudo apt install unbound unbound-anchor dns-root-data
 
 # Initialize trust anchor
-sudo unbound-anchor -a /var/lib/unbound/root.key
+sudo -u unbound unbound-anchor -a /var/lib/unbound/root.key
 
 # Check configuration
 sudo unbound-checkconf
