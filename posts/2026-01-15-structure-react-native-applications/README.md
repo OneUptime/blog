@@ -267,7 +267,7 @@ Clean separation of concerns makes code easier to understand, test, and modify. 
 
 ### The Dependency Rule
 
-Dependencies should point inward. Outer layers depend on inner layers, never the reverse:
+Keep dependencies flowing in one direction. UI should depend on application logic, application logic should orchestrate domain types and services, and domain types should stay independent of UI and infrastructure details:
 
 ```mermaid
 flowchart TB
@@ -287,7 +287,9 @@ flowchart TB
         Infra1["API, Storage, Device APIs, Analytics"]
     end
 
-    UI --> App --> Domain --> Infra
+    UI --> App --> Domain
+    App --> Infra
+    Infra --> Domain
 ```
 
 ### Example: Clean Feature Architecture
@@ -314,7 +316,7 @@ export type OrderStatus = 'pending' | 'confirmed' | 'shipped' | 'delivered';
 // features/orders/services/orderService.ts
 // Infrastructure - depends on types only
 import { apiClient } from '@/shared/services/api';
-import type { Order } from '../types/order.types';
+import type { Order, OrderItem } from '../types/order.types';
 
 export const orderService = {
   async getOrders(): Promise<Order[]> {
@@ -416,6 +418,7 @@ Button/
 
 ```typescript
 // shared/components/Button/types.ts
+import type React from 'react';
 import { PressableProps, StyleProp, ViewStyle, TextStyle } from 'react-native';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'ghost';
@@ -490,6 +493,25 @@ const getSizeStyles = (size: ButtonSize) => {
   return sizes[size];
 };
 
+const getTextVariantStyles = (variant: ButtonVariant) => {
+  const variants = {
+    primary: { color: '#fff' },
+    secondary: { color: '#fff' },
+    outline: { color: theme.colors.primary },
+    ghost: { color: theme.colors.primary },
+  };
+  return variants[variant];
+};
+
+const getTextSizeStyles = (size: ButtonSize) => {
+  const sizes = {
+    sm: { fontSize: 14 },
+    md: { fontSize: 16 },
+    lg: { fontSize: 18 },
+  };
+  return sizes[size];
+};
+
 // shared/components/Button/Button.tsx
 import React, { useMemo } from 'react';
 import { Pressable, Text, ActivityIndicator, View } from 'react-native';
@@ -553,7 +575,7 @@ For complex components with multiple sub-components, use the compound component 
 
 ```typescript
 // shared/components/Card/Card.tsx
-import React, { createContext, useContext, ReactNode } from 'react';
+import React, { createContext, ReactNode } from 'react';
 import { View, Text, Image, Pressable, StyleSheet } from 'react-native';
 
 interface CardContextValue {
@@ -568,7 +590,7 @@ interface CardProps {
   onPress?: () => void;
 }
 
-function Card({ children, variant = 'elevated', onPress }: CardProps) {
+function CardRoot({ children, variant = 'elevated', onPress }: CardProps) {
   const content = (
     <CardContext.Provider value={{ variant }}>
       <View style={[styles.card, variantStyles[variant]]}>
@@ -604,12 +626,58 @@ function CardImage({ source, height = 200 }: { source: any; height?: number }) {
   return <Image source={source} style={[styles.image, { height }]} />;
 }
 
+const styles = StyleSheet.create({
+  card: {
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  header: {
+    padding: 16,
+  },
+  title: {
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  content: {
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+  },
+  footer: {
+    padding: 16,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#ddd',
+  },
+  image: {
+    width: '100%',
+  },
+});
+
+const variantStyles = StyleSheet.create({
+  elevated: {
+    backgroundColor: '#fff',
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  outlined: {
+    backgroundColor: '#fff',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#ddd',
+  },
+  filled: {
+    backgroundColor: '#f4f4f5',
+  },
+});
+
 // Attach sub-components
-Card.Header = CardHeader;
-Card.Title = CardTitle;
-Card.Content = CardContent;
-Card.Footer = CardFooter;
-Card.Image = CardImage;
+const Card = Object.assign(CardRoot, {
+  Header: CardHeader,
+  Title: CardTitle,
+  Content: CardContent,
+  Footer: CardFooter,
+  Image: CardImage,
+});
 
 export { Card };
 
@@ -792,14 +860,24 @@ The service layer abstracts external dependencies and provides a clean API for t
 
 ```typescript
 // shared/services/api/apiClient.ts
-import axios, { AxiosInstance, AxiosRequestConfig, AxiosError } from 'axios';
+import axios, {
+  AxiosInstance,
+  AxiosRequestConfig,
+  AxiosError,
+  InternalAxiosRequestConfig,
+} from 'axios';
 import { getToken, refreshToken } from '@/features/auth/services/tokenStorage';
 import { env } from '@/config/env';
+
+type RetryableRequestConfig = InternalAxiosRequestConfig & { _retry?: boolean };
 
 class ApiClient {
   private client: AxiosInstance;
   private isRefreshing = false;
-  private refreshSubscribers: ((token: string) => void)[] = [];
+  private refreshSubscribers: {
+    resolve: (token: string) => void;
+    reject: (error: unknown) => void;
+  }[] = [];
 
   constructor() {
     this.client = axios.create({
@@ -830,17 +908,17 @@ class ApiClient {
     this.client.interceptors.response.use(
       (response) => response,
       async (error: AxiosError) => {
-        const originalRequest = error.config as AxiosRequestConfig & { _retry?: boolean };
+        const originalRequest = error.config as RetryableRequestConfig | undefined;
 
-        if (error.response?.status === 401 && !originalRequest._retry) {
+        if (error.response?.status === 401 && originalRequest && !originalRequest._retry) {
           if (this.isRefreshing) {
-            return new Promise((resolve) => {
-              this.refreshSubscribers.push((token) => {
-                originalRequest.headers = {
-                  ...originalRequest.headers,
-                  Authorization: `Bearer ${token}`,
-                };
-                resolve(this.client(originalRequest));
+            return new Promise((resolve, reject) => {
+              this.refreshSubscribers.push({
+                resolve: (token) => {
+                  originalRequest.headers.Authorization = `Bearer ${token}`;
+                  resolve(this.client(originalRequest));
+                },
+                reject,
               });
             });
           }
@@ -850,18 +928,17 @@ class ApiClient {
 
           try {
             const newToken = await refreshToken();
-            this.refreshSubscribers.forEach((callback) => callback(newToken));
+            this.refreshSubscribers.forEach(({ resolve }) => resolve(newToken));
             this.refreshSubscribers = [];
 
-            originalRequest.headers = {
-              ...originalRequest.headers,
-              Authorization: `Bearer ${newToken}`,
-            };
+            originalRequest.headers.Authorization = `Bearer ${newToken}`;
 
             return this.client(originalRequest);
           } catch (refreshError) {
+            this.refreshSubscribers.forEach(({ reject }) => reject(refreshError));
+            this.refreshSubscribers = [];
             // Handle refresh failure (logout user)
-            throw refreshError;
+            return Promise.reject(refreshError);
           } finally {
             this.isRefreshing = false;
           }
@@ -971,6 +1048,7 @@ export function useProducts(filters?: ProductFilters) {
   return useInfiniteQuery({
     queryKey: productKeys.list(filters),
     queryFn: ({ pageParam = 1 }) => productService.getProducts(filters, pageParam),
+    initialPageParam: 1,
     getNextPageParam: (lastPage) =>
       lastPage.hasMore ? lastPage.page + 1 : undefined,
   });
@@ -1079,12 +1157,15 @@ Organize navigation by authentication state and feature areas.
 // app/navigation/types.ts
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
-import type { CompositeScreenProps } from '@react-navigation/native';
+import type {
+  CompositeScreenProps,
+  NavigatorScreenParams,
+} from '@react-navigation/native';
 
 // Root navigator
 export type RootStackParamList = {
-  Auth: undefined;
-  Main: undefined;
+  Auth: NavigatorScreenParams<AuthStackParamList> | undefined;
+  Main: NavigatorScreenParams<MainTabParamList> | undefined;
   Onboarding: undefined;
 };
 
@@ -1122,7 +1203,7 @@ export type ProfileStackParamList = {
 // Screen props types
 export type ProductDetailScreenProps = CompositeScreenProps<
   NativeStackScreenProps<HomeStackParamList, 'ProductDetail'>,
-  BottomTabScreenProps<MainTabParamList>
+  BottomTabScreenProps<MainTabParamList, 'HomeTab'>
 >;
 
 // app/navigation/RootNavigator.tsx
@@ -1561,7 +1642,7 @@ export * from '@testing-library/react-native';
 ### Example Test
 
 ```typescript
-// __tests__/features/products/hooks/useProducts.test.ts
+// __tests__/features/products/hooks/useProducts.test.tsx
 import { renderHook, waitFor } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useProducts } from '@/features/products/hooks/useProducts';
