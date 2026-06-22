@@ -83,8 +83,8 @@ Inside tmux:
 
 Or from command:
 ```bash
-# Detach other clients
-tmux detach-client -t mysession
+# Detach all clients attached to a session
+tmux detach-client -s mysession
 ```
 
 ### Kill Sessions
@@ -172,6 +172,8 @@ Inside tmux:
 
 ### Navigation in Copy Mode
 
+The keys below assume vi-style copy mode (`setw -g mode-keys vi`, included in the recommended config above). tmux uses emacs-style copy mode by default, where these bindings differ.
+
 - Arrow keys - Move cursor
 - `Page Up/Down` - Scroll
 - `g` - Go to top
@@ -225,6 +227,9 @@ set -g history-limit 50000
 
 # Faster key repetition
 set -s escape-time 0
+
+# Use vi-style keys in copy mode
+setw -g mode-keys vi
 
 # Enable 256 colors
 set -g default-terminal "screen-256color"
