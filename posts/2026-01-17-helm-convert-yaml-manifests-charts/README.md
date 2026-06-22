@@ -133,7 +133,7 @@ spec:
 
 ```bash
 # Variables to extract:
-# - Namespace (production)
+# - Release namespace (production)
 # - App name (myapp)
 # - Replicas (3)
 # - Image repository and tag (myorg/myapp:v1.2.3)
@@ -183,7 +183,7 @@ name: myapp
 description: My Application Helm Chart
 type: application
 version: 1.0.0
-appVersion: "1.2.3"
+appVersion: "v1.2.3"
 maintainers:
   - name: Your Name
     email: you@example.com
@@ -276,19 +276,8 @@ tolerations: []
 affinity: {}
 
 # Probes
-livenessProbe:
-  httpGet:
-    path: /health
-    port: http
-  initialDelaySeconds: 10
-  periodSeconds: 10
-
-readinessProbe:
-  httpGet:
-    path: /ready
-    port: http
-  initialDelaySeconds: 5
-  periodSeconds: 5
+livenessProbe: {}
+readinessProbe: {}
 ```
 
 ## Step 4: Create Helper Templates
@@ -371,6 +360,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "myapp.fullname" . }}
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "myapp.labels" . | nindent 4 }}
 spec:
@@ -451,6 +441,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: {{ include "myapp.fullname" . }}
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "myapp.labels" . | nindent 4 }}
 spec:
@@ -473,6 +464,7 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: {{ include "myapp.fullname" . }}
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "myapp.labels" . | nindent 4 }}
   {{- with .Values.ingress.annotations }}
@@ -555,7 +547,7 @@ resources:
 replicaCount: 5
 
 image:
-  tag: "1.2.3"
+  tag: "v1.2.3"
 
 ingress:
   enabled: true
@@ -604,7 +596,7 @@ affinity:
 cat deployment.yaml service.yaml ingress.yaml > original.yaml
 
 # Render Helm templates
-helm template myapp ./myapp -f values-prod.yaml > rendered.yaml
+helm template myapp ./myapp --namespace production > rendered.yaml
 
 # Compare (excluding dynamic fields)
 diff <(cat original.yaml | yq 'del(.metadata.annotations, .metadata.labels)' -) \
@@ -622,7 +614,7 @@ helm lint myapp -f values-dev.yaml
 helm lint myapp -f values-prod.yaml
 
 # Template validation
-helm template myapp ./myapp | kubectl apply --dry-run=server -f -
+helm template myapp ./myapp --namespace production | kubectl apply --dry-run=server -f -
 ```
 
 ## Automation Tools
