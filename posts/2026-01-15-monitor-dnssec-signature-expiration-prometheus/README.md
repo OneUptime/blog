@@ -93,74 +93,53 @@ flowchart LR
 
 ---
 
-## Option 1: Using dnssec_exporter
+## Option 1: Using prometheus-dnssec-exporter
 
-The `dnssec_exporter` is a purpose-built Prometheus exporter for DNSSEC monitoring.
+The [`prometheus-dnssec-exporter`](https://github.com/chrj/prometheus-dnssec-exporter) by chrj is a purpose-built Prometheus exporter for DNSSEC monitoring.
 
 ### Installation
 
+The exporter is a Go program. Install it with the Go toolchain:
+
 ```bash
-# Download the latest release
+# Install the latest version (requires Go installed)
+go install github.com/chrj/prometheus-dnssec-exporter@latest
 
-wget https://github.com/prometheus-community/dnssec_exporter/releases/download/v1.0.0/dnssec_exporter-1.0.0.linux-amd64.tar.gz
+# The binary is placed in $(go env GOPATH)/bin
+sudo cp "$(go env GOPATH)/bin/prometheus-dnssec-exporter" /usr/local/bin/
 
-# Extract
-tar xvfz dnssec_exporter-1.0.0.linux-amd64.tar.gz
-
-# Move to system path
-sudo mv dnssec_exporter-1.0.0.linux-amd64/dnssec_exporter /usr/local/bin/
-
-# Verify installation
-dnssec_exporter --version
+# Verify it runs
+prometheus-dnssec-exporter -h
 ```
 
 ### Configuration File
 
-Create `/etc/dnssec_exporter/config.yml`:
+The exporter reads a TOML file (default path `/etc/dnssec-checks`) listing the records to check. Each `[[records]]` block names a zone, a record within it, and the record type. Create `/etc/dnssec-checks`:
 
-```yaml
-# DNSSEC Exporter Configuration
-zones:
-  # Primary domains
-  - name: example.com
-    nameservers:
-      - 8.8.8.8:53
-      - 1.1.1.1:53
-    record_types:
-      - A
-      - AAAA
-      - MX
-      - NS
-      - SOA
+```toml
+# prometheus-dnssec-exporter configuration
+[[records]]
+  zone = "example.com"
+  record = "@"
+  type = "SOA"
 
-  - name: example.org
-    nameservers:
-      - 8.8.8.8:53
-    record_types:
-      - A
-      - AAAA
+[[records]]
+  zone = "example.com"
+  record = "@"
+  type = "A"
 
-  # Subdomains with separate DNSSEC
-  - name: api.example.com
-    nameservers:
-      - 8.8.8.8:53
-    record_types:
-      - A
-      - AAAA
+[[records]]
+  zone = "example.com"
+  record = "@"
+  type = "MX"
 
-  # Third-party services
-  - name: mail.example.com
-    nameservers:
-      - 8.8.8.8:53
-    record_types:
-      - MX
-
-# Global settings
-settings:
-  timeout: 10s
-  retries: 3
-  cache_ttl: 60s
+[[records]]
+  zone = "api.example.com"
+  record = "@"
+  type = "A"
 ```
+
+The resolvers to query, the listen address, and the timeout are passed as command-line flags (see the systemd unit below), not in this file. By default the exporter queries `8.8.8.8:53,1.1.1.1:53`.
 
 ### Systemd Service
 
@@ -169,7 +148,7 @@ Create `/etc/systemd/system/dnssec_exporter.service`:
 ```ini
 [Unit]
 Description=DNSSEC Exporter for Prometheus
-Documentation=https://github.com/prometheus-community/dnssec_exporter
+Documentation=https://github.com/chrj/prometheus-dnssec-exporter
 After=network-online.target
 Wants=network-online.target
 
@@ -177,10 +156,11 @@ Wants=network-online.target
 Type=simple
 User=prometheus
 Group=prometheus
-ExecStart=/usr/local/bin/dnssec_exporter \
-    --config.file=/etc/dnssec_exporter/config.yml \
-    --web.listen-address=:9204 \
-    --web.telemetry-path=/metrics
+ExecStart=/usr/local/bin/prometheus-dnssec-exporter \
+    -config /etc/dnssec-checks \
+    -listen-address :9204 \
+    -resolvers 8.8.8.8:53,1.1.1.1:53 \
+    -timeout 10s
 Restart=always
 RestartSec=5
 
@@ -198,10 +178,9 @@ WantedBy=multi-user.target
 ### Start the Exporter
 
 ```bash
-# Create user and directories
+# Create user and make the config readable
 sudo useradd --no-create-home --shell /bin/false prometheus
-sudo mkdir -p /etc/dnssec_exporter
-sudo chown prometheus:prometheus /etc/dnssec_exporter
+sudo chown prometheus:prometheus /etc/dnssec-checks
 
 # Enable and start
 sudo systemctl daemon-reload
@@ -214,73 +193,68 @@ curl http://localhost:9204/metrics | grep dnssec
 
 ### Metrics Exposed
 
-The exporter provides these key metrics:
+The exporter provides these metrics:
 
 | Metric | Type | Description |
 |--------|------|-------------|
-| `dnssec_rrsig_expiration_timestamp` | Gauge | Unix timestamp when RRSIG expires |
-| `dnssec_rrsig_inception_timestamp` | Gauge | Unix timestamp when RRSIG became valid |
-| `dnssec_rrsig_validity_seconds` | Gauge | Seconds until signature expires |
-| `dnssec_validation_success` | Gauge | 1 if DNSSEC validation succeeded, 0 otherwise |
-| `dnssec_probe_duration_seconds` | Gauge | Time taken to probe the zone |
-| `dnssec_zone_signed` | Gauge | 1 if zone is DNSSEC signed, 0 otherwise |
-| `dnssec_algorithm` | Gauge | DNSSEC algorithm number used |
-| `dnssec_key_tag` | Gauge | Key tag of the signing key |
+| `dnssec_zone_record_days_left` | Gauge | Number of days the signature will be valid (labels: `zone`, `record`, `type`) |
+| `dnssec_zone_record_earliest_rrsig_expiry` | Gauge | Earliest expiring RRSIG covering the record, in Unix time (labels: `resolver`, `zone`, `record`, `type`) |
+| `dnssec_zone_record_resolves` | Gauge | 1 if the record resolves and validates on the configured DNSSEC-enabled resolvers (labels: `resolver`, `zone`, `record`, `type`) |
+
+> Note: the PromQL, alerting, and dashboard examples later in this post are written against the richer metric set produced by the custom Python exporter in Option 3 (for example `dnssec_rrsig_validity_seconds`). If you use `prometheus-dnssec-exporter`, adapt those queries to `dnssec_zone_record_days_left` and `dnssec_zone_record_earliest_rrsig_expiry`.
 
 ---
 
 ## Option 2: Using dns_exporter with DNSSEC Checks
 
-The generic `dns_exporter` can also perform DNSSEC validation checks.
+The generic, multi-target [`dns_exporter`](https://github.com/tykling/dns_exporter) by tykling can also perform DNSSEC validation checks. Like the Blackbox exporter, you define reusable *modules* in a config file and pass `target`, `module`, and (optionally) `server` as scrape parameters.
 
 ### Installation
 
 ```bash
-# Using Docker
+# Using Docker (listens on port 15353 by default)
 docker run -d \
   --name dns_exporter \
-  -p 9153:9153 \
+  -p 15353:15353 \
   -v /etc/dns_exporter:/config \
-  prometheuscommunity/dns-exporter:latest \
-  --config.file=/config/dns_exporter.yml
+  tykling/dns_exporter:latest \
+  -c /config/dns_exporter.yml
 ```
+
+It is also available on PyPI: `pip install dns_exporter`.
 
 ### Configuration
 
-Create `/etc/dns_exporter/dns_exporter.yml`:
+Create `/etc/dns_exporter/dns_exporter.yml`. To check DNSSEC, set `edns_do: true` (requests signed data via the EDNS0 DO flag) and require the `AD` (Authenticated Data) flag in the response with `validate_response_flags`:
 
 ```yaml
 modules:
-  dnssec_check:
-    prober: dns
-    timeout: 10s
-    dns:
-      preferred_ip_protocol: ip4
-      query_name: example.com
-      query_type: A
-      valid_rcodes:
-        - NOERROR
-      validate: true  # Enable DNSSEC validation
-      recursion_desired: true
+  dnssec_a:
+    query_type: "A"
+    recursion_desired: true
+    edns_do: true
+    validate_response_flags:
+      fail_if_any_absent:
+        - "AD"
 
   dnssec_mx:
-    prober: dns
-    timeout: 10s
-    dns:
-      query_name: example.com
-      query_type: MX
-      validate: true
-      recursion_desired: true
+    query_type: "MX"
+    recursion_desired: true
+    edns_do: true
+    validate_response_flags:
+      fail_if_any_absent:
+        - "AD"
 
   dnssec_ns:
-    prober: dns
-    timeout: 10s
-    dns:
-      query_name: example.com
-      query_type: NS
-      validate: true
-      recursion_desired: true
+    query_type: "NS"
+    recursion_desired: true
+    edns_do: true
+    validate_response_flags:
+      fail_if_any_absent:
+        - "AD"
 ```
+
+The `query_name` (the zone to look up) and the `server` (the resolver to query) are supplied per scrape via the `target`/`server` parameters, so the same module works for many domains.
 
 ---
 
@@ -660,23 +634,25 @@ scrape_configs:
     scrape_interval: 5m  # DNSSEC doesn't change frequently
     scrape_timeout: 30s
 
-  # Multi-target probe (if using Blackbox-style exporter)
+  # Multi-target probe (using dns_exporter from Option 2)
   - job_name: 'dnssec_probe'
-    metrics_path: /probe
+    metrics_path: /query
     params:
-      module: [dnssec_check]
+      module: [dnssec_a]
+      server: ['8.8.8.8']  # resolver to query
     static_configs:
       - targets:
         - example.com
         - example.org
         - api.example.com
     relabel_configs:
+      # dns_exporter takes the name to look up in the query_name param
       - source_labels: [__address__]
-        target_label: __param_target
-      - source_labels: [__param_target]
+        target_label: __param_query_name
+      - source_labels: [__param_query_name]
         target_label: instance
       - target_label: __address__
-        replacement: localhost:9204
+        replacement: localhost:15353
 ```
 
 ### Recording Rules
