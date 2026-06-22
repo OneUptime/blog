@@ -431,9 +431,11 @@ For systems using containers or to ensure proper NVIDIA access.
 
 ```bash
 # Install NVIDIA container toolkit
-distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
-curl -s -L https://nvidia.github.io/nvidia-docker/gpgkey | sudo apt-key add -
-curl -s -L https://nvidia.github.io/nvidia-docker/$distribution/nvidia-docker.list | sudo tee /etc/apt/sources.list.d/nvidia-docker.list
+# Add the GPG key and repository (current official method)
+curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
+  sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
+  sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
 sudo apt update
 sudo apt install nvidia-container-toolkit -y
 
@@ -463,6 +465,8 @@ Monitor transcoding to confirm hardware acceleration is working.
 
 ```bash
 # For Intel Quick Sync, watch GPU usage during transcoding
+# intel_gpu_top is provided by the intel-gpu-tools package
+sudo apt install intel-gpu-tools -y
 sudo intel_gpu_top
 
 # For NVIDIA, monitor with nvidia-smi
