@@ -46,7 +46,7 @@ OSSEC is a scalable, multi-platform, open-source HIDS that combines several secu
 
 ## OSSEC Components and Architecture
 
-OSSEC can be deployed in three different modes, each suited for different use cases:
+OSSEC can be deployed in four different modes, each suited for different use cases:
 
 ### 1. Server (Manager)
 
@@ -303,7 +303,7 @@ sudo /var/ossec/bin/manage_agents
 On the **server**:
 
 ```bash
-# Generate SSL certificates for authentication
+# Start the enrollment daemon; restrict access to trusted agent IPs
 sudo /var/ossec/bin/ossec-authd -p 1515 &
 ```
 
@@ -406,9 +406,9 @@ The main configuration file is located at `/var/ossec/etc/ossec.conf`. Here is a
   </alerts>
 
   <!--
-    Remote Syslog Configuration
-    ===========================
-    Accept logs from remote systems via syslog.
+    Remote Agent Configuration
+    ==========================
+    Accept connections from OSSEC agents.
   -->
   <remote>
     <!-- Connection type: secure (for agents) or syslog -->
@@ -421,11 +421,9 @@ The main configuration file is located at `/var/ossec/etc/ossec.conf`. Here is a
     <protocol>tcp</protocol>
 
     <!--
-      Allowed IP addresses (CIDR notation supported)
-      Restrict which IPs can send logs
+      Use host firewall rules to restrict which agent IPs can connect
+      to the secure listener.
     -->
-    <allowed-ips>192.168.1.0/24</allowed-ips>
-    <allowed-ips>10.0.0.0/8</allowed-ips>
 
     <!-- Local IP to bind to (optional) -->
     <!-- <local_ip>192.168.1.100</local_ip> -->
@@ -504,8 +502,6 @@ The main configuration file is located at `/var/ossec/etc/ossec.conf`. Here is a
     <include>clam_av_rules.xml</include>
     <include>dropbear_rules.xml</include>
     <include>sysmon_rules.xml</include>
-    <include>auditd_rules.xml</include>
-    <include>sudo_rules.xml</include>
 
     <!-- Local custom rules (always include last) -->
     <include>local_rules.xml</include>
@@ -661,7 +657,6 @@ The main configuration file is located at `/var/ossec/etc/ossec.conf`. Here is a
     <system_audit>/var/ossec/etc/shared/system_audit_rcl.txt</system_audit>
     <system_audit>/var/ossec/etc/shared/cis_debian_linux_rcl.txt</system_audit>
     <system_audit>/var/ossec/etc/shared/cis_rhel_linux_rcl.txt</system_audit>
-    <system_audit>/var/ossec/etc/shared/cis_ubuntu_linux_rcl.txt</system_audit>
 
     <!-- Frequency of rootcheck scans (in seconds) -->
     <frequency>36000</frequency>
@@ -918,7 +913,8 @@ Create custom decoders in `/var/ossec/etc/decoders/local_decoder.xml`:
 
 <decoder name="json-app-child">
   <parent>json-app</parent>
-  <plugin_decoder>JSON_Decoder</plugin_decoder>
+  <regex>"remoteAddr":"(\S+)".*"user":"(\S+)".*"method":"(\S+)".*"url":"(\S+)"</regex>
+  <order>srcip, user, action, url</order>
 </decoder>
 ```
 
@@ -1156,7 +1152,7 @@ Create specific email alerts for different scenarios:
 sudo /var/ossec/bin/ossec-maild -t
 
 # Check mail queue
-sudo /var/ossec/bin/ossec-logtest
+sudo mailq
 
 # View mail logs
 sudo tail -f /var/ossec/logs/ossec.log | grep mail
@@ -1170,7 +1166,7 @@ OSSEC provides an optional web interface for viewing alerts and managing the sys
 
 ```bash
 # Install web server and dependencies
-sudo apt install -y apache2 php php-cli libapache2-mod-php
+sudo apt install -y apache2 php php-cli libapache2-mod-php git apache2-utils
 
 # Download OSSEC WUI
 cd /var/www/html
@@ -1312,7 +1308,7 @@ sudo /var/ossec/bin/agent_control -i 001
 sudo /var/ossec/bin/agent_control -lc
 
 # Check disconnected agents
-sudo /var/ossec/bin/agent_control -ln
+sudo /var/ossec/bin/agent_control -l | grep -i "inactive"
 ```
 
 ### Agent Status Monitoring Script
@@ -1327,7 +1323,7 @@ ALERT_EMAIL="admin@example.com"
 LOG_FILE="/var/ossec/logs/agent_monitor.log"
 
 # Get disconnected agents
-disconnected=$($AGENT_CONTROL -ln 2>/dev/null)
+disconnected=$($AGENT_CONTROL -l 2>/dev/null | grep -i "inactive")
 
 if [ -n "$disconnected" ]; then
     timestamp=$(date '+%Y-%m-%d %H:%M:%S')
@@ -1497,9 +1493,6 @@ sudo du -sh /var/ossec/*
 # Clean old alerts (keep last 30 days)
 sudo find /var/ossec/logs/alerts -type f -mtime +30 -delete
 
-# Rotate logs
-sudo /var/ossec/bin/ossec-control rotate
-
 # Configure log rotation
 sudo tee /etc/logrotate.d/ossec << 'EOF'
 /var/ossec/logs/*.log {
@@ -1515,16 +1508,20 @@ sudo tee /etc/logrotate.d/ossec << 'EOF'
     endscript
 }
 EOF
+
+# Force a log rotation if needed
+sudo logrotate -f /etc/logrotate.d/ossec
 ```
 
 ### Diagnostic Commands
 
 ```bash
-# Full system diagnostic
-sudo /var/ossec/bin/ossec-control debug
+# Enable debug mode, then restart OSSEC
+sudo /var/ossec/bin/ossec-control enable debug
+sudo /var/ossec/bin/ossec-control restart
 
-# Check database integrity
-sudo /var/ossec/bin/syscheck_control -u
+# List syscheck agents
+sudo /var/ossec/bin/syscheck_control -l
 
 # List all rules
 sudo /var/ossec/bin/ossec-logtest -t 2>&1 | grep "rule"
@@ -1534,7 +1531,7 @@ sudo /var/ossec/bin/ossec-logtest -a
 
 # Check active responses
 sudo /var/ossec/bin/ossec-control status
-sudo cat /var/ossec/active-response/active-responses.log
+sudo cat /var/ossec/logs/active-responses.log
 ```
 
 ### Log Files Reference
@@ -1576,24 +1573,20 @@ sudo cat /var/ossec/active-response/active-responses.log
 #!/bin/bash
 # /var/ossec/scripts/weekly_maintenance.sh
 
-# Rotate logs
-/var/ossec/bin/ossec-control rotate
-
-# Update rulesets
-cd /var/ossec/
-./update_ruleset.sh
+# Rotate logs if /etc/logrotate.d/ossec has been configured
+logrotate -f /etc/logrotate.d/ossec
 
 # Check for disconnected agents
-/var/ossec/bin/agent_control -ln
+/var/ossec/bin/agent_control -l | grep -i "inactive"
 
-# Verify syscheck database
-/var/ossec/bin/syscheck_control -u
+# List syscheck agents
+/var/ossec/bin/syscheck_control -l
 
 # Clear temporary files
 find /var/ossec/tmp -type f -mtime +7 -delete
 
-# Generate weekly report
-/var/ossec/bin/ossec-reportd -f weekly
+# Generate weekly report from alerts
+/var/ossec/bin/ossec-reportd < /var/ossec/logs/alerts/alerts.log > /var/ossec/logs/weekly-report.txt
 ```
 
 ## Integrating with OneUptime
