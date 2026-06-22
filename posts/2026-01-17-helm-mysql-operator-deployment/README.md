@@ -75,22 +75,23 @@ helm search repo mysql-operator --versions
 
 ```yaml
 # mysql-operator-values.yaml
-operator:
-  image:
-    registry: container-registry.oracle.com
-    repository: mysql/community-operator
-    tag: 8.2.0-2.1.1
+image:
+  registry: container-registry.oracle.com
+  repository: mysql
+  name: community-operator
+  tag: 9.7.0-2.2.8
 
-resources:
-  requests:
-    cpu: 100m
-    memory: 128Mi
-  limits:
-    cpu: 500m
-    memory: 512Mi
+deployment:
+  # Watch specific namespaces (empty = all)
+  namespaces: []
 
-# Watch specific namespaces (empty = all)
-watchedNamespaces: []
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
 ```
 
 ```bash
@@ -128,7 +129,7 @@ spec:
   
   instances: 3
   
-  version: "8.0.35"
+  version: "9.7.0"
   
   router:
     instances: 2
@@ -159,7 +160,7 @@ spec:
   
   instances: 3
   
-  version: "8.0.35"
+  version: "9.7.0"
   
   edition: community  # or enterprise
   
@@ -236,7 +237,7 @@ spec:
               cpu: 500m
               memory: 512Mi
               
-    routerOptions:
+    routingOptions:
       # Connection routing options
       read_only_targets: secondaries
       stats_updates_frequency: 1
@@ -244,7 +245,7 @@ spec:
   # TLS configuration
   tlsUseSelfSigned: false
   tlsCASecretName: mysql-ca
-  tlsServerCertAndKeySecretName: mysql-server-tls
+  tlsSecretName: mysql-server-tls
   
   # Image pull secrets
   imagePullSecrets:
@@ -285,7 +286,7 @@ openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key \
 # Create secrets
 kubectl create secret generic mysql-ca \
   --namespace mysql \
-  --from-file=ca.crt=ca.crt
+  --from-file=ca.pem=ca.crt
 
 kubectl create secret tls mysql-server-tls \
   --namespace mysql \
@@ -306,73 +307,68 @@ metadata:
   namespace: mysql
 spec:
   clusterName: mysql-production
-  
-  # Backup storage
-  storage:
-    ociObjectStorage:
-      bucketName: mysql-backups
-      prefix: production/
-      credentials: oci-credentials
+
+  backupProfile:
+    dumpInstance:
+      storage:
+        ociObjectStorage:
+          bucketName: mysql-backups
+          prefix: production/
+          credentials: oci-credentials
       
   # Or S3 storage
-  # storage:
-  #   s3:
-  #     bucketName: mysql-backups
-  #     prefix: production/
-  #     endpoint: s3.us-east-1.amazonaws.com
-  #     profile: default
-  #     config: s3-config
+  # backupProfile:
+  #   dumpInstance:
+  #     storage:
+  #       s3:
+  #         bucketName: mysql-backups
+  #         prefix: production/
+  #         endpoint: https://s3.us-east-1.amazonaws.com
+  #         profile: default
+  #         config: s3-config
 ```
 
 ### Scheduled Backups
 
 ```yaml
-# mysql-backup-schedule.yaml
-apiVersion: batch/v1
-kind: CronJob
+# Add to InnoDB cluster spec
+backupProfiles:
+  - name: dump-instance-profile-s3
+    dumpInstance:
+      storage:
+        s3:
+          bucketName: mysql-backups
+          prefix: production/
+          endpoint: https://s3.us-east-1.amazonaws.com
+          profile: default
+          config: s3-config
+
+backupSchedules:
+  - name: daily-s3-backup
+    schedule: "0 2 * * *"  # Daily at 2 AM
+    backupProfileName: dump-instance-profile-s3
+    enabled: true
+    deleteBackupData: false
+```
+
+### Backup Credentials for S3
+
+```yaml
+# s3-config.yaml
+apiVersion: v1
+kind: Secret
 metadata:
-  name: mysql-scheduled-backup
+  name: s3-config
   namespace: mysql
-spec:
-  schedule: "0 2 * * *"  # Daily at 2 AM
-  jobTemplate:
-    spec:
-      template:
-        spec:
-          containers:
-            - name: backup
-              image: mysql:8.0.35
-              command:
-                - /bin/sh
-                - -c
-                - |
-                  # Get primary pod
-                  PRIMARY=$(kubectl get pods -n mysql \
-                    -l mysql.oracle.com/cluster=mysql-production,mysql.oracle.com/instance-type=group-member \
-                    -o jsonpath='{.items[0].metadata.name}')
-                  
-                  # Run mysqldump
-                  kubectl exec -n mysql $PRIMARY -- \
-                    mysqldump -u root -p$MYSQL_ROOT_PASSWORD \
-                    --all-databases --single-transaction --routines --triggers \
-                    | gzip > /backup/mysql-backup-$(date +%Y%m%d).sql.gz
-                    
-                  # Upload to S3
-                  aws s3 cp /backup/mysql-backup-$(date +%Y%m%d).sql.gz \
-                    s3://mysql-backups/production/
-              env:
-                - name: MYSQL_ROOT_PASSWORD
-                  valueFrom:
-                    secretKeyRef:
-                      name: mysql-root-credentials
-                      key: rootPassword
-              volumeMounts:
-                - name: backup
-                  mountPath: /backup
-          volumes:
-            - name: backup
-              emptyDir: {}
-          restartPolicy: OnFailure
+type: Opaque
+stringData:
+  credentials: |
+    [default]
+    aws_access_key_id = YOUR_ACCESS_KEY
+    aws_secret_access_key = YOUR_SECRET_KEY
+  config: |
+    [default]
+    region = us-east-1
 ```
 
 ### Restore from Backup
@@ -387,12 +383,12 @@ metadata:
 spec:
   secretName: mysql-root-credentials
   instances: 3
-  version: "8.0.35"
+  version: "9.7.0"
   
   # Initialize from backup
   initDB:
     clone:
-      donorUrl: mysql-production-0.mysql-production.mysql.svc.cluster.local:3306
+      donorUrl: root@mysql-production-0.mysql-production-instances.mysql.svc.cluster.local:3306
       rootUser: root
       secretKeyRef:
         name: mysql-root-credentials
@@ -525,57 +521,17 @@ spec:
 
 ## Monitoring
 
-### ServiceMonitor for MySQL
-
-```yaml
-# mysql-servicemonitor.yaml
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: mysql
-  namespace: monitoring
-spec:
-  selector:
-    matchLabels:
-      mysql.oracle.com/cluster: mysql-production
-  namespaceSelector:
-    matchNames:
-      - mysql
-  endpoints:
-    - port: mysql
-      path: /metrics
-      interval: 30s
-```
-
-### MySQL Exporter Sidecar
+### Enable MySQL Metrics
 
 ```yaml
 # Add to InnoDB cluster spec
-podSpec:
-  containers:
-    - name: mysql
-      # ... existing config
-    - name: exporter
-      image: prom/mysqld-exporter:v0.15.0
-      args:
-        - --mysqld.username=exporter
-        - --mysqld.address=localhost:3306
-      ports:
-        - containerPort: 9104
-          name: metrics
-      env:
-        - name: MYSQLD_EXPORTER_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: mysql-exporter-credentials
-              key: password
-      resources:
-        requests:
-          cpu: 50m
-          memory: 64Mi
-        limits:
-          cpu: 100m
-          memory: 128Mi
+metrics:
+  enable: true
+  image: prom/mysqld-exporter:v0.19.0
+  monitor: true
+  options:
+    - --collect.perf_schema.replication_group_members
+    - --collect.perf_schema.replication_group_member_stats
 ```
 
 ### Prometheus Alerts
@@ -598,13 +554,13 @@ spec:
           annotations:
             summary: "MySQL instance is down"
             
-        - alert: MySQLReplicationLag
-          expr: mysql_slave_status_seconds_behind_master > 30
+        - alert: MySQLGroupReplicationQueue
+          expr: mysql_perf_schema_transactions_remote_in_applier_queue > 30
           for: 5m
           labels:
             severity: warning
           annotations:
-            summary: "MySQL replication lag detected"
+            summary: "MySQL group replication apply queue is high"
             
         - alert: MySQLHighConnections
           expr: |
@@ -664,7 +620,7 @@ kubectl exec -it -n mysql mysql-production-0 -- mysqlsh root@localhost
 
 # In MySQL Shell
 dba.getCluster().status()
-dba.getCluster().setPrimaryInstance('mysql-production-1:3306')
+dba.getCluster().setPrimaryInstance('mysql-production-1.mysql-production-instances.mysql.svc.cluster.local:3306')
 ```
 
 ### Automatic Recovery
@@ -696,13 +652,14 @@ kubectl logs -n mysql mysql-production-0 -c mysql
 kubectl exec -it -n mysql mysql-production-0 -- mysql -u root -p
 
 # Check cluster status in MySQL Shell
-kubectl exec -it -n mysql mysql-production-0 -- mysqlsh root@localhost -- cluster status
+kubectl exec -it -n mysql mysql-production-0 -- \
+  mysqlsh root@localhost --js -e "dba.getCluster().status()"
 
 # Check replication status
 kubectl exec -n mysql mysql-production-0 -- mysql -u root -p -e "SELECT * FROM performance_schema.replication_group_members"
 
 # Check router status
-kubectl exec -n mysql mysql-production-router-0 -- mysqlrouter --help
+kubectl get pods -n mysql -l app.kubernetes.io/name=mysql-router
 ```
 
 ## Wrap-up
