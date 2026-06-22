@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Helm, Kubernetes, DevOps, Migration, Upgrade
 
-Description: Step-by-step guide to migrating your Helm 2 releases and workflows to Helm 3, including the official 2to3 plugin and handling Tiller removal.
+Description: Step-by-step guide to migrating your Helm 2 releases and workflows to Helm 3, including the deprecated 2to3 plugin and handling Tiller removal.
 
 > Helm 3 introduced significant changes including the removal of Tiller, improved security, and a simplified architecture. This guide walks you through migrating existing Helm 2 releases to Helm 3 safely and efficiently.
 
@@ -29,7 +29,7 @@ flowchart LR
 | Feature | Helm 2 | Helm 3 |
 |---------|--------|--------|
 | Server Component | Tiller (in-cluster) | None |
-| Release Storage | ConfigMaps | Secrets |
+| Release Storage | ConfigMaps by default | Secrets by default |
 | Release Namespace | Tiller's namespace | Release's namespace |
 | CRD Handling | crd-install hook | crds/ directory |
 | Three-way Merge | No | Yes |
@@ -49,11 +49,15 @@ helm version --client
 helm3 version
 
 # You may need both installed during migration
-# Install Helm 3 alongside Helm 2
+# If /usr/local/bin/helm is Helm 2, save it before installing Helm 3
+sudo cp /usr/local/bin/helm /usr/local/bin/helm2
+
+# Install Helm 3
 curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 
-# Rename to avoid conflicts
+# Rename Helm 3 to avoid conflicts, then restore Helm 2 as helm
 sudo mv /usr/local/bin/helm /usr/local/bin/helm3
+sudo mv /usr/local/bin/helm2 /usr/local/bin/helm
 ```
 
 ## Install the 2to3 Plugin
@@ -65,6 +69,8 @@ helm3 plugin install https://github.com/helm/helm-2to3
 # Verify installation
 helm3 plugin list
 ```
+
+The 2to3 plugin is deprecated and no longer supported, but it remains the Helm project's documented migration tool for existing Helm 2 release data.
 
 ## Migration Steps
 
@@ -87,10 +93,10 @@ cp -r ~/.helm ~/.helm-backup
 kubectl get deployment tiller-deploy -n kube-system -o yaml > tiller-backup.yaml
 
 # List all Helm 2 releases
-helm list --all-namespaces > helm2-releases.txt
+helm list --all > helm2-releases.txt
 
 # Export release values
-for release in $(helm list -q); do
+for release in $(helm list --all -q); do
   helm get values $release > values-$release.yaml
 done
 ```
@@ -128,7 +134,7 @@ Migrate each release individually:
 
 ```bash
 # List Helm 2 releases
-helm list --all-namespaces
+helm list --all
 
 # Dry run migration for a release
 helm3 2to3 convert my-release --dry-run
@@ -139,7 +145,7 @@ helm3 2to3 convert my-release
 # Migrate with Tiller in different namespace
 helm3 2to3 convert my-release --tiller-ns custom-tiller-ns
 
-# Migrate release in specific namespace
+# Limit the number of release revisions converted
 helm3 2to3 convert my-release --release-versions-max 5
 ```
 
@@ -151,7 +157,7 @@ Script to migrate all releases:
 #!/bin/bash
 
 # Get all Helm 2 releases
-releases=$(helm list -q)
+releases=$(helm list --all -q)
 
 for release in $releases; do
   echo "Migrating $release..."
@@ -276,7 +282,7 @@ metadata:
     "helm.sh/hook": crd-install
 ```
 
-```yaml
+```text
 # Helm 3: Move CRDs to crds/ directory
 mychart/
 ├── Chart.yaml
@@ -299,11 +305,11 @@ Some template functions changed:
 # Use current date if needed
 {{ now | date "2006-01-02" }}
 
-# Helm 2 - .Capabilities.KubeVersion.Major is int
-{{ if ge .Capabilities.KubeVersion.Major 1 }}
+# Helm 2 - use GitVersion when comparing Kubernetes versions
+{{ if semverCompare ">=1.20-0" .Capabilities.KubeVersion.GitVersion }}
 
-# Helm 3 - .Capabilities.KubeVersion returns proper semver
-{{ if semverCompare ">=1.20" .Capabilities.KubeVersion.Version }}
+# Helm 3 - .Capabilities.KubeVersion also exposes Version
+{{ if semverCompare ">=1.20-0" .Capabilities.KubeVersion.Version }}
 ```
 
 ## Handling Common Migration Issues
@@ -423,9 +429,9 @@ jobs:
       - uses: actions/checkout@v4
       
       - name: Install Helm
-        uses: azure/setup-helm@v3
+        uses: azure/setup-helm@v5.0.0
         with:
-          version: 'v3.13.0'
+          version: 'v3.18.3'
           
       - name: Deploy
         run: |
@@ -465,7 +471,7 @@ echo "=== Helm 2 to Helm 3 Migration ==="
 # Step 1: Backup
 echo "Step 1: Backing up..."
 cp -r ~/.helm ~/.helm-backup-$(date +%Y%m%d)
-helm list --all-namespaces > helm2-releases-backup.txt
+helm list --all > helm2-releases-backup.txt
 
 # Step 2: Install 2to3 plugin
 echo "Step 2: Installing 2to3 plugin..."
@@ -482,7 +488,7 @@ fi
 
 # Step 4: Migrate releases
 echo "Step 4: Migrating releases..."
-releases=$(helm list -q)
+releases=$(helm list --all -q)
 
 for release in $releases; do
   echo "Processing $release..."
@@ -518,4 +524,4 @@ echo "=== Migration Complete ==="
 
 ## Wrap-up
 
-Migrating from Helm 2 to Helm 3 is straightforward with the 2to3 plugin. Always backup first, migrate config, then releases one by one. Verify each release works before cleaning up Helm 2 data. Update your charts to use apiVersion v2, move dependencies to Chart.yaml, and move CRDs to the crds/ directory. Don't forget to update CI/CD pipelines to remove Tiller references and use namespace-scoped commands.
+Migrating from Helm 2 to Helm 3 is straightforward with the deprecated 2to3 plugin. Always backup first, migrate config, then releases one by one. Verify each release works before cleaning up Helm 2 data. Update your charts to use apiVersion v2, move dependencies to Chart.yaml, and move CRDs to the crds/ directory. Don't forget to update CI/CD pipelines to remove Tiller references and use namespace-scoped commands.
