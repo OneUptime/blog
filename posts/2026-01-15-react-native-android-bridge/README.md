@@ -416,7 +416,7 @@ public void fetchDataWithCallback(
             Thread.sleep(1000);
             String data = "Data from " + url;
 
-            // Invoke success callback on main thread
+            // Invoke the success callback with the result
             successCallback.invoke(data);
         } catch (Exception e) {
             errorCallback.invoke(e.getMessage());
