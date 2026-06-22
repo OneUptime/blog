@@ -35,7 +35,6 @@ flowchart TB
 ### Choose the Right Storage Driver
 
 ```json
-// /etc/docker/daemon.json
 {
   "storage-driver": "overlay2"
 }
@@ -43,8 +42,9 @@ flowchart TB
 
 | Driver | Performance | Use Case |
 |--------|-------------|----------|
-| overlay2 | Best | Default for modern Linux |
-| fuse-overlayfs | Good | Rootless Docker |
+| containerd snapshotters | Best | Default for Docker Engine 29.0+ fresh installs |
+| overlay2 | Best | Classic storage driver for modern Linux |
+| fuse-overlayfs | Good | Rootless Docker on older kernels |
 | btrfs | Good | Btrfs filesystems |
 | zfs | Good | ZFS filesystems |
 | vfs | Slow | Testing only |
@@ -156,7 +156,7 @@ services:
 }
 ```
 
-Resource Management
+## Resource Management
 
 ### Default Container Limits
 
@@ -213,11 +213,17 @@ Resource Management
 
 ### Build Parallelism
 
+```toml
+# /etc/buildkitd.toml
+[worker.oci]
+  max-parallelism = 4
+```
+
 ```bash
-# Set BuildKit parallelism
-export DOCKER_BUILDKIT=1
-export BUILDKIT_STEP_LOG_MAX_SIZE=10485760
-export BUILDKIT_STEP_LOG_MAX_SPEED=10485760
+docker buildx create --use \
+  --name high-perf-builder \
+  --driver docker-container \
+  --buildkitd-config /etc/buildkitd.toml
 ```
 
 ## Memory Optimization
@@ -241,7 +247,6 @@ export BUILDKIT_STEP_LOG_MAX_SPEED=10485760
 ## Complete Production Configuration
 
 ```json
-// /etc/docker/daemon.json
 {
   "storage-driver": "overlay2",
 
@@ -447,7 +452,7 @@ journalctl -u docker.service -f
 
 | Setting | Impact | Default | Recommended |
 |---------|--------|---------|-------------|
-| storage-driver | High | overlay2 | overlay2 |
+| storage-driver | High | containerd snapshotters (Docker 29+) or overlay2 (classic) | containerd snapshotters or overlay2 |
 | log-driver | Medium | json-file | local |
 | max-concurrent-downloads | Medium | 3 | 10 |
 | userland-proxy | Medium | true | false |
@@ -455,4 +460,3 @@ journalctl -u docker.service -f
 | default-ulimits | High | system | 65535 |
 
 Daemon tuning should be done incrementally with monitoring. Start with storage driver selection and logging configuration, then optimize network settings and resource limits based on workload requirements. For container-level resource management, see our post on [Limiting Docker Container CPU and Memory](https://oneuptime.com/blog/post/2026-02-08-how-to-configure-docker-desktop-memory-and-cpu-limits-on-macos/view).
-
