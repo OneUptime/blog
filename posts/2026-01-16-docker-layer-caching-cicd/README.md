@@ -15,10 +15,10 @@ Docker layer caching can reduce build times from minutes to seconds by reusing u
 ```mermaid
 flowchart TB
     subgraph layers["Dockerfile Layers"]
-        L1["FROM node:20"] -->|Cached - base image| L2["WORKDIR /app"]
+        L1["FROM node:24"] -->|Cached - base image| L2["WORKDIR /app"]
         L2 -->|Cached - unchanged| L3["COPY package*.json ./"]
         L3 -->|Cached if unchanged| L4["RUN npm ci"]
-        L4 -->|Cached if package.json unchanged| L5["COPY . ."]
+        L4 -->|Cached if package files unchanged| L5["COPY . ."]
         L5 -->|Invalidated - code changed| L6["RUN npm run build"]
         L6 -->|Rebuilt - layer above changed| final((Final Image))
     end
@@ -40,14 +40,14 @@ When any layer changes, all subsequent layers must be rebuilt. Optimizing layer 
 ```dockerfile
 # Bad: Source code copied early invalidates dependency cache
 
-FROM node:20
+FROM node:24
 WORKDIR /app
 COPY . .
 RUN npm ci
 RUN npm run build
 
 # Good: Dependencies cached separately from source
-FROM node:20
+FROM node:24
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
@@ -59,7 +59,7 @@ RUN npm run build
 
 ```dockerfile
 # Stage 1: Dependencies (cached independently)
-FROM node:20 AS deps
+FROM node:24-alpine AS deps
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
@@ -70,7 +70,7 @@ COPY . .
 RUN npm run build
 
 # Stage 3: Production (minimal final image)
-FROM node:20-alpine AS production
+FROM node:24-alpine AS production
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
@@ -99,7 +99,7 @@ export DOCKER_BUILDKIT=1
 ```dockerfile
 # syntax=docker/dockerfile:1.4
 
-FROM node:20
+FROM node:24
 WORKDIR /app
 
 # Cache npm packages
@@ -122,7 +122,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     pip install -r requirements.txt
 
 # Go modules
-FROM golang:1.21
+FROM golang:1.26
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod \
@@ -136,7 +136,7 @@ RUN --mount=type=cache,target=/root/.m2 \
     mvn dependency:go-offline
 
 # Cargo (Rust)
-FROM rust:1.73
+FROM rust:latest
 WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
@@ -148,17 +148,15 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 ### Inline Cache
 
 ```bash
-# Build with inline cache
-docker build \
-  --build-arg BUILDKIT_INLINE_CACHE=1 \
-  -t myapp:latest .
-
-# Push to registry
-docker push myapp:latest
+# Build and push with inline cache
+docker buildx build \
+  --push \
+  --cache-to type=inline \
+  -t registry.example.com/myapp:latest .
 
 # Use cache from registry on next build
-docker build \
-  --cache-from myapp:latest \
+docker buildx build \
+  --cache-from type=registry,ref=registry.example.com/myapp:latest \
   -t myapp:new .
 ```
 
@@ -166,10 +164,11 @@ docker build \
 
 ```bash
 # Export cache to registry
-docker build \
-  --cache-to type=registry,ref=myapp:cache,mode=max \
-  --cache-from type=registry,ref=myapp:cache \
-  -t myapp:latest .
+docker buildx build \
+  --push \
+  --cache-to type=registry,ref=registry.example.com/myapp:cache,mode=max \
+  --cache-from type=registry,ref=registry.example.com/myapp:cache \
+  -t registry.example.com/myapp:latest .
 ```
 
 ### Cache Modes
@@ -190,6 +189,10 @@ docker build \
 name: Build
 
 on: push
+
+permissions:
+  contents: read
+  packages: write
 
 jobs:
   build:
@@ -295,12 +298,15 @@ build:
     - docker:dind
   variables:
     DOCKER_BUILDKIT: 1
+  before_script:
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
   script:
-    - docker build
-        --cache-from $CI_REGISTRY_IMAGE:latest
-        --build-arg BUILDKIT_INLINE_CACHE=1
-        -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
-        -t $CI_REGISTRY_IMAGE:latest
+    - |
+      docker build \
+        --cache-from $CI_REGISTRY_IMAGE:latest \
+        --build-arg BUILDKIT_INLINE_CACHE=1 \
+        -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA \
+        -t $CI_REGISTRY_IMAGE:latest \
         .
     - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
     - docker push $CI_REGISTRY_IMAGE:latest
@@ -313,13 +319,16 @@ build:
   image:
     name: gcr.io/kaniko-project/executor:debug
     entrypoint: [""]
+  before_script:
+    - echo "{\"auths\":{\"$CI_REGISTRY\":{\"username\":\"$CI_REGISTRY_USER\",\"password\":\"$CI_REGISTRY_PASSWORD\"}}}" > /kaniko/.docker/config.json
   script:
-    - /kaniko/executor
-      --context $CI_PROJECT_DIR
-      --dockerfile $CI_PROJECT_DIR/Dockerfile
-      --destination $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
-      --cache=true
-      --cache-repo=$CI_REGISTRY_IMAGE/cache
+    - |
+      /kaniko/executor \
+        --context $CI_PROJECT_DIR \
+        --dockerfile $CI_PROJECT_DIR/Dockerfile \
+        --destination $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA \
+        --cache=true \
+        --cache-repo=$CI_REGISTRY_IMAGE/cache
 ```
 
 ## Jenkins Caching
@@ -369,7 +378,7 @@ pipeline {
     agent {
         docker {
             image 'docker:latest'
-            args '-v buildx-cache:/cache'
+            args '-v /var/run/docker.sock:/var/run/docker.sock -v buildx-cache:/cache'
         }
     }
 
@@ -424,7 +433,7 @@ jobs:
       - run:
           name: Build with Cache
           command: |
-            docker login -u $DOCKER_USER -p $DOCKER_PASS
+            echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
             docker pull myregistry/myapp:latest || true
             docker build \
               --cache-from myregistry/myapp:latest \
@@ -442,14 +451,17 @@ jobs:
 
 ```yaml
 # GitHub Actions
+- name: Prepare cache tag
+  run: echo "CACHE_TAG=${GITHUB_REF_NAME//\//-}" >> $GITHUB_ENV
+
 - name: Build
   uses: docker/build-push-action@v6
   with:
     context: .
     cache-from: |
-      type=registry,ref=myapp:cache-${{ github.ref_name }}
+      type=registry,ref=myapp:cache-${{ env.CACHE_TAG }}
       type=registry,ref=myapp:cache-main
-    cache-to: type=registry,ref=myapp:cache-${{ github.ref_name }},mode=max
+    cache-to: type=registry,ref=myapp:cache-${{ env.CACHE_TAG }},mode=max
 ```
 
 ### Dependency-Based Cache Key
@@ -541,7 +553,7 @@ Build Time: 45s
 
 ```dockerfile
 # syntax=docker/dockerfile:1.4
-FROM node:20 AS deps
+FROM node:24-alpine AS deps
 WORKDIR /app
 COPY package*.json ./
 RUN --mount=type=cache,target=/root/.npm \
@@ -551,7 +563,7 @@ FROM deps AS builder
 COPY . .
 RUN npm run build
 
-FROM node:20-alpine
+FROM node:24-alpine
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
@@ -570,4 +582,3 @@ CMD ["node", "dist/index.js"]
 | Local cache volumes | Jenkins, self-hosted | Medium |
 
 Effective Docker caching can reduce build times by 80-90%. Start with proper Dockerfile layer ordering, then implement registry-based caching for CI/CD environments. Use BuildKit cache mounts for package managers to achieve the best results. For more on BuildKit features, see our post on [Docker BuildKit Cache Mounts and Secrets](https://oneuptime.com/blog/post/2026-01-16-docker-buildkit-cache-secrets/view).
-
