@@ -50,7 +50,7 @@ graph LR
 sudo apt update
 sudo apt install -y curl gpg
 
-# Add Fluent Bit GPG key
+# Run the official installation script (adds the repo, key, and installs Fluent Bit)
 curl https://raw.githubusercontent.com/fluent/fluent-bit/master/install.sh | sh
 ```
 
@@ -68,20 +68,25 @@ sudo apt update
 sudo apt install fluent-bit -y
 ```
 
-### Method 2: Download Binary
+### Method 2: Build from Source
+
+Fluent Bit doesn't ship prebuilt Linux tarballs on GitHub (releases only contain the source code), so when you can't use the package repository, build it yourself:
 
 ```bash
-# Download latest release
-curl -LO https://github.com/fluent/fluent-bit/releases/download/v2.2.0/fluent-bit-2.2.0-linux-x86_64.tar.gz
+# Install build dependencies
+sudo apt update
+sudo apt install -y git cmake gcc g++ make flex bison libssl-dev libyaml-dev
 
-# Extract
-tar -xzf fluent-bit-2.2.0-linux-x86_64.tar.gz
+# Clone the source
+git clone https://github.com/fluent/fluent-bit.git
+cd fluent-bit/build
 
-# Move to /opt
-sudo mv fluent-bit /opt/
+# Configure and build
+cmake ..
+make
 
-# Create symlink
-sudo ln -s /opt/fluent-bit/bin/fluent-bit /usr/local/bin/fluent-bit
+# Install (binary lands in /usr/local/bin/fluent-bit)
+sudo make install
 ```
 
 ### Method 3: Docker
@@ -226,10 +231,14 @@ sudo nano /etc/fluent-bit/fluent-bit.conf
 
 ### Docker Logs
 
+Docker container logs are read with the `tail` plugin. Enable `Docker_Mode` so split JSON log lines are reassembled before parsing:
+
 ```ini
 [INPUT]
-    Name         docker
+    Name         tail
     Tag          docker.*
+    Path         /var/lib/docker/containers/*/*.log
+    Parser       docker
     Docker_Mode  On
 ```
 
