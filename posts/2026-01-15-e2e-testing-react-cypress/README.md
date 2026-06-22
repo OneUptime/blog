@@ -883,6 +883,8 @@ describe('Navigation', () => {
 
 ### Testing Modals and Dialogs
 
+The focus-trap test below uses `.tab()`. Cypress does not ship a built-in tab command, so you need to install and import the [`cypress-plugin-tab`](https://github.com/kuceb/cypress-plugin-tab) plugin first (`npm install -D cypress-plugin-tab`, then `import 'cypress-plugin-tab'` in `cypress/support/e2e.ts`). On Cypress 14.3+ you can instead use the native `cy.press(Cypress.Keyboard.Keys.TAB)` command.
+
 ```typescript
 // cypress/e2e/modals.cy.ts
 describe('Modal Components', () => {
