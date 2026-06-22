@@ -999,7 +999,7 @@ Image loading deserves special attention since images are often the slowest elem
 ### Progressive Image Loading
 
 ```typescript
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Image,
@@ -1023,7 +1023,7 @@ const ProgressiveImage: React.FC<ProgressiveImageProps> = ({
   borderRadius = 0,
 }) => {
   const [isLoading, setIsLoading] = useState(true);
-  const imageOpacity = new Animated.Value(0);
+  const imageOpacity = useRef(new Animated.Value(0)).current;
 
   const handleImageLoad = () => {
     Animated.timing(imageOpacity, {
