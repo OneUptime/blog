@@ -190,13 +190,13 @@ ls -la /opt/pulsar/current/
 
 ## Standalone Mode for Development
 
-Standalone mode runs all Pulsar components (broker, bookie, ZooKeeper) in a single JVM process. This is perfect for development and testing but should never be used in production.
+Standalone mode runs all Pulsar components (broker, bookie, and a local metadata store) in a single JVM process. By default Pulsar 3.x uses an embedded RocksDB metadata store rather than ZooKeeper in standalone mode. This is perfect for development and testing but should never be used in production.
 
 ### Starting Standalone Mode
 
 ```bash
 # Start Pulsar in standalone mode (runs in foreground)
-# This starts ZooKeeper, BookKeeper, and a Pulsar broker
+# This starts a local metadata store, BookKeeper, and a Pulsar broker
 /opt/pulsar/current/bin/pulsar standalone
 
 # Or run in the background with nohup
@@ -637,7 +637,7 @@ import time
 client = pulsar.Client(
     service_url='pulsar://localhost:6650',
     operation_timeout_seconds=30,
-    connection_timeout_seconds=10
+    connection_timeout_ms=10000
 )
 
 # Create a producer for the transactions topic
@@ -688,6 +688,15 @@ finally:
 
 import pulsar
 import json
+
+
+def process_transaction(payload):
+    """Process a transaction - replace with your business logic."""
+    transaction_id = payload.get('transaction_id')
+    amount = payload.get('amount')
+    # Simulate processing
+    print(f'  Processing transaction {transaction_id} for ${amount}')
+
 
 # Create a Pulsar client
 client = pulsar.Client('pulsar://localhost:6650')
@@ -748,14 +757,6 @@ except KeyboardInterrupt:
 finally:
     consumer.close()
     client.close()
-
-
-def process_transaction(payload):
-    """Process a transaction - replace with your business logic."""
-    transaction_id = payload.get('transaction_id')
-    amount = payload.get('amount')
-    # Simulate processing
-    print(f'  Processing transaction {transaction_id} for ${amount}')
 ```
 
 ## Pulsar Functions
@@ -1456,8 +1457,8 @@ curl -s http://localhost:8080/admin/v2/brokers/health
 # Check cluster status
 /opt/pulsar/current/bin/pulsar-admin brokers list production
 
-# Check namespace health
-/opt/pulsar/current/bin/pulsar-admin namespaces get-bundle-state my-company/payments
+# Check namespace policies and bundle configuration
+/opt/pulsar/current/bin/pulsar-admin namespaces policies my-company/payments
 
 # Check topic ownership (which broker owns the topic)
 /opt/pulsar/current/bin/pulsar-admin topics lookup \
