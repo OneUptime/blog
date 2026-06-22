@@ -52,7 +52,8 @@ OCI support is enabled by default in Helm 3.8+. Check your version:
 
 helm version
 
-# If using older version, set environment variable
+# If using Helm 3.7, set the experimental flag before using OCI.
+# For older Helm releases, upgrade Helm instead.
 export HELM_EXPERIMENTAL_OCI=1
 ```
 
@@ -71,7 +72,7 @@ helm registry login ghcr.io -u USERNAME
 
 # AWS ECR
 aws ecr get-login-password --region us-east-1 | \
-  helm registry login --username AWS --password-stdin 123456789.dkr.ecr.us-east-1.amazonaws.com
+  helm registry login --username AWS --password-stdin 123456789012.dkr.ecr.us-east-1.amazonaws.com
 
 # Azure Container Registry
 az acr login --name myregistry
@@ -110,15 +111,15 @@ helm push my-chart-1.0.0.tgz oci://ghcr.io/myorg/charts
 
 ### Push with Different Tag
 
-By default, the chart version becomes the tag. You can push with additional tags.
+By default, the chart version becomes the tag. Helm does not let you choose an arbitrary tag during `helm push`.
 
 ```bash
 # Push with version tag (automatic)
 helm push my-chart-1.0.0.tgz oci://ghcr.io/myorg/charts
 # Creates: oci://ghcr.io/myorg/charts/my-chart:1.0.0
 
-# For additional tags, use registry tools
-# Tag as latest using oras or registry API
+# Registry tools can add aliases, but Helm pull/install should use
+# the chart version with --version or an immutable digest reference.
 oras tag ghcr.io/myorg/charts/my-chart:1.0.0 latest
 ```
 
@@ -204,7 +205,7 @@ helm template my-release oci://ghcr.io/myorg/charts/my-chart \
 
 ### Docker Hub
 
-Docker Hub requires a paid subscription for private repositories.
+Docker Hub plan limits apply for private repositories.
 
 ```bash
 # Login to Docker Hub
@@ -242,16 +243,16 @@ ECR integrates with AWS IAM for authentication.
 ```bash
 # Get ECR login password
 aws ecr get-login-password --region us-east-1 | \
-  helm registry login --username AWS --password-stdin 123456789.dkr.ecr.us-east-1.amazonaws.com
+  helm registry login --username AWS --password-stdin 123456789012.dkr.ecr.us-east-1.amazonaws.com
 
 # Create repository (if needed)
 aws ecr create-repository --repository-name charts/my-chart
 
 # Push to ECR
-helm push my-chart-1.0.0.tgz oci://123456789.dkr.ecr.us-east-1.amazonaws.com/charts
+helm push my-chart-1.0.0.tgz oci://123456789012.dkr.ecr.us-east-1.amazonaws.com/charts
 
 # Install from ECR
-helm install my-release oci://123456789.dkr.ecr.us-east-1.amazonaws.com/charts/my-chart --version 1.0.0
+helm install my-release oci://123456789012.dkr.ecr.us-east-1.amazonaws.com/charts/my-chart --version 1.0.0
 ```
 
 ### Azure Container Registry (ACR)
@@ -465,6 +466,7 @@ metadata:
   name: my-app
   namespace: argocd
 spec:
+  project: default
   source:
     # OCI chart reference
     repoURL: ghcr.io/myorg/charts
@@ -495,6 +497,7 @@ metadata:
     argocd.argoproj.io/secret-type: repository
 type: Opaque
 stringData:
+  name: ghcr
   url: ghcr.io/myorg/charts
   username: argocd
   password: ghp_xxxxxxxxxxxx
@@ -545,7 +548,7 @@ helm registry login ghcr.io -u USERNAME
 helm show chart oci://ghcr.io/myorg/charts/my-chart --version 1.0.0
 
 # Error: OCI not enabled
-# Solution: Upgrade Helm to 3.8+ or set environment variable
+# Solution: Upgrade Helm to 3.8+, or set the experimental flag in Helm 3.7
 export HELM_EXPERIMENTAL_OCI=1
 
 # Debug with verbose output
