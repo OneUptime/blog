@@ -16,7 +16,7 @@ Network aliases provide multiple DNS names for containers, enabling flexible ser
 flowchart TB
     subgraph Container["Container: api-v2"]
         subgraph DNS["DNS Resolution"]
-            A["api-v2"] --> IP["172.17.0.5"]
+            A["api-v2"] --> IP["172.18.0.5"]
             B["api"] --> IP
             C["backend"] --> IP
             D["service"] --> IP
@@ -49,8 +49,6 @@ docker run --rm --network mynet alpine nslookup api-v2
 ## Docker Compose Aliases
 
 ```yaml
-version: '3.8'
-
 services:
   api:
     image: myapi:v2
@@ -75,11 +73,9 @@ networks:
 
 ## Blue-Green Deployment
 
-Network aliases enable zero-downtime deployments by switching which container responds to a shared alias.
+Network aliases can help with deployment cutovers by switching which container responds to a shared alias.
 
 ```yaml
-version: '3.8'
-
 services:
   # Blue deployment (current)
   app-blue:
@@ -115,20 +111,18 @@ networks:
 ```bash
 # After testing green, update compose to give 'app' alias to green
 # Then restart to apply changes
-docker-compose up -d
+docker compose up -d
 
-# Or use docker network connect/disconnect
+# Or use docker network connect/disconnect with the actual network and container names
 docker network disconnect frontend app-blue
 docker network connect --alias app frontend app-green
 ```
 
 ## Multiple Containers Same Alias
 
-When multiple containers share an alias, Docker provides round-robin DNS.
+When multiple containers share an alias, Docker DNS can return multiple matching containers, but Docker does not guarantee which container a shared alias resolves to.
 
 ```yaml
-version: '3.8'
-
 services:
   api-1:
     image: myapi:latest
@@ -155,22 +149,20 @@ services:
     image: nginx:alpine
     networks:
       - backend
-    # Requests to 'api' will round-robin between api-1, api-2, api-3
+    # DNS lookups for 'api' can return api-1, api-2, or api-3
 
 networks:
   backend:
 ```
 
 ```bash
-# Test round-robin resolution
+# Test shared alias resolution
 docker run --rm --network backend alpine sh -c "for i in 1 2 3 4 5; do nslookup api; done"
 ```
 
 ## Environment-Based Aliases
 
 ```yaml
-version: '3.8'
-
 services:
   database:
     image: postgres:15
@@ -199,8 +191,6 @@ networks:
 ## Service Migration Pattern
 
 ```yaml
-version: '3.8'
-
 services:
   # Legacy service (being deprecated)
   legacy-api:
@@ -219,7 +209,7 @@ services:
           - api  # Both respond to 'api'
           - api-v2
 
-  # Clients use 'api' - traffic distributed between both
+  # Clients use 'api' - DNS can resolve to either service
   # Gradually scale down legacy, scale up new
   client:
     image: myclient:latest
@@ -237,8 +227,6 @@ networks:
 Containers can have different aliases on different networks.
 
 ```yaml
-version: '3.8'
-
 services:
   database:
     image: postgres:15
@@ -294,8 +282,6 @@ docker run -d \
 ## Complete Service Discovery Setup
 
 ```yaml
-version: '3.8'
-
 services:
   # Load balancer
   traefik:
@@ -394,9 +380,8 @@ docker run --rm --network backend alpine sh -c "for i in \$(seq 1 10); do nslook
 |---------|----------|
 | Single alias | Stable service name |
 | Multiple aliases | Backward compatibility |
-| Shared aliases | Load balancing |
+| Shared aliases | DNS-level service name sharing |
 | Per-network aliases | Network isolation |
-| Blue-green | Zero-downtime deploys |
+| Blue-green | Deployment cutovers |
 
 Network aliases provide flexible service discovery without changing client configurations. Use them for versioned deployments, gradual migrations, and multi-environment setups. For more advanced networking, see our post on [Docker Compose Service Discovery](https://oneuptime.com/blog/post/2026-01-16-docker-compose-service-discovery/view).
-
