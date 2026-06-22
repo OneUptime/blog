@@ -76,7 +76,7 @@ interface FeatureComparison {
 const comparisonTable: FeatureComparison[] = [
   {
     feature: 'TypeScript Support',
-    bull: 'Community types (@types/bull)',
+    bull: 'Bundled type definitions',
     bullmq: 'Built-in, first-class support',
   },
   {
@@ -132,8 +132,8 @@ const comparisonTable: FeatureComparison[] = [
 ### Bull TypeScript Usage
 
 ```typescript
-// Bull - requires @types/bull
-import Queue, { Job, DoneCallback, JobOptions } from 'bull';
+// Bull - bundled type definitions in current v4
+import Queue, { Job, JobOptions } from 'bull';
 
 interface MyJobData {
   userId: number;
@@ -312,8 +312,7 @@ console.log('Children:', flow.children);
 // Bull - rate limiting
 import Queue from 'bull';
 
-const queue = new Queue('rate-limited', {
-  redis: 'redis://localhost:6379',
+const queue = new Queue('rate-limited', 'redis://localhost:6379', {
   limiter: {
     max: 100,        // Max jobs
     duration: 60000, // Per minute
@@ -326,8 +325,7 @@ queue.process(async (job) => {
 });
 
 // Bull also supports groupKey-based rate limiting from job data
-const groupedQueue = new Queue('grouped-rate-limited', {
-  redis: 'redis://localhost:6379',
+const groupedQueue = new Queue('grouped-rate-limited', 'redis://localhost:6379', {
   limiter: {
     max: 10,
     duration: 60000,
@@ -781,7 +779,7 @@ const queueEvents = new QueueEvents('my-queue', { connection });
 // Shared IORedis instance
 const sharedConnection = new Redis(connection);
 
-// Reuse connection (must duplicate for subscribers)
+// Reuse connection for producers
 const queue2 = new Queue('queue2', {
   connection: sharedConnection,
 });
@@ -888,7 +886,7 @@ queueEvents.on('failed', ({ jobId, failedReason, prev }) => {
   console.log(`Previous state: ${prev}`);
 });
 
-// Enhanced retry with custom backoff
+// Retry configuration with cleanup
 await queue.add(
   'retryable',
   { shouldFail: true },
@@ -898,7 +896,7 @@ await queue.add(
       type: 'exponential',
       delay: 1000,
     },
-    // New: Remove failed jobs after a while
+    // Remove failed jobs after a while
     removeOnFail: {
       age: 24 * 3600, // Keep for 24 hours
       count: 100, // Keep last 100
@@ -973,13 +971,13 @@ const jobs = await queue.getJobs(['waiting', 'active'], 0, 100);
 await queue.clean(3600 * 1000, 100, 'completed'); // Max 100 jobs, older than 1 hour
 await queue.clean(3600 * 1000, 100, 'failed');
 
-// New: Obliterate queue (remove all data)
+// Obliterate queue (remove all data)
 await queue.obliterate({ force: true });
 
-// New: Drain queue (remove waiting jobs)
+// Drain queue (remove waiting jobs)
 await queue.drain();
 
-// New: Pause and resume
+// Pause and resume
 await queue.pause();
 await queue.resume();
 
