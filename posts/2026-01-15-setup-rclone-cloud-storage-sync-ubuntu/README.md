@@ -181,7 +181,7 @@ Using a service account (recommended for servers):
 # Create a GCS remote using a service account JSON key file
 # First, download your service account key from Google Cloud Console
 rclone config create my-gcs gcs \
-    project_number=your-project-id \
+    project_number=123456789012 \
     service_account_file=/path/to/service-account-key.json
 ```
 
@@ -297,7 +297,7 @@ rclone copy /path/to/local/directory my-s3:my-bucket/backup/
 rclone copy -P /path/to/local/directory my-s3:my-bucket/backup/
 
 # Copy from one cloud provider to another
-# Rclone handles the transfer server-side when possible
+# Rclone streams through the machine running rclone unless server-side copy is supported
 rclone copy my-s3:source-bucket/data my-gcs:destination-bucket/data
 
 # Copy with verbose output for debugging
@@ -458,15 +458,12 @@ cat > /home/user/.rclone-filters << 'EOF'
 - **/__pycache__/**
 - **/.git/**
 
-# Exclude files larger than 100MB
-- size:100M
-
 # Include everything else (default deny if removed)
 + **
 EOF
 
 # Use the filter file
-rclone sync --filter-from /home/user/.rclone-filters /source my-s3:backup/
+rclone sync --filter-from /home/user/.rclone-filters --max-size 100M /source my-s3:backup/
 ```
 
 ### Size-Based Filtering
@@ -507,13 +504,14 @@ rclone copy --max-age 30d --min-age 7d /source my-s3:bucket/
 # - Smaller than 50MB
 # - Exclude drafts folder
 rclone copy \
-    --include "*.pdf" \
-    --include "*.doc" \
-    --include "*.docx" \
-    --include "*.xlsx" \
+    --filter "- drafts/**" \
+    --filter "+ *.pdf" \
+    --filter "+ *.doc" \
+    --filter "+ *.docx" \
+    --filter "+ *.xlsx" \
+    --filter "- **" \
     --max-age 30d \
     --max-size 50M \
-    --exclude "drafts/**" \
     /home/user/documents \
     my-s3:backup/documents/
 ```
@@ -656,7 +654,7 @@ rclone config show my-encrypted
 echo "Test file content" > /tmp/test.txt
 rclone copy /tmp/test.txt my-encrypted:test/
 rclone cat my-encrypted:test/test.txt  # Should show original content
-rclone cat my-s3:my-bucket/encrypted/test/*  # Should show encrypted garbage
+rclone lsf my-s3:my-bucket/encrypted/test/  # Should show encrypted filenames
 ```
 
 ### Encryption Options Explained
@@ -728,7 +726,7 @@ rclone mount my-s3:my-bucket ~/cloud-storage/s3 \
     --dir-cache-time 5m \
     --poll-interval 1m \
     --attr-timeout 1s \
-    --log-file=/var/log/rclone-s3.log \
+    --log-file=$HOME/.local/share/rclone/s3-mount.log \
     --log-level INFO
 
 # Explanation of options:
@@ -793,7 +791,7 @@ ExecStart=/usr/bin/rclone mount my-s3:my-bucket %h/cloud-storage/s3 \
     --vfs-cache-max-size 10G \
     --log-level INFO \
     --log-file=%h/.local/share/rclone/s3-mount.log
-ExecStop=/bin/fusermount -u %h/cloud-storage/s3
+ExecStop=/bin/fusermount3 -u %h/cloud-storage/s3
 Restart=on-failure
 RestartSec=10
 
@@ -819,11 +817,13 @@ journalctl --user -u rclone-s3.service -f
 ### Unmounting
 
 ```bash
-# Unmount using fusermount
-fusermount -u ~/cloud-storage/s3
+# Unmount using fusermount3
+fusermount3 -u ~/cloud-storage/s3
 
 # Force unmount if busy
-fusermount -uz ~/cloud-storage/s3
+fusermount3 -uz ~/cloud-storage/s3
+
+# On older systems using FUSE 2, use fusermount instead of fusermount3
 
 # Or use umount
 sudo umount ~/cloud-storage/s3
@@ -849,6 +849,8 @@ crontab -e
 
 ```bash
 # Create a backup script
+mkdir -p ~/scripts ~/.local/share/rclone
+
 cat > ~/scripts/rclone-backup.sh << 'EOF'
 #!/bin/bash
 # Rclone Daily Backup Script
@@ -856,7 +858,7 @@ cat > ~/scripts/rclone-backup.sh << 'EOF'
 
 # Configuration
 REMOTE="my-s3:backup-bucket"
-LOG_FILE="/var/log/rclone-backup.log"
+LOG_FILE="$HOME/.local/share/rclone/rclone-backup.log"
 LOCK_FILE="/tmp/rclone-backup.lock"
 
 # Prevent multiple instances
@@ -917,23 +919,23 @@ crontab -e
 0 2 * * * /home/user/scripts/rclone-backup.sh
 
 # Hourly sync of critical files
-0 * * * * rclone sync /home/user/critical my-s3:backup/critical --log-file=/var/log/rclone-hourly.log
+0 * * * * rclone sync /home/user/critical my-s3:backup/critical --log-file=/home/user/.local/share/rclone/rclone-hourly.log
 
 # Weekly full backup on Sunday at 3:00 AM
-0 3 * * 0 rclone sync /home/user my-s3:weekly-backup/$(date +\%Y\%W) --exclude ".cache/**" --log-file=/var/log/rclone-weekly.log
+0 3 * * 0 rclone sync /home/user my-s3:weekly-backup/$(date +\%Y\%W) --exclude ".cache/**" --log-file=/home/user/.local/share/rclone/rclone-weekly.log
 
 # Monthly archive (keeps monthly snapshots)
-0 4 1 * * rclone copy /home/user/documents my-s3:archives/$(date +\%Y-\%m) --log-file=/var/log/rclone-monthly.log
+0 4 1 * * rclone copy /home/user/documents my-s3:archives/$(date +\%Y-\%m) --log-file=/home/user/.local/share/rclone/rclone-monthly.log
 
 # Bandwidth-limited backup during work hours
-0 9-17 * * 1-5 rclone sync /home/user/projects my-s3:backup/projects --bwlimit 5M --log-file=/var/log/rclone-daytime.log
+0 9-17 * * 1-5 rclone sync /home/user/projects my-s3:backup/projects --bwlimit 5M --log-file=/home/user/.local/share/rclone/rclone-daytime.log
 ```
 
 ### Using systemd Timers (Alternative to Cron)
 
 ```bash
 # Create service file
-sudo cat > /etc/systemd/system/rclone-backup.service << 'EOF'
+sudo tee /etc/systemd/system/rclone-backup.service > /dev/null << 'EOF'
 [Unit]
 Description=Rclone Backup Service
 After=network-online.target
@@ -948,7 +950,7 @@ StandardError=journal
 EOF
 
 # Create timer file
-sudo cat > /etc/systemd/system/rclone-backup.timer << 'EOF'
+sudo tee /etc/systemd/system/rclone-backup.timer > /dev/null << 'EOF'
 [Unit]
 Description=Run Rclone Backup Daily
 
@@ -1223,7 +1225,7 @@ rclone copy /test-file my-s3:bucket/ -P --stats 1s
 # Increase parallel transfers for faster speeds
 rclone copy /source my-s3:bucket/ --transfers 8 --checkers 16
 
-# Use faster checksum method (for S3)
+# Use checksum comparison instead of modtime when the backend supports it
 rclone sync /source my-s3:bucket/ --checksum
 
 # For many small files, increase checkers
@@ -1237,13 +1239,13 @@ rclone copy /source my-s3:bucket/ -vv --dump headers --dump bodies
 
 ```bash
 # Check if FUSE is installed
-fusermount --version
+fusermount3 --version
 
 # Check if mount point is already in use
 mount | grep rclone
 
 # Force unmount stuck mount
-fusermount -uz /mount/point
+fusermount3 -uz /mount/point
 
 # Check mount logs
 journalctl -u rclone-mount.service -f  # If using systemd
@@ -1252,7 +1254,7 @@ journalctl -u rclone-mount.service -f  # If using systemd
 rclone mount my-s3:bucket /mount/point -vv --log-file=/tmp/mount-debug.log
 
 # For "Transport endpoint is not connected" error
-fusermount -uz /mount/point
+fusermount3 -uz /mount/point
 # Then remount
 ```
 
