@@ -73,11 +73,17 @@ npm install @tanstack/react-query
 # Using yarn
 yarn add @tanstack/react-query
 
+# For API requests used in the examples
+npm install axios
+
 # For persistence (optional but recommended for React Native)
 npm install @tanstack/query-async-storage-persister @tanstack/react-query-persist-client
 
 # For async storage
 npm install @react-native-async-storage/async-storage
+
+# For network status in React Native
+npm install @react-native-community/netinfo
 ```
 
 ### Basic Configuration
@@ -142,6 +148,11 @@ import axios from 'axios';
 
 const API_BASE_URL = 'https://api.example.com';
 
+const getAuthToken = async (): Promise<string | null> => {
+  // Replace this with your app's secure token lookup.
+  return null;
+};
+
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
   timeout: 10000,
@@ -182,8 +193,14 @@ export interface Post {
 }
 
 // API functions
-export const fetchUsers = async (): Promise<User[]> => {
-  const response = await apiClient.get<User[]>('/users');
+export interface UserFilters {
+  search?: string;
+  role?: 'admin' | 'user';
+  status?: 'active' | 'inactive';
+}
+
+export const fetchUsers = async (filters?: UserFilters): Promise<User[]> => {
+  const response = await apiClient.get<User[]>('/users', { params: filters });
   return response.data;
 };
 
@@ -363,13 +380,13 @@ export const queryKeys = {
 };
 
 // Types for filters
-interface UserFilters {
+export interface UserFilters {
   search?: string;
   role?: 'admin' | 'user';
   status?: 'active' | 'inactive';
 }
 
-interface PostFilters {
+export interface PostFilters {
   category?: string;
   sortBy?: 'date' | 'popularity';
   page?: number;
@@ -381,7 +398,7 @@ interface PostFilters {
 ```typescript
 // src/hooks/useUsers.ts
 import { useQuery } from '@tanstack/react-query';
-import { queryKeys } from '../queryKeys';
+import { queryKeys, UserFilters } from '../queryKeys';
 import { fetchUsers, fetchUser } from '../services/api';
 
 export const useUsers = (filters?: UserFilters) => {
@@ -526,7 +543,13 @@ import {
 } from 'react-native';
 import { useCreatePost } from '../hooks/usePosts';
 
-const CreatePostScreen: React.FC = ({ navigation }) => {
+type CreatePostScreenProps = {
+  navigation: {
+    goBack: () => void;
+  };
+};
+
+const CreatePostScreen: React.FC<CreatePostScreenProps> = ({ navigation }) => {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
 
@@ -987,7 +1010,6 @@ React Native applications often need to work offline. TanStack Query provides ex
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
 import { QueryClient } from '@tanstack/react-query';
-import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 
 // Create the async storage persister
 export const asyncStoragePersister = createAsyncStoragePersister({
@@ -1007,7 +1029,7 @@ export const createPersistedQueryClient = () => {
         gcTime: 1000 * 60 * 60 * 24, // 24 hours (for persistence)
         retry: 3,
         refetchOnReconnect: true,
-        networkMode: 'offlineFirst', // Use cached data when offline
+        networkMode: 'offlineFirst', // Run once, then pause retries while offline
       },
       mutations: {
         retry: 1,
@@ -1067,12 +1089,10 @@ import { onlineManager } from '@tanstack/react-query';
 export const useOnlineManager = () => {
   useEffect(() => {
     // Set up online manager to work with React Native's NetInfo
-    return NetInfo.addEventListener((state) => {
-      onlineManager.setOnline(
-        state.isConnected != null &&
-          state.isConnected &&
-          Boolean(state.isInternetReachable)
-      );
+    onlineManager.setEventListener((setOnline) => {
+      return NetInfo.addEventListener((state) => {
+        setOnline(!!state.isConnected);
+      });
     });
   }, []);
 };
@@ -1085,7 +1105,7 @@ export const useOnlineStatus = () => {
       setIsOnline(
         state.isConnected != null &&
           state.isConnected &&
-          Boolean(state.isInternetReachable)
+          state.isInternetReachable !== false
       );
     });
 
@@ -1293,6 +1313,9 @@ export const usePrefetch = () => {
       queryKey: [...queryKeys.posts.lists(), 'infinite'],
       queryFn: ({ pageParam }) => fetchPostsPaginated(pageParam),
       initialPageParam: undefined,
+      getNextPageParam: (lastPage) => {
+        return lastPage.hasMore ? lastPage.nextCursor : undefined;
+      },
     });
   }, [queryClient]);
 
@@ -1308,8 +1331,15 @@ export const usePrefetch = () => {
 
 ```typescript
 // src/screens/PostListScreen.tsx
-import React from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useCallback, useRef } from 'react';
+import {
+  View,
+  Text,
+  FlatList,
+  TouchableOpacity,
+  StyleSheet,
+} from 'react-native';
+import type { ViewToken } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useQuery } from '@tanstack/react-query';
 import { usePrefetch } from '../hooks/usePrefetch';
@@ -1317,7 +1347,7 @@ import { queryKeys } from '../queryKeys';
 import { fetchPosts, Post } from '../services/api';
 
 const PostListScreen: React.FC = () => {
-  const navigation = useNavigation();
+  const navigation = useNavigation<any>();
   const { prefetchPost } = usePrefetch();
 
   const { data: posts } = useQuery({
@@ -1334,6 +1364,22 @@ const PostListScreen: React.FC = () => {
     prefetchPost(postId);
   };
 
+  const handleViewableItemsChanged = useCallback(
+    ({ viewableItems }: { viewableItems: ViewToken<Post>[] }) => {
+      // Prefetch visible items
+      viewableItems.forEach((item) => {
+        if (item.item?.id) {
+          prefetchPost(item.item.id);
+        }
+      });
+    },
+    [prefetchPost]
+  );
+
+  const viewabilityConfig = useRef({
+    itemVisiblePercentThreshold: 50,
+  }).current;
+
   const renderPost = ({ item }: { item: Post }) => (
     <TouchableOpacity
       style={styles.postItem}
@@ -1349,17 +1395,8 @@ const PostListScreen: React.FC = () => {
       data={posts}
       keyExtractor={(item) => item.id}
       renderItem={renderPost}
-      onViewableItemsChanged={({ viewableItems }) => {
-        // Prefetch visible items
-        viewableItems.forEach((item) => {
-          if (item.item?.id) {
-            prefetchPost(item.item.id);
-          }
-        });
-      }}
-      viewabilityConfig={{
-        itemVisiblePercentThreshold: 50,
-      }}
+      onViewableItemsChanged={handleViewableItemsChanged}
+      viewabilityConfig={viewabilityConfig}
     />
   );
 };
