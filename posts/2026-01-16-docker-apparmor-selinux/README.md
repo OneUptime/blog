@@ -24,8 +24,8 @@ flowchart TB
     subgraph MAC["Mandatory Access Control (MAC)"]
         M1["System enforces security policy"]
         M2["AppArmor/SELinux profiles"]
-        M3["Cannot be bypassed by root"]
-        M4["Confines even privileged processes"]
+        M3["Root is still subject to policy"]
+        M4["Confines processes when policy applies"]
     end
 ```
 
@@ -38,8 +38,8 @@ flowchart TB
 
 sudo aa-status
 
-# View Docker's default profile
-cat /etc/apparmor.d/docker-default
+# Check that Docker's generated default profile is loaded
+sudo aa-status | grep docker-default
 
 # Check container's AppArmor profile
 docker inspect --format='{{.AppArmorProfile}}' container_name
@@ -51,11 +51,11 @@ Docker automatically applies the `docker-default` AppArmor profile to containers
 
 ```bash
 # Default profile denies:
-# - Writing to /proc/sys
-# - Writing to /sys (except /sys/fs/cgroup)
 # - Mounting filesystems
-# - Accessing raw sockets
-# - Loading kernel modules
+# - Writing to sensitive /proc paths
+# - Writing to most /sys paths
+# - Accessing the kernel AF_ALG crypto API
+# - Accessing /sys/kernel/security
 ```
 
 ### Creating Custom AppArmor Profiles
@@ -142,14 +142,11 @@ sudo aa-enforce /etc/apparmor.d/docker-custom-nginx
 ### AppArmor Profile Generator
 
 ```bash
-# Generate profile from running container
-docker run -d --name test-container nginx
+# Create a bane profile definition, then generate and install it
+bane nginx.toml
 
-# Use bane to generate profile
-bane generate test-container
-
-# Or use aa-genprof (requires container to be running and active)
-sudo aa-genprof docker
+# Use AppArmor's log-based tools to refine a loaded profile
+sudo aa-logprof
 ```
 
 ## SELinux
@@ -176,7 +173,7 @@ docker inspect --format='{{.ProcessLabel}}' container_name
 # Level: varies (MCS isolation)
 
 # View current labels
-ps -eZ | grep docker
+ps -eZ | grep container_t
 
 # Example output:
 # system_u:system_r:container_t:s0:c123,c456 ... containerd-shim
@@ -213,44 +210,28 @@ services:
 docker run -v /data:/data:z nginx    # Shared label
 docker run -v /data:/data:Z nginx    # Private label
 
-# :z - shared between containers (svirt_sandbox_file_t)
+# :z - shared between containers
 # :Z - private to this container only
 ```
 
 ### Creating Custom SELinux Policies
 
 ```bash
-# Install policy development tools
-sudo yum install selinux-policy-devel policycoreutils-python-utils
+# Install container policy generator
+sudo dnf install -y udica
 
-# Create custom policy module
-cat > my_container.te << 'EOF'
-policy_module(my_container, 1.0)
+# Run and inspect the container
+docker run -d --name myapp myapp
+docker inspect myapp > myapp.json
 
-# Define new type for custom container
-type my_container_t;
-domain_type(my_container_t)
+# Generate and load a container SELinux policy
+udica -j myapp.json myapp_policy
+# Include any additional templates listed by udica
+sudo semodule -i myapp_policy.cil /usr/share/udica/templates/base_container.cil
 
-# Allow network access
-allow my_container_t self:tcp_socket { create listen accept bind connect };
-allow my_container_t self:udp_socket { create bind };
-
-# Allow reading specific files
-allow my_container_t etc_t:file { read open getattr };
-
-# Allow writing to specific directory
-type my_container_data_t;
-files_type(my_container_data_t)
-allow my_container_t my_container_data_t:dir { read write add_name remove_name };
-allow my_container_t my_container_data_t:file { create read write unlink };
-EOF
-
-# Compile and load policy
-make -f /usr/share/selinux/devel/Makefile my_container.pp
-sudo semodule -i my_container.pp
-
-# Use custom type
-docker run --security-opt label=type:my_container_t myapp
+# Use the generated process type
+docker rm -f myapp
+docker run --security-opt label=type:myapp_policy.process myapp
 ```
 
 ### SELinux Booleans for Docker
@@ -354,8 +335,6 @@ profile docker-nginx-hardened flags=(attach_disconnected,mediate_deleted) {
 ### Docker Compose with Full Security Options
 
 ```yaml
-version: '3.8'
-
 services:
   nginx:
     image: nginx:alpine
@@ -393,8 +372,6 @@ services:
 ### SELinux Hardened Stack (RHEL/CentOS)
 
 ```yaml
-version: '3.8'
-
 services:
   app:
     image: myapp
@@ -430,12 +407,14 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: secure-pod
-  annotations:
-    container.apparmor.security.beta.kubernetes.io/app: localhost/docker-custom-nginx
 spec:
   containers:
     - name: app
       image: nginx
+      securityContext:
+        appArmorProfile:
+          type: Localhost
+          localhostProfile: docker-custom-nginx
 ```
 
 ### SELinux in Kubernetes
@@ -449,7 +428,7 @@ spec:
   securityContext:
     seLinuxOptions:
       type: container_t
-      level: s0:c100,c200
+      level: "s0:c100,c200"
   containers:
     - name: app
       image: myapp
@@ -465,5 +444,4 @@ spec:
 | Fine-grained control | Path-based | Label-based |
 | Docker default | docker-default | container_t |
 
-Both AppArmor and SELinux provide mandatory access control that cannot be bypassed even by root. Use the LSM native to your distribution, start with default profiles, and customize based on your application's needs. For additional container hardening, combine with capability restrictions as described in our post on [Dropping Linux Capabilities in Docker Containers](https://oneuptime.com/blog/post/2026-01-16-docker-drop-capabilities/view).
-
+Both AppArmor and SELinux provide mandatory access control that applies even to root processes when the policy is enforced. Use the LSM native to your distribution, start with default profiles, and customize based on your application's needs. For additional container hardening, combine with capability restrictions as described in our post on [Dropping Linux Capabilities in Docker Containers](https://oneuptime.com/blog/post/2026-01-16-docker-drop-capabilities/view).
