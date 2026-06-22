@@ -399,24 +399,26 @@ Create or update `android/app/proguard-rules.pro`:
 
 ### Using R8 (Recommended)
 
-R8 is the default code shrinker in Android Gradle Plugin 3.4+ and is more efficient than ProGuard:
+R8 is the default code shrinker in Android Gradle Plugin 3.4+ and is more efficient than ProGuard. Because it's the default, you don't need to enable it explicitly—it runs whenever `minifyEnabled true` is set (as shown above). You can opt into R8's more aggressive "full mode" in `android/gradle.properties`:
 
-```groovy
-// android/gradle.properties
-android.enableR8=true
+```
+# android/gradle.properties
 android.enableR8.fullMode=true
 ```
 
-## Bitcode and iOS Optimization
+(The old `android.enableR8` flag is obsolete—R8 can no longer be disabled this way, and the property has been removed from recent AGP versions.)
+
+## iOS Optimization
 
 ### App Thinning
 
-iOS App Thinning automatically optimizes your app for each device. Ensure it's enabled:
+iOS App Thinning automatically optimizes your app for each device through app slicing and on-demand resources. It works automatically when you distribute through the App Store, so no special build setting is required to opt in. Note that Bitcode is no longer relevant here: it was deprecated in Xcode 14, and the App Store no longer accepts Bitcode submissions, so leave "Enable Bitcode" set to No.
+
+To strip debug symbols from your release builds:
 
 1. In Xcode, select your target
 2. Go to Build Settings
-3. Set "Enable Bitcode" to Yes (for supported architectures)
-4. Build Settings > "Strip Debug Symbols During Copy" = Yes
+3. Set "Strip Debug Symbols During Copy" to Yes for release builds
 
 ### Remove Unused Architectures
 
@@ -732,15 +734,15 @@ Hermes is a JavaScript engine optimized for React Native, offering significant i
 
 ### Enabling Hermes
 
-For Android, update `android/app/build.gradle`:
+Hermes is enabled by default in React Native 0.70 and later, so on recent versions you typically don't need to do anything. To set it explicitly on React Native 0.71+, edit `android/gradle.properties`:
 
-```groovy
-project.ext.react = [
-    enableHermes: true
-]
+```
+hermesEnabled=true
 ```
 
-For iOS, update `ios/Podfile`:
+(On older versions—before 0.71—Hermes was toggled via `project.ext.react = [ enableHermes: true ]` in `android/app/build.gradle`.)
+
+For iOS, Hermes is likewise enabled by default. If you need to set it explicitly, update `ios/Podfile`:
 
 ```ruby
 use_react_native!(
@@ -1120,7 +1122,7 @@ Use this checklist to ensure you've covered all optimization opportunities:
 - [ ] Enable Hermes engine
 
 ### iOS Specific
-- [ ] Enable Bitcode (where supported)
+- [ ] Strip debug symbols in release builds
 - [ ] Enable dead code stripping
 - [ ] Remove unused architectures
 - [ ] Verify App Thinning is working
