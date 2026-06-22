@@ -289,8 +289,6 @@ trivy-scan:
   artifacts:
     paths:
       - trivy-results.json
-    reports:
-      container_scanning: trivy-results.json
   allow_failure: true
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
@@ -339,7 +337,7 @@ publish-registry:
       
       for pkg in packages/*.tgz; do
         echo "Publishing $pkg"
-        helm push "$pkg" oci://${CI_REGISTRY}/${CI_PROJECT_NAMESPACE}/charts
+        helm push "$pkg" oci://${CI_REGISTRY_IMAGE}/charts
       done
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
@@ -352,6 +350,7 @@ publish-pages:
   dependencies:
     - package
   script:
+    - apk add --no-cache curl
     - mkdir -p public
     - cp packages/*.tgz public/
     - |
@@ -394,6 +393,7 @@ deploy-staging:
   before_script:
     - echo "${KUBECONFIG_STAGING}" | base64 -d > kubeconfig
     - export KUBECONFIG=kubeconfig
+    - echo "${CI_REGISTRY_PASSWORD}" | helm registry login -u ${CI_REGISTRY_USER} --password-stdin ${CI_REGISTRY}
   script:
     - |
       for chart in ${CHART_DIR}/*/; do
@@ -402,7 +402,7 @@ deploy-staging:
         
         echo "Deploying $CHART_NAME to staging"
         helm upgrade --install ${CHART_NAME}-staging \
-          oci://${CI_REGISTRY}/${CI_PROJECT_NAMESPACE}/charts/${CHART_NAME} \
+          oci://${CI_REGISTRY_IMAGE}/charts/${CHART_NAME} \
           --version ${VERSION} \
           --namespace staging \
           --create-namespace \
@@ -424,6 +424,7 @@ deploy-production:
   before_script:
     - echo "${KUBECONFIG_PRODUCTION}" | base64 -d > kubeconfig
     - export KUBECONFIG=kubeconfig
+    - echo "${CI_REGISTRY_PASSWORD}" | helm registry login -u ${CI_REGISTRY_USER} --password-stdin ${CI_REGISTRY}
   script:
     - |
       for chart in ${CHART_DIR}/*/; do
@@ -432,7 +433,7 @@ deploy-production:
         
         echo "Deploying $CHART_NAME to production"
         helm upgrade --install ${CHART_NAME} \
-          oci://${CI_REGISTRY}/${CI_PROJECT_NAMESPACE}/charts/${CHART_NAME} \
+          oci://${CI_REGISTRY_IMAGE}/charts/${CHART_NAME} \
           --version ${VERSION} \
           --namespace production \
           --create-namespace \
@@ -500,14 +501,16 @@ ingress:
 
 ## GitLab CI Variables
 
-Configure these variables in GitLab CI/CD settings:
+Configure the kubeconfig variables in GitLab CI/CD settings. GitLab provides the registry variables automatically when the container registry is enabled:
 
 | Variable | Description | Protected |
 | --- | --- | --- |
 | `KUBECONFIG_STAGING` | Base64 kubeconfig for staging | Yes |
 | `KUBECONFIG_PRODUCTION` | Base64 kubeconfig for production | Yes |
-| `HELM_REPO_USERNAME` | Chart repo username | Yes |
-| `HELM_REPO_PASSWORD` | Chart repo password | Yes |
+| `CI_REGISTRY` | GitLab container registry hostname (predefined) | N/A |
+| `CI_REGISTRY_IMAGE` | Project container registry path (predefined) | N/A |
+| `CI_REGISTRY_USER` | Per-job registry username (predefined) | N/A |
+| `CI_REGISTRY_PASSWORD` | Per-job registry password (predefined) | N/A |
 
 ## Using GitLab Container Registry
 
@@ -594,7 +597,9 @@ version-bump:
       
       for chart in ${CHART_DIR}/*/; do
         CURRENT=$(grep '^version:' "${chart}Chart.yaml" | awk '{print $2}')
-        IFS='.' read -r major minor patch <<< "$CURRENT"
+        major=$(echo "$CURRENT" | cut -d. -f1)
+        minor=$(echo "$CURRENT" | cut -d. -f2)
+        patch=$(echo "$CURRENT" | cut -d. -f3)
         
         case $BUMP in
           major) NEW="$((major + 1)).0.0" ;;
