@@ -57,6 +57,8 @@ Define hooks using annotations on your Kubernetes resources.
 
 The most common use case: run database migrations before deploying new application code.
 
+For `pre-install` hooks, make sure any referenced Secrets or ConfigMaps already exist or are created by an earlier hook, because normal chart resources have not been installed yet.
+
 ```yaml
 # templates/db-migration-hook.yaml
 
@@ -115,8 +117,8 @@ metadata:
   name: {{ include "myapp.fullname" . }}-pre-upgrade-backup
   annotations:
     "helm.sh/hook": pre-upgrade
-    # Run after migrations but before deployment
-    "helm.sh/hook-weight": "0"
+    # Run before migrations and deployment
+    "helm.sh/hook-weight": "-10"
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
 spec:
   backoffLimit: 1
@@ -125,7 +127,8 @@ spec:
       restartPolicy: Never
       containers:
         - name: backup
-          image: postgres:15
+          # Use an image that includes both pg_dump and the AWS CLI
+          image: "{{ .Values.backup.image }}"
           command:
             - /bin/sh
             - -c
@@ -282,7 +285,7 @@ spec:
               # Remove DNS records
               aws route53 change-resource-record-sets \
                 --hosted-zone-id {{ .Values.dns.hostedZoneId }} \
-                --change-batch '{"Changes":[{"Action":"DELETE","ResourceRecordSet":{"Name":"{{ .Values.ingress.host }}","Type":"A"}}]}'
+                --change-batch '{"Changes":[{"Action":"DELETE","ResourceRecordSet":{"Name":"{{ .Values.ingress.host }}","Type":"A","TTL":300,"ResourceRecords":[{"Value":"{{ .Values.ingress.ip }}"}]}}]}'
               
               # Clean up S3 artifacts
               aws s3 rm s3://{{ .Values.storage.bucket }}/{{ .Release.Name }}/ --recursive
