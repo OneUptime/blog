@@ -15,7 +15,7 @@ flowchart TB
   subgraph "Cluster Level"
     rbac[Cluster RBAC]
     netpol[Network Policies]
-    psp[Pod Security]
+    psa[Pod Security Admission]
   end
   
   subgraph "Tenant A"
@@ -42,8 +42,8 @@ flowchart TB
   rbac --> nsB
   netpol --> nsA
   netpol --> nsB
-  psp --> nsA
-  psp --> nsB
+  psa --> nsA
+  psa --> nsB
   
   nsA --> quotaA
   nsA --> limitA
@@ -147,12 +147,19 @@ networkPolicy:
   allowIngressFrom:
     - namespaceSelector:
         matchLabels:
-          name: ingress-nginx
+          kubernetes.io/metadata.name: ingress-nginx
   allowEgressTo:
-    - namespaceSelector: {}
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
       podSelector:
         matchLabels:
           k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
     - ipBlock:
         cidr: 0.0.0.0/0
         except:
@@ -399,12 +406,18 @@ metadata:
   labels:
     {{- include "tenant.labels" . | nindent 4 }}
 rules:
-  - apiGroups: ["", "apps", "batch", "extensions"]
-    resources: ["deployments", "replicasets", "pods", "services", "configmaps", "secrets", "jobs", "cronjobs"]
+  - apiGroups: [""]
+    resources: ["pods", "services", "configmaps", "secrets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
   - apiGroups: [""]
     resources: ["pods/log", "pods/exec", "pods/portforward"]
-    verbs: ["get", "list", "create"]
+    verbs: ["get", "create"]
 
 ---
 # Viewer role
@@ -613,19 +626,10 @@ spec:
 ```
 
 ```yaml
-# child-tenant.yaml
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: org-acme-team-a
-  labels:
-    tenant-type: team
-
----
 apiVersion: hnc.x-k8s.io/v1alpha2
 kind: SubnamespaceAnchor
 metadata:
-  name: team-a
+  name: org-acme-team-a
   namespace: org-acme
 ```
 
@@ -637,8 +641,8 @@ metadata:
 # tenants/team-a/kustomization.yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-resources:
-  - ../../base/tenant
+helmGlobals:
+  chartHome: charts
 helmCharts:
   - name: tenant
     releaseName: tenant-team-a
@@ -677,8 +681,13 @@ rbac:
 # provision-tenant.sh
 
 TENANT_NAME=$1
-TENANT_TIER=${2:-small}
-TENANT_OWNER=$3
+if [ -n "$3" ]; then
+  TENANT_TIER=$2
+  TENANT_OWNER=$3
+else
+  TENANT_TIER=small
+  TENANT_OWNER=$2
+fi
 
 if [ -z "$TENANT_NAME" ] || [ -z "$TENANT_OWNER" ]; then
   echo "Usage: $0 <tenant-name> [tier] <owner-email>"
@@ -686,10 +695,10 @@ if [ -z "$TENANT_NAME" ] || [ -z "$TENANT_OWNER" ]; then
 fi
 
 # Create tenant directory
-mkdir -p tenants/${TENANT_NAME}
+mkdir -p "tenants/${TENANT_NAME}"
 
 # Generate values
-cat > tenants/${TENANT_NAME}/values.yaml <<EOF
+cat > "tenants/${TENANT_NAME}/values.yaml" <<EOF
 tenant:
   name: ${TENANT_NAME}
   owner: ${TENANT_OWNER}
@@ -699,7 +708,7 @@ EOF
 # Deploy tenant
 helm install tenant-${TENANT_NAME} ./tenant-chart \
   -f values-${TENANT_TIER}.yaml \
-  -f tenants/${TENANT_NAME}/values.yaml
+  -f "tenants/${TENANT_NAME}/values.yaml"
 
 echo "Tenant ${TENANT_NAME} provisioned successfully"
 ```
