@@ -8,7 +8,7 @@ Description: Configure Docker Desktop for M1/M2/M3/M4 Macs. Covers multi-archite
 
 ---
 
-Apple Silicon Macs require special consideration when running Docker due to the ARM64 architecture. This guide covers optimal configuration, multi-architecture support, and performance optimization for M1/M2/M3 Macs.
+Apple Silicon Macs require special consideration when running Docker due to the ARM64 architecture. This guide covers optimal configuration, multi-architecture support, and performance optimization for M1/M2/M3/M4 Macs.
 
 ## Architecture Overview
 
@@ -72,8 +72,8 @@ Recommended Settings for Development:
 
 ```text
 Docker Desktop > Settings > General
-[x] Use Virtualization framework
-[x] Use VirtioFS for file sharing
+[x] Choose Apple Virtualization framework as the Virtual Machine Manager
+[x] Choose VirtioFS for file sharing
 ```
 
 VirtioFS provides significantly faster file sharing than gRPC FUSE.
@@ -85,7 +85,7 @@ Settings > Resources > Advanced
 [x] Resource Saver
 ```
 
-Automatically reduces VM resources when idle.
+Automatically turns off the Linux VM when Docker Desktop is idle and restarts it when needed.
 
 ## Multi-Architecture Support
 
@@ -146,11 +146,8 @@ Rosetta 2 provides faster x86_64 emulation than QEMU.
 # Run specific platform
 docker run --platform linux/amd64 ubuntu
 
-# Set default platform in Docker Desktop
-# Settings > Docker Engine
-{
-  "default-platform": "linux/amd64"
-}
+# Set a default platform for Docker CLI commands
+export DOCKER_DEFAULT_PLATFORM=linux/amd64
 ```
 
 ## Volume Mount Optimization
@@ -265,8 +262,6 @@ docker system prune -a --volumes
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   app:
     build: .
@@ -336,7 +331,7 @@ brew install colima docker
 
 # Start with optimized settings for Apple Silicon
 colima start \
-  --cpu 4 \
+  --cpus 4 \
   --memory 8 \
   --disk 60 \
   --vm-type vz \
@@ -351,11 +346,9 @@ colima start \
 cpu: 4
 memory: 8
 disk: 60
-vm:
-  type: vz
-  rosetta: true
-mount:
-  type: virtiofs
+vmType: vz
+rosetta: true
+mountType: virtiofs
 docker:
   features:
     buildkit: true
@@ -368,7 +361,7 @@ docker:
 ```bash
 # Benchmark ARM64 image
 docker run --platform linux/arm64 --rm \
-  severalnines/sysbench sysbench cpu run
+  alpine sh -c "apk add --no-cache sysbench && sysbench cpu run"
 ```
 
 ### Rosetta Emulation Performance
@@ -376,7 +369,7 @@ docker run --platform linux/arm64 --rm \
 ```bash
 # Benchmark AMD64 image (emulated)
 docker run --platform linux/amd64 --rm \
-  severalnines/sysbench sysbench cpu run
+  alpine sh -c "apk add --no-cache sysbench && sysbench cpu run"
 
 # Compare: ARM64 is typically 2-5x faster than emulated AMD64
 ```
@@ -385,9 +378,9 @@ docker run --platform linux/amd64 --rm \
 
 ### Build for ARM64
 
-```dockerfile
+```bash
 # Specify platform in CI/CD
-FROM --platform=linux/arm64 node:20-alpine
+docker buildx build --platform linux/arm64 -t myapp:arm64 .
 ```
 
 ### Multi-Arch CI/CD
@@ -395,7 +388,7 @@ FROM --platform=linux/arm64 node:20-alpine
 ```yaml
 # GitHub Actions
 - name: Build Multi-Arch
-  uses: docker/build-push-action@v5
+  uses: docker/build-push-action@v7
   with:
     platforms: linux/amd64,linux/arm64
     push: true
@@ -414,4 +407,3 @@ FROM --platform=linux/arm64 node:20-alpine
 | Alternative | Colima with vz + virtiofs |
 
 Apple Silicon Macs run Docker efficiently when properly configured. Use native ARM64 images whenever possible, enable VirtioFS for volume performance, and leverage Rosetta 2 for legacy AMD64 images. For Docker Desktop alternatives, see our post on [Docker Desktop Alternatives](https://oneuptime.com/blog/post/2026-01-16-docker-desktop-alternatives/view).
-
