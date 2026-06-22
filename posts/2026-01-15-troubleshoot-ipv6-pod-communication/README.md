@@ -38,7 +38,7 @@ flowchart TB
 
 Kubernetes supports three IP addressing modes:
 
-1. **IPv4-only** (default): Pods receive only IPv4 addresses
+1. **IPv4-only** (common default unless the cluster is configured otherwise): Pods receive only IPv4 addresses
 2. **IPv6-only**: Pods receive only IPv6 addresses
 3. **Dual-stack**: Pods receive both IPv4 and IPv6 addresses
 
@@ -66,10 +66,10 @@ Not all CNI plugins support IPv6 equally. Here's the compatibility matrix:
 |------------|--------------|------------|-------|
 | Calico     | Full         | Yes        | Recommended for IPv6 |
 | Cilium     | Full         | Yes        | eBPF-based, excellent performance |
-| Flannel    | Limited      | Yes (v0.12+) | VXLAN mode only |
-| Weave Net  | Full         | Yes        | Automatic configuration |
-| Canal      | Full         | Yes        | Calico + Flannel |
-| Kube-router| Partial      | Limited    | BGP mode recommended |
+| Flannel    | Supported with constraints | Yes        | Dual-stack is supported with VXLAN, WireGuard, or host-gw (Linux) backends |
+| Weave Net  | Legacy/community-maintained | Check version | Verify current IPv6 support before new deployments |
+| Canal      | Depends on component versions | Depends on component versions | Calico + Flannel |
+| Kube-router| Incremental  | Check feature | Verify the features you need against kube-router's IPv6 support matrix |
 
 Check your installed CNI:
 
@@ -77,8 +77,9 @@ Check your installed CNI:
 # Identify CNI plugin
 kubectl get pods -n kube-system | grep -E 'calico|cilium|flannel|weave'
 
-# Check CNI configuration
-cat /etc/cni/net.d/*.conf | jq .
+# Check CNI configuration on a node
+kubectl debug node/<node-name> --image=nicolaka/netshoot -- \
+  sh -c 'cat /host/etc/cni/net.d/*.conf /host/etc/cni/net.d/*.conflist 2>/dev/null' | jq .
 ```
 
 ### Kernel Requirements
@@ -94,8 +95,8 @@ cat /proc/sys/net/ipv6/conf/all/disable_ipv6
 sysctl net.ipv6.conf.all.forwarding
 # Should return 1
 
-# Verify IPv6 modules
-lsmod | grep ipv6
+# Verify IPv6 support is present (many kernels build IPv6 in rather than as a module)
+test -d /proc/sys/net/ipv6 && echo "IPv6 sysctls present"
 ```
 
 ## Quick Diagnostic Commands
@@ -109,8 +110,8 @@ kubectl get pods -o wide -A | grep -v "^kube-system"
 # Verify pod has IPv6 address
 kubectl get pod <pod-name> -o jsonpath='{.status.podIPs}'
 
-# Check service endpoints
-kubectl get endpoints <service-name> -o yaml
+# Check service EndpointSlices
+kubectl get endpointslice -l 'kubernetes.io/service-name=<service-name>' -o yaml
 
 # View CNI logs
 kubectl logs -n kube-system -l k8s-app=calico-node --tail=100
@@ -195,7 +196,7 @@ kubectl apply -f ipv6-test-pods.yaml
 kubectl wait --for=condition=Ready pod/ipv6-client pod/ipv6-server
 
 # Get server IPv6 address
-SERVER_IPV6=$(kubectl get pod ipv6-server -o jsonpath='{.status.podIPs[?(@.ip contains ":")].ip}')
+SERVER_IPV6=$(kubectl get pod ipv6-server -o jsonpath='{.status.podIPs[*].ip}' | tr ' ' '\n' | grep ':' | head -n1)
 
 # Test ping from client to server
 kubectl exec ipv6-client -- ping6 -c 4 $SERVER_IPV6
@@ -221,8 +222,9 @@ kubectl debug node/<node-name> -it --image=nicolaka/netshoot -- ip -6 route show
 **Common routing issues:**
 
 ```bash
-# Missing default route
-kubectl exec <pod-name> -- ip -6 route add default via <gateway-ipv6> dev eth0
+# Missing default route: verify CNI configuration rather than manually changing
+# pod routes. Manual route changes require extra privileges and do not persist.
+kubectl exec <pod-name> -- ip -6 route show
 
 # Check if forwarding is enabled on node
 kubectl debug node/<node-name> -it --image=nicolaka/netshoot -- \
@@ -244,7 +246,7 @@ kubectl describe networkpolicy <policy-name> -n <namespace>
 kubectl get networkpolicy <policy-name> -o yaml
 ```
 
-Ensure your network policies include IPv6 CIDR blocks:
+For pod-to-pod traffic, prefer `podSelector` and `namespaceSelector` rules. When a policy uses `ipBlock` for external CIDRs, make sure IPv6 ranges are not accidentally omitted:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -261,14 +263,20 @@ spec:
     - Egress
   ingress:
     - from:
+        - podSelector:
+            matchLabels:
+              app: frontend
         - ipBlock:
-            cidr: 2001:db8::/32  # IPv6 CIDR
+            cidr: 2001:db8:100::/48  # External IPv6 CIDR
         - ipBlock:
-            cidr: 10.0.0.0/8     # IPv4 CIDR
+            cidr: 10.0.0.0/8         # External IPv4 CIDR
   egress:
     - to:
+        - podSelector:
+            matchLabels:
+              app: backend
         - ipBlock:
-            cidr: 2001:db8::/32
+            cidr: 2001:db8:100::/48
         - ipBlock:
             cidr: 0.0.0.0/0
 ```
@@ -334,8 +342,8 @@ kubectl get svc <service-name> -o jsonpath='{.spec.ipFamilies}'
 # Verify service has IPv6 cluster IP
 kubectl get svc <service-name> -o jsonpath='{.spec.clusterIPs}'
 
-# Check endpoints for IPv6 addresses
-kubectl get endpoints <service-name> -o yaml
+# Check EndpointSlices for IPv6 addresses
+kubectl get endpointslice -l 'kubernetes.io/service-name=<service-name>' -o yaml
 ```
 
 Create an IPv6-enabled service:
@@ -379,7 +387,7 @@ kubectl get ippool -o jsonpath='{.items[*].spec.cidr}' | tr ' ' '\n' | grep ':'
 Create an IPv6 IP pool for Calico:
 
 ```yaml
-apiVersion: crd.projectcalico.org/v1
+apiVersion: projectcalico.org/v3
 kind: IPPool
 metadata:
   name: ipv6-ippool
@@ -395,16 +403,17 @@ spec:
 
 ```bash
 # Check Cilium status
-kubectl exec -n kube-system -l k8s-app=cilium -- cilium status
+CILIUM_POD=$(kubectl get pod -n kube-system -l k8s-app=cilium -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -n kube-system "$CILIUM_POD" -- cilium status
 
 # Verify IPv6 is enabled
-kubectl exec -n kube-system -l k8s-app=cilium -- cilium config | grep ipv6
+kubectl exec -n kube-system "$CILIUM_POD" -- cilium config | grep ipv6
 
 # Check endpoint connectivity
-kubectl exec -n kube-system -l k8s-app=cilium -- cilium endpoint list
+kubectl exec -n kube-system "$CILIUM_POD" -- cilium endpoint list
 
 # View BPF maps for IPv6
-kubectl exec -n kube-system -l k8s-app=cilium -- cilium bpf ct list global | grep -i ipv6
+kubectl exec -n kube-system "$CILIUM_POD" -- cilium bpf ct list global | grep ':'
 ```
 
 Enable IPv6 in Cilium:
@@ -511,16 +520,16 @@ kubeadm init --pod-network-cidr=10.244.0.0/16,2001:db8::/48 \
 kubectl debug node/node1 -it --image=nicolaka/netshoot -- \
   ping6 -c 4 <node2-ipv6-address>
 
-# Check if encapsulation is working
-kubectl exec -n kube-system -l k8s-app=calico-node -- \
-  calico-node -felix-live -felix-ready
+# Check if a Calico node is healthy
+CALICO_POD=$(kubectl get pod -n kube-system -l k8s-app=calico-node -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -n kube-system "$CALICO_POD" -c calico-node -- calico-node -felix-ready
 ```
 
 **Solutions:**
 
 ```yaml
 # For Calico, ensure VXLAN is configured for IPv6
-apiVersion: crd.projectcalico.org/v1
+apiVersion: projectcalico.org/v3
 kind: IPPool
 metadata:
   name: ipv6-ippool
@@ -534,13 +543,14 @@ spec:
 
 **Symptoms:**
 - Service has no IPv6 cluster IP
-- Endpoints show only IPv4 addresses
+- EndpointSlices show only IPv4 addresses
 
 **Solutions:**
 
 ```bash
-# Update service to use dual-stack
-kubectl patch svc <service-name> -p '{"spec":{"ipFamilyPolicy":"PreferDualStack","ipFamilies":["IPv6","IPv4"]}}'
+# Update an existing IPv4-primary service to add IPv6 as the secondary family.
+# The primary family of an existing Service cannot be changed.
+kubectl patch svc <service-name> -p '{"spec":{"ipFamilyPolicy":"PreferDualStack","ipFamilies":["IPv4","IPv6"]}}'
 
 # Verify change
 kubectl get svc <service-name> -o jsonpath='{.spec.clusterIPs}'
@@ -571,25 +581,21 @@ kubectl logs -n kube-system -l k8s-app=kube-dns --tail=100
 **Solution:**
 
 ```yaml
-# Update network policy to include IPv6
+# Update network policy to include IPv6 for external IP destinations.
+# Use podSelector or namespaceSelector for pod-to-pod allow rules.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: allow-all-ipv6
+  name: allow-external-ipv6
   namespace: default
 spec:
   podSelector: {}
   policyTypes:
-    - Ingress
     - Egress
-  ingress:
-    - from:
-        - ipBlock:
-            cidr: ::/0  # All IPv6
   egress:
     - to:
         - ipBlock:
-            cidr: ::/0  # All IPv6
+            cidr: ::/0  # External IPv6 destinations
 ```
 
 ### Issue 6: ICMPv6 Blocked
@@ -607,25 +613,8 @@ ip6tables -A INPUT -p ipv6-icmp -j ACCEPT
 ip6tables -A OUTPUT -p ipv6-icmp -j ACCEPT
 ip6tables -A FORWARD -p ipv6-icmp -j ACCEPT
 
-# Or in network policy
-```
-
-```yaml
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: allow-icmpv6
-spec:
-  podSelector: {}
-  policyTypes:
-    - Ingress
-    - Egress
-  ingress:
-    - ports:
-        - protocol: ICMP  # Note: This is limited in standard NetworkPolicy
-  egress:
-    - ports:
-        - protocol: ICMP
+# Standard Kubernetes NetworkPolicy cannot express ICMP or ICMPv6 rules; use
+# firewall rules or CNI-specific policy APIs if you need explicit ICMP control.
 ```
 
 ### Issue 7: MTU Issues with IPv6
@@ -640,7 +629,7 @@ spec:
 ```bash
 # Test different packet sizes
 kubectl exec <pod-name> -- ping6 -c 4 -s 1400 <target-ipv6>
-kubectl exec <pod-name> -- ping6 -c 4 -s 1472 <target-ipv6>  # Max for 1500 MTU
+kubectl exec <pod-name> -- ping6 -c 4 -s 1452 <target-ipv6>  # Max IPv6 payload for 1500 MTU
 
 # Check interface MTU
 kubectl exec <pod-name> -- ip link show eth0
@@ -650,8 +639,8 @@ kubectl exec <pod-name> -- ip link show eth0
 
 ```bash
 # Reduce MTU in CNI configuration
-# For Calico:
-kubectl patch felixconfiguration default -p '{"spec":{"mtu": 1440}}' --type=merge
+# For Calico IPv6 VXLAN:
+kubectl patch felixconfiguration default -p '{"spec":{"vxlanMTUV6": 1430}}' --type=merge
 ```
 
 ### Issue 8: Dual-Stack Service Preference Issues
@@ -682,10 +671,11 @@ spec:
 ### Using Network Namespaces
 
 ```bash
-# Find pod's network namespace
-POD_ID=$(kubectl get pod <pod-name> -o jsonpath='{.metadata.uid}')
-CONTAINER_ID=$(crictl ps --pod $POD_ID -q)
-PID=$(crictl inspect $CONTAINER_ID | jq .info.pid)
+# Find pod's network namespace on the node where the pod is running
+POD_UID=$(kubectl get pod <pod-name> -o jsonpath='{.metadata.uid}')
+POD_SANDBOX_ID=$(crictl pods --label io.kubernetes.pod.uid=$POD_UID -q | head -n1)
+CONTAINER_ID=$(crictl ps --pod $POD_SANDBOX_ID -q | head -n1)
+PID=$(crictl inspect --output json $CONTAINER_ID | jq .info.pid)
 
 # Enter network namespace
 nsenter -t $PID -n ip -6 addr show
@@ -708,11 +698,12 @@ perf trace -e 'net:*' -p $(pgrep -f 'my-process')
 
 ```bash
 # With Cilium, use Hubble for observability
-kubectl exec -n kube-system -l k8s-app=cilium -- hubble observe --ipv6
+CILIUM_POD=$(kubectl get pod -n kube-system -l k8s-app=cilium -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -n kube-system "$CILIUM_POD" -- hubble observe --follow | grep -E '([0-9a-fA-F]{0,4}:){2,}'
 
 # Filter IPv6 traffic
-kubectl exec -n kube-system -l k8s-app=cilium -- \
-  hubble observe --ip-version v6 --verdict DROPPED
+kubectl exec -n kube-system "$CILIUM_POD" -- \
+  hubble observe --verdict DROPPED | grep -E '([0-9a-fA-F]{0,4}:){2,}'
 ```
 
 ## Debugging Script
@@ -753,7 +744,7 @@ if [ -n "$POD_NAME" ]; then
 
     # Get pod IPs
     echo "Pod IPs:"
-    kubectl get pod $POD_NAME -n $NAMESPACE -o jsonpath='{.status.podIPs}' | jq .
+    kubectl get pod $POD_NAME -n $NAMESPACE -o json | jq '.status.podIPs'
     echo ""
 
     # Check IPv6 address inside pod
@@ -787,7 +778,7 @@ echo "=== Common Issue Checks ==="
 
 # Check if IPv6 forwarding is enabled
 echo "IPv6 forwarding (on first node):"
-kubectl get nodes -o jsonpath='{.items[0].metadata.name}' | xargs -I{} kubectl debug node/{} -it --image=nicolaka/netshoot -- sysctl net.ipv6.conf.all.forwarding 2>/dev/null || echo "Cannot check forwarding"
+kubectl get nodes -o jsonpath='{.items[0].metadata.name}' | xargs -I{} kubectl debug node/{} --image=nicolaka/netshoot -- sysctl net.ipv6.conf.all.forwarding 2>/dev/null || echo "Cannot check forwarding"
 
 echo ""
 echo "Diagnostic complete."
@@ -903,6 +894,7 @@ spec:
                   ping6 -c 3 2001:4860:4860::8888 || exit 1
                   echo "IPv6 connectivity OK"
           restartPolicy: OnFailure
+EOF
 ```
 
 ---
