@@ -137,8 +137,13 @@ Create and manage virtual machines.
 
 ### Network File Sharing
 
+The `cockpit-file-sharing` module is maintained by 45Drives and is not in the
+default Ubuntu repositories, so you must add their repository first:
+
 ```bash
-# Install file sharing module
+# Add the 45Drives repository, then install the file sharing module
+curl -sSL https://repo.45drives.com/setup | sudo bash
+sudo apt update
 sudo apt install cockpit-file-sharing -y
 ```
 
@@ -179,14 +184,11 @@ Example configuration:
 # Listen on specific address (default: all)
 # Origins = https://server.example.com
 
-# Idle timeout in minutes
-IdleTimeout = 15
-
 # Allow unencrypted HTTP (not recommended)
 # AllowUnencrypted = false
 
 [Session]
-# Idle session timeout
+# Idle session timeout in minutes
 IdleTimeout = 15
 
 [Log]
@@ -258,10 +260,10 @@ sudo systemctl restart cockpit
 
 ### Dashboard Configuration
 
-```bash
-# Install dashboard for multi-server view
-sudo apt install cockpit-dashboard -y
-```
+The old `cockpit-dashboard` package (a multi-machine timeline view) was removed
+in Cockpit 234, so there is no extra package to install. Connecting to and
+switching between hosts is built into cockpit-ws itself using the "Add new host"
+workflow described above.
 
 ## Terminal Access
 
@@ -383,8 +385,10 @@ sudo ufw status
 # View certificate info
 openssl x509 -in /etc/cockpit/ws-certs.d/0-self-signed.cert -noout -text
 
-# Generate new self-signed certificate
-sudo /usr/share/cockpit/ws/cockpit-certificate-ensure --for-host=$(hostname)
+# Check which certificate cockpit-ws will use (regenerates the
+# self-signed cert if none is present). On Debian/Ubuntu the helper
+# lives under /usr/lib/cockpit/
+sudo /usr/lib/cockpit/cockpit-certificate-ensure --check
 ```
 
 ### Login Issues
