@@ -14,7 +14,7 @@ Password managers are essential for modern security hygiene. While cloud-hosted 
 
 Before diving in, it's important to understand what you're deploying.
 
-**Bitwarden** is the official password manager with both cloud-hosted and self-hosted options. The official self-hosted version requires significant resources (multiple containers, Microsoft SQL Server or PostgreSQL, and substantial RAM).
+**Bitwarden** is the official password manager with both cloud-hosted and self-hosted options. The standard self-hosted deployment uses multiple containers, Microsoft SQL Server, and more RAM than Vaultwarden. Bitwarden also offers a lightweight "Lite" deployment for personal use and home labs.
 
 **Vaultwarden** (formerly bitwarden_rs) is an unofficial, lightweight implementation written in Rust. It offers:
 
@@ -139,8 +139,6 @@ services:
     ports:
       # Web vault and API
       - "8080:80"
-      # WebSocket notifications (real-time sync)
-      - "3012:3012"
 
     # Security: Run as non-root user inside container
     # Vaultwarden drops privileges automatically, but this adds defense-in-depth
@@ -157,7 +155,7 @@ services:
 
     # Health check to verify the service is responding
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:80/alive"]
+      test: ["CMD", "curl", "-f", "http://localhost:80/api/alive"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -238,11 +236,9 @@ INVITATIONS_ALLOWED=true
 # -----------------------------------------------------------------------------
 # WEBSOCKET CONFIGURATION
 # -----------------------------------------------------------------------------
-# Enable WebSocket notifications for real-time sync across devices
-WEBSOCKET_ENABLED=true
-
-# WebSocket port (internal container port)
-WEBSOCKET_PORT=3012
+# WebSocket notifications for real-time sync across browser, desktop, and extension clients
+# Enabled by default in current Vaultwarden releases; set false only if you want to disable them
+ENABLE_WEBSOCKET=true
 
 # -----------------------------------------------------------------------------
 # SMTP EMAIL CONFIGURATION
@@ -282,8 +278,9 @@ SHOW_PASSWORD_HINT=false
 # Web vault enabled (disable to API-only mode)
 WEB_VAULT_ENABLED=true
 
-# Require HTTPS (should be true for production)
-ROCKET_TLS={certs="/ssl/cert.pem",key="/ssl/key.pem"}
+# HTTPS is terminated by Nginx in this guide. Leave ROCKET_TLS unset unless you
+# mount certificates into the container and are not using a reverse proxy for TLS.
+# ROCKET_TLS={certs="/ssl/cert.pem",key="/ssl/key.pem"}
 
 # IP header for logging behind reverse proxy
 IP_HEADER=X-Forwarded-For
@@ -389,12 +386,6 @@ upstream vaultwarden {
     keepalive 32;
 }
 
-upstream vaultwarden_ws {
-    # WebSocket upstream for real-time notifications
-    server 127.0.0.1:3012;
-    keepalive 32;
-}
-
 # HTTP server - redirect all traffic to HTTPS
 server {
     listen 80;
@@ -418,9 +409,9 @@ server {
     listen [::]:443 ssl http2;
     server_name vault.yourdomain.com;
 
-    # SSL certificate paths (will be managed by Certbot)
-    ssl_certificate /etc/letsencrypt/live/vault.yourdomain.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/vault.yourdomain.com/privkey.pem;
+    # Temporary SSL certificate paths (Certbot will replace these with Let's Encrypt paths)
+    ssl_certificate /etc/ssl/certs/vaultwarden-selfsigned.crt;
+    ssl_certificate_key /etc/ssl/private/vaultwarden-selfsigned.key;
 
     # Modern SSL configuration
     ssl_protocols TLSv1.2 TLSv1.3;
@@ -454,7 +445,7 @@ server {
 
     # WebSocket location block for real-time notifications
     location /notifications/hub {
-        proxy_pass http://vaultwarden_ws;
+        proxy_pass http://vaultwarden;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
@@ -517,6 +508,14 @@ sudo ln -sf /etc/nginx/sites-available/vaultwarden /etc/nginx/sites-enabled/
 
 # Remove default site
 sudo rm -f /etc/nginx/sites-enabled/default
+
+# Create a temporary self-signed certificate so nginx -t succeeds before Certbot
+# replaces it with a Let's Encrypt certificate in the next step
+sudo mkdir -p /etc/ssl/private
+sudo openssl req -x509 -nodes -newkey rsa:2048 -days 1 \
+  -keyout /etc/ssl/private/vaultwarden-selfsigned.key \
+  -out /etc/ssl/certs/vaultwarden-selfsigned.crt \
+  -subj "/CN=vault.yourdomain.com"
 
 # Test Nginx configuration
 sudo nginx -t
@@ -649,9 +648,20 @@ log "Starting Vaultwarden backup..."
 TEMP_DIR=$(mktemp -d)
 trap "rm -rf ${TEMP_DIR}" EXIT
 
+# Create a consistent SQLite backup using Vaultwarden's built-in backup command
+log "Creating consistent SQLite database backup..."
+docker exec vaultwarden /vaultwarden backup
+LATEST_DB_BACKUP=$(find "${DATA_DIR}" -maxdepth 1 -name 'db_*.sqlite3' -printf '%T@ %p\n' | sort -n | tail -1 | cut -d' ' -f2-)
+
 # Copy data directory to temp location
 log "Copying data directory..."
 cp -r "${DATA_DIR}" "${TEMP_DIR}/data"
+
+# Replace live SQLite files with the consistent backup copy in the archive
+if [[ -n "${LATEST_DB_BACKUP}" ]]; then
+    cp "${LATEST_DB_BACKUP}" "${TEMP_DIR}/data/db.sqlite3"
+    rm -f "${TEMP_DIR}/data"/db_*.sqlite3 "${TEMP_DIR}/data/db.sqlite3-wal" "${TEMP_DIR}/data/db.sqlite3-shm"
+fi
 
 # Create compressed archive with encryption (optional)
 log "Creating compressed archive..."
@@ -990,7 +1000,7 @@ docker compose logs vaultwarden
 
 # Common issues:
 # - Permission errors: Check data directory ownership
-# - Port conflicts: Ensure ports 8080 and 3012 are free
+# - Port conflicts: Ensure port 8080 is free
 # - Invalid environment variables: Validate .env syntax
 ```
 
@@ -998,7 +1008,7 @@ docker compose logs vaultwarden
 
 ```bash
 # Verify WebSocket is enabled
-grep WEBSOCKET /opt/vaultwarden/.env
+grep ENABLE_WEBSOCKET /opt/vaultwarden/.env
 
 # Check Nginx WebSocket configuration
 sudo nginx -t
@@ -1054,8 +1064,7 @@ For production deployments, monitoring your password manager is critical. OneUpt
 Create monitors in OneUptime for:
 
 - `https://vault.yourdomain.com` - Main web vault endpoint
-- `https://vault.yourdomain.com/alive` - Health check endpoint
-- `https://vault.yourdomain.com/api/alive` - API health endpoint
+- `https://vault.yourdomain.com/api/alive` - Health check endpoint
 
 Configure alerts for:
 - Downtime events (immediate notification)
