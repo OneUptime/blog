@@ -48,7 +48,7 @@ Default configuration with explanations:
 # Run as daemon
 -d
 
-# Log to syslog
+# Log to a file
 logfile /var/log/memcached.log
 
 # Verbose logging (for debugging)
@@ -139,9 +139,10 @@ Change:
 ### Enable Multiple Ports
 
 ```bash
-# Listen on multiple ports
--p 11211
--p 11212
+# Listen on multiple ports (use -l with host:port, repeated)
+# A second -p does not add a port; it just overrides the first.
+-l 127.0.0.1:11211
+-l 127.0.0.1:11212
 ```
 
 ### UDP Support
