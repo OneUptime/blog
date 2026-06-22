@@ -49,27 +49,30 @@ import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { ZoneContextManager } from '@opentelemetry/context-zone';
 import { registerInstrumentations } from '@opentelemetry/instrumentation';
 import { FetchInstrumentation } from '@opentelemetry/instrumentation-fetch';
-import { Resource } from '@opentelemetry/resources';
-import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from '@opentelemetry/semantic-conventions';
 import { trace, SpanStatusCode } from '@opentelemetry/api';
 
-const resource = new Resource({
-  [SemanticResourceAttributes.SERVICE_NAME]: 'react-frontend',
-  [SemanticResourceAttributes.SERVICE_VERSION]: process.env.REACT_APP_VERSION || '1.0.0',
-  [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV,
+const resource = resourceFromAttributes({
+  [ATTR_SERVICE_NAME]: 'react-frontend',
+  [ATTR_SERVICE_VERSION]: process.env.REACT_APP_VERSION || '1.0.0',
+  'deployment.environment.name': process.env.NODE_ENV,
 });
 
 const exporter = new OTLPTraceExporter({
   url: process.env.REACT_APP_OTLP_ENDPOINT || 'http://localhost:4318/v1/traces',
 });
 
-const provider = new WebTracerProvider({ resource });
-
-provider.addSpanProcessor(new BatchSpanProcessor(exporter, {
-  maxQueueSize: 100,
-  maxExportBatchSize: 10,
-  scheduledDelayMillis: 500,
-}));
+const provider = new WebTracerProvider({
+  resource,
+  spanProcessors: [
+    new BatchSpanProcessor(exporter, {
+      maxQueueSize: 100,
+      maxExportBatchSize: 10,
+      scheduledDelayMillis: 500,
+    }),
+  ],
+});
 
 provider.register({
   contextManager: new ZoneContextManager(),
@@ -519,8 +522,7 @@ const spanProcessor = isDevelopment
       scheduledDelayMillis: 5000,
     });
 
-const provider = new WebTracerProvider({ sampler });
-provider.addSpanProcessor(spanProcessor);
+const provider = new WebTracerProvider({ sampler, spanProcessors: [spanProcessor] });
 ```
 
 ### Error Rate Limiting
