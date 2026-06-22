@@ -67,9 +67,6 @@ helm repo update
 
 # Search available versions
 helm search repo datawire --versions
-
-# Install Ambassador CLI (edgectl)
-curl -fL https://metriton.datawire.io/downloads/linux/edgectl | sudo install /dev/stdin /usr/local/bin/edgectl
 ```
 
 ## Deploy Emissary-ingress (OSS)
@@ -124,6 +121,7 @@ kubectl wait --timeout=90s --for=condition=available deployment emissary-apiext 
 helm install emissary-ingress datawire/emissary-ingress \
   --namespace emissary \
   --create-namespace \
+  --version 8.9.0 \
   -f emissary-values.yaml
 ```
 
@@ -133,30 +131,62 @@ helm install emissary-ingress datawire/emissary-ingress \
 
 ```yaml
 # edge-stack-values.yaml
-replicaCount: 3
+emissary-ingress:
+  replicaCount: 3
 
-image:
-  repository: docker.io/datawire/aes
-  tag: 3.9.0
+  image:
+    repository: docker.io/datawire/aes
+    tag: 3.9.0
+
+  service:
+    type: LoadBalancer
+    
+    annotations:
+      service.beta.kubernetes.io/aws-load-balancer-type: nlb
+      
+    ports:
+      - name: http
+        port: 80
+        targetPort: 8080
+      - name: https
+        port: 443
+        targetPort: 8443
+
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: 2000m
+      memory: 2Gi
+
+  # High availability
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchLabels:
+                app.kubernetes.io/name: edge-stack
+            topologyKey: kubernetes.io/hostname
+
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 10
+    metrics:
+      - type: Resource
+        resource:
+          name: cpu
+          target:
+            type: Utilization
+            averageUtilization: 70
 
 licenseKey:
   value: ""  # Your license key
   # Or from secret
   # secretName: ambassador-license-key
-
-service:
-  type: LoadBalancer
-  
-  annotations:
-    service.beta.kubernetes.io/aws-load-balancer-type: nlb
-    
-  ports:
-    - name: http
-      port: 80
-      targetPort: 8080
-    - name: https
-      port: 443
-      targetPort: 8443
 
 # Redis for rate limiting
 redis:
@@ -165,37 +195,19 @@ redis:
 # Authentication service
 authService:
   create: true
-
-resources:
-  requests:
-    cpu: 500m
-    memory: 512Mi
-  limits:
-    cpu: 2000m
-    memory: 2Gi
-
-# High availability
-affinity:
-  podAntiAffinity:
-    preferredDuringSchedulingIgnoredDuringExecution:
-      - weight: 100
-        podAffinityTerm:
-          labelSelector:
-            matchLabels:
-              app.kubernetes.io/name: edge-stack
-          topologyKey: kubernetes.io/hostname
-
-autoscaling:
-  enabled: true
-  minReplicas: 3
-  maxReplicas: 10
-  targetCPUUtilizationPercentage: 70
 ```
 
 ```bash
+# Install Edge Stack CRDs first
+kubectl apply -f https://app.getambassador.io/yaml/edge-stack/3.9.0/aes-crds.yaml
+
+# Wait for CRDs
+kubectl wait --timeout=90s --for=condition=available deployment emissary-apiext -n emissary-system
+
 helm install edge-stack datawire/edge-stack \
   --namespace ambassador \
   --create-namespace \
+  --version 8.9.0 \
   -f edge-stack-values.yaml
 ```
 
@@ -377,7 +389,6 @@ spec:
   hostname: api.example.com
   prefix: /users/
   prefix_regex: true
-  prefix_regex_rewrite: "/api/users/"
   regex_rewrite:
     pattern: "/users/([0-9]+)"
     substitution: "/api/v1/users/\\1"
@@ -524,7 +535,7 @@ spec:
 
 ---
 # Rate limit labels
-apiVersion: getambassador.io/v3alpha1
+apiVersion: getambassador.io/v1beta1
 kind: RateLimit
 metadata:
   name: api-rate-limit
@@ -575,10 +586,19 @@ spec:
   hostname: api.example.com
   prefix: /api/
   service: api-service-v1:80
-  
+
+---
+apiVersion: getambassador.io/v3alpha1
+kind: Mapping
+metadata:
+  name: shadow-api
+spec:
+  hostname: api.example.com
+  prefix: /api/
+  service: api-service-v2:80
+
   # Shadow traffic to v2
   shadow: true
-  shadow_service: api-service-v2:80
 ```
 
 ## Canary Deployments
@@ -799,9 +819,6 @@ kubectl describe mapping <mapping-name>
 
 # Check hosts
 kubectl get hosts -A
-
-# Validate configuration
-edgectl config view
 
 # Check Envoy config
 kubectl exec -n ambassador deploy/ambassador -- envoy-config-dump
