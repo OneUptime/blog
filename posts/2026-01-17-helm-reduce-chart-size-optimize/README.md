@@ -90,11 +90,12 @@ echo -e "\nTotal unpacked size:"
 du -sh "$CHART_DIR"
 
 # Packaged size
-helm package "$CHART_DIR" -d /tmp >/dev/null
-PACKAGE=$(ls -1t /tmp/*.tgz | head -1)
+TMP_DIR=$(mktemp -d)
+helm package "$CHART_DIR" -d "$TMP_DIR" >/dev/null
+PACKAGE=$(find "$TMP_DIR" -maxdepth 1 -name "*.tgz" -print -quit)
 echo -e "\nPackaged size:"
 ls -lh "$PACKAGE"
-rm -f "$PACKAGE"
+rm -rf "$TMP_DIR"
 ```
 
 ## .helmignore Configuration
@@ -133,9 +134,6 @@ __tests__/
 
 # Documentation extras
 docs/
-*.md
-!README.md
-!NOTES.txt
 CHANGELOG.md
 CONTRIBUTING.md
 LICENSE
@@ -201,11 +199,12 @@ secrets.yaml
 ### Verify .helmignore Effect
 
 ```bash
-# Show what's included/excluded
-helm package charts/myapp --debug 2>&1 | grep -E "(skipping|copying)"
+# Show what's included
+helm package charts/myapp
+tar tzf myapp-1.0.0.tgz | sort
 
 # Compare packaged vs source
-tar tzf myapp-1.0.0.tgz > packaged-files.txt
+tar tzf myapp-1.0.0.tgz | grep -v '/$' | sed 's|^[^/]*/||' | sort > packaged-files.txt
 find charts/myapp -type f | sed 's|charts/myapp/||' | sort > source-files.txt
 diff source-files.txt packaged-files.txt
 ```
@@ -280,7 +279,7 @@ spec:
 
 ## Managing Dependencies
 
-### Use Dependency Aliases
+### Use Dependency Conditions
 
 ```yaml
 # Chart.yaml
@@ -289,31 +288,40 @@ dependencies:
     version: "12.x.x"
     repository: https://charts.bitnami.com/bitnami
     condition: postgresql.enabled
-    # Don't include if large and rarely needed
+    # Disable rendering by default when this dependency is optional
     tags:
       - database
+
+# values.yaml
+postgresql:
+  enabled: false
 ```
+
+Conditions and tags control whether subcharts are loaded and rendered. Listed dependencies still need to be present under `charts/` when you package the chart.
 
 ### Optional Dependencies
 
 ```bash
-# Build without optional dependencies
+# Build dependencies without refreshing the local repository cache
 helm dependency build charts/myapp --skip-refresh
 
-# Only include needed dependencies
+# To reduce packaged size, remove dependencies you do not need from Chart.yaml,
+# then rebuild charts/ and package
+helm dependency update charts/myapp
 helm package charts/myapp
 ```
 
 ### Trim Subchart Files
 
 ```bash
-# After helm dependency update, subcharts are in charts/
-# You can remove unnecessary files from downloaded charts
+# helm dependency update usually stores dependencies as packaged chart archives in charts/
+# This only applies if you intentionally vendor subcharts as unpacked directories
 
 # Create script to trim subcharts
 cat > trim-subcharts.sh << 'EOF'
 #!/bin/bash
 for chart in charts/*/; do
+  [ -d "$chart" ] || continue
   # Remove README files
   rm -f "$chart"/*.md
   # Remove test files
@@ -341,13 +349,13 @@ jobs:
       - uses: actions/checkout@v4
       
       - name: Cache Helm Dependencies
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: charts/*/charts
           key: helm-deps-${{ hashFiles('charts/*/Chart.lock') }}
           
       - name: Setup Helm
-        uses: azure/setup-helm@v3
+        uses: azure/setup-helm@v5
         
       - name: Build Dependencies
         run: helm dependency build charts/myapp
@@ -371,10 +379,11 @@ jobs:
       
       - name: Package ${{ matrix.chart }}
         run: |
+          mkdir -p packages
           helm dependency build charts/${{ matrix.chart }}
           helm package charts/${{ matrix.chart }} -d packages/
           
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.chart }}-chart
           path: packages/${{ matrix.chart }}-*.tgz
@@ -388,6 +397,8 @@ jobs:
 
 # Only package charts that changed
 CHANGED_CHARTS=$(git diff --name-only HEAD~1 | grep "^charts/" | cut -d'/' -f2 | sort -u)
+
+mkdir -p packages
 
 for chart in $CHANGED_CHARTS; do
   if [ -d "charts/$chart" ]; then
@@ -413,14 +424,15 @@ file myapp-1.0.0.tgz
 gzip -l myapp-1.0.0.tgz
 ```
 
-### Layer Caching
+### Content-Addressable Storage
 
 ```bash
 # Push to OCI registry
 helm push myapp-1.0.0.tgz oci://registry.example.com/charts
 
-# OCI registries cache layers
-# Subsequent pulls of similar charts are faster
+# OCI registries store chart content by digest
+# Identical chart blobs may be reused or deduplicated by the registry
+# Similar charts are still pushed and pulled as separate chart archives
 ```
 
 ## Size Comparison Table
@@ -448,10 +460,11 @@ for chart in charts/*/; do
   CHART_NAME=$(basename "$chart")
   
   # Package to temp
-  helm package "$chart" -d /tmp >/dev/null 2>&1
-  PACKAGE="/tmp/${CHART_NAME}-*.tgz"
-  SIZE=$(stat -f%z $PACKAGE 2>/dev/null || stat -c%s $PACKAGE)
-  rm -f $PACKAGE
+  TMP_DIR=$(mktemp -d)
+  helm package "$chart" -d "$TMP_DIR" >/dev/null 2>&1
+  PACKAGE=$(find "$TMP_DIR" -maxdepth 1 -name "*.tgz" -print -quit)
+  SIZE=$(stat -c%s "$PACKAGE" 2>/dev/null || stat -f%z "$PACKAGE")
+  rm -rf "$TMP_DIR"
   
   if [ "$SIZE" -gt "$MAX_SIZE" ]; then
     echo "ERROR: Chart $CHART_NAME exceeds size limit"
@@ -480,8 +493,9 @@ jobs:
           MAX_KB=500
           
           for chart in charts/*/; do
-            helm package "$chart" -d /tmp
-            PACKAGE=$(ls -1t /tmp/*.tgz | head -1)
+            TMP_DIR=$(mktemp -d)
+            helm package "$chart" -d "$TMP_DIR"
+            PACKAGE=$(find "$TMP_DIR" -maxdepth 1 -name "*.tgz" -print -quit)
             SIZE=$(du -k "$PACKAGE" | cut -f1)
             CHART_NAME=$(basename "$chart")
             
@@ -492,7 +506,7 @@ jobs:
               exit 1
             fi
             
-            rm -f "$PACKAGE"
+            rm -rf "$TMP_DIR"
           done
 ```
 
@@ -513,8 +527,9 @@ jobs:
 # Why is my chart so large?
 tar tzvf myapp-1.0.0.tgz | sort -k3 -rn | head -20
 
-# Check .helmignore is being read
-helm package charts/myapp --debug 2>&1 | grep "helmignore"
+# Check package contents after .helmignore rules
+helm package charts/myapp
+tar tzf myapp-1.0.0.tgz | sort
 
 # Verify specific file is excluded
 tar tzf myapp-1.0.0.tgz | grep "should-be-excluded.txt"
