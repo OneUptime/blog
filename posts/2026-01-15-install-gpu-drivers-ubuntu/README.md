@@ -242,11 +242,13 @@ EOF
 # Reload shell configuration
 source ~/.bashrc
 
-# Verify the installation with a sample program
-# Navigate to CUDA samples and compile a test
-cd /usr/local/cuda/samples/1_Utilities/deviceQuery
-sudo make
-./deviceQuery
+# Verify the installation by building NVIDIA's deviceQuery sample
+# Since CUDA 11.6 the samples ship separately on GitHub, not in the toolkit
+git clone https://github.com/NVIDIA/cuda-samples.git
+cd cuda-samples
+cmake -B build && cmake --build build -j$(nproc)
+# Locate and run the compiled deviceQuery binary
+"$(find build -name deviceQuery -type f -executable | head -1)"
 # Should show "Result = PASS" if CUDA is working
 ```
 
@@ -297,8 +299,9 @@ sudo apt install mesa-vulkan-drivers vulkan-tools
 vulkaninfo --summary
 
 # Install OpenCL for compute workloads (optional)
-# ROCm OpenCL provides GPU compute on AMD hardware
-sudo apt install rocm-opencl-runtime
+# Mesa's Rusticl ICD provides OpenCL on AMD hardware without extra repos
+# (for the full ROCm OpenCL stack, install rocm-opencl-runtime from the ROCm repo below)
+sudo apt install mesa-opencl-icd clinfo
 ```
 
 ### AMDGPU-PRO (Proprietary)
