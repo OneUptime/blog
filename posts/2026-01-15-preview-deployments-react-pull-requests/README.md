@@ -137,14 +137,21 @@ export default config;
 
 ### Preview Deployment Protections
 
-Protect preview deployments from unauthorized access. This is crucial for apps with sensitive data.
+Protect preview deployments from unauthorized access. This is crucial for apps with sensitive data. Password Protection is a project-level setting that you enable from the Vercel dashboard (Settings → Deployment Protection) or via the Vercel API and Terraform — it is not configured in `vercel.json`. When using the API, send a `passwordProtection` object, where `deploymentType` is one of `preview`, `prod_deployment_urls_and_all_previews`, or `all`:
 
 ```json
 {
-  "version": 2,
-  "password": {
-    "protection": "all"
-  },
+  "passwordProtection": {
+    "deploymentType": "preview",
+    "password": "your-password-here"
+  }
+}
+```
+
+In `vercel.json` you can still add headers to keep previews out of search indexes:
+
+```json
+{
   "headers": [
     {
       "source": "/(.*)",
@@ -273,10 +280,12 @@ Configure Slack or webhook notifications for deploy status:
 
 # Notify on deploy success
 [[plugins]]
-  package = "netlify-plugin-webhook-deploy-notification"
+  package = "@netlify/plugin-notifier"
 
   [plugins.inputs]
-    webhook_url = "https://hooks.slack.com/services/xxx/yyy/zzz"
+    notices = [
+      { event = "onSuccess", type = "webhook", endpoint = "https://hooks.slack.com/services/xxx/yyy/zzz", message = "Deploy succeeded" }
+    ]
 ```
 
 ### Branch Subdomains
@@ -962,11 +971,13 @@ Preview deployments can expose sensitive data if not configured properly:
 
 ### 1. Authentication for Previews
 
-```yaml
-# vercel.json - Password protection
+Enable Password Protection from the project's Deployment Protection settings (dashboard, API, or Terraform) — not `vercel.json`. The API accepts a `passwordProtection` object where `deploymentType` controls the scope (`preview`, `prod_deployment_urls_and_all_previews`, or `all`):
+
+```json
 {
-  "password": {
-    "protection": "deployments"
+  "passwordProtection": {
+    "deploymentType": "preview",
+    "password": "your-password-here"
   }
 }
 ```
