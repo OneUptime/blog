@@ -128,6 +128,7 @@ docker run --rm -v testdata:/data ljishen/fio \
     --bs=4k \
     --numjobs=4 \
     --size=1G \
+    --time_based \
     --runtime=60 \
     --directory=/data
 
@@ -139,11 +140,12 @@ docker run --rm -v testdata:/data ljishen/fio \
     --bs=4k \
     --numjobs=4 \
     --size=1G \
+    --time_based \
     --runtime=60 \
     --directory=/data
 ```
 
-### Compare Storage Drivers
+### Compare Storage Configurations
 
 ```bash
 #!/bin/bash
@@ -218,6 +220,9 @@ docker run --rm -v testdata:/data -v $(pwd)/fio-config.fio:/fio-config.fio \
 ### Using iperf3
 
 ```bash
+# Create test network
+docker network create bench-net
+
 # Start server
 docker run -d --name iperf-server --network bench-net networkstatic/iperf3 -s
 
@@ -229,6 +234,7 @@ docker run --rm --network bench-net networkstatic/iperf3 -c iperf-server -u -b 1
 
 # Clean up
 docker rm -f iperf-server
+docker network rm bench-net
 ```
 
 ### Compare Network Modes
@@ -267,10 +273,14 @@ docker network rm bench-net
 
 ```bash
 # Using qperf for latency
-docker run -d --name qperf-server --network bench-net arjanschaaf/qperf
+docker network create bench-net
+docker run -d --name qperf-server --network bench-net pedroperezmsft/qperf
 
-docker run --rm --network bench-net arjanschaaf/qperf \
+docker run --rm --network bench-net pedroperezmsft/qperf \
     qperf-server tcp_bw tcp_lat
+
+docker rm -f qperf-server
+docker network rm bench-net
 ```
 
 ## Container Startup Benchmark
@@ -350,8 +360,6 @@ docker rm -f nginx-bench
 
 ```yaml
 # docker-compose.bench.yml
-version: '3.8'
-
 services:
   postgres:
     image: postgres:15
@@ -383,7 +391,7 @@ volumes:
 ```
 
 ```bash
-docker-compose -f docker-compose.bench.yml up
+docker compose -f docker-compose.bench.yml up
 ```
 
 ### Redis Benchmark
@@ -402,8 +410,6 @@ docker rm -f redis-bench
 
 ```yaml
 # docker-compose.benchmark.yml
-version: '3.8'
-
 services:
   cpu-bench:
     image: severalnines/sysbench
@@ -419,7 +425,7 @@ services:
       - testdata:/data
     command: >
       fio --name=test --ioengine=libaio --rw=randrw --bs=4k
-      --numjobs=4 --size=1G --runtime=60 --directory=/data
+      --numjobs=4 --size=1G --time_based --runtime=60 --directory=/data
 
   network-server:
     image: networkstatic/iperf3
@@ -483,7 +489,7 @@ docker run --rm severalnines/sysbench sysbench memory --threads=4 --time=30 run 
 echo "Running Storage benchmark..."
 docker run --rm -v benchdata:/data ljishen/fio \
     --name=test --ioengine=libaio --rw=randrw --bs=4k \
-    --numjobs=4 --size=1G --runtime=30 --directory=/data > $OUTPUT_DIR/storage.txt
+    --numjobs=4 --size=1G --time_based --runtime=30 --directory=/data > $OUTPUT_DIR/storage.txt
 
 # Network
 echo "Running Network benchmark..."
@@ -516,4 +522,3 @@ echo "=== Network ===" && grep -E "sender|receiver" $OUTPUT_DIR/network.txt
 | Web | wrk, ab | Requests/second |
 
 Regular benchmarking helps identify performance regressions and optimize configurations. Run benchmarks before and after changes to measure impact. For tuning based on benchmark results, see our post on [Docker Daemon Tuning](https://oneuptime.com/blog/post/2026-01-16-docker-daemon-tuning/view).
-
