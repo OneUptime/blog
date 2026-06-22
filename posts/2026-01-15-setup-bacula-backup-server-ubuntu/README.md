@@ -40,7 +40,7 @@ Bacula operates using a client-server model with several key components that wor
 The Director is the central control program that supervises all backup, restore, verify, and archive operations. It schedules and controls all backup jobs and maintains a catalog database of all backed-up files.
 
 **2. Storage Daemon (bacula-sd)**
-The Storage Daemon performs the actual reading and writing of backup data to storage media. It manages tape drives, disk storage, or other backup media and handles data compression and encryption.
+The Storage Daemon performs the actual reading and writing of backup data to storage media. It manages tape drives, disk storage, or other backup media. Compression and encryption are configured in FileSets and are applied before the Storage Daemon writes the backup stream.
 
 **3. File Daemon (bacula-fd)**
 The File Daemon (also called the Bacula Client) runs on each machine to be backed up. It locates and provides files requested by the Director for backup and accepts files during restore operations.
@@ -143,9 +143,9 @@ sudo ufw status verbose
 ```bash
 # Install Bacula server components with PostgreSQL backend
 sudo apt install -y \
-    bacula-server \
+    bacula-director-pgsql \
+    bacula-sd \
     bacula-client \
-    bacula-common \
     bacula-console \
     postgresql \
     postgresql-contrib
@@ -162,7 +162,7 @@ bacula-fd -v
 # If you prefer MySQL/MariaDB instead of PostgreSQL
 sudo apt install -y \
     bacula-director-mysql \
-    bacula-sd-mysql \
+    bacula-sd \
     bacula-client \
     bacula-console \
     mariadb-server \
@@ -189,6 +189,8 @@ sudo systemctl enable bacula-fd
 
 The catalog database stores metadata about all backups. Here we configure PostgreSQL as the catalog backend.
 
+If you let `dbconfig-common` configure the catalog during package installation, it creates the database and schema for you. Use the manual database steps below only if you declined automatic database configuration or are rebuilding the catalog yourself.
+
 ### Initialize PostgreSQL
 
 ```bash
@@ -200,44 +202,30 @@ sudo systemctl enable postgresql
 sudo systemctl status postgresql
 ```
 
-### Create Bacula Database and User
+### Create Bacula Database
 
 ```bash
-# Switch to postgres user
-sudo -u postgres psql
-
-# In PostgreSQL shell, execute:
-```
-
-```sql
--- Create the bacula database user
-CREATE USER bacula WITH PASSWORD 'your_secure_password_here';
-
--- Create the bacula database
-CREATE DATABASE bacula OWNER bacula;
-
--- Grant all privileges to bacula user
-GRANT ALL PRIVILEGES ON DATABASE bacula TO bacula;
-
--- Exit PostgreSQL shell
-\q
+# Create the bacula database using Bacula's PostgreSQL helper script
+sudo -u postgres env db_name=bacula \
+    /usr/share/bacula-director/create_postgresql_database
 ```
 
 ### Configure PostgreSQL Authentication
 
 ```bash
 # Edit PostgreSQL authentication configuration
-sudo nano /etc/postgresql/14/main/pg_hba.conf
+HBA_FILE=$(sudo -u postgres psql -tAc "SHOW hba_file;")
+sudo nano "$HBA_FILE"
 ```
 
-Add the following line before other authentication rules:
+Add the following lines before other authentication rules:
 
 ```text
 # Bacula catalog database access
 # TYPE  DATABASE        USER            ADDRESS                 METHOD
-local   bacula          bacula                                  md5
-host    bacula          bacula          127.0.0.1/32            md5
-host    bacula          bacula          ::1/128                 md5
+local   bacula          bacula                                  scram-sha-256
+host    bacula          bacula          127.0.0.1/32            scram-sha-256
+host    bacula          bacula          ::1/128                 scram-sha-256
 ```
 
 ```bash
@@ -255,10 +243,12 @@ sudo systemctl restart postgresql
 cd /usr/share/bacula-director
 
 # Create the Bacula tables (for PostgreSQL)
-sudo -u postgres /usr/share/bacula-director/make_postgresql_tables
+sudo -u postgres env db_name=bacula \
+    /usr/share/bacula-director/make_postgresql_tables
 
-# Grant necessary privileges
-sudo -u postgres /usr/share/bacula-director/grant_postgresql_privileges
+# Create the bacula database user and grant necessary privileges
+sudo -u postgres env db_name=bacula db_user=bacula db_password='your_secure_password_here' \
+    /usr/share/bacula-director/grant_postgresql_privileges
 
 # Verify tables were created
 sudo -u postgres psql -d bacula -c "\dt"
@@ -281,13 +271,12 @@ Find and update the Catalog resource:
 Catalog {
   Name = MyCatalog
 
-  # Database type and connection parameters
-  dbdriver = "postgresql"
+  # Database connection parameters
   dbname = "bacula"
   dbuser = "bacula"
   dbpassword = "your_secure_password_here"
-  dbaddress = "127.0.0.1"
-  dbport = "5432"
+  DB Address = "127.0.0.1"
+  DB Port = "5432"
 }
 ```
 
@@ -330,7 +319,7 @@ Director {
   DIRport = 9101
 
   # Query file containing pre-defined SQL queries
-  QueryFile = "/etc/bacula/query.sql"
+  QueryFile = "/etc/bacula/scripts/query.sql"
 
   # Working directory for temporary files
   WorkingDirectory = "/var/lib/bacula"
@@ -511,10 +500,10 @@ FileSet {
       # Alternative: LZO compression (faster, less compression)
       # compression = LZO
 
-      # One filesystem - don't cross mount points
-      onefs = no
+      # One filesystem - don't cross mount points from each File entry
+      onefs = yes
 
-      # Don't backup Windows-style ACLs
+      # Avoid updating access times while reading files
       noatime = yes
 
       # Preserve file permissions and ownership
@@ -704,7 +693,7 @@ Storage {
   Name = File1
 
   # Address of the Storage Daemon
-  Address = localhost
+  Address = bacula-server
 
   # Storage Daemon port
   SDPort = 9103
@@ -740,12 +729,11 @@ Storage {
 
 Catalog {
   Name = MyCatalog
-  dbdriver = "postgresql"
   dbname = "bacula"
   dbuser = "bacula"
   dbpassword = "your_secure_password_here"
-  dbaddress = "127.0.0.1"
-  dbport = "5432"
+  DB Address = "127.0.0.1"
+  DB Port = "5432"
 }
 
 # ==================================================================
@@ -1512,7 +1500,7 @@ Job {
 
   # Spool data for better performance
   SpoolData = yes
-  SpoolSize = 1G
+  Spool Size = 1G
 }
 
 # FileSet for frequently changing data
@@ -1579,12 +1567,12 @@ Schedule {
   Run = Full sun at 00:00
 
   # Incremental every 4 hours
-  Run = Incremental hourly at 0:00
-  Run = Incremental hourly at 4:00
-  Run = Incremental hourly at 8:00
-  Run = Incremental hourly at 12:00
-  Run = Incremental hourly at 16:00
-  Run = Incremental hourly at 20:00
+  Run = Incremental daily at 00:00
+  Run = Incremental daily at 04:00
+  Run = Incremental daily at 08:00
+  Run = Incremental daily at 12:00
+  Run = Incremental daily at 16:00
+  Run = Incremental daily at 20:00
 }
 ```
 
@@ -2212,11 +2200,14 @@ Baculum is a web-based management interface for Bacula that provides a user-frie
 ### Install Baculum
 
 ```bash
-# Add Baculum repository
-wget -qO - https://www.bacula.org/downloads/baculum/baculum.pub | sudo apt-key add -
+# Add Baculum repository key
+wget -qO - https://www.bacula.org/downloads/baculum/baculum.pub | \
+    gpg --dearmor | sudo tee /usr/share/keyrings/baculum-archive-keyring.gpg > /dev/null
 
-# Add repository (for Ubuntu 22.04)
-echo "deb https://www.bacula.org/downloads/baculum/stable-11/ubuntu jammy main" | \
+# Add repository for a supported Ubuntu release.
+# The Baculum 11 package documentation lists Ubuntu 20.04 (focal);
+# verify current support before using this on Ubuntu 22.04 or 24.04.
+echo "deb [arch=amd64 signed-by=/usr/share/keyrings/baculum-archive-keyring.gpg] https://www.bacula.org/downloads/baculum/stable-11/ubuntu focal main" | \
     sudo tee /etc/apt/sources.list.d/baculum.list
 
 # Update package list
@@ -2232,10 +2223,12 @@ sudo apt install -y \
 
 # Install PHP dependencies
 sudo apt install -y \
+    apache2-utils \
     php \
     php-bcmath \
     php-curl \
     php-json \
+    php-ldap \
     php-pgsql \
     php-mysql \
     php-mbstring \
@@ -2288,7 +2281,7 @@ path = ""
 [bconsole]
 enabled = "1"
 bin_path = "/usr/sbin/bconsole"
-cfg_path = "/etc/bacula/bconsole.conf"
+cfg_path = "/etc/bacula/bconsole-baculum.conf"
 use_sudo = "0"
 ```
 
@@ -2341,11 +2334,23 @@ sudo certbot --apache -d bacula.yourdomain.com
 
 ### Baculum API Authentication
 
-Create API user for Baculum Web:
+Create a restricted Bacula console for Baculum API:
 
-```bash
-# In bconsole, create restricted console
-*configure add console name=baculum-api password=api_password_here tlsenable=no
+```text
+# In bacula-dir.conf, create a restricted console and reload Bacula
+Console {
+  Name = baculum-api
+  Password = "api_password_here"
+  CommandACL = status, .status, show, list, run, restore, estimate
+}
+
+# In /etc/bacula/bconsole-baculum.conf
+Director {
+  Name = baculum-api
+  DIRport = 9101
+  address = localhost
+  Password = "api_password_here"
+}
 ```
 
 ---
@@ -2451,29 +2456,38 @@ echo "0 8 * * * root /usr/local/bin/bacula-status-report.sh" | sudo tee /etc/cro
 Install Bacula Prometheus Exporter:
 
 ```bash
-# Download bacula_exporter
-wget https://github.com/marcusva/bacula_exporter/releases/download/v1.0.0/bacula_exporter-1.0.0.linux-amd64.tar.gz
+# Install Go and build tools
+sudo apt install -y golang-go make git
 
-# Extract and install
-tar xzf bacula_exporter-1.0.0.linux-amd64.tar.gz
-sudo mv bacula_exporter /usr/local/bin/
+# Build bacula_exporter from source
+git clone https://github.com/funbox/bacula_exporter.git
+cd bacula_exporter
+make deps
+make all
+sudo install -m 0755 bacula_exporter /usr/local/bin/bacula_exporter
 
 # Create configuration
-sudo nano /etc/bacula_exporter.yml
+sudo nano /etc/bacula_exporter.conf
 ```
 
-```yaml
+```ini
 # Bacula Prometheus Exporter Configuration
-bacula:
-  host: localhost
-  port: 5432
-  database: bacula
-  user: bacula
-  password: your_secure_password_here
-  sslmode: disable
+[http]
+ip: 0.0.0.0
+port: 9625
+endpoint: /metrics
 
-web:
-  listen_address: ":9625"
+[db]
+name: bacula
+username: bacula
+password: your_secure_password_here
+host: localhost
+port: 5432
+sslmode: disable
+
+[log]
+output: console
+level: info
 ```
 
 Create systemd service:
@@ -2490,7 +2504,7 @@ After=network.target
 [Service]
 Type=simple
 User=bacula
-ExecStart=/usr/local/bin/bacula_exporter --config.file=/etc/bacula_exporter.yml
+ExecStart=/usr/local/bin/bacula_exporter -c /etc/bacula_exporter.conf
 Restart=always
 
 [Install]
@@ -2517,7 +2531,7 @@ sudo grep -i error /var/log/bacula/bacula.log
 sudo grep "BackupLocalServer" /var/log/bacula/bacula.log
 
 # View job messages from database
-sudo bconsole -c "messages"
+echo "messages" | sudo bconsole
 ```
 
 ### Health Check Script
@@ -2627,10 +2641,10 @@ sudo systemctl status postgresql
 psql -h localhost -U bacula -d bacula -c "SELECT 1;"
 
 # Check PostgreSQL logs
-sudo tail -f /var/log/postgresql/postgresql-14-main.log
+sudo tail -f /var/log/postgresql/postgresql-*-main.log
 
 # Verify pg_hba.conf settings
-sudo grep bacula /etc/postgresql/14/main/pg_hba.conf
+sudo grep bacula "$(sudo -u postgres psql -tAc "SHOW hba_file;")"
 ```
 
 ### Volume Issues
@@ -2698,7 +2712,7 @@ Job {
 # Enable spooling
 Job {
   SpoolData = yes
-  SpoolSize = 2G
+  Spool Size = 2G
 }
 
 # Use faster compression
