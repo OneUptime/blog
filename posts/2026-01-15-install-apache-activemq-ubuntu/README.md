@@ -1843,7 +1843,7 @@ String brokerUrl = "failover:(tcp://broker1:61616,tcp://broker2:61616)?" +
     "randomize=false&" +           // Try brokers in order
     "maxReconnectAttempts=10&" +   // Maximum reconnection attempts
     "maxReconnectDelay=30000&" +   // Maximum delay between attempts (30s)
-    "initialReconnectDelay=1000&"  // Initial delay (1s)
+    "initialReconnectDelay=1000&" + // Initial delay (1s)
     "backup=true";                 // Maintain backup connection
 
 ActiveMQConnectionFactory factory = new ActiveMQConnectionFactory(brokerUrl);
