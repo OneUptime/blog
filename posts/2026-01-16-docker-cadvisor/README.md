@@ -13,11 +13,9 @@ cAdvisor (Container Advisor) provides container-level resource usage and perform
 ## Basic Setup
 
 ```yaml
-version: '3.8'
-
 services:
   cadvisor:
-    image: gcr.io/cadvisor/cadvisor:v0.47.2
+    image: ghcr.io/google/cadvisor:v0.60.1
     privileged: true
     ports:
       - "8080:8080"
@@ -76,11 +74,9 @@ scrape_configs:
 ## Production Configuration
 
 ```yaml
-version: '3.8'
-
 services:
   cadvisor:
-    image: gcr.io/cadvisor/cadvisor:v0.47.2
+    image: ghcr.io/google/cadvisor:v0.60.1
     restart: unless-stopped
     privileged: true
     volumes:
@@ -92,7 +88,7 @@ services:
     command:
       - --housekeeping_interval=30s
       - --docker_only=true
-      - --disable_metrics=percpu,sched,tcp,udp,disk,diskIO,hugetlb,referenced_memory
+      - --disable_metrics=advtcp,cpu_topology,cpuset,hugetlb,memory_numa,percpu,process,referenced_memory,resctrl,sched,tcp,udp
     deploy:
       resources:
         limits:
@@ -117,4 +113,3 @@ count(container_last_seen{name!=""})
 ```
 
 cAdvisor provides essential container metrics with minimal configuration. Integrate with Prometheus for storage and Grafana for visualization as described in our post on [Prometheus and Grafana for Docker](https://oneuptime.com/blog/post/2026-01-16-docker-prometheus-grafana/view).
-
