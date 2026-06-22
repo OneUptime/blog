@@ -21,7 +21,7 @@ flowchart TB
   subgraph "Control Plane"
     faas_netes[faas-netes]
     queue_worker[Queue Worker]
-    nats[NATS Streaming]
+    nats[NATS/JetStream]
   end
   
   subgraph "Functions"
@@ -110,7 +110,7 @@ generateBasicAuth: false
 
 # Gateway configuration
 gateway:
-  replicas: 2
+  replicas: 1
   
   resources:
     requests:
@@ -127,35 +127,25 @@ gateway:
   # Direct invocation (skip NATS queue)
   directFunctions: false
   
-  # Scale from zero
+  # Scale from zero support in the gateway
   scaleFromZero: true
 
 # faas-netes (Kubernetes provider)
 faasnetes:
-  replicas: 1
-  
   resources:
     requests:
-      cpu: 50m
-      memory: 64Mi
+      cpu: 100m
+      memory: 120Mi
     limits:
       cpu: 200m
       memory: 128Mi
-      
-  # Image pull policy for functions
+
+# Function defaults
+functions:
   imagePullPolicy: "Always"
 
-# Async invocations with NATS
-nats:
-  enabled: true
-  
-  resources:
-    requests:
-      cpu: 25m
-      memory: 64Mi
-    limits:
-      cpu: 100m
-      memory: 128Mi
+# Async invocations
+async: true
 
 queueWorker:
   replicas: 1
@@ -168,7 +158,6 @@ queueWorker:
       cpu: 200m
       memory: 128Mi
       
-  maxInflight: 1
   ackWait: "60s"
 
 # Prometheus
@@ -177,13 +166,14 @@ prometheus:
   
   resources:
     requests:
-      cpu: 50m
-      memory: 256Mi
+      cpu: 100m
+      memory: 512Mi
     limits:
       cpu: 500m
       memory: 512Mi
       
-  retention: "15d"
+  retention:
+    time: "15d"
 
 # Alertmanager
 alertmanager:
@@ -203,20 +193,26 @@ basic_auth: true
 # Ingress
 ingress:
   enabled: true
+  ingressClassName: nginx
   annotations:
-    kubernetes.io/ingress.class: nginx
     cert-manager.io/cluster-issuer: letsencrypt-prod
   hosts:
     - host: openfaas.example.com
-      serviceName: gateway
-      servicePort: 8080
-      path: /
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: gateway
+                port:
+                  number: 8080
   tls:
     - secretName: openfaas-tls
       hosts:
         - openfaas.example.com
 
-# Autoscaler (built-in)
+# Autoscaler (OpenFaaS Pro)
 autoscaler:
   enabled: true
   replicas: 1
@@ -254,37 +250,43 @@ faas-cli version
 ```yaml
 # openfaas-pro-values.yaml
 openfaasPro: true
+clusterRole: true
 
 operator:
   create: true
+  leaderElection:
+    enabled: true
 
-# Event connector
+# Event metering
 eventSubscription:
   metering:
     enabled: true
 
-# SSO with OIDC
+# SSO with OpenFaaS IAM/OIDC
 oidcAuthPlugin:
-  enabled: true
-  provider: "https://accounts.google.com"
-  clientId: "your-client-id"
-  clientSecret: "your-client-secret"
-
-# Kafka connector
-kafkaConnector:
-  enabled: true
-  brokers: "kafka.kafka.svc.cluster.local:9092"
-  topics: "events"
-
-# SNS connector
-snsConnector:
-  enabled: true
-  arn: "arn:aws:sns:us-east-1:123456789:events"
+  iam:
+    enabled: true
+  systemIssuer:
+    url: "https://openfaas.example.com"
+  dashboardIssuer:
+    url: "https://accounts.google.com"
+    clientId: "your-client-id"
+    clientSecret: "your-client-secret"
 
 # Dashboard
 dashboard:
   enabled: true
   publicURL: "https://dashboard.example.com"
+  publicURLGateway: "https://openfaas.example.com"
+
+queueWorker:
+  replicas: 3
+
+queueWorkerPro:
+  maxInflight: 50
+
+nats:
+  streamReplication: 3
 ```
 
 ## Deploy Functions
@@ -329,7 +331,7 @@ functions:
     handler: ./hello-world
     image: registry.example.com/hello-world:latest
     
-    # Scaling
+    # Scaling (scale-to-zero requires OpenFaaS Pro)
     labels:
       com.openfaas.scale.min: "1"
       com.openfaas.scale.max: "10"
@@ -551,13 +553,13 @@ curl -X POST https://openfaas.example.com/async-function/my-function \
 # openfaas-values.yaml
 queueWorker:
   replicas: 3
-  maxInflight: 5
-  ackWait: "120s"
   
-  # Retry configuration
-  maxRetry: 3
-  initialRetryDelay: "5s"
-  maxRetryDelay: "300s"
+# OpenFaaS Pro concurrency and retry configuration
+queueWorkerPro:
+  maxInflight: 5
+  maxRetryAttempts: "3"
+  initialRetryWait: "5s"
+  maxRetryWait: "300s"
 ```
 
 ## Helm Chart for Functions
@@ -673,8 +675,7 @@ spec:
 ### Grafana Dashboard
 
 ```bash
-# Import OpenFaaS dashboard
-# Dashboard ID: 3434
+# Import the OpenFaaS dashboard JSON files from the Customer Community repository
 ```
 
 ### Alertmanager Configuration
@@ -743,13 +744,9 @@ groups:
 
 ```yaml
 # kafka-connector-values.yaml
-kafka:
-  brokerHosts: "kafka.kafka.svc.cluster.local:9092"
-  topics: "events,orders,notifications"
-  
-upstream:
-  timeout: "60s"
-  
+brokerHosts: "kafka.kafka.svc.cluster.local:9092"
+topics: "events,orders,notifications"
+upstreamTimeout: "60s"
 printResponseBody: true
 printRequestBody: true
 rebuildInterval: "30s"
@@ -758,10 +755,12 @@ rebuildInterval: "30s"
 ### Cron Connector
 
 ```yaml
-# cron-connector-values.yaml
-schedule: "*/5 * * * *"
-functionName: "scheduled-task"
-topic: "cron"
+# Function annotations for cron-connector
+functions:
+  scheduled-task:
+    annotations:
+      topic: cron-function
+      schedule: "*/5 * * * *"
 ```
 
 ## Troubleshooting
