@@ -197,18 +197,23 @@ interface Todo {
   id: string;
   title: string;
   completed: boolean;
+  description?: string;
+  priority?: 'low' | 'medium' | 'high';
+  createdAt?: string;
 }
 
 interface UpdateTodoInput {
   id: string;
-  completed: boolean;
+  completed?: boolean;
+  title?: string;
 }
 
 async function updateTodo(input: UpdateTodoInput): Promise<Todo> {
-  const response = await fetch(`/api/todos/${input.id}`, {
+  const { id, ...updates } = input;
+  const response = await fetch(`/api/todos/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ completed: input.completed }),
+    body: JSON.stringify(updates),
   });
   if (!response.ok) throw new Error('Failed to update todo');
   return response.json();
@@ -234,7 +239,7 @@ function useTodoToggle() {
         if (!old) return old;
         return old.map((todo) =>
           todo.id === updatedTodo.id
-            ? { ...todo, completed: updatedTodo.completed }
+            ? { ...todo, completed: updatedTodo.completed ?? todo.completed }
             : todo
         );
       });
@@ -242,7 +247,7 @@ function useTodoToggle() {
       // Optimistically update the individual item
       queryClient.setQueryData<Todo>(['todo', updatedTodo.id], (old) => {
         if (!old) return old;
-        return { ...old, completed: updatedTodo.completed };
+        return { ...old, completed: updatedTodo.completed ?? old.completed };
       });
 
       return { previousTodos, previousTodo };
@@ -313,8 +318,8 @@ function useCreateTodo() {
     },
 
     onError: (err, newTodo, context) => {
-      if (context?.previousTodos) {
-        queryClient.setQueryData(['todos'], context.previousTodos);
+      if (context) {
+        queryClient.setQueryData(['todos'], context.previousTodos ?? []);
       }
     },
 
@@ -355,8 +360,10 @@ function useDeleteTodo() {
 
     onMutate: async (todoId) => {
       await queryClient.cancelQueries({ queryKey: ['todos'] });
+      await queryClient.cancelQueries({ queryKey: ['todo', todoId] });
 
       const previousTodos = queryClient.getQueryData<Todo[]>(['todos']);
+      const previousTodo = queryClient.getQueryData<Todo>(['todo', todoId]);
 
       // Optimistically remove the todo
       queryClient.setQueryData<Todo[]>(['todos'], (old) => {
@@ -367,12 +374,15 @@ function useDeleteTodo() {
       // Also remove from individual cache
       queryClient.removeQueries({ queryKey: ['todo', todoId] });
 
-      return { previousTodos };
+      return { previousTodos, previousTodo };
     },
 
     onError: (err, todoId, context) => {
       if (context?.previousTodos) {
         queryClient.setQueryData(['todos'], context.previousTodos);
+      }
+      if (context?.previousTodo) {
+        queryClient.setQueryData(['todo', todoId], context.previousTodo);
       }
     },
 
@@ -740,8 +750,8 @@ function TodoForm() {
     },
 
     onError: (err, newTodo, context) => {
-      if (context?.previousTodos) {
-        queryClient.setQueryData(['todos'], context.previousTodos);
+      if (context) {
+        queryClient.setQueryData(['todos'], context.previousTodos ?? []);
       }
       toast.error('Failed to create todo');
     },
@@ -1091,14 +1101,12 @@ function useDebouncedOptimisticUpdate(todoId: string) {
 import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-function createWrapper() {
-  const queryClient = new QueryClient({
-    defaultOptions: {
-      queries: { retry: false },
-      mutations: { retry: false },
-    },
-  });
-
+function createWrapper(queryClient = new QueryClient({
+  defaultOptions: {
+    queries: { retry: false },
+    mutations: { retry: false },
+  },
+})) {
   return ({ children }: { children: React.ReactNode }) => (
     <QueryClientProvider client={queryClient}>
       {children}
@@ -1108,8 +1116,22 @@ function createWrapper() {
 
 describe('useTodoToggle', () => {
   it('optimistically updates todo completion', async () => {
-    const queryClient = new QueryClient();
-    const wrapper = createWrapper();
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        id: '1',
+        title: 'Test Todo',
+        completed: true,
+      }),
+    });
+
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    });
+    const wrapper = createWrapper(queryClient);
 
     // Pre-populate cache
     queryClient.setQueryData(['todo', '1'], {
@@ -1134,8 +1156,13 @@ describe('useTodoToggle', () => {
     // Mock failed API call
     global.fetch = jest.fn().mockRejectedValue(new Error('Network error'));
 
-    const queryClient = new QueryClient();
-    const wrapper = createWrapper();
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    });
+    const wrapper = createWrapper(queryClient);
 
     queryClient.setQueryData(['todo', '1'], {
       id: '1',
@@ -1159,17 +1186,18 @@ describe('useTodoToggle', () => {
 ### Integration Testing with MSW
 
 ```typescript
-import { rest } from 'msw';
+import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 
 const server = setupServer(
-  rest.patch('/api/todos/:id', (req, res, ctx) => {
-    return res(
-      ctx.json({
-        id: req.params.id,
-        ...req.body,
-      })
-    );
+  http.patch('/api/todos/:id', async ({ request, params }) => {
+    const { id } = params as { id: string };
+    const body = (await request.json()) as Partial<Todo>;
+
+    return HttpResponse.json({
+      id,
+      ...body,
+    });
   })
 );
 
@@ -1200,8 +1228,8 @@ it('shows optimistic update then confirms with server', async () => {
 
 it('shows error and rolls back on failure', async () => {
   server.use(
-    rest.patch('/api/todos/:id', (req, res, ctx) => {
-      return res(ctx.status(500));
+    http.patch('/api/todos/:id', () => {
+      return new HttpResponse(null, { status: 500 });
     })
   );
 
