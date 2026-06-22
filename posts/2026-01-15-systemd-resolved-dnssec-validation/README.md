@@ -42,7 +42,7 @@ sequenceDiagram
 
 ## Understanding systemd-resolved
 
-systemd-resolved is the default DNS resolver on most modern Linux distributions, including Ubuntu 18.04+, Debian 10+, Fedora, and Arch Linux. It provides:
+systemd-resolved is the default DNS resolver on some modern Linux distributions, including Ubuntu 18.04+ and Fedora 33+, and is available on Debian and Arch Linux. It provides:
 
 - Local DNS caching
 - DNSSEC validation
@@ -82,16 +82,15 @@ This displays the current DNS servers, search domains, and security settings for
 
 ## DNSSEC Configuration Options
 
-systemd-resolved supports four DNSSEC modes:
+systemd-resolved supports three DNSSEC modes, with normal boolean aliases such as `true` for `yes`:
 
 | Mode | Description | Use Case |
 | --- | --- | --- |
 | `no` | DNSSEC validation disabled | Legacy systems or debugging |
-| `allow-downgrade` | Validate if signatures exist, allow unsigned responses | Default, transitional |
+| `allow-downgrade` | Attempt validation, but disable DNSSEC if the server does not support it properly | Transitional |
 | `yes` | Strict validation, reject invalid signatures | Recommended for security |
-| `true` | Alias for `yes` | Same as above |
 
-The default `allow-downgrade` mode is a compromise: it validates signed domains but allows unsigned ones. This prevents breakage for domains without DNSSEC but does not protect against downgrade attacks where an attacker strips signatures.
+The systemd default is `no` unless your distribution overrides it. The `allow-downgrade` mode is a compromise: it attempts validation, but automatically turns DNSSEC off when the DNS server does not support it properly. This improves compatibility but does not protect against downgrade attacks where an attacker makes DNSSEC appear unsupported.
 
 ## Enabling Strict DNSSEC Validation
 
@@ -150,7 +149,7 @@ DNSSEC=yes
 # Use DNS-over-TLS for encrypted queries
 DNSOverTLS=yes
 
-# Fallback DNS servers with DNSSEC support
+# Primary DNS servers with DNSSEC support
 DNS=1.1.1.1#cloudflare-dns.com 1.0.0.1#cloudflare-dns.com
 DNS=8.8.8.8#dns.google 8.8.4.4#dns.google
 DNS=9.9.9.9#dns.quad9.net 149.112.112.112#dns.quad9.net
@@ -259,7 +258,7 @@ resolvectl query dnssec-failed.org
 With strict DNSSEC enabled, this should fail:
 
 ```text
-dnssec-failed.org: resolve call failed: DNSSEC validation failed: signature-expired
+dnssec-failed.org: resolve call failed: DNSSEC validation failed: no-signature
 ```
 
 ### Test 4: Use the DNSSEC Debugger
@@ -331,8 +330,8 @@ sudo timedatectl set-ntp true
 ### Issue 4: DNS Not Working After Configuration
 
 ```bash
-# Check for configuration syntax errors
-systemd-analyze verify /etc/systemd/resolved.conf.d/*.conf
+# View the merged systemd-resolved configuration
+systemd-analyze cat-config systemd/resolved.conf
 
 # View resolved logs for errors
 journalctl -u systemd-resolved --no-pager -n 50
@@ -392,8 +391,13 @@ DHCP=yes
 DNSSEC=yes
 DNSOverTLS=yes
 
-[DHCP]
-UseDNS=no  # Ignore DHCP-provided DNS
+[DHCPv4]
+# Ignore DHCP-provided DNS
+UseDNS=no
+
+[DHCPv6]
+# Ignore DHCP-provided DNS
+UseDNS=no
 ```
 
 ### Using Custom Trust Anchors
@@ -442,10 +446,10 @@ This provides:
 
 You can monitor your DNSSEC configuration using OneUptime's synthetic monitoring:
 
-### Create a DNS Monitor
+### Create a DNSSEC Monitor
 
 1. Navigate to your OneUptime dashboard
-2. Create a new DNS monitor
+2. Create a new DNSSEC monitor
 3. Configure it to check DNSSEC-protected domains
 4. Set up alerts for validation failures
 
@@ -453,18 +457,13 @@ You can monitor your DNSSEC configuration using OneUptime's synthetic monitoring
 
 Track DNS resolution latency to detect DNSSEC-related performance issues:
 
-```yaml
-# Example OneUptime probe configuration
-probe:
-  type: dns
-  target: example.com
-  record_type: A
-  dnssec_validation: true
-  alerts:
-    - condition: response_time > 500ms
-      severity: warning
-    - condition: dnssec_valid == false
-      severity: critical
+Configure a DNSSEC monitor with:
+
+```text
+Monitor type: DNSSEC
+Domain name: example.com
+Alert on validation failure: enabled
+Alert when response time exceeds: 500ms
 ```
 
 ## Security Best Practices
@@ -495,7 +494,7 @@ FallbackDNS=208.67.222.222 185.228.168.168
 Block DNS traffic that bypasses systemd-resolved:
 
 ```bash
-# Allow DNS only through systemd-resolved (127.0.0.53)
+# Block direct classic DNS traffic outside the systemd-resolved stub (127.0.0.53)
 sudo iptables -A OUTPUT -p udp --dport 53 ! -d 127.0.0.53 -j DROP
 sudo iptables -A OUTPUT -p tcp --dport 53 ! -d 127.0.0.53 -j DROP
 ```
@@ -646,9 +645,11 @@ sudo systemctl restart systemd-resolved
 
 ### Debian 11+
 
-May need to enable systemd-resolved first:
+May need to install and enable systemd-resolved first:
 
 ```bash
+sudo apt update
+sudo apt install systemd-resolved
 sudo systemctl enable --now systemd-resolved
 sudo ln -sf /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
 ```
