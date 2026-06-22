@@ -61,10 +61,10 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       
       - name: Setup Helm
-        uses: azure/setup-helm@v3
+        uses: azure/setup-helm@v5.0.0
         with:
           version: v3.13.0
       
@@ -104,10 +104,10 @@ jobs:
       matrix:
         chart: [frontend, backend, database]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       
       - name: Setup Helm
-        uses: azure/setup-helm@v3
+        uses: azure/setup-helm@v5.0.0
       
       # Per-chart cache
       - name: Cache ${{ matrix.chart }} Dependencies
@@ -141,10 +141,10 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       
       - name: Setup Helm
-        uses: azure/setup-helm@v3
+        uses: azure/setup-helm@v5.0.0
       
       # Cache repository indexes
       - name: Cache Helm Repositories
@@ -363,19 +363,10 @@ pipeline {
             steps {
                 checkout scm
                 
-                // Try unstash previous cache
-                script {
-                    try {
-                        unstash 'helm-deps'
-                    } catch (Exception e) {
-                        echo "No previous cache found"
-                    }
-                }
-                
                 sh 'helm dependency build charts/myapp'
                 sh 'helm package charts/myapp -d packages/'
                 
-                // Stash dependencies for future builds
+                // Stash dependencies for later stages in this run
                 stash name: 'helm-deps', includes: 'charts/*/charts/**'
                 stash name: 'helm-packages', includes: 'packages/*.tgz'
             }
@@ -557,10 +548,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       
       - name: Setup Helm
-        uses: azure/setup-helm@v3
+        uses: azure/setup-helm@v5.0.0
       
       # Add cache server as repository
       - name: Configure Cache Repository
@@ -570,21 +561,24 @@ jobs:
       
       - name: Build with Cache
         run: |
-          # Try cache first, fallback to upstream
-          helm dependency build charts/myapp || {
-            echo "Cache miss, using upstream"
-            helm repo add bitnami https://charts.bitnami.com/bitnami
-            helm repo update
-            helm dependency build charts/myapp
-          }
+          # Chart.yaml dependencies should use repository: "@cache"
+          helm dependency build charts/myapp
       
       - name: Update Cache
         if: success()
         run: |
-          # Push chart to cache for future builds
+          # Push charts and a Helm repository index to cache for future builds
+          mkdir -p cache-repo
+          cp charts/myapp/charts/*.tgz cache-repo/
+          if curl -fsSL "${{ env.CHART_CACHE_URL }}/charts/index.yaml" -o cache-repo/index.yaml; then
+            helm repo index cache-repo --url "${{ env.CHART_CACHE_URL }}/charts" --merge cache-repo/index.yaml
+          else
+            helm repo index cache-repo --url "${{ env.CHART_CACHE_URL }}/charts"
+          fi
           for chart in charts/myapp/charts/*.tgz; do
             curl -X PUT -T "$chart" "${{ env.CHART_CACHE_URL }}/upload/$(basename $chart)"
           done
+          curl -X PUT -T cache-repo/index.yaml "${{ env.CHART_CACHE_URL }}/upload/index.yaml"
 ```
 
 ## Cache Invalidation Strategies
@@ -609,12 +603,16 @@ cache:
 
 ```yaml
 # Weekly cache refresh
-cache:
-  key: helm-deps-${{ github.run_id }}-week-${{ steps.week.outputs.number }}
-
 steps:
   - id: week
     run: echo "number=$(date +%V)" >> $GITHUB_OUTPUT
+
+  - uses: actions/cache@v5
+    with:
+      path: charts/*/charts
+      key: helm-deps-week-${{ steps.week.outputs.number }}-${{ hashFiles('charts/*/Chart.lock') }}
+      restore-keys: |
+        helm-deps-week-${{ steps.week.outputs.number }}-
 ```
 
 ## Performance Comparison
