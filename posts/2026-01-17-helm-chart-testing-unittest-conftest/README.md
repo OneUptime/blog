@@ -68,8 +68,8 @@ The chart-testing tool provides comprehensive lint and test capabilities, especi
 brew install chart-testing
 
 # Linux
-curl -LO https://github.com/helm/chart-testing/releases/download/v3.10.1/chart-testing_3.10.1_linux_amd64.tar.gz
-tar xzf chart-testing_3.10.1_linux_amd64.tar.gz
+curl -LO https://github.com/helm/chart-testing/releases/download/v3.14.0/chart-testing_3.14.0_linux_amd64.tar.gz
+tar xzf chart-testing_3.14.0_linux_amd64.tar.gz
 sudo mv ct /usr/local/bin/
 ```
 
@@ -119,8 +119,8 @@ helm template my-release ./my-chart
 # Render with specific values
 helm template my-release ./my-chart -f values-test.yaml
 
-# Render and validate against Kubernetes schema
-helm template my-release ./my-chart | kubectl apply --dry-run=client -f -
+# Render and validate against the Kubernetes API schema (requires cluster access)
+helm template my-release ./my-chart | kubectl apply --dry-run=server -f -
 
 # Render specific template
 helm template my-release ./my-chart -s templates/deployment.yaml
@@ -245,7 +245,7 @@ tests:
     set:
       resources: {}
     asserts:
-      - isNull:
+      - notExists:
           path: spec.template.spec.containers[0].resources
 ```
 
@@ -360,8 +360,8 @@ Conftest validates Helm output against Open Policy Agent (OPA) policies.
 brew install conftest
 
 # Linux
-curl -LO https://github.com/open-policy-agent/conftest/releases/download/v0.46.2/conftest_0.46.2_Linux_x86_64.tar.gz
-tar xzf conftest_0.46.2_Linux_x86_64.tar.gz
+curl -LO https://github.com/open-policy-agent/conftest/releases/download/v0.68.2/conftest_0.68.2_Linux_x86_64.tar.gz
+tar xzf conftest_0.68.2_Linux_x86_64.tar.gz
 sudo mv conftest /usr/local/bin/
 ```
 
@@ -374,7 +374,7 @@ Write policies in Rego to enforce standards.
 package main
 
 # Deny deployments without resource limits
-deny[msg] {
+deny contains msg if {
   input.kind == "Deployment"
   container := input.spec.template.spec.containers[_]
   not container.resources.limits
@@ -382,7 +382,7 @@ deny[msg] {
 }
 
 # Deny privileged containers
-deny[msg] {
+deny contains msg if {
   input.kind == "Deployment"
   container := input.spec.template.spec.containers[_]
   container.securityContext.privileged == true
@@ -390,14 +390,14 @@ deny[msg] {
 }
 
 # Require specific labels
-deny[msg] {
+deny contains msg if {
   input.kind == "Deployment"
   not input.metadata.labels["app.kubernetes.io/name"]
   msg := sprintf("Deployment %s must have app.kubernetes.io/name label", [input.metadata.name])
 }
 
 # Deny latest tag
-deny[msg] {
+deny contains msg if {
   input.kind == "Deployment"
   container := input.spec.template.spec.containers[_]
   endswith(container.image, ":latest")
@@ -405,7 +405,7 @@ deny[msg] {
 }
 
 # Require readiness probe
-warn[msg] {
+warn contains msg if {
   input.kind == "Deployment"
   container := input.spec.template.spec.containers[_]
   not container.readinessProbe
@@ -601,7 +601,7 @@ jobs:
       - uses: actions/checkout@v4
       
       - name: Set up Helm
-        uses: azure/setup-helm@v3
+        uses: azure/setup-helm@v5.0.0
         
       - name: Lint charts
         run: |
@@ -616,7 +616,7 @@ jobs:
       - uses: actions/checkout@v4
       
       - name: Set up Helm
-        uses: azure/setup-helm@v3
+        uses: azure/setup-helm@v5.0.0
         
       - name: Install unittest plugin
         run: helm plugin install https://github.com/helm-unittest/helm-unittest
@@ -640,12 +640,12 @@ jobs:
       - uses: actions/checkout@v4
       
       - name: Set up Helm
-        uses: azure/setup-helm@v3
+        uses: azure/setup-helm@v5.0.0
         
       - name: Install conftest
         run: |
-          curl -LO https://github.com/open-policy-agent/conftest/releases/download/v0.46.2/conftest_0.46.2_Linux_x86_64.tar.gz
-          tar xzf conftest_0.46.2_Linux_x86_64.tar.gz
+          curl -LO https://github.com/open-policy-agent/conftest/releases/download/v0.68.2/conftest_0.68.2_Linux_x86_64.tar.gz
+          tar xzf conftest_0.68.2_Linux_x86_64.tar.gz
           sudo mv conftest /usr/local/bin/
           
       - name: Run policy tests
@@ -662,10 +662,10 @@ jobs:
       - uses: actions/checkout@v4
       
       - name: Set up Helm
-        uses: azure/setup-helm@v3
+        uses: azure/setup-helm@v5.0.0
         
       - name: Create kind cluster
-        uses: helm/kind-action@v1
+        uses: helm/kind-action@v1.14.0
         
       - name: Run integration tests
         run: |
