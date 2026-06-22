@@ -22,7 +22,7 @@ flowchart TB
 
     subgraph Capabilities["Capabilities Model"]
         direction LR
-        CAP1["CAP_NET_BIND<br/>Low ports"]
+        CAP1["CAP_NET_BIND_SERVICE<br/>Low ports"]
         CAP2["CAP_CHOWN<br/>Change owner"]
         CAP3["CAP_SYS_ADMIN<br/>Many syscalls"]
         CAP4["CAP_KILL<br/>Send signals"]
@@ -39,7 +39,7 @@ Docker containers run with these capabilities by default:
 |------------|-------------|
 | CHOWN | Change file ownership |
 | DAC_OVERRIDE | Bypass file permissions |
-| FSETID | Set file capabilities |
+| FSETID | Preserve set-user-ID and set-group-ID bits |
 | FOWNER | Bypass ownership checks |
 | MKNOD | Create special files |
 | NET_RAW | Use raw sockets |
@@ -91,6 +91,9 @@ services:
 docker run \
   --cap-drop=ALL \
   --cap-add=NET_BIND_SERVICE \
+  --cap-add=CHOWN \
+  --cap-add=SETGID \
+  --cap-add=SETUID \
   nginx
 ```
 
@@ -105,7 +108,7 @@ services:
     cap_drop:
       - ALL
     cap_add:
-      - NET_BIND_SERVICE  # Bind to port 80/443
+      - NET_BIND_SERVICE  # Bind to port 80/443 when privileged ports are enforced
       - CHOWN             # Change file ownership
       - SETGID            # Switch to www-data group
       - SETUID            # Switch to www-data user
@@ -195,7 +198,7 @@ services:
 # Required by: Services dropping privileges
 
 # CAP_NET_BIND_SERVICE: Bind to ports < 1024
-# Required by: Web servers on port 80/443
+# Required by: Web servers on port 80/443 when privileged ports are enforced
 
 # CAP_NET_RAW: Use raw sockets
 # Required by: ping, network diagnostic tools
@@ -206,7 +209,7 @@ services:
 ### Check Container Capabilities
 
 ```bash
-# Using capsh (install libcap-ng-utils)
+# Using capsh (install libcap on Alpine)
 docker run --rm --cap-drop=ALL alpine sh -c 'apk add libcap && capsh --print'
 
 # Using getpcaps
@@ -242,8 +245,6 @@ docker run --cap-drop=ALL --cap-add=NET_BIND_SERVICE --cap-add=CHOWN myapp
 ### Minimal Web Application
 
 ```yaml
-version: '3.8'
-
 services:
   app:
     image: myapp
@@ -303,9 +304,15 @@ services:
 ### Common Error Messages
 
 ```bash
-# Permission denied binding to port 80
+# Permission denied binding to port 80 when privileged ports are enforced
 # Solution: Add NET_BIND_SERVICE
-docker run --cap-drop=ALL --cap-add=NET_BIND_SERVICE nginx
+docker run \
+  --cap-drop=ALL \
+  --cap-add=NET_BIND_SERVICE \
+  --cap-add=CHOWN \
+  --cap-add=SETGID \
+  --cap-add=SETUID \
+  nginx
 
 # Permission denied changing file ownership
 # Solution: Add CHOWN
@@ -345,8 +352,6 @@ services:
 ## Production Example
 
 ```yaml
-version: '3.8'
-
 x-security: &default-security
   cap_drop:
     - ALL
@@ -395,11 +400,10 @@ volumes:
 
 | Workload | Capabilities Needed |
 |----------|-------------------|
-| Static web server | None |
-| Web server (port 80) | NET_BIND_SERVICE |
+| Static web server (high port/pre-owned files) | None |
+| Web server (port 80, when privileged ports are enforced) | NET_BIND_SERVICE |
 | Database | CHOWN, FOWNER, SETGID, SETUID |
 | Network tools | NET_RAW, NET_ADMIN |
 | Most applications | None |
 
 Always start with `--cap-drop=ALL` and add only the capabilities your application actually needs. Combine capability restrictions with other security measures like non-root users, read-only filesystems, and seccomp profiles for defense in depth. For more on running containers as non-root, see our post on [Running Docker Containers as Non-Root Users](https://oneuptime.com/blog/post/2026-01-16-docker-run-non-root-user/view).
-
