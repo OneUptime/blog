@@ -119,8 +119,8 @@ inotifywait [options] <file_or_directory>
 ### Your First inotifywait Command
 
 ```bash
-# Monitor a single file for any event (exits after first event)
-inotifywait /var/log/syslog
+# Monitor a single file for modifications (exits after first matching event)
+inotifywait -e modify /var/log/syslog
 ```
 
 Open another terminal and modify the file:
@@ -168,7 +168,8 @@ inotifywait can monitor various file system events. Understanding these events i
 | `open` | File was opened |
 | `moved_to` | File was moved into watched directory |
 | `moved_from` | File was moved out of watched directory |
-| `move` | File was moved (either to or from) |
+| `move` | File was moved (alias for `moved_to` and `moved_from`; output uses those event names) |
+| `move_self` | Watched file or directory was moved |
 | `create` | File was created in watched directory |
 | `delete` | File was deleted from watched directory |
 | `delete_self` | Watched file or directory was deleted |
@@ -244,7 +245,7 @@ inotifywait -m /home/user/test/
 
 ```bash
 # CSV format for easy parsing
-inotifywait -m --format '%w,%e,%f' /home/user/test/
+inotifywait -m --csv /home/user/test/
 # Output: /home/user/test/,CREATE,newfile.txt
 ```
 
@@ -277,7 +278,7 @@ inotifywait -m --timefmt '%Y-%m-%dT%H:%M:%S' \
 # Suppress initial "Setting up watches" message
 inotifywait -m -q /home/user/test/
 
-# Extra quiet - only output events, no headers
+# Extra quiet - suppress event output too, except fatal errors
 inotifywait -m -qq /home/user/test/
 ```
 
@@ -374,8 +375,8 @@ inotifywait -m -r -q \
     -e moved_to \
     -e delete \
     --exclude '(\.git|node_modules|\.swp$|\.tmp$)' \
-    --format '%w%f %e' \
-    "$LOCAL_DIR" | while read -r file event; do
+    --format '%w%f|%e' \
+    "$LOCAL_DIR" | while IFS='|' read -r file event; do
 
     # Debounce: wait a short time for batch changes to complete
     sleep 0.5
@@ -617,8 +618,8 @@ echo "Backup location: $BACKUP_DIR"
 inotifywait -m -r -q \
     -e close_write \
     -e moved_to \
-    --format '%w%f %e' \
-    "$WATCH_DIR" | while read -r file event; do
+    --format '%w%f|%e' \
+    "$WATCH_DIR" | while IFS='|' read -r file event; do
 
     create_backup "$file" "$event"
 done
@@ -715,8 +716,8 @@ inotifywait -m -r -q \
     -e delete \
     --include "$INCLUDE_REGEX" \
     --exclude '(__pycache__|\.pyc$|\.git)' \
-    --format '%w%f %e' \
-    "$WATCH_DIR" | while read -r file event; do
+    --format '%w%f|%e' \
+    "$WATCH_DIR" | while IFS='|' read -r file event; do
 
     echo "[$(date '+%H:%M:%S')] Change detected: $event - $file"
     restart_app
@@ -892,6 +893,9 @@ Description=File System Monitor Service
 After=network.target
 # Optional: start after a specific mount point is available
 # After=mnt-data.mount
+# Limit restarts to prevent rapid restart loops
+StartLimitIntervalSec=60
+StartLimitBurst=3
 
 [Service]
 # Type simple because inotifywait runs in foreground
@@ -910,10 +914,6 @@ ExecStart=/opt/file-monitor/monitor.sh
 # Restart policy - always restart on failure
 Restart=always
 RestartSec=10
-
-# Limit restarts to prevent rapid restart loops
-StartLimitIntervalSec=60
-StartLimitBurst=3
 
 # Environment variables
 Environment="WATCH_DIR=/var/www/html"
@@ -1065,12 +1065,8 @@ LimitNPROC=64
 TimeoutStartSec=30
 TimeoutStopSec=30
 
-# Watchdog - systemd will restart if service doesn't respond
-WatchdogSec=60
-
-# Notification socket for sd_notify
-Type=notify
-NotifyAccess=main
+# Watchdog - only use this if the script sends WATCHDOG=1 with systemd-notify or sd_notify
+# WatchdogSec=60
 ```
 
 ### Multi-Instance Service Template
