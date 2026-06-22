@@ -67,8 +67,16 @@ apt-get install -y open-iscsi
 systemctl enable --now iscsid
 
 # RHEL/CentOS
-yum install -y iscsi-initiator-utils
+yum --setopt=tsflags=noscripts install -y iscsi-initiator-utils
+echo "InitiatorName=$(/sbin/iscsi-iname)" > /etc/iscsi/initiatorname.iscsi
 systemctl enable --now iscsid
+
+# Backup and RWX features require an NFSv4 client
+# Ubuntu/Debian
+apt-get install -y nfs-common
+
+# RHEL/CentOS
+yum install -y nfs-utils
 
 # Verify
 systemctl status iscsid
@@ -77,8 +85,10 @@ systemctl status iscsid
 ### Longhorn Environment Check
 
 ```bash
-# Run environment check
-curl -sSfL https://raw.githubusercontent.com/longhorn/longhorn/master/scripts/environment_check.sh | bash
+# Run preflight check
+curl -sSfL -o longhornctl https://github.com/longhorn/cli/releases/download/v1.12.0/longhornctl-linux-amd64
+chmod +x longhornctl
+./longhornctl check preflight
 ```
 
 ## Installation
@@ -134,12 +144,13 @@ longhornUI:
   replicas: 2
   priorityClass: system-cluster-critical
 
-# Default Settings
-defaultSettings:
-  # Backup target (S3, NFS, etc.)
+# Default backup store
+defaultBackupStore:
   backupTarget: "s3://longhorn-backups@us-east-1/"
   backupTargetCredentialSecret: longhorn-backup-secret
-  
+
+# Default Settings
+defaultSettings:
   # Default replica count
   defaultReplicaCount: 3
   
@@ -160,9 +171,8 @@ defaultSettings:
   # Automatic salvage
   autoSalvage: true
   
-  # Guaranteed engine manager CPU
-  guaranteedEngineManagerCPU: 12
-  guaranteedReplicaManagerCPU: 12
+  # Guaranteed instance manager CPU
+  guaranteedInstanceManagerCPU: 12
   
   # Snapshot data integrity
   snapshotDataIntegrity: fast-check
@@ -200,9 +210,10 @@ ingress:
     nginx.ingress.kubernetes.io/auth-type: basic
     nginx.ingress.kubernetes.io/auth-secret: longhorn-basic-auth
 
-# Service Monitor for Prometheus
-serviceMonitor:
-  enabled: true
+# ServiceMonitor for Prometheus
+metrics:
+  serviceMonitor:
+    enabled: true
 ```
 
 ### Create Backup Secret
@@ -323,18 +334,29 @@ spec:
 ### Volume with Backup Source
 
 ```yaml
+# storageclass-restore.yaml
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: longhorn-restore
+provisioner: driver.longhorn.io
+allowVolumeExpansion: true
+reclaimPolicy: Delete
+volumeBindingMode: Immediate
+parameters:
+  numberOfReplicas: "3"
+  fsType: "ext4"
+  fromBackup: "s3://longhorn-backups@us-east-1/?backup=backup-123&volume=myapp-data"
+---
 # pvc-from-backup.yaml
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: myapp-restored
-  annotations:
-    # Restore from specific backup
-    longhorn.io/backup-url: "s3://longhorn-backups@us-east-1/?backup=backup-123&volume=myapp-data"
 spec:
   accessModes:
     - ReadWriteOnce
-  storageClassName: longhorn
+  storageClassName: longhorn-restore
   resources:
     requests:
       storage: 10Gi
@@ -410,6 +432,7 @@ metadata:
   name: myapp-data
   labels:
     # Associate with recurring job group
+    recurring-job.longhorn.io/source: enabled
     recurring-job-group.longhorn.io/default: enabled
     recurring-job.longhorn.io/backup-daily: enabled
 spec:
@@ -436,8 +459,11 @@ spec:
   # Create from backup
   fromBackup: "s3://longhorn-backups@us-east-1/?backup=backup-123&volume=myapp-data"
   # Mark as standby (read-only)
-  standby: true
+  Standby: true
+  size: "10737418240"
   numberOfReplicas: 3
+  accessMode: rwo
+  frontend: blockdev
 ```
 
 ### Activate Standby Volume
@@ -446,17 +472,22 @@ spec:
 # Activate for read-write (when primary fails)
 kubectl -n longhorn-system patch volume dr-volume \
   --type merge \
-  -p '{"spec":{"standby":false}}'
+  -p '{"spec":{"Standby":false}}'
 ```
 
 ## Node Configuration
 
 ### Configure Disk Tags
 
-```yaml
-# Label nodes for disk selection
-kubectl label nodes node1 node.longhorn.io/disk-ssd=true
-kubectl label nodes node2 node.longhorn.io/disk-ssd=true
+```bash
+# Add Longhorn storage tags via the Longhorn Node custom resource
+kubectl -n longhorn-system patch node.longhorn.io node1 \
+  --type merge \
+  -p '{"spec":{"tags":["storage","fast"],"disks":{"default-disk":{"tags":["ssd","fast"]}}}}'
+
+kubectl -n longhorn-system patch node.longhorn.io node2 \
+  --type merge \
+  -p '{"spec":{"tags":["storage","fast"],"disks":{"default-disk":{"tags":["ssd","fast"]}}}}'
 ```
 
 ### Reserve Disk Space
@@ -486,8 +517,9 @@ spec:
 
 ```yaml
 # ServiceMonitor included in values
-serviceMonitor:
-  enabled: true
+metrics:
+  serviceMonitor:
+    enabled: true
 ```
 
 ### Key Metrics
