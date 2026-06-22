@@ -308,7 +308,7 @@ For Kubernetes 1.24 and later, tokens are not automatically created. Generate on
 
 ```bash
 # Generate a token for the admin-user ServiceAccount
-# Token expires in 24 hours by default
+# Token lifetime is set by the API server (1 hour by default)
 kubectl create token admin-user -n kubernetes-dashboard
 
 # For a longer-lived token (30 days), use --duration
