@@ -53,7 +53,7 @@ Before installing Mattermost, ensure your system meets these requirements:
 - Port 8065 for direct Mattermost access (optional)
 
 ### Software Requirements
-- PostgreSQL 12 or higher (recommended) or MySQL 8.0+
+- PostgreSQL 14 or higher (required; MySQL support is deprecated starting with Mattermost v11)
 - Nginx for reverse proxy
 - Certbot for SSL certificates
 
@@ -65,7 +65,7 @@ Let's start by updating the system and installing the necessary packages:
 sudo apt update && sudo apt upgrade -y
 
 # Install essential utilities
-sudo apt install -y curl wget gnupg2 software-properties-common
+sudo apt install -y curl wget gnupg2 software-properties-common jq
 ```
 
 ## Database Setup (PostgreSQL)
@@ -101,19 +101,29 @@ sudo -u postgres psql
 CREATE USER mmuser WITH PASSWORD 'your_secure_password_here';
 
 -- Create the Mattermost database
-CREATE DATABASE mattermost;
+CREATE DATABASE mattermost WITH ENCODING 'UTF8' LC_COLLATE='en_US.UTF-8' LC_CTYPE='en_US.UTF-8' TEMPLATE=template0;
 
 -- Grant all privileges on the database to the Mattermost user
 GRANT ALL PRIVILEGES ON DATABASE mattermost TO mmuser;
+
+-- Set database ownership for Mattermost
+ALTER DATABASE mattermost OWNER TO mmuser;
 
 -- Connect to the mattermost database to set schema permissions
 \c mattermost
 
 -- Grant schema permissions (required for PostgreSQL 15+)
-GRANT ALL ON SCHEMA public TO mmuser;
+ALTER SCHEMA public OWNER TO mmuser;
+GRANT USAGE, CREATE ON SCHEMA public TO mmuser;
 
 -- Exit PostgreSQL
 \q
+```
+
+If the database creation fails with an `invalid LC_COLLATE locale name` error, generate the locale first:
+
+```bash
+sudo locale-gen en_US.UTF-8
 ```
 
 ### Configuring PostgreSQL for Mattermost
@@ -181,7 +191,7 @@ Download the latest version of Mattermost from the official releases:
 ```bash
 # Set the Mattermost version to install
 # Check https://mattermost.com/download/ for the latest version
-MATTERMOST_VERSION="9.11.0"
+MATTERMOST_VERSION="11.8.1"
 
 # Download Mattermost Server
 wget https://releases.mattermost.com/${MATTERMOST_VERSION}/mattermost-${MATTERMOST_VERSION}-linux-amd64.tar.gz
@@ -212,9 +222,9 @@ Edit the main configuration file:
 sudo nano /opt/mattermost/config/config.json
 ```
 
-Here's a comprehensive configuration with detailed comments:
+Here's a comprehensive configuration with detailed comments. Mattermost's `config.json` must be valid JSON, so remove the `//` comments before saving these examples into the live config file:
 
-```json
+```jsonc
 {
     "ServiceSettings": {
         // The URL users will use to access Mattermost
@@ -246,7 +256,7 @@ Here's a comprehensive configuration with detailed comments:
         // Enable post searching
         "EnablePostSearch": true,
 
-        // Enable user searching
+        // Enable user typing indicators
         "EnableUserTypingMessages": true,
 
         // Session length for web clients in hours
@@ -261,11 +271,8 @@ Here's a comprehensive configuration with detailed comments:
         // Websocket URL (usually auto-detected)
         "WebsocketURL": "",
 
-        // Allow CORS from any origin (set specific origins in production)
-        "AllowCorsFrom": "",
-
-        // Enable API version 4
-        "EnableAPIv4": true
+        // Leave empty unless you need cross-origin browser access
+        "AllowCorsFrom": ""
     },
 
     "TeamSettings": {
@@ -274,9 +281,6 @@ Here's a comprehensive configuration with detailed comments:
 
         // Maximum users per team
         "MaxUsersPerTeam": 50000,
-
-        // Enable team creation by regular users
-        "EnableTeamCreation": true,
 
         // Enable user creation (set false for LDAP-only)
         "EnableUserCreation": true,
@@ -287,9 +291,6 @@ Here's a comprehensive configuration with detailed comments:
 
         // Restrict team creation to specific domains
         "RestrictCreationToDomains": "",
-
-        // Restrict team invite by email domain
-        "RestrictTeamInvite": "all",
 
         // User status away timeout in seconds
         "UserStatusAwayTimeout": 300,
@@ -462,7 +463,7 @@ Here's a comprehensive configuration with detailed comments:
         "EnableMarketplace": true,
 
         // Marketplace URL
-        "MarketplaceUrl": "https://api.integrations.mattermost.com",
+        "MarketplaceURL": "https://api.integrations.mattermost.com",
 
         // Plugin directory
         "Directory": "/opt/mattermost/plugins",
@@ -519,7 +520,6 @@ Group=mattermost
 WorkingDirectory=/opt/mattermost
 
 # Command to start Mattermost
-# -c specifies the config file location
 ExecStart=/opt/mattermost/bin/mattermost
 
 # Time to wait for startup
@@ -548,8 +548,8 @@ ProtectSystem=full
 # Make /home, /root, and /run/user inaccessible
 ProtectHome=true
 
-# Create private /tmp and /var/tmp
-PrivateTmp=true
+# Keep /var/tmp visible so mmctl --local can reach the default local-mode socket
+PrivateTmp=false
 
 # Prevent gaining new privileges
 NoNewPrivileges=true
@@ -602,7 +602,7 @@ Create a new server block configuration:
 sudo nano /etc/nginx/sites-available/mattermost
 ```
 
-Add the following comprehensive configuration:
+Add the following comprehensive configuration. If you have not obtained the Let's Encrypt certificate yet, use only the port 80 server block first or temporarily comment out the HTTPS server block and SSL certificate directives; otherwise `nginx -t` will fail because the certificate files do not exist yet.
 
 ```nginx
 # Mattermost Nginx Configuration
@@ -884,20 +884,20 @@ Access the System Console at `https://chat.example.com/admin_console`:
 ### Creating Teams and Channels
 
 ```bash
-# Via CLI (optional)
+# Via mmctl in local mode (optional)
 cd /opt/mattermost/bin
 
 # Create a new team
-sudo -u mattermost ./mattermost team create --name engineering --display_name "Engineering Team"
+sudo -u mattermost ./mmctl --local team create --name engineering --display-name "Engineering Team" --email user@example.com
 
 # Create a channel
-sudo -u mattermost ./mattermost channel create --team engineering --name general --display_name "General"
+sudo -u mattermost ./mmctl --local channel create --team engineering --name general --display-name "General"
 
 # Add a user to a team
-sudo -u mattermost ./mattermost team add engineering user@example.com
+sudo -u mattermost ./mmctl --local team users add engineering user@example.com
 
-# Promote user to team admin
-sudo -u mattermost ./mattermost roles member user@example.com
+# Promote a user to system admin
+sudo -u mattermost ./mmctl --local roles system_admin user@example.com
 ```
 
 ## SMTP Email Configuration
@@ -908,7 +908,7 @@ Email is essential for notifications, password resets, and invitations.
 
 #### Gmail SMTP
 
-```json
+```jsonc
 {
     "EmailSettings": {
         "EnableSignUpWithEmail": true,
@@ -928,7 +928,7 @@ Email is essential for notifications, password resets, and invitations.
 
 #### Amazon SES
 
-```json
+```jsonc
 {
     "EmailSettings": {
         "EnableSignUpWithEmail": true,
@@ -948,7 +948,7 @@ Email is essential for notifications, password resets, and invitations.
 
 #### SendGrid
 
-```json
+```jsonc
 {
     "EmailSettings": {
         "EnableSignUpWithEmail": true,
@@ -968,11 +968,7 @@ Email is essential for notifications, password resets, and invitations.
 
 ### Testing Email Configuration
 
-```bash
-# Test email via CLI
-cd /opt/mattermost/bin
-sudo -u mattermost ./mattermost email test
-```
+Use System Console > Environment > SMTP to send a test email after saving the SMTP settings.
 
 ## LDAP/AD Integration
 
@@ -982,7 +978,7 @@ Integrate Mattermost with your organization's directory service for centralized 
 
 Add the following to your `config.json`:
 
-```json
+```jsonc
 {
     "LdapSettings": {
         // Enable LDAP authentication
@@ -1058,13 +1054,13 @@ Add the following to your `config.json`:
 
 ### Active Directory Specific Configuration
 
-```json
+```jsonc
 {
     "LdapSettings": {
         "Enable": true,
         "LdapServer": "ad.example.com",
         "LdapPort": 636,
-        "ConnectionSecurity": "",
+        "ConnectionSecurity": "TLS",
         "BaseDN": "dc=example,dc=com",
         "BindUsername": "mattermost@example.com",
         "BindPassword": "your_ad_password",
@@ -1097,7 +1093,7 @@ Add the following to your `config.json`:
 
 ### LDAP Group Sync (Enterprise Feature)
 
-```json
+```jsonc
 {
     "LdapSettings": {
         // Group sync settings
@@ -1119,7 +1115,7 @@ Mattermost's plugin system extends functionality with integrations and custom fe
 
 Ensure plugins are enabled in your configuration:
 
-```json
+```jsonc
 {
     "PluginSettings": {
         // Enable plugin functionality
@@ -1132,7 +1128,7 @@ Ensure plugins are enabled in your configuration:
         "EnableMarketplace": true,
 
         // Plugin marketplace URL
-        "MarketplaceUrl": "https://api.integrations.mattermost.com",
+        "MarketplaceURL": "https://api.integrations.mattermost.com",
 
         // Automatic prepackaged plugins
         "AutomaticPrepackagedPlugins": true,
@@ -1154,16 +1150,16 @@ Ensure plugins are enabled in your configuration:
 cd /opt/mattermost/bin
 
 # Install a plugin from the marketplace
-sudo -u mattermost ./mattermost plugin marketplace install jitsi
+sudo -u mattermost ./mmctl --local plugin marketplace install jitsi
 
 # List installed plugins
-sudo -u mattermost ./mattermost plugin list
+sudo -u mattermost ./mmctl --local plugin list
 
 # Enable a plugin
-sudo -u mattermost ./mattermost plugin enable com.mattermost.jitsi
+sudo -u mattermost ./mmctl --local plugin enable com.mattermost.jitsi
 
 # Disable a plugin
-sudo -u mattermost ./mattermost plugin disable com.mattermost.jitsi
+sudo -u mattermost ./mmctl --local plugin disable com.mattermost.jitsi
 ```
 
 ### Popular Plugins
@@ -1172,14 +1168,14 @@ sudo -u mattermost ./mattermost plugin disable com.mattermost.jitsi
 
 ```bash
 # Install Jitsi plugin
-sudo -u mattermost ./mattermost plugin marketplace install jitsi
+sudo -u mattermost ./mmctl --local plugin marketplace install jitsi
 
 # Configure in config.json or System Console
 ```
 
 Configuration in `config.json`:
 
-```json
+```jsonc
 {
     "PluginSettings": {
         "Plugins": {
@@ -1196,7 +1192,7 @@ Configuration in `config.json`:
 
 #### GitHub Integration
 
-```json
+```jsonc
 {
     "PluginSettings": {
         "Plugins": {
@@ -1214,7 +1210,7 @@ Configuration in `config.json`:
 
 #### Custom Welcome Bot
 
-```json
+```jsonc
 {
     "PluginSettings": {
         "Plugins": {
@@ -1259,7 +1255,7 @@ flowchart TB
 
 Each Mattermost node requires cluster settings in `config.json`:
 
-```json
+```jsonc
 {
     "ClusterSettings": {
         // Enable high availability mode
@@ -1281,24 +1277,16 @@ Each Mattermost node requires cluster settings in `config.json`:
         "AdvertiseAddress": "",
 
         // Use IP address instead of hostname
-        "UseIpAddress": true,
+        "UseIPAddress": true,
 
         // Gossip port for cluster communication
         "GossipPort": 8074,
 
-        // Enable experimental gossip encryption
+        // Enable gossip message compression
         "EnableGossipCompression": true,
 
         // Read-only configuration (recommended for HA)
         "ReadOnlyConfig": true
-    },
-
-    "ServiceSettings": {
-        // Must be unique per node
-        "SiteURL": "https://chat.example.com",
-
-        // Enable cluster-aware search
-        "EnableClusterAwareSearch": true
     }
 }
 ```
@@ -1307,7 +1295,7 @@ Each Mattermost node requires cluster settings in `config.json`:
 
 For HA deployments, use shared storage:
 
-```json
+```jsonc
 {
     "FileSettings": {
         // Use Amazon S3 for file storage
@@ -1335,10 +1323,7 @@ For HA deployments, use shared storage:
         "AmazonS3SSE": true,
 
         // S3 path prefix
-        "AmazonS3PathPrefix": "",
-
-        // Use IAM role instead of access keys (recommended)
-        "AmazonS3IAM": false
+        "AmazonS3PathPrefix": ""
     }
 }
 ```
@@ -1437,6 +1422,7 @@ Create a backup script:
 
 ```bash
 # Create backup script
+sudo mkdir -p /opt/mattermost/scripts
 sudo nano /opt/mattermost/scripts/backup.sh
 ```
 
@@ -1573,6 +1559,7 @@ Create a restore script:
 
 ```bash
 # Create restore script
+sudo mkdir -p /opt/mattermost/scripts
 sudo nano /opt/mattermost/scripts/restore.sh
 ```
 
@@ -1659,8 +1646,10 @@ log "Restoring PostgreSQL database..."
 if [[ -f "${TEMP_DIR}/${BACKUP_DIR}/database.dump" ]]; then
     # Drop and recreate database
     sudo -u postgres psql -c "DROP DATABASE IF EXISTS ${DB_NAME};"
-    sudo -u postgres psql -c "CREATE DATABASE ${DB_NAME};"
+    sudo -u postgres psql -c "CREATE DATABASE ${DB_NAME} WITH ENCODING 'UTF8' LC_COLLATE='en_US.UTF-8' LC_CTYPE='en_US.UTF-8' TEMPLATE=template0;"
     sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE ${DB_NAME} TO ${DB_USER};"
+    sudo -u postgres psql -c "ALTER DATABASE ${DB_NAME} OWNER TO ${DB_USER};"
+    sudo -u postgres psql -d "${DB_NAME}" -c "ALTER SCHEMA public OWNER TO ${DB_USER}; GRANT USAGE, CREATE ON SCHEMA public TO ${DB_USER};"
 
     # Restore from dump
     PGPASSWORD="${DB_PASSWORD:-}" pg_restore -h "${DB_HOST}" -U "${DB_USER}" -d "${DB_NAME}" \
@@ -1759,9 +1748,8 @@ sudo -u postgres pg_dump -t Posts -t Channels mattermost > /backup/mattermost_po
 sudo systemctl status mattermost
 sudo journalctl -u mattermost -n 100 --no-pager
 
-# Check configuration syntax
-cd /opt/mattermost/bin
-sudo -u mattermost ./mattermost config validate
+# Check JSON syntax
+jq empty /opt/mattermost/config/config.json
 
 # Check file permissions
 ls -la /opt/mattermost/
@@ -1804,8 +1792,8 @@ iostat -x 1
 # Check database performance
 sudo -u postgres psql -d mattermost -c "SELECT * FROM pg_stat_activity;"
 
-# Analyze slow queries
-sudo -u postgres psql -d mattermost -c "SELECT * FROM pg_stat_statements ORDER BY total_time DESC LIMIT 10;"
+# Analyze slow queries (requires pg_stat_statements to be enabled)
+sudo -u postgres psql -d mattermost -c "SELECT * FROM pg_stat_statements ORDER BY total_exec_time DESC LIMIT 10;"
 ```
 
 ## Security Hardening
@@ -1829,7 +1817,7 @@ echo "tmpfs /run/shm tmpfs defaults,noexec,nosuid 0 0" | sudo tee -a /etc/fstab
 
 ### Security Configuration
 
-```json
+```jsonc
 {
     "ServiceSettings": {
         // Enable secure cookies
