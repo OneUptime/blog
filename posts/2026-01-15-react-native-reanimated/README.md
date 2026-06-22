@@ -686,7 +686,8 @@ import Animated, {
   FadeOut,
   FadeOutDown,
   SlideOutRight,
-  ZoomOut
+  ZoomOut,
+  runOnJS
 } from 'react-native-reanimated';
 
 function DismissibleCard({ onDismiss }) {
@@ -696,8 +697,11 @@ function DismissibleCard({ onDismiss }) {
 
   return (
     <Animated.View
-      exiting={FadeOutDown.duration(300)}
-      onAnimatedEnd={() => onDismiss()}
+      exiting={FadeOutDown.duration(300).withCallback((finished) => {
+        if (finished) {
+          runOnJS(onDismiss)();
+        }
+      })}
     >
       <Card>
         <Button
@@ -713,7 +717,7 @@ function DismissibleCard({ onDismiss }) {
 ### Layout Transitions
 
 ```javascript
-import Animated, { Layout } from 'react-native-reanimated';
+import Animated, { LinearTransition } from 'react-native-reanimated';
 
 function ReorderableList({ items }) {
   return (
@@ -721,7 +725,7 @@ function ReorderableList({ items }) {
       {items.map((item) => (
         <Animated.View
           key={item.id}
-          layout={Layout.springify().damping(15)}
+          layout={LinearTransition.springify().damping(15)}
         >
           <ListItem item={item} />
         </Animated.View>
@@ -869,7 +873,7 @@ const animatedStyle = useAnimatedStyle(() => {
 ### Extrapolation Options
 
 ```javascript
-import { interpolate, Extrapolate } from 'react-native-reanimated';
+import { interpolate, Extrapolation } from 'react-native-reanimated';
 
 const animatedStyle = useAnimatedStyle(() => {
   const translateX = interpolate(
@@ -877,8 +881,8 @@ const animatedStyle = useAnimatedStyle(() => {
     [0, 100, 200],
     [0, 50, 100],
     {
-      extrapolateLeft: Extrapolate.CLAMP,
-      extrapolateRight: Extrapolate.EXTEND,
+      extrapolateLeft: Extrapolation.CLAMP,
+      extrapolateRight: Extrapolation.EXTEND,
     }
   );
 
@@ -887,7 +891,7 @@ const animatedStyle = useAnimatedStyle(() => {
     scrollX.value,
     [0, 100],
     [1, 0],
-    Extrapolate.CLAMP
+    Extrapolation.CLAMP
   );
 
   return {
@@ -923,7 +927,7 @@ import Animated, {
   useAnimatedStyle,
   useAnimatedScrollHandler,
   interpolate,
-  Extrapolate,
+  Extrapolation,
 } from 'react-native-reanimated';
 
 function ParallaxHeader() {
@@ -940,14 +944,14 @@ function ParallaxHeader() {
       scrollY.value,
       [0, 200],
       [300, 100],
-      Extrapolate.CLAMP
+      Extrapolation.CLAMP
     );
 
     const opacity = interpolate(
       scrollY.value,
       [0, 100, 200],
       [1, 0.5, 0],
-      Extrapolate.CLAMP
+      Extrapolation.CLAMP
     );
 
     return {
@@ -1076,11 +1080,11 @@ animationProgress.value = withTiming(1);
 // Use them selectively
 
 // Good: Simple layout transition for small lists
-<Animated.View layout={Layout.springify()}>
+<Animated.View layout={LinearTransition.springify()}>
 
 // Better for performance: Skip layout animation for items off-screen
 const shouldAnimate = isVisible && index < 10;
-<Animated.View layout={shouldAnimate ? Layout.springify() : undefined}>
+<Animated.View layout={shouldAnimate ? LinearTransition.springify() : undefined}>
 ```
 
 ## Common Animation Patterns
