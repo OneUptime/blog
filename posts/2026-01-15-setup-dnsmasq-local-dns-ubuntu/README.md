@@ -76,7 +76,7 @@ After installation, dnsmasq will attempt to start but may fail due to a conflict
 
 ### Understanding the Conflict
 
-Ubuntu uses **systemd-resolved** as the default DNS resolver, which listens on port 53 (the standard DNS port). Since dnsmasq also needs port 53, they conflict with each other.
+Ubuntu uses **systemd-resolved** as the default DNS resolver, which normally runs a local stub listener on `127.0.0.53:53` (and, on newer systemd releases, `127.0.0.54:53`). Since dnsmasq also needs port 53 on the interfaces you configure, they can conflict with each other.
 
 You have several options to resolve this:
 
@@ -217,7 +217,7 @@ bind-interfaces
 
 # Set the domain for the local network
 # This allows short hostnames to be resolved
-domain=home.local
+domain=home.arpa
 
 # Automatically add the domain to simple hostnames
 expand-hosts
@@ -239,8 +239,8 @@ cache-size=1000
 # Uncomment if you have frequently changing DNS
 # no-negcache
 
-# Set the time-to-live for cached entries in seconds
-# This overrides the TTL from upstream servers
+# Set the time-to-live for local answers in seconds
+# This applies to entries from /etc/hosts, config, and DHCP leases
 # local-ttl=300
 ```
 
@@ -279,19 +279,19 @@ Add your local hostnames:
 # Format: IP_ADDRESS    HOSTNAME    ALIASES
 
 # Server hosts
-192.168.1.10    nas.home.local          nas fileserver
-192.168.1.11    plex.home.local         plex mediaserver
-192.168.1.12    homeassistant.home.local  homeassistant ha
-192.168.1.13    pihole.home.local       pihole
+192.168.1.10    nas.home.arpa          nas fileserver
+192.168.1.11    plex.home.arpa         plex mediaserver
+192.168.1.12    homeassistant.home.arpa  homeassistant ha
+192.168.1.13    pihole.home.arpa       pihole
 
 # Development servers
-192.168.1.20    gitlab.home.local       gitlab
-192.168.1.21    jenkins.home.local      jenkins ci
-192.168.1.22    docker.home.local       docker
+192.168.1.20    gitlab.home.arpa       gitlab
+192.168.1.21    jenkins.home.arpa      jenkins ci
+192.168.1.22    docker.home.arpa       docker
 
 # Workstations
-192.168.1.100   desktop.home.local      desktop
-192.168.1.101   laptop.home.local       laptop
+192.168.1.100   desktop.home.arpa      desktop
+192.168.1.101   laptop.home.arpa       laptop
 ```
 
 ### Method 2: Using a Separate Hosts File
@@ -310,19 +310,19 @@ Add your entries:
 # ===================================================
 
 # Infrastructure
-192.168.1.1     router.home.local       router gateway
-192.168.1.2     switch.home.local       switch
-192.168.1.3     ap.home.local           ap accesspoint
+192.168.1.1     router.home.arpa       router gateway
+192.168.1.2     switch.home.arpa       switch
+192.168.1.3     ap.home.arpa           ap accesspoint
 
 # Servers
-192.168.1.10    server1.home.local      server1
-192.168.1.11    server2.home.local      server2
-192.168.1.12    server3.home.local      server3
+192.168.1.10    server1.home.arpa      server1
+192.168.1.11    server2.home.arpa      server2
+192.168.1.12    server3.home.arpa      server3
 
 # IoT Devices
-192.168.1.200   thermostat.home.local   thermostat nest
-192.168.1.201   doorbell.home.local     doorbell ring
-192.168.1.202   camera1.home.local      camera1
+192.168.1.200   thermostat.home.arpa   thermostat nest
+192.168.1.201   doorbell.home.arpa     doorbell ring
+192.168.1.202   camera1.home.arpa      camera1
 ```
 
 Make sure this file is referenced in your dnsmasq configuration:
@@ -338,12 +338,12 @@ For more control, use the `address` directive in dnsmasq.conf:
 
 ```bash
 # Point specific domains to IP addresses
-address=/myapp.local/192.168.1.50
-address=/testsite.local/192.168.1.51
+address=/myapp.test/192.168.1.50
+address=/testsite.test/192.168.1.51
 
 # Wildcard DNS - all subdomains resolve to the same IP
 # Useful for development with multiple virtual hosts
-address=/.dev.local/192.168.1.100
+address=/.dev.test/192.168.1.100
 ```
 
 Restart dnsmasq after making changes:
@@ -368,8 +368,7 @@ Add these options to `/etc/dnsmasq.conf`:
 # Default is 150; increase for networks with many queries
 cache-size=10000
 
-# Cache negative responses (NXDOMAIN) - enabled by default
-# Time in seconds to cache negative responses
+# Use this default TTL when an upstream negative response has no SOA TTL
 neg-ttl=60
 
 # Set minimum TTL for cached entries
@@ -454,6 +453,7 @@ For privacy, you can use DNS-over-TLS with stubby as a proxy:
 sudo apt install stubby -y
 
 # Configure stubby as the upstream for dnsmasq
+# Make sure /etc/stubby/stubby.yml listens on the same port
 # In /etc/dnsmasq.conf:
 server=127.0.0.1#5353
 ```
@@ -510,7 +510,7 @@ dhcp-option=option:router,192.168.1.1
 dhcp-option=option:dns-server,192.168.1.10
 
 # Set the domain name for DHCP clients
-dhcp-option=option:domain-name,home.local
+dhcp-option=option:domain-name,home.arpa
 
 # Set the NTP server for time synchronization
 dhcp-option=option:ntp-server,192.168.1.1
@@ -543,7 +543,7 @@ dhcp-option=3,192.168.1.1
 dhcp-option=6,192.168.1.10,192.168.1.11
 
 # Option 15: Domain Name
-dhcp-option=15,home.local
+dhcp-option=15,home.arpa
 
 # Option 28: Broadcast Address
 dhcp-option=28,192.168.1.255
@@ -552,7 +552,7 @@ dhcp-option=28,192.168.1.255
 dhcp-option=42,192.168.1.1
 
 # Option 119: DNS Search Domain
-dhcp-option=119,home.local,local
+dhcp-option=119,home.arpa,lab.home.arpa
 ```
 
 ## Static DHCP Leases
@@ -866,7 +866,7 @@ sudo systemctl start dnsmasq
 dig @127.0.0.1 google.com
 
 # Check if dnsmasq is listening
-sudo netstat -tulnp | grep dnsmasq
+sudo ss -tulnp | grep dnsmasq
 
 # Check dnsmasq configuration for errors
 sudo dnsmasq --test
@@ -901,7 +901,7 @@ cat /etc/hosts
 grep -E "^addn-hosts|^no-hosts" /etc/dnsmasq.conf
 
 # Test local hostname resolution
-dig @127.0.0.1 myserver.home.local
+dig @127.0.0.1 myserver.home.arpa
 
 # Restart dnsmasq after hosts file changes
 sudo systemctl restart dnsmasq
@@ -920,7 +920,7 @@ done
 # In /etc/dnsmasq.conf:
 # cache-size=10000
 
-# Disable strict-order if enabled (allows parallel queries)
+# Disable strict-order if enabled (lets dnsmasq choose based on responsiveness)
 # Comment out: strict-order
 ```
 
@@ -959,22 +959,34 @@ sudo systemctl restart dnsmasq
 
 This tells dnsmasq not to try registering itself with resolvconf at all, which eliminates the error.
 
-**Option B: Replace systemd-resolvconf with the traditional resolvconf package**
+**Option B: Override the resolvconf hooks in the dnsmasq systemd unit**
 
-If other services on your system also depend on resolvconf, you can install the traditional (non-systemd) implementation:
+If setting `IGNORE_RESOLVCONF=yes` is not enough on your system, you can override the dnsmasq unit so it does not run the resolvconf post-start and stop hooks:
 
 ```bash
-# Remove the systemd-resolvconf package
-sudo apt remove systemd-resolvconf -y
+# Create a systemd override for dnsmasq
+sudo systemctl edit dnsmasq
+```
 
-# Install the traditional resolvconf package
-sudo apt install resolvconf -y
+Add the following override:
+
+```ini
+[Service]
+ExecStartPost=
+ExecStop=
+```
+
+Then reload systemd and restart dnsmasq:
+
+```bash
+# Reload systemd units
+sudo systemctl daemon-reload
 
 # Restart dnsmasq
 sudo systemctl restart dnsmasq
 ```
 
-This replaces the `resolvconf` binary that depends on `systemd-networkd` with one that works independently.
+This removes the package-provided resolvconf integration from the service while keeping the normal dnsmasq start command intact.
 
 **Option C: Simply ignore it**
 
@@ -1057,7 +1069,7 @@ server=8.8.4.4
 # DOMAIN AND LOCAL DNS
 # --------------------
 # Local domain name
-domain=home.local
+domain=home.arpa
 
 # Add domain to simple hostnames
 expand-hosts
@@ -1066,7 +1078,7 @@ expand-hosts
 addn-hosts=/etc/dnsmasq.hosts
 
 # Local-only domains (never forward these)
-local=/home.local/
+local=/home.arpa/
 local=/168.192.in-addr.arpa/
 
 # DNS CACHE SETTINGS
@@ -1088,7 +1100,7 @@ dhcp-range=192.168.1.100,192.168.1.200,255.255.255.0,24h
 # DHCP options
 dhcp-option=option:router,192.168.1.1
 dhcp-option=option:dns-server,192.168.1.10
-dhcp-option=option:domain-name,home.local
+dhcp-option=option:domain-name,home.arpa
 dhcp-option=option:ntp-server,pool.ntp.org
 
 # DHCP lease file
