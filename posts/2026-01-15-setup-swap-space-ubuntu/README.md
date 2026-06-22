@@ -54,10 +54,10 @@ Choose size based on your RAM and use case:
 | > 64GB | At least 4GB |
 
 ```bash
-# Create a 4GB swap file using fallocate (fast method)
+# Create a 4GB swap file using fallocate (fast method on ext4 and other supported filesystems)
 sudo fallocate -l 4G /swapfile
 
-# Alternative: Use dd if fallocate isn't available
+# Portable alternative: Use dd if fallocate isn't available or swapon reports holes
 # This creates a 4GB file filled with zeros
 sudo dd if=/dev/zero of=/swapfile bs=1M count=4096 status=progress
 ```
@@ -109,11 +109,12 @@ tail -1 /etc/fstab
 
 ### Swappiness
 
-Swappiness controls how aggressively the kernel uses swap (0-100):
-- **0**: Only swap to avoid out-of-memory
+Swappiness controls how aggressively the kernel uses swap (0-200):
+- **0**: Avoid swapping until free and file-backed pages fall below the high watermark
 - **10-30**: Conservative swapping (good for SSDs/desktops)
 - **60**: Default value
 - **100**: Aggressive swapping
+- **>100**: Useful mainly for in-memory swap like zram or swap devices faster than filesystem I/O
 
 ```bash
 # Check current swappiness value
@@ -230,7 +231,7 @@ sudo fdisk /dev/sda
 # (select first sector - default)
 # +4G (size of swap)
 # t - change type
-# 82 - Linux swap
+# select Linux swap (82 on MBR disks; use L to list types if prompted)
 # w - write and exit
 ```
 
@@ -318,14 +319,14 @@ bash /tmp/swap-usage.sh
 
 ## Enabling Hibernation
 
-Hibernation requires swap >= RAM size:
+Hibernation generally requires swap >= RAM size. For a swap partition, add the swap partition UUID as the resume device:
 
 ```bash
 # Check current swap size is sufficient
 free -h
 
-# Find UUID of swap
-sudo blkid | grep swap
+# Find UUID of the swap partition
+sudo blkid /dev/sda3
 
 # Add resume parameter to GRUB
 sudo nano /etc/default/grub
@@ -336,6 +337,17 @@ sudo update-grub
 
 # Update initramfs
 sudo update-initramfs -u
+```
+
+For hibernation with a swap file, you also need the file's physical offset:
+
+```bash
+# Find the filesystem UUID and swap file offset
+findmnt -no UUID -T /swapfile
+sudo filefrag -v /swapfile | awk '/ 0:/ {print $4}' | cut -d. -f1
+
+# Add both parameters to GRUB_CMDLINE_LINUX_DEFAULT
+# resume=UUID=your-filesystem-uuid resume_offset=your-offset
 ```
 
 ## Using zram (Compressed Swap)
@@ -357,10 +369,18 @@ cat /sys/block/zram0/disksize
 
 ### "swapon failed: Invalid argument"
 
-File wasn't formatted as swap:
+File wasn't formatted as swap, or the swap file has holes/unsupported extents:
 
 ```bash
 # Format the file properly
+sudo mkswap /swapfile
+sudo swapon /swapfile
+
+# If it still fails, recreate the file with dd instead of fallocate
+sudo swapoff /swapfile
+sudo rm /swapfile
+sudo dd if=/dev/zero of=/swapfile bs=1M count=4096 status=progress
+sudo chmod 600 /swapfile
 sudo mkswap /swapfile
 sudo swapon /swapfile
 ```
