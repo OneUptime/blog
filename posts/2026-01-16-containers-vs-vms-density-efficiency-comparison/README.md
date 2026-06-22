@@ -68,7 +68,7 @@ flowchart TB
 Each VM includes:
 - **A complete kernel** - Every VM boots its own Linux (or Windows) kernel
 - **Full system libraries** - glibc, systemd, and hundreds of packages
-- **Virtual hardware drivers** - Emulated NICs, disk controllers, GPU
+- **Virtual hardware drivers** - Emulated or paravirtualized NICs, disk controllers, GPU
 - **Init system and services** - sshd, cron, logging daemons
 
 ### Containers: Kernel Namespacing
@@ -132,8 +132,8 @@ flowchart TB
 
 Containers share the host kernel and use:
 - **Namespaces** - Isolation for PIDs, network, mounts, users, IPC, and hostnames
-- **cgroups** - Resource limits for CPU, memory, I/O, and network
-- **Union filesystems** - Layered, copy-on-write storage (OverlayFS, AUFS)
+- **cgroups** - Resource limits and accounting for CPU, memory, I/O, PIDs, and related kernel resources
+- **Union filesystems** - Layered, copy-on-write storage (OverlayFS and other storage drivers)
 - **Seccomp/AppArmor/SELinux** - Security sandboxing
 
 This architectural difference has profound implications for efficiency.
@@ -181,7 +181,7 @@ The hypervisor itself consumes memory for each VM:
 VMs typically require contiguous memory allocation and often reserve more than they use:
 - Memory overcommit penalties
 - Memory ballooning inefficiency
-- Large page allocation overhead
+- Large page allocation overhead when huge pages are configured
 
 ### Container Memory Overhead Analysis
 
@@ -195,17 +195,17 @@ Containers don't boot a kernel - they share the host kernel. This saves 100-200 
 
 When multiple containers use the same base image, they share read-only filesystem layers:
 
-The following code demonstrates how Docker's copy-on-write filesystem works. Each container only consumes memory for pages it actually modifies, while sharing everything else.
+The following code demonstrates how Docker's copy-on-write filesystem works. Each container gets its own writable layer while sharing the same read-only image layers; with OverlayFS, containers reading the same files can also share page-cache entries.
 
 ```bash
 # Three containers from the same image share base layers
 
-docker run -d --name app1 nginx:alpine  # Uses ~10 MB unique memory
-docker run -d --name app2 nginx:alpine  # Shares base, ~10 MB unique
-docker run -d --name app3 nginx:alpine  # Shares base, ~10 MB unique
+docker run -d --name app1 nginx:alpine  # Adds a small writable layer
+docker run -d --name app2 nginx:alpine  # Shares base layers
+docker run -d --name app3 nginx:alpine  # Shares base layers
 
 # The nginx:alpine image is ~40 MB, but running 3 containers
-# doesn't use 120 MB - they share the base layers
+# doesn't require 120 MB of image storage - they share the base layers
 ```
 
 **3. Process-Level Memory**
@@ -216,7 +216,7 @@ A container is fundamentally just a process (or group of processes). Its memory 
 |-----------|---------------------|
 | Container runtime overhead | 5-10 MB |
 | Application process | Varies (but same as native) |
-| Unique filesystem writes (CoW) | Usually < 10 MB |
+| Page cache / writable layer metadata | Usually small and workload-dependent |
 | **Total overhead** | **15-20 MB + application** |
 
 ### Real-World Memory Comparison
@@ -255,7 +255,7 @@ Available for containers: 124 GB
 Per container requirements:
   - Runtime overhead: 10 MB
   - Application: 200 MB
-  - Unique CoW layers: 10 MB
+  - Page cache / writable layer metadata: 10 MB
   Total per container: ~220 MB
 
 Maximum containers: 124 GB / 220 MB = 560+ containers (theoretical)
@@ -469,7 +469,7 @@ Containers use Linux native networking:
 | MacVLAN | Very low (1-5 μs) | Near line rate |
 | Overlay (VXLAN) | Medium (20-50 μs) | 10-20 Gbps |
 
-Containers accessing host network (`--network host`) have zero networking overhead.
+Containers using host networking (`--network host`) skip Docker bridge and NAT overhead, but still use the normal host network stack.
 
 ---
 
@@ -679,13 +679,13 @@ Multi-stage builds create minimal production images by excluding build tools and
 
 ```dockerfile
 # Build stage - has all build dependencies
-FROM golang:1.21-alpine AS builder
+FROM golang:1.26-alpine AS builder
 WORKDIR /app
 COPY . .
 RUN go build -o myapp .
 
 # Production stage - minimal runtime only
-FROM alpine:3.19
+FROM alpine:3.24
 COPY --from=builder /app/myapp /usr/local/bin/
 CMD ["myapp"]
 ```
