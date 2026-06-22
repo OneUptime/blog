@@ -31,26 +31,31 @@ pip3 --version
 
 The simplest way to install Jupyter Notebook is using pip, Python's package manager.
 
-### System-wide Installation
+### Virtual Environment Installation
 
 ```bash
-# Install Jupyter Notebook globally (requires sudo)
-sudo pip3 install jupyter
+# Create and activate a virtual environment
+python3 -m venv ~/envs/jupyter
+source ~/envs/jupyter/bin/activate
+
+# Install Jupyter Notebook in the environment
+python -m pip install --upgrade pip
+python -m pip install notebook
 
 # Verify the installation
 jupyter --version
 ```
 
-### User Installation (Recommended)
+### User Installation
 
-Installing in user space avoids permission issues and keeps your system Python clean:
+Installing in user space avoids permission issues and keeps your system Python clean. On Ubuntu releases that enforce externally managed Python environments, use the virtual environment or conda method instead.
 
 ```bash
 # Install Jupyter for current user only
-pip3 install --user jupyter
+python3 -m pip install --user notebook
 
-# Add local bin to PATH (add to ~/.bashrc for persistence)
-export PATH="$HOME/.local/bin:$PATH"
+# Add local bin to PATH
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
 
 # Reload bashrc to apply changes
 source ~/.bashrc
@@ -174,9 +179,9 @@ Jupyter uses a configuration file to manage settings persistently.
 
 ```bash
 # Generate default configuration file
-jupyter notebook --generate-config
+jupyter server --generate-config
 
-# This creates ~/.jupyter/jupyter_notebook_config.py
+# This creates ~/.jupyter/jupyter_server_config.py
 
 # View the configuration file location
 jupyter --config-dir
@@ -184,44 +189,44 @@ jupyter --config-dir
 
 ### Essential Configuration Options
 
-Edit `~/.jupyter/jupyter_notebook_config.py`:
+Edit `~/.jupyter/jupyter_server_config.py`:
 
 ```python
-# ~/.jupyter/jupyter_notebook_config.py
+# ~/.jupyter/jupyter_server_config.py
 
 # Network Configuration
 # ---------------------
 
 # IP address to listen on (use '0.0.0.0' for all interfaces)
-c.NotebookApp.ip = 'localhost'
+c.ServerApp.ip = 'localhost'
 
 # Port to run the server on
-c.NotebookApp.port = 8888
+c.ServerApp.port = 8888
 
 # Don't open browser automatically
-c.NotebookApp.open_browser = False
+c.ServerApp.open_browser = False
 
 # Directory Configuration
 # -----------------------
 
 # Default directory for notebooks
-c.NotebookApp.notebook_dir = '/home/username/notebooks'
+c.ServerApp.root_dir = '/home/username/notebooks'
 
 # Security Configuration
 # ----------------------
 
 # Allow remote access (set to False for local-only)
-c.NotebookApp.allow_remote_access = True
+c.ServerApp.allow_remote_access = True
 
 # Disable password requirement (not recommended for production)
-# c.NotebookApp.token = ''
-# c.NotebookApp.password = ''
+# c.IdentityProvider.token = ''
+# c.PasswordIdentityProvider.hashed_password = ''
 
 # Performance Configuration
 # -------------------------
 
 # Shutdown notebook after N seconds of inactivity (0 = never)
-c.NotebookApp.shutdown_no_activity_timeout = 3600
+c.ServerApp.shutdown_no_activity_timeout = 3600
 
 # Cull idle kernels after N seconds
 c.MappingKernelManager.cull_idle_timeout = 1800
@@ -233,10 +238,10 @@ c.MappingKernelManager.cull_interval = 300
 # ---------------------------------
 
 # Path to SSL certificate
-# c.NotebookApp.certfile = '/path/to/cert.pem'
+# c.ServerApp.certfile = '/path/to/cert.pem'
 
 # Path to SSL key
-# c.NotebookApp.keyfile = '/path/to/key.pem'
+# c.ServerApp.keyfile = '/path/to/key.pem'
 ```
 
 ## Password and Token Security
@@ -247,20 +252,20 @@ Securing your Jupyter installation is critical, especially when accessible over 
 
 ```bash
 # Generate a hashed password
-jupyter notebook password
+jupyter server password
 
 # This prompts for a password and stores the hash in:
-# ~/.jupyter/jupyter_notebook_config.json
+# ~/.jupyter/jupyter_server_config.json
 ```
 
 ### Manual Password Configuration
 
 ```python
 # Generate password hash programmatically
-from notebook.auth import passwd
+from jupyter_server.auth import passwd
 
 # Generate hash for your password
-password_hash = passwd('your_secure_password')
+password_hash = passwd()
 print(password_hash)
 
 # Output example: 'argon2:$argon2id$v=19$m=10240,t=10,p=8$...'
@@ -269,18 +274,18 @@ print(password_hash)
 Add the hash to your configuration:
 
 ```python
-# In ~/.jupyter/jupyter_notebook_config.py
-c.NotebookApp.password = 'argon2:$argon2id$v=19$m=10240,t=10,p=8$your_hash_here'
+# In ~/.jupyter/jupyter_server_config.py
+c.PasswordIdentityProvider.hashed_password = 'argon2:$argon2id$v=19$m=10240,t=10,p=8$your_hash_here'
 ```
 
 ### Token-Based Authentication
 
 ```python
 # Disable token authentication (use with password)
-c.NotebookApp.token = ''
+c.IdentityProvider.token = ''
 
 # Or set a specific token
-c.NotebookApp.token = 'your_secure_token_here'
+c.IdentityProvider.token = 'your_secure_token_here'
 
 # Generate a random token
 import secrets
@@ -311,10 +316,10 @@ WorkingDirectory=/home/jupyter_user/notebooks
 Environment="PATH=/home/jupyter_user/.local/bin:/usr/local/bin:/usr/bin:/bin"
 
 # For conda environments, use:
-# Environment="PATH=/home/jupyter_user/miniconda3/envs/jupyter_env/bin:$PATH"
+# Environment="PATH=/home/jupyter_user/miniconda3/envs/jupyter_env/bin:/usr/local/bin:/usr/bin:/bin"
 
 # Command to start Jupyter
-ExecStart=/home/jupyter_user/.local/bin/jupyter notebook --config=/home/jupyter_user/.jupyter/jupyter_notebook_config.py
+ExecStart=/home/jupyter_user/.local/bin/jupyter notebook --config=/home/jupyter_user/.jupyter/jupyter_server_config.py
 
 # Restart policy
 Restart=always
@@ -504,7 +509,9 @@ print(f"Working directory: {os.getcwd()}")
 
 Enhance your Jupyter experience with extensions and custom themes.
 
-### Jupyter Notebook Extensions
+### Classic Notebook 6 Extensions
+
+These extensions apply to the legacy Notebook 6 interface. For Notebook 7, use JupyterLab-compatible extensions installed with pip or conda.
 
 ```bash
 # Install jupyter_contrib_nbextensions
@@ -532,10 +539,10 @@ After installation, navigate to `http://localhost:8888/nbextensions` to configur
 ### JupyterLab Extensions
 
 ```bash
-# Install Node.js (required for JupyterLab extensions)
+# Install Node.js only if you need to build source extensions
 sudo apt install nodejs npm -y
 
-# Install popular JupyterLab extensions
+# Install popular prebuilt JupyterLab extensions
 pip3 install jupyterlab-git          # Git integration
 pip3 install jupyterlab-lsp          # Language Server Protocol
 pip3 install jupyterlab_code_formatter  # Code formatting
@@ -642,6 +649,9 @@ pip3 install jupyterhub
 # Install configurable-http-proxy
 sudo npm install -g configurable-http-proxy
 
+# Install the idle culler if you plan to use the idle culler service below
+pip3 install jupyterhub-idle-culler
+
 # Verify installation
 jupyterhub --version
 ```
@@ -661,6 +671,7 @@ Edit `jupyterhub_config.py`:
 
 ```python
 # jupyterhub_config.py
+import sys
 
 # Network settings
 c.JupyterHub.ip = '0.0.0.0'
@@ -674,15 +685,27 @@ c.Authenticator.allowed_users = {'user1', 'user2', 'user3'}
 c.Spawner.default_url = '/lab'  # Use JupyterLab by default
 c.Spawner.notebook_dir = '~/notebooks'
 
-# Resource limits per user
+# Resource limits per user (requires a spawner that supports these limits)
 c.Spawner.mem_limit = '2G'
 c.Spawner.cpu_limit = 1
 
 # Idle culling
+c.JupyterHub.load_roles = [
+    {
+        'name': 'jupyterhub-idle-culler-role',
+        'scopes': [
+            'list:users',
+            'read:users:activity',
+            'read:servers',
+            'delete:servers',
+        ],
+        'services': ['jupyterhub-idle-culler-service'],
+    }
+]
+
 c.JupyterHub.services = [
     {
-        'name': 'cull-idle',
-        'admin': True,
+        'name': 'jupyterhub-idle-culler-service',
         'command': [
             sys.executable,
             '-m', 'jupyterhub_idle_culler',
@@ -806,24 +829,24 @@ sudo certbot --nginx -d jupyter.yourdomain.com
 ### Additional Security Measures
 
 ```python
-# ~/.jupyter/jupyter_notebook_config.py
+# ~/.jupyter/jupyter_server_config.py
 
 # Disable potentially dangerous features
-c.NotebookApp.allow_root = False  # Never run as root
-c.NotebookApp.disable_check_xsrf = False  # Keep XSRF protection
+c.ServerApp.allow_root = False  # Never run as root
+c.ServerApp.disable_check_xsrf = False  # Keep XSRF protection
 
 # Content Security Policy
-c.NotebookApp.tornado_settings = {
+c.ServerApp.tornado_settings = {
     'headers': {
         'Content-Security-Policy': "frame-ancestors 'self'"
     }
 }
 
 # Limit file access
-c.ContentsManager.allow_hidden = False
+c.FileContentsManager.allow_hidden = False
 
 # Session security
-c.NotebookApp.cookie_options = {
+c.IdentityProvider.cookie_options = {
     'expires_days': 1,
     'httponly': True,
     'secure': True  # Requires HTTPS
@@ -833,7 +856,7 @@ c.NotebookApp.cookie_options = {
 ### Security Checklist
 
 1. **Always use HTTPS** in production environments
-2. **Set strong passwords** using `jupyter notebook password`
+2. **Set strong passwords** using `jupyter server password`
 3. **Keep software updated** regularly
 4. **Use virtual environments** to isolate dependencies
 5. **Limit network exposure** using firewall rules
@@ -891,8 +914,8 @@ chmod 700 ~/.local/share/jupyter/runtime
 free -h
 
 # Limit kernel memory in config
-# Add to jupyter_notebook_config.py:
-# c.NotebookApp.max_buffer_size = 536870912  # 512MB
+# Add to jupyter_server_config.py:
+# c.ServerApp.max_buffer_size = 536870912  # 512MB
 ```
 
 ## Conclusion
