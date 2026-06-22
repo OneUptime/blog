@@ -269,7 +269,7 @@ const SANITIZATION_PROFILES = {
   },
 };
 
-function SanitizedHTML({ html, profile = 'standard', className }) {
+function SanitizedHTML({ html, profile = 'standard', className, ...props }) {
   const sanitizedHTML = useMemo(() => {
     const config = SANITIZATION_PROFILES[profile] || SANITIZATION_PROFILES.standard;
     return DOMPurify.sanitize(html, config);
@@ -278,6 +278,7 @@ function SanitizedHTML({ html, profile = 'standard', className }) {
   return (
     <div
       className={className}
+      {...props}
       dangerouslySetInnerHTML={{ __html: sanitizedHTML }}
     />
   );
@@ -317,7 +318,7 @@ import { z } from 'zod';
 
 // Define validation schemas
 const userInputSchemas = {
-  email: z.string().email('Invalid email format').max(255),
+  email: z.email('Invalid email format').max(255),
 
   username: z.string()
     .min(3, 'Username must be at least 3 characters')
@@ -331,7 +332,7 @@ const userInputSchemas = {
     .regex(/[0-9]/, 'Password must contain at least one number')
     .regex(/[^A-Za-z0-9]/, 'Password must contain at least one special character'),
 
-  url: z.string().url('Invalid URL format').refine(
+  url: z.url('Invalid URL format').refine(
     (url) => ['http:', 'https:'].includes(new URL(url).protocol),
     'Only HTTP and HTTPS URLs are allowed'
   ),
@@ -354,7 +355,7 @@ function useValidation(schema) {
     return {
       success: result.success,
       data: result.success ? result.data : null,
-      error: result.success ? null : result.error.errors[0].message,
+      error: result.success ? null : result.error.issues[0].message,
     };
   };
 
@@ -381,7 +382,7 @@ function RegistrationForm() {
       if (schema) {
         const result = schema.safeParse(value);
         if (!result.success) {
-          newErrors[field] = result.error.errors[0].message;
+          newErrors[field] = result.error.issues[0].message;
         }
       }
     });
@@ -572,8 +573,8 @@ function getSafeQueryParam(param, validators = []) {
 
   if (value === null) return null;
 
-  // Decode and trim
-  value = decodeURIComponent(value).trim();
+  // URLSearchParams already decodes parameter values
+  value = value.trim();
 
   // Apply validators
   for (const validator of validators) {
@@ -917,10 +918,10 @@ class ResponseSanitizer {
   static sanitizeUser(user) {
     return {
       id: user.id,
-      name: this.escapeString(user.name),
-      email: this.escapeString(user.email),
-      bio: this.sanitizeHTML(user.bio),
-      avatar: this.sanitizeUrl(user.avatar),
+      name: ResponseSanitizer.escapeString(user.name),
+      email: ResponseSanitizer.escapeString(user.email),
+      bio: ResponseSanitizer.sanitizeHTML(user.bio),
+      avatar: ResponseSanitizer.sanitizeUrl(user.avatar),
       createdAt: new Date(user.createdAt).toISOString(),
     };
   }
@@ -1040,9 +1041,6 @@ function SecurityHeaders({ nonce }) {
           connect-src 'self' https://api.example.com;
         `}
       />
-      <meta httpEquiv="X-Content-Type-Options" content="nosniff" />
-      <meta httpEquiv="X-Frame-Options" content="DENY" />
-      <meta httpEquiv="X-XSS-Protection" content="1; mode=block" />
     </Helmet>
   );
 }
@@ -1148,7 +1146,7 @@ describe('Form Sanitization Integration', () => {
 
   it('should prevent XSS in rendered content', () => {
     const maliciousContent = '<img src="x" onerror="alert(\'xss\')">';
-    render(<SanitizedHTML html={maliciousContent} />);
+    render(<SanitizedHTML html={maliciousContent} data-testid="sanitized-content" />);
 
     const container = screen.getByTestId('sanitized-content');
     expect(container.innerHTML).not.toContain('onerror');
