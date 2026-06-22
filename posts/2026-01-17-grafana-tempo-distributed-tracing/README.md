@@ -62,9 +62,10 @@ flowchart TD
 Use the Tempo Helm chart:
 
 ```bash
-# Add Grafana Helm repo
+# Add Grafana Helm repos
 
 helm repo add grafana https://grafana.github.io/helm-charts
+helm repo add grafana-community https://grafana-community.github.io/helm-charts
 helm repo update
 
 # Create namespace
@@ -79,41 +80,35 @@ For production, use distributed mode with object storage:
 
 ```yaml
 # tempo-values.yaml
-tempo:
-  storage:
-    trace:
-      backend: s3
-      s3:
-        bucket: company-tempo-traces
-        endpoint: s3.us-east-1.amazonaws.com
-        region: us-east-1
-        access_key: ${AWS_ACCESS_KEY_ID}
-        secret_key: ${AWS_SECRET_ACCESS_KEY}
+storage:
+  trace:
+    backend: s3
+    s3:
+      bucket: company-tempo-traces
+      region: us-east-1
+      access_key: ${AWS_ACCESS_KEY_ID}
+      secret_key: ${AWS_SECRET_ACCESS_KEY}
 
-  retention: 72h
+traces:
+  otlp:
+    grpc:
+      enabled: true
+    http:
+      enabled: true
+  jaeger:
+    thriftHttp:
+      enabled: true
+    grpc:
+      enabled: true
+  zipkin:
+    enabled: true
 
-  receivers:
-    otlp:
-      protocols:
-        grpc:
-          endpoint: 0.0.0.0:4317
-        http:
-          endpoint: 0.0.0.0:4318
-    jaeger:
-      protocols:
-        thrift_http:
-          endpoint: 0.0.0.0:14268
-        grpc:
-          endpoint: 0.0.0.0:14250
-    zipkin:
-      endpoint: 0.0.0.0:9411
-
-  overrides:
-    defaults:
-      search:
-        duration_slo: 5s
-      ingestion:
-        max_traces_per_user: 10000
+overrides:
+  defaults:
+    ingestion:
+      max_traces_per_user: 10000
+    metrics_generator:
+      processors: [service-graphs, span-metrics]
 
 gateway:
   enabled: true
@@ -138,12 +133,18 @@ queryFrontend:
 
 compactor:
   replicas: 1
+  config:
+    compaction:
+      block_retention: 72h
+
+metricsGenerator:
+  enabled: true
 ```
 
 Install with custom values:
 
 ```bash
-helm install tempo grafana/tempo-distributed \
+helm install tempo grafana-community/tempo-distributed \
   --namespace tracing \
   -f tempo-values.yaml
 ```
@@ -159,14 +160,12 @@ datasources:
   - name: Tempo
     type: tempo
     access: proxy
-    url: http://tempo-query-frontend.tracing.svc:3200
+    url: http://tempo-gateway.tracing.svc
     uid: tempo
     jsonData:
-      tracesToLogs:
+      tracesToLogsV2:
         datasourceUid: loki
-        tags: ['service.name', 'pod']
-        mappedTags: [{ key: 'service.name', value: 'app' }]
-        mapTagNamesEnabled: true
+        tags: [{ key: 'service.name', value: 'app' }, { key: 'pod' }]
         spanStartTimeShift: '-1h'
         spanEndTimeShift: '1h'
         filterByTraceID: true
@@ -200,8 +199,8 @@ datasources:
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } = require('@opentelemetry/semantic-conventions');
 
 // Configure the exporter to send traces to Tempo
 const traceExporter = new OTLPTraceExporter({
@@ -210,10 +209,10 @@ const traceExporter = new OTLPTraceExporter({
 
 // Configure the SDK
 const sdk = new NodeSDK({
-  resource: new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: process.env.SERVICE_NAME || 'my-service',
-    [SemanticResourceAttributes.SERVICE_VERSION]: process.env.SERVICE_VERSION || '1.0.0',
-    [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: process.env.ENVIRONMENT || 'production',
+  resource: resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: process.env.SERVICE_NAME || 'my-service',
+    [ATTR_SERVICE_VERSION]: process.env.SERVICE_VERSION || '1.0.0',
+    'deployment.environment.name': process.env.ENVIRONMENT || 'production',
   }),
   traceExporter,
   instrumentations: [getNodeAutoInstrumentations()],
@@ -323,7 +322,7 @@ import (
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
     "go.opentelemetry.io/otel/sdk/resource"
     sdktrace "go.opentelemetry.io/otel/sdk/trace"
-    semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
+    semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
 )
 
 func initTracer() (*sdktrace.TracerProvider, error) {
@@ -431,7 +430,7 @@ TraceQL enables expressive trace searches:
 
 ```traceql
 // Find slow database spans
-{ span.db.system = "postgresql" && duration > 100ms }
+{ span.db.system = "postgresql" && span:duration > 100ms }
 
 // Find errors in specific service
 { resource.service.name = "payment-service" && status = error }
@@ -456,9 +455,9 @@ With trace-to-logs configured:
 ### Trace Volume Panel
 
 ```promql
-# Trace count by service
-sum by (service_name) (
-  rate(tempo_distributor_spans_received_total[5m])
+# Request rate by service (requires metrics generator)
+sum by (service) (
+  rate(traces_spanmetrics_calls_total[5m])
 )
 ```
 
@@ -523,18 +522,18 @@ processors:
 Configure trace retention:
 
 ```yaml
-tempo:
-  storage:
-    trace:
-      backend: s3
-      block:
-        max_block_duration: 1h
-      wal:
-        path: /var/tempo/wal
-      pool:
-        max_workers: 100
+storage:
+  trace:
+    backend: s3
+    pool:
+      max_workers: 100
 
-  compactor:
+ingester:
+  config:
+    max_block_duration: 1h
+
+compactor:
+  config:
     compaction:
       block_retention: 72h
 ```
@@ -546,9 +545,7 @@ tempo:
 ```yaml
 ingester:
   config:
-    lifecycler:
-      ring:
-        replication_factor: 3
+    replication_factor: 3
     max_block_duration: 30m
     max_block_bytes: 1073741824
     complete_block_timeout: 15m
@@ -560,14 +557,13 @@ ingester:
 querier:
   config:
     search:
-      external_backend: true
-      external_endpoints:
-        - tempo-query-frontend.tracing.svc:3200
+      query_timeout: 30s
 
 queryFrontend:
   config:
     search:
       concurrent_jobs: 1000
+    metrics:
       max_duration: 168h
 ```
 
