@@ -149,7 +149,7 @@ Description=Git Daemon
 After=network.target
 
 [Service]
-ExecStart=/usr/bin/git daemon --reuseaddr --base-path=/home/git/repositories --export-all --enable=receive-pack
+ExecStart=/usr/bin/git daemon --reuseaddr --base-path=/home/git/repositories /home/git/repositories
 Restart=always
 User=git
 Group=git
@@ -190,8 +190,8 @@ Provide a web interface for browsing repositories.
 ### Install GitWeb
 
 ```bash
-# Install GitWeb and web server
-sudo apt install gitweb nginx fcgiwrap -y
+# Install GitWeb, syntax highlighting, and web server
+sudo apt install gitweb highlight nginx fcgiwrap -y
 ```
 
 ### Configure GitWeb
@@ -205,7 +205,7 @@ sudo nano /etc/gitweb.conf
 # Path to git projects
 $projectroot = "/home/git/repositories";
 
-# Git binary
+# Temporary directory
 $git_temp = "/tmp";
 
 # Optional: Custom title
@@ -239,6 +239,7 @@ server {
     location /index.cgi {
         include fastcgi_params;
         gzip off;
+        fastcgi_param SCRIPT_FILENAME /usr/share/gitweb/index.cgi;
         fastcgi_param SCRIPT_NAME $uri;
         fastcgi_param GITWEB_CONFIG /etc/gitweb.conf;
         fastcgi_pass unix:/var/run/fcgiwrap.socket;
@@ -251,6 +252,7 @@ server {
     location @gitweb {
         include fastcgi_params;
         gzip off;
+        fastcgi_param SCRIPT_FILENAME /usr/share/gitweb/index.cgi;
         fastcgi_param SCRIPT_NAME /index.cgi;
         fastcgi_param PATH_INFO $uri;
         fastcgi_param GITWEB_CONFIG /etc/gitweb.conf;
@@ -326,18 +328,41 @@ done
 ```
 
 ```bash
-chmod +x /home/git/repositories/myproject.git/hooks/post-receive
+sudo chmod +x /home/git/repositories/myproject.git/hooks/post-receive
 ```
 
 ## Access Control
 
 ### Per-Repository Access
 
-For fine-grained access, use SSH command restrictions:
+For fine-grained access, use an SSH forced-command wrapper:
 
 ```bash
-# In authorized_keys, restrict to specific repos
-command="git-shell -c \"$SSH_ORIGINAL_COMMAND\"",no-port-forwarding,no-X11-forwarding,no-agent-forwarding,no-pty ssh-ed25519 AAAAC3... user@example.com
+# Create a wrapper that only allows one repository
+sudo mkdir -p /home/git/git-shell-commands
+sudo nano /home/git/git-shell-commands/git-restrict-myproject
+```
+
+```bash
+#!/bin/sh
+
+case "$SSH_ORIGINAL_COMMAND" in
+    "git-upload-pack '/home/git/repositories/myproject.git'"|"git-receive-pack '/home/git/repositories/myproject.git'")
+        exec git-shell -c "$SSH_ORIGINAL_COMMAND"
+        ;;
+    *)
+        echo "Access denied" >&2
+        exit 1
+        ;;
+esac
+```
+
+```bash
+sudo chown -R git:git /home/git/git-shell-commands
+sudo chmod +x /home/git/git-shell-commands/git-restrict-myproject
+
+# In authorized_keys, restrict this key to the wrapper
+command="git-restrict-myproject",no-port-forwarding,no-X11-forwarding,no-agent-forwarding,no-pty ssh-ed25519 AAAAC3... user@example.com
 ```
 
 ### Use Gitolite for Advanced Access Control
@@ -360,8 +385,9 @@ SOURCE_DIR="/home/git/repositories"
 
 mkdir -p "$BACKUP_DIR"
 
-for repo in "$SOURCE_DIR"/*.git; do
-    repo_name=$(basename "$repo")
+find "$SOURCE_DIR" -type d -name "*.git" -print0 | while IFS= read -r -d '' repo; do
+    repo_name="${repo#$SOURCE_DIR/}"
+    mkdir -p "$BACKUP_DIR/$(dirname "$repo_name")"
     git clone --mirror "$repo" "$BACKUP_DIR/$repo_name"
 done
 
