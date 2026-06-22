@@ -14,7 +14,7 @@ By default, processes inside Docker containers run as root. If an attacker explo
 
 Running as root inside a container is dangerous because:
 
-1. **Container escapes**: Some vulnerabilities allow escaping to the host. Root in container = root on host.
+1. **Container escapes**: Some vulnerabilities allow escaping to the host. Running as root in the container can make the impact worse, especially with permissive capabilities or host mounts.
 2. **Privilege escalation**: Root can modify system files, install packages, and access sensitive data.
 3. **Unnecessary capabilities**: Root has capabilities your application doesn't need.
 4. **Compliance requirements**: Many security standards (PCI-DSS, HIPAA) require non-root execution.
@@ -26,7 +26,7 @@ The most common approach is creating a non-root user in your Dockerfile.
 ### Basic Pattern
 
 ```dockerfile
-FROM node:18-slim
+FROM node:24-slim
 
 # Create a non-root user and group
 
@@ -38,7 +38,7 @@ WORKDIR /app
 
 # Copy files and set ownership
 COPY --chown=appuser:appgroup package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 COPY --chown=appuser:appgroup . .
 
@@ -52,7 +52,7 @@ CMD ["node", "server.js"]
 ### Alpine Linux Example
 
 ```dockerfile
-FROM alpine:3.19
+FROM alpine:3.24
 
 # Alpine uses addgroup/adduser
 RUN addgroup -g 1000 appgroup && \
@@ -107,8 +107,6 @@ docker run --user $(id -u):$(id -g) nginx
 ### docker-compose.yml
 
 ```yaml
-version: '3.8'
-
 services:
   app:
     image: nginx
@@ -122,7 +120,7 @@ services:
 
 Run with:
 ```bash
-UID=$(id -u) GID=$(id -g) docker-compose up
+UID=$(id -u) GID=$(id -g) docker compose up
 ```
 
 ## Method 3: Kubernetes Security Context
@@ -158,7 +156,7 @@ spec:
 If your app needs to write files, create directories with correct ownership.
 
 ```dockerfile
-FROM node:18-slim
+FROM node:24-slim
 
 RUN groupadd -g 1000 appgroup && \
     useradd -u 1000 -g appgroup -m appuser
@@ -177,20 +175,14 @@ CMD ["node", "server.js"]
 
 ### Issue 2: Binding to Privileged Ports
 
-Non-root users can't bind to ports below 1024. Use higher ports or port mapping.
+Binding to ports below 1024 is runtime-dependent and may require `CAP_NET_BIND_SERVICE`. For portability, use a higher container port or add only the specific capability when needed.
 
 ```dockerfile
 # Use port 8080 instead of 80
-FROM nginx:alpine
+FROM nginxinc/nginx-unprivileged:alpine
 
-# Copy custom config using port 8080
-COPY nginx.conf /etc/nginx/nginx.conf
-
-# Create non-root user
-RUN adduser -D -u 1000 nginx-user && \
-    chown -R nginx-user:nginx-user /var/cache/nginx /var/log/nginx /etc/nginx/conf.d
-
-USER nginx-user
+# Copy custom server config using port 8080
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 EXPOSE 8080
 ```
@@ -199,7 +191,11 @@ EXPOSE 8080
 # nginx.conf
 server {
     listen 8080;  # Non-privileged port
-    ...
+
+    location / {
+        root /usr/share/nginx/html;
+        index index.html;
+    }
 }
 ```
 
@@ -236,8 +232,6 @@ Volume permissions can be tricky. The container user must have access to mounted
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   app:
     image: my-app
@@ -257,7 +251,7 @@ Or set permissions on the host:
 ```bash
 mkdir -p ./data
 chown -R 1000:1000 ./data
-docker-compose up app
+docker compose up app
 ```
 
 ### Issue 5: Existing Images That Run as Root
@@ -292,12 +286,11 @@ docker exec my-container id
 docker inspect --format '{{.Config.User}}' my-container
 ```
 
-### Test That Root is Blocked
+### Test Kubernetes Non-Root Enforcement
 
 ```bash
-# This should fail if properly configured
+# Docker can still start an exec process as root if the daemon user is allowed to request it
 docker exec -u root my-container whoami
-# Error response from daemon: container ... must run as non-root
 
 # In Kubernetes with runAsNonRoot: true
 # Pod will fail to start if image runs as root
@@ -366,13 +359,18 @@ securityContext:
 
 ```dockerfile
 # Build stage
-FROM node:18-slim AS builder
+FROM node:24-slim AS builder
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 # Production stage
-FROM node:18-slim
+FROM node:24-slim
+
+# Install health check dependency
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends curl ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
 
 # Create non-root user with specific UID
 RUN groupadd --gid 10001 appgroup && \
