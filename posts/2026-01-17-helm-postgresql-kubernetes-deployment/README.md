@@ -76,7 +76,7 @@ echo $POSTGRES_PASSWORD
 kubectl port-forward svc/postgresql 5432:5432 -n database
 
 # Connect with psql
-psql -h localhost -U postgres -d postgres
+PGPASSWORD="$POSTGRES_PASSWORD" psql -h localhost -U postgres -d postgres
 ```
 
 ## Production Configuration
@@ -120,7 +120,7 @@ primary:
       - ReadWriteOnce
   
   # Pod disruption budget
-  podDisruptionBudget:
+  pdb:
     create: true
     minAvailable: 1
   
@@ -136,12 +136,13 @@ primary:
             - database
   
   # PostgreSQL configuration
-  configuration: |
+  extendedConfiguration: |
     max_connections = 200
     shared_buffers = 512MB
     effective_cache_size = 1536MB
     maintenance_work_mem = 128MB
     checkpoint_completion_target = 0.9
+    shared_preload_libraries = 'pg_stat_statements'
     wal_buffers = 16MB
     default_statistics_target = 100
     random_page_cost = 1.1
@@ -209,6 +210,13 @@ primary:
     - name: custom-scripts
       mountPath: /docker-entrypoint-initdb.d/custom
 
+  # Network policy
+  networkPolicy:
+    enabled: true
+    allowExternal: false
+    ingressNSMatchLabels:
+      postgres-access: "true"
+
 # Metrics for Prometheus
 metrics:
   enabled: true
@@ -224,16 +232,6 @@ metrics:
     limits:
       memory: 128Mi
       cpu: 100m
-
-# Network policy
-networkPolicy:
-  enabled: true
-  ingressRules:
-    primaryAccessOnlyFrom:
-      enabled: true
-      namespaceSelector:
-        matchLabels:
-          postgres-access: "true"
 ```
 
 ### Create Credentials Secret
@@ -285,7 +283,7 @@ primary:
     storageClass: "standard"
     size: 100Gi
   
-  configuration: |
+  extendedConfiguration: |
     max_connections = 200
     shared_buffers = 1GB
     wal_level = replica
@@ -337,7 +335,7 @@ For more advanced HA with Pgpool:
 helm install postgresql bitnami/postgresql-ha \
   --namespace database \
   --create-namespace \
-  -f postgresql-ha-values.yaml
+  -f postgresql-ha-advanced-values.yaml
 ```
 
 ```yaml
@@ -363,24 +361,23 @@ pgpool:
       cpu: 250m
   
   # Connection pooling settings
-  configuration: |
-    num_init_children = 32
-    max_pool = 4
-    connection_cache = on
-    connection_life_time = 300
-    client_idle_limit = 0
+  numInitChildren: 32
+  maxPool: 4
+  useConnectionCache: true
+  connectionLifeTime: 300
+  clientIdleLimit: 0
 ```
 
 ## Backup and Restore
 
-### Enable Backups with Volume Snapshots
+### Enable Logical Backups
 
 ```yaml
 # postgresql-backup-values.yaml
 primary:
   persistence:
     enabled: true
-    storageClass: "csi-driver-class"  # Must support snapshots
+    storageClass: "standard"
     size: 100Gi
 
 backup:
@@ -450,35 +447,52 @@ kubectl exec -it postgresql-0 -n database -- bash -c "gunzip -c /tmp/backup.sql.
 ## Connection Pooling with PgBouncer
 
 ```yaml
-# pgbouncer-values.yaml
-# Deploy alongside PostgreSQL
+# pgbouncer-env.yaml
+# Environment settings for deploying the Bitnami PgBouncer container alongside PostgreSQL
 
 image:
   repository: bitnami/pgbouncer
   tag: latest
 
-database:
-  host: postgresql
-  port: 5432
-  user: postgres
-  password: "password"
-
-pgbouncer:
-  poolMode: transaction
-  maxClientConn: 1000
-  defaultPoolSize: 20
-  minPoolSize: 5
-  reservePoolSize: 5
-  reservePoolTimeout: 5
-  maxDbConnections: 100
+env:
+  POSTGRESQL_HOST: postgresql
+  POSTGRESQL_PORT: "5432"
+  POSTGRESQL_USERNAME: postgres
+  POSTGRESQL_PASSWORD: "password"
+  PGBOUNCER_POOL_MODE: transaction
+  PGBOUNCER_MAX_CLIENT_CONN: "1000"
+  PGBOUNCER_DEFAULT_POOL_SIZE: "20"
+  PGBOUNCER_MIN_POOL_SIZE: "5"
+  PGBOUNCER_RESERVE_POOL_SIZE: "5"
+  PGBOUNCER_RESERVE_POOL_TIMEOUT: "5"
+  PGBOUNCER_MAX_DB_CONNECTIONS: "100"
 ```
 
-Install PgBouncer:
+Deploy PgBouncer with a chart or manifest that maps these environment variables to the Bitnami PgBouncer container:
 
 ```bash
-helm install pgbouncer bitnami/pgbouncer \
+kubectl create deployment pgbouncer \
   --namespace database \
-  -f pgbouncer-values.yaml
+  --image=bitnami/pgbouncer:latest
+
+kubectl set env deployment/pgbouncer \
+  --namespace database \
+  POSTGRESQL_HOST=postgresql \
+  POSTGRESQL_PORT=5432 \
+  POSTGRESQL_USERNAME=postgres \
+  POSTGRESQL_PASSWORD=password \
+  PGBOUNCER_POOL_MODE=transaction \
+  PGBOUNCER_MAX_CLIENT_CONN=1000 \
+  PGBOUNCER_DEFAULT_POOL_SIZE=20 \
+  PGBOUNCER_MIN_POOL_SIZE=5 \
+  PGBOUNCER_RESERVE_POOL_SIZE=5 \
+  PGBOUNCER_RESERVE_POOL_TIMEOUT=5 \
+  PGBOUNCER_MAX_DB_CONNECTIONS=100
+
+kubectl expose deployment pgbouncer \
+  --namespace database \
+  --port=6432 \
+  --target-port=6432
 ```
 
 ## SSL/TLS Configuration
@@ -497,7 +511,7 @@ tls:
   # certCAFilename: "ca.crt"
 
 primary:
-  configuration: |
+  extendedConfiguration: |
     ssl = on
     ssl_cert_file = '/opt/bitnami/postgresql/certs/tls.crt'
     ssl_key_file = '/opt/bitnami/postgresql/certs/tls.key'
@@ -591,7 +605,11 @@ kubectl exec -it postgresql-0 -n database -- psql -U postgres -c "SELECT client_
 
 ```bash
 # Test connection
-kubectl run -it --rm --image=bitnami/postgresql:15 test-pg -- psql -h postgresql -U postgres -d myapp -c "SELECT 1"
+kubectl run test-pg -n database -it --rm \
+  --image=bitnami/postgresql:15 \
+  --restart=Never \
+  --env="PGPASSWORD=$POSTGRES_PASSWORD" \
+  -- psql -h postgresql -U postgres -d myapp -c "SELECT 1"
 
 # Check service
 kubectl get svc postgresql -n database
