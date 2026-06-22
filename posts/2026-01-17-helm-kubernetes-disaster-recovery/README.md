@@ -52,7 +52,7 @@ flowchart TB
 | **Backup & Restore** | Hours | Hours | Low | Low |
 | **Pilot Light** | Minutes | Minutes | Medium | Medium |
 | **Warm Standby** | Minutes | Seconds | High | High |
-| **Active-Active** | Zero | Zero | Very High | Very High |
+| **Active-Active** | Near-zero | Near-zero | Very High | Very High |
 
 ## Backup & Restore Strategy
 
@@ -141,25 +141,40 @@ spec:
       serviceAccountName: velero
       containers:
         - name: restore
-          image: velero/velero:v1.12.0
+          image: bitnami/kubectl:latest
           command:
             - /bin/sh
             - -c
             - |
               # Get latest backup
-              BACKUP=$(velero backup get --output json | \
-                jq -r '.items | sort_by(.metadata.creationTimestamp) | last | .metadata.name')
+              BACKUP=$(kubectl get backups.velero.io -n velero \
+                --sort-by=.metadata.creationTimestamp \
+                -o jsonpath='{.items[-1].metadata.name}')
+              RESTORE_NAME="${BACKUP}-restore"
               
               echo "Restoring from backup: $BACKUP"
               
               # Restore
-              velero restore create --from-backup $BACKUP \
-                --include-namespaces production,databases \
-                --restore-volumes \
-                --wait
+              cat <<EOF | kubectl apply -f -
+              apiVersion: velero.io/v1
+              kind: Restore
+              metadata:
+                name: ${RESTORE_NAME}
+                namespace: velero
+              spec:
+                backupName: ${BACKUP}
+                includedNamespaces:
+                  - production
+                  - databases
+                restorePVs: true
+              EOF
+              
+              kubectl wait restore.velero.io/${RESTORE_NAME} -n velero \
+                --for=jsonpath='{.status.phase}'=Completed \
+                --timeout=30m
               
               # Verify
-              velero restore describe $BACKUP-restore
+              kubectl get restore.velero.io/${RESTORE_NAME} -n velero -o yaml
       restartPolicy: OnFailure
 ```
 
@@ -307,9 +322,10 @@ architecture: replication
 
 primary:
   # Read replica that can be promoted
-  standbyMode: true
-  primaryHost: primary-db.us-east-1.internal
-  primaryPort: 5432
+  standby:
+    enabled: true
+    primaryHost: primary-db.us-east-1.internal
+    primaryPort: 5432
   
   persistence:
     size: 100Gi
@@ -346,7 +362,7 @@ failover:
     # Check primary health
     if ! curl -sf https://primary.example.com/health; then
       # Activate DR mode
-      kubectl annotate deployment/myapp dr-mode=active
+      kubectl annotate deployment/myapp dr-mode=active --overwrite
       kubectl scale deployment/myapp --replicas=5
     fi
 ```
@@ -361,45 +377,43 @@ failover:
 ingress:
   enabled: true
   annotations:
-    external-dns.alpha.kubernetes.io/hostname: app.example.com
-    external-dns.alpha.kubernetes.io/aws-weight: "100"
-    external-dns.alpha.kubernetes.io/set-identifier: primary
+    external-dns.kubernetes.io/hostname: app.example.com
+    external-dns.kubernetes.io/aws-weight: "100"
+    external-dns.kubernetes.io/set-identifier: primary
     
 # DR cluster ingress
 # Deploy with different set-identifier
 ingressDR:
   enabled: true
   annotations:
-    external-dns.alpha.kubernetes.io/hostname: app.example.com
-    external-dns.alpha.kubernetes.io/aws-weight: "100"
-    external-dns.alpha.kubernetes.io/set-identifier: dr
+    external-dns.kubernetes.io/hostname: app.example.com
+    external-dns.kubernetes.io/aws-weight: "100"
+    external-dns.kubernetes.io/set-identifier: dr
 ```
 
 ### CockroachDB for Multi-Region
 
 ```yaml
 # cockroachdb-values.yaml
+operator:
+  enabled: true
+
 conf:
   cluster-name: global-cluster
   
 # Geo-distributed cluster
-statefulset:
-  replicas: 3
-  
-# Node localities
-localities:
-  - region=us-east-1,zone=us-east-1a
-  - region=us-east-1,zone=us-east-1b
-  - region=us-west-2,zone=us-west-2a
-
-# Multi-region configuration
-geo:
-  enabled: true
+cockroachdb:
   regions:
-    - name: us-east-1
-      nodeCount: 2
-    - name: us-west-2
-      nodeCount: 1
+    - code: us-east-1
+      nodes: 2
+      cloudProvider: aws
+      namespace: cockroachdb
+      domain: cluster.local
+    - code: us-west-2
+      nodes: 1
+      cloudProvider: aws
+      namespace: cockroachdb
+      domain: cluster.local
       
 # Network for cross-region
 tls:
@@ -408,10 +422,14 @@ tls:
 networkPolicy:
   enabled: true
   ingress:
-    - from:
-        - podSelector:
-            matchLabels:
-              app.kubernetes.io/name: cockroachdb
+    grpc:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/name: cockroachdb
+    http:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/name: cockroachdb
 ```
 
 ## Automated Failover
@@ -426,7 +444,13 @@ metadata:
   name: failover-controller
 spec:
   replicas: 1
+  selector:
+    matchLabels:
+      app: failover-controller
   template:
+    metadata:
+      labels:
+        app: failover-controller
     spec:
       containers:
         - name: controller
@@ -506,7 +530,7 @@ aws:
 
 # Enable health checks
 extraArgs:
-  - --aws-evaluate-target-health
+  - --aws-evaluate-target-health=true
 ```
 
 ### Health Check Based Failover
@@ -520,24 +544,36 @@ metadata:
 data:
   primary.json: |
     {
-      "Name": "primary-health-check",
-      "Type": "HTTPS",
-      "ResourcePath": "/health",
-      "FullyQualifiedDomainName": "primary.example.com",
-      "RequestInterval": 10,
-      "FailureThreshold": 3
+      "CallerReference": "primary-health-check-20260117",
+      "HealthCheckConfig": {
+        "Type": "HTTPS",
+        "ResourcePath": "/health",
+        "FullyQualifiedDomainName": "primary.example.com",
+        "Port": 443,
+        "RequestInterval": 10,
+        "FailureThreshold": 3
+      }
     }
     
   failover-record.json: |
     {
-      "Name": "app.example.com",
-      "Type": "A",
-      "SetIdentifier": "primary",
-      "Failover": "PRIMARY",
-      "HealthCheckId": "primary-health-check-id",
-      "AliasTarget": {
-        "DNSName": "primary-lb.us-east-1.elb.amazonaws.com"
-      }
+      "Changes": [
+        {
+          "Action": "UPSERT",
+          "ResourceRecordSet": {
+            "Name": "app.example.com",
+            "Type": "A",
+            "SetIdentifier": "primary",
+            "Failover": "PRIMARY",
+            "HealthCheckId": "primary-health-check-id",
+            "AliasTarget": {
+              "HostedZoneId": "Z35SXDOTRQ7X7K",
+              "DNSName": "primary-lb.us-east-1.elb.amazonaws.com",
+              "EvaluateTargetHealth": true
+            }
+          }
+        }
+      ]
     }
 ```
 
@@ -561,7 +597,7 @@ spec:
           image: myorg/dr-tester:latest
           env:
             - name: TEST_TYPE
-              value: {{ .Values.testType | default "read-only" }}
+              value: {{ .Values.testType | default "read-only" | quote }}
           command:
             - /bin/bash
             - -c
@@ -589,7 +625,7 @@ spec:
               echo "Performing full failover test..."
               
               # Simulate primary failure
-              kubectl annotate deployment/myapp test-mode=dr-active
+              kubectl annotate deployment/myapp test-mode=dr-active --overwrite
               
               # Scale up DR
               kubectl scale deployment/myapp --replicas={{ .Values.app.replicas }}
