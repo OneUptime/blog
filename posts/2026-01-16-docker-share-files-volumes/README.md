@@ -55,8 +55,6 @@ Both containers now have access to the same files. The web server mounts them at
 Docker Compose makes volume sharing straightforward. Volumes defined at the top level can be used by any service.
 
 ```yaml
-version: '3.8'
-
 services:
   web:
     image: nginx
@@ -111,8 +109,6 @@ The `:ro` suffix makes the volumes read-only in the sidecar containers, preventi
 A web frontend accepts uploads, a processor transforms them, and a CDN serves the results.
 
 ```yaml
-version: '3.8'
-
 services:
   frontend:
     image: upload-frontend
@@ -144,8 +140,6 @@ volumes:
 Application containers write logs, a collector reads and ships them.
 
 ```yaml
-version: '3.8'
-
 services:
   app:
     image: my-app
@@ -176,8 +170,6 @@ volumes:
 Multiple application instances share a cache directory.
 
 ```yaml
-version: '3.8'
-
 services:
   api:
     image: my-api
@@ -240,8 +232,6 @@ USER appuser
 In Docker Compose, use an init container to set up permissions.
 
 ```yaml
-version: '3.8'
-
 services:
   init:
     image: alpine
@@ -274,8 +264,6 @@ When multiple containers write to the same volume:
 ### Safe Concurrent Writing Example
 
 ```yaml
-version: '3.8'
-
 services:
   worker-1:
     image: my-worker
@@ -321,8 +309,6 @@ docker volume create \
 ### Docker Compose with NFS
 
 ```yaml
-version: '3.8'
-
 services:
   app:
     image: my-app
