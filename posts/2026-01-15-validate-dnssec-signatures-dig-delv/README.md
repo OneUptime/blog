@@ -179,8 +179,8 @@ While `dig` retrieves DNSSEC records, `delv` (Domain Entity Lookup & Validation)
 # Validate DNSSEC for a domain
 delv example.com A
 
-# Verbose output
-delv -v example.com
+# Trace the validation process
+delv +vtrace example.com
 ```
 
 ### Understanding delv Output
@@ -208,13 +208,13 @@ $ delv broken-dnssec.example.com A
 
 ```bash
 # Disable DNSSEC validation (for debugging)
-delv +cd example.com
+delv -i example.com
 
 # Query specific nameserver
 delv @8.8.8.8 example.com
 
 # Show RRSIG records
-delv +rrsig example.com
+delv +dnssec example.com
 
 # Trace the validation process
 delv +vtrace example.com
@@ -513,8 +513,8 @@ Flag meanings:
 |--------|-----------|----------|----------------|
 | 5 | RSA/SHA-1 | Weak | Avoid |
 | 7 | RSASHA1-NSEC3 | Weak | Avoid |
-| 8 | RSA/SHA-256 | Good | Acceptable |
-| 10 | RSA/SHA-512 | Good | Acceptable |
+| 8 | RSA/SHA-256 | Good | Recommended |
+| 10 | RSA/SHA-512 | Good | Validate existing zones; avoid for new signing |
 | 13 | ECDSA P-256/SHA-256 | Strong | Recommended |
 | 14 | ECDSA P-384/SHA-384 | Strong | Good |
 | 15 | Ed25519 | Strong | Recommended |
