@@ -14,10 +14,10 @@ Google Cloud SDK (Software Development Kit) is the official command-line interfa
 
 Before you begin, ensure you have:
 
-- Ubuntu 20.04, 22.04, or 24.04 (LTS versions recommended)
+- A supported Ubuntu LTS release, such as Ubuntu 22.04 or 24.04 (Ubuntu 20.04 requires Extended Security Maintenance)
 - A Google Cloud Platform account (free tier available)
 - sudo privileges on your system
-- Python 3.8 or later (included in modern Ubuntu)
+- Python 3.10 to 3.14 if you use an existing Python installation (the x86_64 Linux archive includes a bundled Python interpreter)
 
 ## Installing Google Cloud SDK
 
@@ -33,11 +33,10 @@ This method ensures you receive automatic updates and is the officially supporte
 sudo apt-get update
 
 # Install required dependencies for adding the repository
-# apt-transport-https: Allows apt to use HTTPS for package downloads
 # ca-certificates: Provides SSL certificate authorities
 # gnupg: GNU Privacy Guard for verifying package signatures
 # curl: Command-line tool for transferring data
-sudo apt-get install -y apt-transport-https ca-certificates gnupg curl
+sudo apt-get install -y ca-certificates gnupg curl
 
 # Add the Google Cloud public signing key to verify package authenticity
 # This key is used to verify that packages come from Google
@@ -51,7 +50,7 @@ echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.clou
 sudo apt-get update
 
 # Install the Google Cloud SDK package
-# This installs the core gcloud CLI and essential components
+# This installs gcloud, gcloud alpha, gcloud beta, gsutil, and bq
 sudo apt-get install -y google-cloud-cli
 ```
 
@@ -62,7 +61,7 @@ For a simpler installation with automatic updates, use the Snap package manager.
 ```bash
 # Install Google Cloud SDK via Snap
 # The --classic flag allows the snap to access system resources outside its sandbox
-sudo snap install google-cloud-sdk --classic
+sudo snap install google-cloud-cli --classic
 
 # Verify the installation by checking the version
 gcloud version
@@ -441,14 +440,14 @@ apt-get update
 apt-get install -y nginx
 systemctl start nginx'
 
-# Create a preemptible (spot) VM for cost savings
-# Preemptible VMs are up to 80% cheaper but can be terminated at any time
+# Create a Spot VM for cost savings
+# Spot VMs can be discounted by up to 91% but can be preempted at any time
 gcloud compute instances create batch-worker \
     --machine-type=n1-standard-4 \
     --image-family=ubuntu-2204-lts \
     --image-project=ubuntu-os-cloud \
-    --preemptible \
-    --maintenance-policy=TERMINATE
+    --provisioning-model=SPOT \
+    --instance-termination-action=STOP
 
 # Create a VM with a custom service account
 gcloud compute instances create secure-vm \
@@ -554,10 +553,10 @@ gcloud container clusters create private-cluster \
     --master-ipv4-cidr=172.16.0.0/28 \
     --num-nodes=3
 
-# Create a cluster with specific Kubernetes version
+# Create a cluster with a specific supported Kubernetes version
 gcloud container clusters create versioned-cluster \
     --zone=us-central1-a \
-    --cluster-version=1.28 \
+    --cluster-version=1.33 \
     --num-nodes=3
 ```
 
@@ -619,7 +618,7 @@ gcloud container node-pools delete old-pool \
 ### Working with kubectl
 
 ```bash
-# After getting credentials, kubectl commands work with your cluster
+# After getting credentials and installing the GKE auth plugin, kubectl commands work with your cluster
 # Verify connection to the cluster
 kubectl cluster-info
 
@@ -856,7 +855,7 @@ gcloud cloud-shell scp cloudshell:~/remote-file.txt localhost:./
 
 ## gcloud Components
 
-The Google Cloud SDK is modular. You can install additional components as needed.
+The Google Cloud SDK is modular. You can install additional components as needed. If you installed `google-cloud-cli` with APT or Snap, the gcloud component manager is disabled; use APT packages for additional components when available.
 
 ### Managing Components
 
@@ -870,20 +869,23 @@ gcloud components list
 # - app-engine-python (not installed)
 # - cloud-datastore-emulator (not installed)
 
-# Install a specific component
+# Install a specific component (archive/manual installations only)
 gcloud components install kubectl
 
-# Install multiple components at once
+# Install multiple components at once (archive/manual installations only)
 gcloud components install kubectl app-engine-python pubsub-emulator
 
-# Update all installed components to the latest version
+# Update all installed components to the latest version (archive/manual installations only)
 gcloud components update
 
-# Remove a component you no longer need
+# Remove a component you no longer need (archive/manual installations only)
 gcloud components remove app-engine-python
 
-# Reinstall a component (useful for troubleshooting)
+# Reinstall a component (archive/manual installations only)
 gcloud components reinstall kubectl
+
+# With APT installations, install components using APT packages instead
+sudo apt-get install kubectl google-cloud-cli-gke-gcloud-auth-plugin google-cloud-cli-app-engine-python
 ```
 
 ### Essential Components
@@ -892,8 +894,11 @@ gcloud components reinstall kubectl
 # kubectl - Kubernetes command-line tool
 gcloud components install kubectl
 
+# GKE authentication plugin - Required for kubectl authentication with GKE
+gcloud components install gke-gcloud-auth-plugin
+
 # Cloud SQL Proxy - For connecting to Cloud SQL instances
-gcloud components install cloud-sql-proxy
+gcloud components install cloud_sql_proxy
 
 # App Engine components (language-specific)
 gcloud components install app-engine-python
@@ -903,7 +908,7 @@ gcloud components install app-engine-go
 # Emulators for local development
 gcloud components install cloud-datastore-emulator
 gcloud components install pubsub-emulator
-gcloud components install bigtable-emulator
+gcloud components install bigtable
 gcloud components install cloud-firestore-emulator
 
 # Beta and Alpha commands (preview features)
@@ -1007,16 +1012,16 @@ nslookup www.googleapis.com
 export PATH="$HOME/google-cloud-sdk/bin:$PATH"
 source ~/.bashrc
 
-# Problem: Components failing to install or update
-# Solution: Fix permissions and retry
+# Problem: Components failing to install or update in a manual/archive installation
+# Solution: Fix permissions and retry with the component manager
 sudo chown -R $(whoami) ~/.config/gcloud
 gcloud components update
 
 # Problem: "ERROR: gcloud crashed (AttributeError)"
-# Solution: Reinstall the SDK
+# Solution: Reinstall the core component for manual/archive installations
 gcloud components reinstall core
 
-# Or completely reinstall if issues persist
+# For APT installations, reinstall the package if issues persist
 sudo apt-get remove google-cloud-cli
 sudo apt-get install google-cloud-cli
 ```
@@ -1103,8 +1108,8 @@ gcloud projects get-iam-policy PROJECT     # View IAM policy
 
 # === Components ===
 gcloud components list                     # List components
-gcloud components install COMPONENT        # Install component
-gcloud components update                   # Update all components
+gcloud components install COMPONENT        # Install component (manual/archive installs)
+gcloud components update                   # Update components (manual/archive installs)
 ```
 
 ## Conclusion
@@ -1119,7 +1124,7 @@ Key takeaways from this guide:
 4. **Components**: Install only what you need and keep them updated
 5. **Automation**: Leverage output formatting and scripting capabilities for automation
 
-The gcloud CLI is constantly evolving with new features and commands. Stay current by regularly running `gcloud components update` and exploring the `gcloud help` documentation.
+The gcloud CLI is constantly evolving with new features and commands. Stay current by updating through your installation method and exploring the `gcloud help` documentation.
 
 ---
 
