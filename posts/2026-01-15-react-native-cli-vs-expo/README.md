@@ -27,7 +27,7 @@ React Native CLI is the original and official way to create React Native applica
 When you create a project with React Native CLI, you get a full native project structure that includes both an `ios` folder containing an Xcode project and an `android` folder containing a Gradle-based Android project. This gives you complete control over every aspect of your application.
 
 ```bash
-npx react-native@latest init MyProject
+npx @react-native-community/cli@latest init MyProject
 ```
 
 After running this command, your project structure will look like this:
@@ -438,12 +438,12 @@ npx react-native run-ios --device "iPhone 15 Pro"
 
 **Debugging:**
 ```bash
-# Chrome DevTools
+# React Native DevTools (default since React Native 0.76)
 # Shake device or Cmd+D (iOS) / Cmd+M (Android)
-# Select "Debug with Chrome"
+# Select "Open DevTools"
 
-# Flipper (recommended)
-# Automatically connects when installed
+# Flipper was deprecated in 0.74 and removed from the default template;
+# React Native DevTools is now the built-in debugger.
 ```
 
 ### Expo Development
@@ -489,7 +489,7 @@ npx expo start
 | Error Overlay | Yes | Enhanced |
 | Hot Reloading | Yes | Yes |
 | TypeScript Support | Manual setup | Built-in |
-| Debugging Tools | Flipper | Expo DevTools |
+| Debugging Tools | React Native DevTools | Expo DevTools |
 
 ---
 
@@ -743,11 +743,9 @@ const handlePress = useCallback(() => {
 Both approaches support Hermes, Facebook's JavaScript engine optimized for React Native:
 
 **React Native CLI:**
-```javascript
-// android/app/build.gradle
-project.ext.react = [
-    enableHermes: true
-]
+```properties
+# android/gradle.properties (Hermes is enabled by default since React Native 0.70)
+hermesEnabled=true
 ```
 
 **Expo:**
@@ -849,7 +847,7 @@ import * as Notifications from 'expo-notifications';
 
 async function pickAndProcessImage() {
   const result = await ImagePicker.launchImageLibraryAsync({
-    mediaTypes: ImagePicker.MediaTypeOptions.Images,
+    mediaTypes: ['images'],
     allowsEditing: true,
     quality: 1,
   });
@@ -998,32 +996,32 @@ class IoTBLEModule(reactContext: ReactApplicationContext) : ReactContextBaseJava
 
 **Implementation:**
 ```javascript
-import { BarCodeScanner } from 'expo-barcode-scanner';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as SQLite from 'expo-sqlite';
 
+const db = SQLite.openDatabaseSync('inventory.db');
+
 function InventoryScanner() {
-  const [hasPermission, setHasPermission] = useState(null);
+  const [permission, requestPermission] = useCameraPermissions();
 
   useEffect(() => {
-    (async () => {
-      const { status } = await BarCodeScanner.requestPermissionsAsync();
-      setHasPermission(status === 'granted');
-    })();
-  }, []);
+    if (!permission?.granted) {
+      requestPermission();
+    }
+  }, [permission]);
 
   const handleBarCodeScanned = async ({ type, data }) => {
-    const db = SQLite.openDatabase('inventory.db');
-    db.transaction(tx => {
-      tx.executeSql(
-        'INSERT INTO scans (barcode, timestamp) VALUES (?, ?)',
-        [data, Date.now()]
-      );
-    });
+    await db.runAsync(
+      'INSERT INTO scans (barcode, timestamp) VALUES (?, ?)',
+      data,
+      Date.now()
+    );
   };
 
   return (
-    <BarCodeScanner
-      onBarCodeScanned={handleBarCodeScanned}
+    <CameraView
+      onBarcodeScanned={handleBarCodeScanned}
+      barcodeScannerSettings={{ barcodeTypes: ['ean13', 'code128', 'qr'] }}
       style={StyleSheet.absoluteFillObject}
     />
   );
