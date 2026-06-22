@@ -17,7 +17,7 @@ Docker requires proxy configuration at three different levels:
 | Level | Purpose | Configuration Location |
 |-------|---------|----------------------|
 | Docker Daemon | Pulling images from registries | systemd or daemon.json |
-| Container Runtime | Containers accessing external networks | docker run or compose |
+| Container Runtime | Containers accessing external networks | Docker client config, Docker Desktop settings, docker run, or compose |
 | Docker Build | Downloading dependencies during build | Build args or Dockerfile |
 
 ## Configuring the Docker Daemon
@@ -49,9 +49,9 @@ sudo systemctl restart docker
 sudo systemctl show --property=Environment docker
 ```
 
-### Method 2: daemon.json (All Platforms)
+### Method 2: daemon.json (Docker Engine)
 
-For Docker Desktop on Windows/Mac or as an alternative on Linux.
+For Docker Engine, configure the daemon in `daemon.json`.
 
 ```json
 {
@@ -65,8 +65,9 @@ For Docker Desktop on Windows/Mac or as an alternative on Linux.
 
 Location of daemon.json:
 - Linux: `/etc/docker/daemon.json`
-- Windows: `C:\ProgramData\docker\config\daemon.json`
-- macOS: `~/.docker/daemon.json` or via Docker Desktop UI
+- Windows Server: `C:\ProgramData\docker\config\daemon.json`
+
+Docker Desktop ignores proxy settings in `daemon.json`; configure proxies in Docker Desktop settings instead.
 
 ### Docker Desktop GUI Configuration
 
@@ -81,7 +82,23 @@ For Docker Desktop on Windows or macOS:
 
 ## Configuring Containers
 
-Containers inherit proxy settings from the daemon in newer Docker versions, but you may need explicit configuration for older versions or specific requirements.
+Containers can receive proxy settings automatically from the Docker client configuration or Docker Desktop container proxy settings. You can also set them explicitly for specific requirements.
+
+### Docker Client Configuration
+
+For Docker Engine, add proxy settings to `~/.docker/config.json`. Docker uses these values for new containers and as build arguments for new builds.
+
+```json
+{
+  "proxies": {
+    "default": {
+      "httpProxy": "http://proxy.company.com:8080",
+      "httpsProxy": "http://proxy.company.com:8080",
+      "noProxy": "localhost,127.0.0.1,.company.com"
+    }
+  }
+}
+```
 
 ### Using Environment Variables
 
@@ -138,9 +155,15 @@ no_proxy=localhost,127.0.0.1
 ```bash
 # Use with docker run
 docker run --env-file .env.proxy my-image
+```
 
-# Use with docker-compose
-docker-compose --env-file .env.proxy up
+```yaml
+# Use with Docker Compose
+services:
+  app:
+    image: my-app
+    env_file:
+      - .env.proxy
 ```
 
 ## Configuring Docker Build
@@ -160,30 +183,15 @@ docker build \
 
 ### Dockerfile Configuration
 
-Reference build arguments in your Dockerfile. Note that these are available only during build, not at runtime.
+Pass proxy settings as build arguments. These predefined proxy arguments are available during build without declaring them in your Dockerfile and are not included in the build output by default.
 
 ```dockerfile
 FROM node:18
-
-# Accept build arguments (these are predefined, no ARG declaration needed)
-# ARG HTTP_PROXY
-# ARG HTTPS_PROXY
-# ARG NO_PROXY
-
-# Set as environment variables for the build process
-ENV HTTP_PROXY=${HTTP_PROXY}
-ENV HTTPS_PROXY=${HTTPS_PROXY}
-ENV NO_PROXY=${NO_PROXY}
 
 # Install dependencies (will use proxy)
 WORKDIR /app
 COPY package*.json ./
 RUN npm install
-
-# Clear proxy settings for runtime (optional but recommended)
-ENV HTTP_PROXY=
-ENV HTTPS_PROXY=
-ENV NO_PROXY=
 
 COPY . .
 CMD ["npm", "start"]
@@ -257,7 +265,7 @@ NO_PROXY=localhost,127.0.0.1,::1,.company.com,10.0.0.0/8,172.16.0.0/12,192.168.0
 | `::1` | IPv6 loopback |
 | `.company.com` | Internal company domains |
 | `10.0.0.0/8` | Private network range |
-| `172.16.0.0/12` | Docker's default bridge network |
+| `172.16.0.0/12` | Private network range often used by Docker bridge networks |
 | `192.168.0.0/16` | Private network range |
 | `.local` | mDNS local addresses |
 
@@ -324,10 +332,7 @@ sudo cat /proc/$(pgrep -f dockerd)/environ | tr '\0' '\n' | grep -i proxy
 ### Test Image Pull
 
 ```bash
-# Enable debug mode
-docker pull alpine 2>&1 | grep -i proxy
-
-# Or with verbose output
+# Run with debug output
 docker --debug pull alpine
 ```
 
