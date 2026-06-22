@@ -53,9 +53,8 @@ You need at least 200MB of disk space and sufficient RAM to handle packet captur
 The simplest installation method uses Ubuntu's package manager. This installs both the GUI and command-line tools.
 
 ```bash
-# Install Wireshark with all recommended components
-# This includes the GUI (wireshark-qt), CLI tools (tshark), and capture utilities
-sudo apt install wireshark -y
+# Install Wireshark with GUI, CLI tools, and capture utilities
+sudo apt install wireshark tshark -y
 
 # During installation, you will be prompted about non-superuser capture
 # Select "Yes" to allow members of the 'wireshark' group to capture packets
@@ -90,8 +89,8 @@ sudo add-apt-repository ppa:wireshark-dev/stable -y
 # Update package lists to include new repository
 sudo apt update
 
-# Install the latest Wireshark version
-sudo apt install wireshark -y
+# Install the latest Wireshark and tshark versions
+sudo apt install wireshark tshark -y
 ```
 
 ### Verify Installation
@@ -189,7 +188,7 @@ Use tshark for scriptable, automated captures.
 tshark -i eth0 -c 100
 
 # Capture traffic and save to a file for later analysis
-# -w: output file path (pcap format)
+# -w: output file path (pcapng by default unless -F specifies another format)
 tshark -i eth0 -w /tmp/capture.pcap
 
 # Capture with a time limit instead of packet count
@@ -567,7 +566,7 @@ tshark -r capture.pcap -Y "tls.handshake.type == 2" \
 # Detect TLS certificate information
 tshark -r capture.pcap -Y "tls.handshake.certificate" \
   -T fields \
-  -e x509sat.printableString
+  -e x509sat.PrintableString
 
 # Find TLS handshake failures
 tshark -r capture.pcap -Y "tls.alert_message"
@@ -681,8 +680,8 @@ tshark -r capture.pcap -z endpoints,ip -q
 # Show TCP endpoint statistics
 tshark -r capture.pcap -z endpoints,tcp -q
 
-# Sort endpoints by packet count
-tshark -r capture.pcap -z endpoints,ip -q | sort -t',' -k2 -n -r
+# Endpoint tables are already sorted by total packet count
+tshark -r capture.pcap -z endpoints,ip -q
 ```
 
 ### IO Statistics Over Time
@@ -980,11 +979,11 @@ Capture on a remote server and transfer files for analysis.
 # dumpcap has smaller memory footprint than tshark
 ssh user@remote-server "dumpcap -i eth0 -w /tmp/remote_capture.pcap -b filesize:10000 -b files:5"
 
-# Transfer capture file to local machine for analysis
-scp user@remote-server:/tmp/remote_capture.pcap ./
+# Transfer rotated capture files to local machine for analysis
+scp 'user@remote-server:/tmp/remote_capture_*.pcap' ./
 
-# Analyze locally with full Wireshark capabilities
-wireshark remote_capture.pcap
+# Analyze one rotated capture locally with full Wireshark capabilities
+wireshark remote_capture_00001_*.pcap
 ```
 
 ### Streaming Remote Capture
@@ -1044,7 +1043,7 @@ Configure secure remote capture access.
 
 ```bash
 # Create a dedicated capture user with limited privileges
-sudo useradd -r -s /bin/false capture_user
+sudo useradd -r -m -s /bin/bash capture_user
 sudo usermod -aG wireshark capture_user
 
 # Create SSH key for automated capture
@@ -1204,8 +1203,8 @@ tshark -r capture.pcap -Y "http.time > 2" \
   -e http.request.uri \
   -e http.time
 
-# Monitor for connection timeouts (incomplete TCP streams)
-tshark -r capture.pcap -z conv,tcp -q | grep -v "complete"
+# Review TCP conversations for short, reset, or one-way flows
+tshark -r capture.pcap -z conv,tcp -q
 
 # Check for application keepalive issues
 tshark -r capture.pcap -Y "tcp.analysis.keep_alive"
@@ -1218,7 +1217,7 @@ tshark -r capture.pcap -Y "tcp.analysis.keep_alive"
 ```bash
 # Use capture filters to reduce data volume at capture time
 # This is more efficient than capturing everything and filtering later
-tshark -i eth0 -f "tcp port 443 and host 10.0.0.0/8" -w filtered.pcap
+tshark -i eth0 -f "tcp port 443 and net 10.0.0.0/8" -w filtered.pcap
 
 # Disable name resolution for faster processing
 tshark -r capture.pcap -n -Y "http"
@@ -1259,7 +1258,7 @@ editcap -r capture.pcap sanitized.pcap 1-100 150-500  # Keep only specified rang
 #!/bin/bash
 # alert_on_pattern.sh
 while true; do
-    COUNT=$(tshark -i eth0 -a duration:60 -Y "tcp.flags.reset==1" -q 2>/dev/null | wc -l)
+    COUNT=$(tshark -i eth0 -a duration:60 -Y "tcp.flags.reset==1" 2>/dev/null | wc -l)
     if [ "$COUNT" -gt 100 ]; then
         echo "High TCP reset count: $COUNT" | mail -s "Network Alert" admin@example.com
     fi
