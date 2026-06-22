@@ -154,8 +154,7 @@ options {
         window 5;
     };
 
-    // Response policy zones for additional filtering
-    response-policy { zone "rpz.local"; };
+    // Add response-policy here only if the RPZ zone is defined in every view
 };
 
 // Internal IPv4 View
@@ -482,8 +481,12 @@ CoreDNS is the default DNS server in Kubernetes and offers a plugin-based archit
     errors
     prometheus :9155
 
-    # Rate limiting for external queries
-    ratelimit 100
+    # Response rate limiting for external queries
+    # Requires a CoreDNS build that includes the external rrl plugin
+    rrl {
+        responses-per-second 100
+        window 5
+    }
 }
 
 # Internal IPv4 zone
@@ -500,7 +503,10 @@ example.com:53 {
     }
 
     # Serve zone from file
-    file /etc/coredns/zones/internal-ipv4/example.com.zone
+    file /etc/coredns/zones/internal-ipv4/example.com.zone {
+        reload 30s
+        fallthrough
+    }
 
     # Forward unknown queries
     forward . 8.8.8.8 8.8.4.4 {
@@ -510,8 +516,6 @@ example.com:53 {
     # Cache responses
     cache 3600
 
-    # Reload zone files automatically
-    reload 30s
 }
 
 # Internal IPv6 zone
@@ -525,14 +529,16 @@ example.com:53 {
         block
     }
 
-    file /etc/coredns/zones/internal-ipv6/example.com.zone
+    file /etc/coredns/zones/internal-ipv6/example.com.zone {
+        reload 30s
+        fallthrough
+    }
 
     forward . 2001:4860:4860::8888 2001:4860:4860::8844 {
         max_concurrent 1000
     }
 
     cache 3600
-    reload 30s
 }
 
 # External zone
@@ -540,12 +546,13 @@ example.com:53 {
     import external
 
     # No recursion for external - authoritative only
-    file /etc/coredns/zones/external/example.com.zone
+    file /etc/coredns/zones/external/example.com.zone {
+        reload 30s
+    }
 
     # No forwarding
 
     cache 300
-    reload 30s
 }
 
 # Kubernetes integration (internal only)
@@ -584,7 +591,7 @@ cluster.local:53 {
 
 ### CoreDNS with View Plugin
 
-For more sophisticated view selection, use the `view` plugin (requires CoreDNS 1.11+):
+For more sophisticated view selection, use a CoreDNS build that includes the `view` plugin:
 
 ```corefile
 # /etc/coredns/Corefile with view plugin
@@ -603,24 +610,32 @@ example.com:53 {
         expr incidr(client_ip(), '10.0.0.0/8') ||
              incidr(client_ip(), '172.16.0.0/12') ||
              incidr(client_ip(), '192.168.0.0/16')
-    } {
-        file /etc/coredns/zones/internal-ipv4/example.com.zone
-        forward . 8.8.8.8
     }
+
+    file /etc/coredns/zones/internal-ipv4/example.com.zone
+    forward . 8.8.8.8
+}
+
+example.com:53 {
+    import common
 
     view internal-ipv6 {
         expr incidr(client_ip(), 'fd00::/8') ||
              incidr(client_ip(), 'fe80::/10')
-    } {
-        file /etc/coredns/zones/internal-ipv6/example.com.zone
-        forward . 2001:4860:4860::8888
     }
+
+    file /etc/coredns/zones/internal-ipv6/example.com.zone
+    forward . 2001:4860:4860::8888
+}
+
+example.com:53 {
+    import common
 
     view external {
         expr true  # Catch-all
-    } {
-        file /etc/coredns/zones/external/example.com.zone
     }
+
+    file /etc/coredns/zones/external/example.com.zone
 }
 ```
 
@@ -634,17 +649,31 @@ example.com:53 {
     errors
 
     # Detect IPv6-capable clients and prefer AAAA
+    view internal-ipv6 {
+        expr incidr(client_ip(), 'fd00::/8')
+    }
+
     rewrite stop {
         name regex (.*)\.example\.com {1}.v6.example.com
         answer name (.*)\.v6\.example\.com {1}.example.com
-        cond client_ip() matches fd00::/8
     }
 
+    file /etc/coredns/zones/example.com.zone
+    cache 300
+}
+
+example.com:53 {
+    log
+    errors
+
     # Force IPv4 for legacy clients
+    view internal-ipv4 {
+        expr incidr(client_ip(), '10.0.0.0/8')
+    }
+
     rewrite stop {
         name regex (.*)\.example\.com {1}.v4.example.com
         answer name (.*)\.v4\.example\.com {1}.example.com
-        cond client_ip() matches 10.0.0.0/8
     }
 
     file /etc/coredns/zones/example.com.zone
@@ -803,7 +832,7 @@ Organizations running workloads both on-premises (IPv6-native) and in cloud (IPv
 ```bind
 // BIND configuration for hybrid cloud
 view "onprem-ipv6" {
-    match-clients { fd00::/8; 2001:db8:corp::/48; };
+    match-clients { fd00::/8; 2001:db8:cafe::/48; };
 
     zone "example.com" {
         type master;
@@ -840,29 +869,20 @@ view "cloud-ipv4" {
 When migrating services to IPv6, use DNS to control rollout:
 
 ```bind
-// Zone file with weighted records for gradual migration
+// Zone file patterns for gradual migration
+// DNS does not reliably weight IPv4 vs IPv6 by repeating A or AAAA records.
+// Use separate names, views, or policy DNS to control which clients receive AAAA.
 
-; Stage 1: IPv4 primary, IPv6 canary (10%)
-api     IN      A       10.0.1.51       ; Weight: 90%
-api     IN      A       10.0.1.51
-api     IN      A       10.0.1.51
-api     IN      A       10.0.1.51
-api     IN      A       10.0.1.51
-api     IN      A       10.0.1.51
-api     IN      A       10.0.1.51
-api     IN      A       10.0.1.51
-api     IN      A       10.0.1.51
-api     IN      AAAA    fd00::1:51      ; Weight: 10%
+; Stage 1: IPv4 primary, IPv6 canary on a separate hostname
+api             IN      A       10.0.1.51
+api-v6-canary   IN      AAAA    fd00::1:51
 
-; Stage 2: 50/50 split
-api     IN      A       10.0.1.51
-api     IN      AAAA    fd00::1:51
+; Stage 2: dual-stack for selected internal views
+api             IN      A       10.0.1.51
+api             IN      AAAA    fd00::1:51
 
-; Stage 3: IPv6 primary, IPv4 fallback
-api     IN      AAAA    fd00::1:51
-api     IN      AAAA    fd00::1:51
-api     IN      AAAA    fd00::1:51
-api     IN      A       10.0.1.51       ; Fallback only
+; Stage 3: IPv6-only view, with IPv4 kept in a legacy view if needed
+api             IN      AAAA    fd00::1:51
 ```
 
 ### Use Case 3: Geographic and Protocol-Based Steering
@@ -872,47 +892,58 @@ api     IN      A       10.0.1.51       ; Fallback only
 
 example.com:53 {
     log
+    geoip /opt/geoip2/db/GeoLite2-City.mmdb {
+        edns-subnet
+    }
+    metadata
+    view na-ipv4 {
+        expr metadata('geoip/country/code') in ['US', 'CA', 'MX']
+    }
 
     # North America - prefer IPv4 (legacy infrastructure)
-    view na-ipv4 {
-        geoip {
-            country US CA MX
-        }
-    } {
-        template IN A {
-            answer "{{ .Name }} 300 IN A 198.51.100.50"
-        }
-        template IN AAAA {
-            answer "{{ .Name }} 300 IN AAAA 2001:db8:na::50"
-        }
+    template IN A {
+        answer "{{ .Name }} 300 IN A 198.51.100.50"
+    }
+    template IN AAAA {
+        answer "{{ .Name }} 300 IN AAAA 2001:db8:0:1::50"
+    }
+}
+
+example.com:53 {
+    log
+    geoip /opt/geoip2/db/GeoLite2-City.mmdb {
+        edns-subnet
+    }
+    metadata
+    view eu-ipv6 {
+        expr metadata('geoip/country/code') in ['DE', 'FR', 'GB', 'NL']
     }
 
     # Europe - prefer IPv6 (modern infrastructure)
-    view eu-ipv6 {
-        geoip {
-            country DE FR GB NL
-        }
-    } {
-        template IN AAAA {
-            answer "{{ .Name }} 300 IN AAAA 2001:db8:eu::50"
-        }
-        template IN A {
-            answer "{{ .Name }} 300 IN A 203.0.113.50"
-        }
+    template IN AAAA {
+        answer "{{ .Name }} 300 IN AAAA 2001:db8:0:2::50"
+    }
+    template IN A {
+        answer "{{ .Name }} 300 IN A 203.0.113.50"
+    }
+}
+
+example.com:53 {
+    log
+    geoip /opt/geoip2/db/GeoLite2-City.mmdb {
+        edns-subnet
+    }
+    metadata
+    view apac {
+        expr metadata('geoip/country/code') in ['JP', 'SG', 'AU']
     }
 
     # Asia-Pacific - both protocols
-    view apac {
-        geoip {
-            country JP SG AU
-        }
-    } {
-        template IN A {
-            answer "{{ .Name }} 300 IN A 203.0.113.100"
-        }
-        template IN AAAA {
-            answer "{{ .Name }} 300 IN AAAA 2001:db8:apac::50"
-        }
+    template IN A {
+        answer "{{ .Name }} 300 IN A 203.0.113.100"
+    }
+    template IN AAAA {
+        answer "{{ .Name }} 300 IN AAAA 2001:db8:0:3::50"
     }
 }
 ```
@@ -1037,9 +1068,7 @@ example.com:53 {
     }
 
     # Export to OneUptime
-    prometheus :9153 {
-        per_zone_stats true
-    }
+    prometheus :9153
 
     # Custom metrics
     metadata
@@ -1125,37 +1154,38 @@ histogram_quantile(0.99, sum(rate(coredns_forward_request_duration_seconds_bucke
 #!/bin/bash
 # test-split-horizon.sh
 
-DNS_SERVER="10.0.1.10"
+DNS_SERVER_V4="10.0.1.10"
+DNS_SERVER_V6="fd00::1:10"
 DOMAIN="api.example.com"
 
 echo "=== Testing Split-Horizon DNS ==="
 
 # Test from IPv4 internal network
 echo -e "\n--- IPv4 Internal View ---"
-dig @${DNS_SERVER} ${DOMAIN} A +short -b 10.0.0.100
-dig @${DNS_SERVER} ${DOMAIN} AAAA +short -b 10.0.0.100
+dig @${DNS_SERVER_V4} ${DOMAIN} A +short -b 10.0.0.100
+dig @${DNS_SERVER_V4} ${DOMAIN} AAAA +short -b 10.0.0.100
 
 # Test from IPv6 internal network
 echo -e "\n--- IPv6 Internal View ---"
-dig @${DNS_SERVER} ${DOMAIN} A +short -b fd00::100
-dig @${DNS_SERVER} ${DOMAIN} AAAA +short -b fd00::100
+dig @${DNS_SERVER_V6} ${DOMAIN} A +short -b fd00::100
+dig @${DNS_SERVER_V6} ${DOMAIN} AAAA +short -b fd00::100
 
 # Test from external (if accessible)
 echo -e "\n--- External View ---"
-dig @${DNS_SERVER} ${DOMAIN} A +short -b 203.0.113.100 2>/dev/null || echo "External test skipped"
+dig @${DNS_SERVER_V4} ${DOMAIN} A +short -b 203.0.113.100 2>/dev/null || echo "External test skipped"
 
 # Verify no zone leakage
 echo -e "\n--- Zone Transfer Test (should fail) ---"
-dig @${DNS_SERVER} example.com AXFR +short
+dig @${DNS_SERVER_V4} example.com AXFR +short
 
 # Test DNSSEC validation
 echo -e "\n--- DNSSEC Validation ---"
-dig @${DNS_SERVER} ${DOMAIN} +dnssec +short
+dig @${DNS_SERVER_V4} ${DOMAIN} +dnssec +short
 
 # Response time measurement
 echo -e "\n--- Latency Test ---"
 for i in {1..10}; do
-    dig @${DNS_SERVER} ${DOMAIN} | grep "Query time"
+    dig @${DNS_SERVER_V4} ${DOMAIN} | grep "Query time"
 done
 
 echo -e "\n=== Tests Complete ==="
@@ -1168,7 +1198,6 @@ echo -e "\n=== Tests Complete ==="
 # test_split_horizon.py
 
 import dns.resolver
-import socket
 import sys
 
 def test_view(resolver_ip, source_ip, domain, expected_v4, expected_v6):
@@ -1180,7 +1209,7 @@ def test_view(resolver_ip, source_ip, domain, expected_v4, expected_v6):
 
     # Test A record
     try:
-        answers = resolver.resolve(domain, 'A')
+        answers = resolver.resolve(domain, 'A', source=source_ip)
         a_records = [str(r) for r in answers]
         print(f"  A records: {a_records}")
         assert expected_v4 in a_records, f"Expected {expected_v4} in A records"
@@ -1191,7 +1220,7 @@ def test_view(resolver_ip, source_ip, domain, expected_v4, expected_v6):
 
     # Test AAAA record
     try:
-        answers = resolver.resolve(domain, 'AAAA')
+        answers = resolver.resolve(domain, 'AAAA', source=source_ip)
         aaaa_records = [str(r) for r in answers]
         print(f"  AAAA records: {aaaa_records}")
         assert expected_v6 in aaaa_records, f"Expected {expected_v6} in AAAA records"
@@ -1204,17 +1233,16 @@ def test_view(resolver_ip, source_ip, domain, expected_v4, expected_v6):
 
 def main():
     domain = "api.example.com"
-    dns_server = "10.0.1.10"
 
     tests = [
-        # (source_ip, expected_v4, expected_v6)
-        ("10.0.0.100", "10.0.1.51", "fd00::1:51"),      # Internal IPv4 view
-        ("fd00::100", "10.0.1.51", "fd00::1:51"),       # Internal IPv6 view
+        # (resolver_ip, source_ip, expected_v4, expected_v6)
+        ("10.0.1.10", "10.0.0.100", "10.0.1.51", "fd00::1:51"),      # Internal IPv4 view
+        ("fd00::1:10", "fd00::100", "10.0.1.51", "fd00::1:51"),      # Internal IPv6 view
     ]
 
     results = []
-    for source_ip, expected_v4, expected_v6 in tests:
-        result = test_view(dns_server, source_ip, domain, expected_v4, expected_v6)
+    for resolver_ip, source_ip, expected_v4, expected_v6 in tests:
+        result = test_view(resolver_ip, source_ip, domain, expected_v4, expected_v6)
         results.append(result)
 
     print(f"\n{'='*50}")
@@ -1235,7 +1263,7 @@ if __name__ == "__main__":
 **Diagnosis:**
 ```bash
 # Check which view is being matched
-dig @10.0.1.10 api.example.com +subnet=10.0.0.100/32
+dig @10.0.1.10 api.example.com -b 10.0.0.100
 
 # Enable query logging in BIND
 rndc querylog on
@@ -1326,10 +1354,10 @@ dig @10.0.1.10 example.com RRSIG
 
 | Area | Recommendation | Rationale |
 |------|----------------|-----------|
-| **Record Ordering** | AAAA before A in zone files | Some resolvers prefer first record |
+| **Record Publication** | Publish AAAA only when the IPv6 path is reachable | Avoids clients selecting broken IPv6 destinations |
 | **Happy Eyeballs** | Keep IPv4/IPv6 latency similar | Prevent protocol preference flapping |
-| **Fallback** | Always provide both A and AAAA | Support all client capabilities |
-| **Migration** | Use weighted records for gradual rollout | Control IPv6 adoption rate |
+| **Fallback** | Provide both A and AAAA only for services reachable on both protocols | Support client capabilities without advertising unusable paths |
+| **Migration** | Use views, canary hostnames, or policy DNS for gradual rollout | Control IPv6 adoption rate |
 | **Testing** | Test from IPv4-only, IPv6-only, dual-stack | Verify all client scenarios |
 | **Monitoring** | Track query rate by record type | Understand IPv6 adoption progress |
 
