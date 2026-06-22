@@ -86,21 +86,21 @@ operator:
       cpu: 1100m
       memory: 1Gi
       
-  # Watch specific namespaces (empty = all namespaces)
-  watchNamespace: ""
+  # Watch all namespaces. Omit this value to watch only the operator namespace.
+  watchNamespace: "*"
   
   # Image settings
-  operatorImageName: mongodb/mongodb-kubernetes-operator
-  versionUpgradeHookImageName: mongodb/mongodb-kubernetes-operator-version-upgrade-post-start-hook
+  operatorImageName: mongodb-kubernetes-operator
   
 # Agent settings
 agent:
-  name: mongodb-agent
-  version: 12.0.21.7698-1
+  name: mongodb-agent-ubi
+  version: 108.0.6.8796-1
   
 # Version upgrade hook
 versionUpgradeHook:
-  name: mongodb-kubernetes-operator-prestart-hook
+  name: mongodb-kubernetes-operator-version-upgrade-post-start-hook
+  version: 1.0.10
 ```
 
 ```bash
@@ -217,14 +217,14 @@ kubectl create secret generic mongodb-app-password \
 kubectl apply -f mongodb-community.yaml
 ```
 
-## MongoDB Enterprise Operator
+## MongoDB Controllers for Kubernetes
 
-### Install Enterprise Operator
+### Install MongoDB Controllers for Kubernetes
 
 ```yaml
 # mongodb-enterprise-operator-values.yaml
 operator:
-  name: mongodb-enterprise-operator
+  name: mongodb-kubernetes-operator
   
   replicas: 1
   
@@ -238,17 +238,13 @@ operator:
       
   watchNamespace: "*"
   
-# Ops Manager configuration (required for enterprise)
-opsManager:
-  enabled: false  # Set to true if using Ops Manager
-
 # Database settings
 database:
-  name: mongodb-enterprise-database
+  name: mongodb-kubernetes-database
 ```
 
 ```bash
-helm install mongodb-enterprise-operator mongodb/enterprise-operator \
+helm install mongodb-kubernetes-operator mongodb/mongodb-kubernetes \
   --namespace mongodb \
   --create-namespace \
   -f mongodb-enterprise-operator-values.yaml
@@ -280,7 +276,7 @@ spec:
     podTemplate:
       spec:
         containers:
-          - name: mongodb-enterprise-database
+          - name: mongodb-kubernetes-database
             resources:
               requests:
                 cpu: 1000m
@@ -308,8 +304,8 @@ spec:
 
 ```yaml
 # mongodb-sharded.yaml
-apiVersion: mongodbcommunity.mongodb.com/v1
-kind: MongoDBCommunity
+apiVersion: mongodb.com/v1
+kind: MongoDB
 metadata:
   name: mongodb-sharded
   namespace: mongodb
@@ -319,29 +315,21 @@ spec:
   mongodsPerShardCount: 3
   mongosCount: 2
   configServerCount: 3
-  version: "7.0.4"
-  
-  security:
-    authentication:
-      modes: ["SCRAM"]
-      
-  users:
-    - name: admin
-      db: admin
-      passwordSecretRef:
-        name: mongodb-sharded-admin
-      roles:
-        - name: clusterAdmin
-          db: admin
-        - name: userAdminAnyDatabase
-          db: admin
+  version: "7.0.4-ent"
+  persistent: true
+
+  opsManager:
+    configMapRef:
+      name: ops-manager-connection
+
+  credentials: ops-manager-admin-key
           
   # Shard configuration
   shardPodSpec:
     podTemplate:
       spec:
         containers:
-          - name: mongod
+          - name: mongodb-kubernetes-database
             resources:
               requests:
                 cpu: 500m
@@ -355,7 +343,7 @@ spec:
     podTemplate:
       spec:
         containers:
-          - name: mongod
+          - name: mongodb-kubernetes-database
             resources:
               requests:
                 cpu: 200m
@@ -369,7 +357,7 @@ spec:
     podTemplate:
       spec:
         containers:
-          - name: mongos
+          - name: mongodb-kubernetes-database
             resources:
               requests:
                 cpu: 200m
@@ -392,9 +380,11 @@ openssl req -x509 -new -nodes -key ca.key -sha256 -days 3650 \
 # Create server certificate
 openssl genrsa -out server.key 2048
 openssl req -new -key server.key -out server.csr \
-  -subj "/CN=*.mongodb.svc.cluster.local"
+  -subj "/CN=mongodb-svc.mongodb.svc.cluster.local" \
+  -addext "subjectAltName=DNS:mongodb-svc.mongodb.svc.cluster.local,DNS:mongodb-0.mongodb-svc.mongodb.svc.cluster.local,DNS:mongodb-1.mongodb-svc.mongodb.svc.cluster.local,DNS:mongodb-2.mongodb-svc.mongodb.svc.cluster.local"
 openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key \
-  -CAcreateserial -out server.crt -days 365 -sha256
+  -CAcreateserial -out server.crt -days 365 -sha256 \
+  -copy_extensions copy
 
 # Create TLS secret
 kubectl create secret tls mongodb-tls \
@@ -459,8 +449,8 @@ data:
         bucket: mongodb-backups
         prefix: production
         credentials:
-          access-key-id: ${AWS_ACCESS_KEY_ID}
-          secret-access-key: ${AWS_SECRET_ACCESS_KEY}
+          access-key-id: <aws-access-key-id>
+          secret-access-key: <aws-secret-access-key>
     pitr:
       enabled: true
       oplogSpanMin: 10
@@ -519,10 +509,10 @@ metadata:
 type: Opaque
 stringData:
   # For replica set
-  MONGODB_URI: "mongodb://app-user:password@mongodb-0.mongodb-svc.mongodb.svc.cluster.local:27017,mongodb-1.mongodb-svc.mongodb.svc.cluster.local:27017,mongodb-2.mongodb-svc.mongodb.svc.cluster.local:27017/myapp?replicaSet=mongodb&authSource=admin"
+  MONGODB_URI: "mongodb+srv://app-user:password@mongodb-svc.mongodb.svc.cluster.local/myapp?authSource=admin"
   
   # With TLS
-  MONGODB_URI_TLS: "mongodb://app-user:password@mongodb-0.mongodb-svc.mongodb.svc.cluster.local:27017,mongodb-1.mongodb-svc.mongodb.svc.cluster.local:27017,mongodb-2.mongodb-svc.mongodb.svc.cluster.local:27017/myapp?replicaSet=mongodb&authSource=admin&tls=true&tlsCAFile=/etc/ssl/certs/mongodb-ca.crt"
+  MONGODB_URI_TLS: "mongodb+srv://app-user:password@mongodb-svc.mongodb.svc.cluster.local/myapp?authSource=admin&tls=true&tlsCAFile=/etc/ssl/certs/mongodb-ca.crt"
 ```
 
 ### Application Deployment
@@ -540,6 +530,9 @@ spec:
     matchLabels:
       app: myapp
   template:
+    metadata:
+      labels:
+        app: myapp
     spec:
       containers:
         - name: app
@@ -574,12 +567,12 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app: mongodb-svc
+      app: mongodb-exporter
   namespaceSelector:
     matchNames:
       - mongodb
   endpoints:
-    - port: prometheus
+    - port: metrics
       path: /metrics
       interval: 30s
 ```
@@ -588,6 +581,21 @@ spec:
 
 ```yaml
 # mongodb-exporter.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongodb-exporter
+  namespace: mongodb
+  labels:
+    app: mongodb-exporter
+spec:
+  selector:
+    app: mongodb-exporter
+  ports:
+    - name: metrics
+      port: 9216
+      targetPort: metrics
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -607,8 +615,9 @@ spec:
         - name: exporter
           image: percona/mongodb_exporter:0.40.0
           args:
-            - --mongodb.uri=mongodb://monitor:password@mongodb-svc:27017/admin?replicaSet=mongodb
+            - --mongodb.uri=mongodb+srv://monitor:password@mongodb-svc.mongodb.svc.cluster.local/admin
             - --collect-all
+            - --compatible-mode
           ports:
             - containerPort: 9216
               name: metrics
@@ -685,24 +694,9 @@ kubectl get pods -n mongodb -l app=mongodb-svc
 
 ### Vertical Scaling
 
-```yaml
+```bash
 # Update resource requests
-kubectl patch mongodbcommunity mongodb -n mongodb --type merge -p '
-spec:
-  statefulSet:
-    spec:
-      template:
-        spec:
-          containers:
-            - name: mongod
-              resources:
-                requests:
-                  cpu: 1000m
-                  memory: 2Gi
-                limits:
-                  cpu: 4000m
-                  memory: 8Gi
-'
+kubectl patch mongodbcommunity mongodb -n mongodb --type merge -p '{"spec":{"statefulSet":{"spec":{"template":{"spec":{"containers":[{"name":"mongod","resources":{"requests":{"cpu":"1000m","memory":"2Gi"},"limits":{"cpu":"4000m","memory":"8Gi"}}}]}}}}}}'
 ```
 
 ## Troubleshooting
@@ -735,4 +729,4 @@ kubectl describe mongodbcommunity mongodb -n mongodb
 
 ## Wrap-up
 
-MongoDB operators simplify the deployment and management of MongoDB clusters on Kubernetes. Use the Community Operator for open-source deployments and the Enterprise Operator for advanced features with Ops Manager integration. Configure proper authentication, TLS encryption, and backup strategies for production deployments. Monitor your clusters with Prometheus and set up alerts for replication lag and connection issues.
+MongoDB operators simplify the deployment and management of MongoDB clusters on Kubernetes. Use the Community Operator for open-source replica set deployments and MongoDB Controllers for Kubernetes for advanced features with Ops Manager or Cloud Manager integration. Configure proper authentication, TLS encryption, and backup strategies for production deployments. Monitor your clusters with Prometheus and set up alerts for replication lag and connection issues.
