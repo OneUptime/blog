@@ -1121,18 +1121,14 @@ sudo apt-get update && sudo apt-get install -y ca-certificates
 export REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
 
 # Option 3: Disable SSL verification (NOT recommended for production)
-az config set core.disable_confirm_prompt=true
 export AZURE_CLI_DISABLE_CONNECTION_VERIFICATION=1
 ```
 
 ### Performance Issues
 
 ```bash
-# Enable command execution time display
+# Show all messages, including warnings from preview/deprecated commands
 az config set core.only_show_errors=false
-
-# Increase timeout for slow operations
-az config set core.timeout=300
 
 # Use --no-wait for long-running operations
 az vm create --name "myvm" --no-wait ...
@@ -1175,8 +1171,7 @@ az vm create --name "test" --debug 2>&1 | tee error-log.txt
 ### Logging and Debugging
 
 ```bash
-# Enable debug logging
-az config set core.collect_telemetry=true
+# Enable file logging for debugging
 az config set logging.enable_log_file=true
 
 # View CLI configuration
