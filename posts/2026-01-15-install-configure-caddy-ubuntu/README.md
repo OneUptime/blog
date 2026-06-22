@@ -382,6 +382,8 @@ example.com {
 
 ## Rate Limiting
 
+Rate limiting is not part of standard Caddy. The `rate_limit` directive comes from the community [caddy-ratelimit](https://github.com/mholt/caddy-ratelimit) plugin, so you must build Caddy with it (for example, `xcaddy build --with github.com/mholt/caddy-ratelimit`) before this config will work.
+
 ```caddyfile
 example.com {
     rate_limit {
@@ -533,10 +535,10 @@ sudo tail -f /var/log/caddy/access.log
 # Validate Caddyfile
 caddy validate --config /etc/caddy/Caddyfile
 
-# Check certificate status
-caddy trust
+# Install Caddy's local CA root into the system trust store
+sudo caddy trust
 
-# Debug mode
+# Run in foreground with the Caddyfile adapter (add the global `debug` option for verbose logs)
 caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
 ```
 
