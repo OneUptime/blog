@@ -98,22 +98,17 @@ Key settings to review in `/etc/xrdp/xrdp.ini`:
 
 ```ini
 [Globals]
-; Address to listen on - 0.0.0.0 means all interfaces
-; For security, consider binding to specific IP if possible
-address=0.0.0.0
-
 ; Default RDP port - standard is 3389
 ; Change this if you want security through obscurity (not recommended as sole measure)
 port=3389
+
+; To bind to a specific interface, include it in the port value
+; Example: port=tcp://192.168.1.10:3389
 
 ; Maximum bits per pixel for color depth
 ; 32 provides best quality but uses more bandwidth
 ; 16 is a good balance for slower connections
 max_bpp=32
-
-; Enable font smoothing (ClearType) for better text rendering
-; Increases bandwidth usage slightly but improves readability
-xserverbpp=24
 
 ; Security layer options: tls, rdp, negotiate
 ; Always use tls for production environments
@@ -132,9 +127,15 @@ key_file=/etc/xrdp/key.pem
 ; fork=yes creates separate process for each connection (recommended)
 fork=yes
 
+[Logging]
 ; Logging level: DEBUG, INFO, WARNING, ERROR
 ; Use INFO for production, DEBUG for troubleshooting
 LogLevel=INFO
+
+[Xvnc]
+; Backend X server color depth for Xvnc sessions
+; Xorg sessions use the xorgxrdp backend instead
+xserverbpp=24
 ```
 
 ### Session Manager Configuration
@@ -150,10 +151,20 @@ ListenAddress=127.0.0.1
 ; Port for session manager communication
 ListenPort=3350
 
+[Security]
 ; Allow root login - disable for security
 ; Users should use sudo instead of logging in as root
 AllowRootLogin=false
 
+; Limit login attempts before disconnecting
+MaxLoginRetry=4
+
+; Restrict RDP logins to a group if it exists
+; Leave TerminalServerUsers unset or set AlwaysGroupCheck=false to allow all PAM-authenticated users
+TerminalServerUsers=tsusers
+AlwaysGroupCheck=false
+
+[Sessions]
 ; Maximum concurrent sessions
 ; Adjust based on your server's RAM (each session uses ~200-500MB)
 MaxSessions=50
@@ -168,18 +179,10 @@ DisconnectedTimeLimit=0
 ; 0 disables idle timeout
 IdleTimeLimit=0
 
-[Security]
-; Allow any user to connect (subject to PAM authentication)
-AllowAnyUser=true
-
-; PAM service name for authentication
-PAMServiceName=xrdp-sesman
-
-[Sessions]
 ; Session types available to users
 ; Xorg provides better performance than Xvnc
 X11DisplayOffset=10
-MaxDisplayLimit=99
+Policy=Default
 ```
 
 ## Desktop Environment Setup
@@ -296,7 +299,7 @@ Securing XRDP connections is critical, especially when accessible over the inter
 
 ### Generate Custom SSL Certificates
 
-The default self-signed certificate works but generates browser warnings. For production, use proper certificates:
+The default self-signed certificate works but can generate certificate warnings in RDP clients. For production, use proper certificates:
 
 ```bash
 # Create directory for certificates
@@ -307,8 +310,9 @@ sudo mkdir -p /etc/xrdp/certs
 sudo openssl genrsa -out /etc/xrdp/certs/xrdp.key 4096
 
 # Set restrictive permissions on the private key
-# Only root and xrdp should be able to read this file
-sudo chmod 600 /etc/xrdp/certs/xrdp.key
+# Only root and members of ssl-cert should be able to read this file
+sudo chgrp ssl-cert /etc/xrdp/certs/xrdp.key
+sudo chmod 640 /etc/xrdp/certs/xrdp.key
 
 # Generate a self-signed certificate valid for 365 days
 # For production, replace with a certificate from a trusted CA
@@ -343,8 +347,7 @@ security_layer=tls
 ; Set high encryption level
 crypt_level=high
 
-; TLS cipher suites - use strong ciphers only
-; This disables weak ciphers like RC4 and DES
+; TLS protocol versions - disable obsolete SSL/TLS versions
 ssl_protocols=TLSv1.2, TLSv1.3
 ```
 
@@ -364,18 +367,19 @@ sudo certbot certonly --standalone -d your-domain.com
 sudo ln -sf /etc/letsencrypt/live/your-domain.com/fullchain.pem /etc/xrdp/certs/xrdp.crt
 sudo ln -sf /etc/letsencrypt/live/your-domain.com/privkey.pem /etc/xrdp/certs/xrdp.key
 
-# Grant XRDP access to the certificates
-sudo chmod 750 /etc/letsencrypt/live/
-sudo chmod 750 /etc/letsencrypt/archive/
-sudo chgrp -R ssl-cert /etc/letsencrypt/
+# Grant XRDP access to the certificate directories and private key
 sudo usermod -a -G ssl-cert xrdp
+sudo chgrp -R ssl-cert /etc/letsencrypt/live/your-domain.com /etc/letsencrypt/archive/your-domain.com
+sudo chmod 750 /etc/letsencrypt/live /etc/letsencrypt/archive
+sudo chmod 750 /etc/letsencrypt/live/your-domain.com /etc/letsencrypt/archive/your-domain.com
+sudo chmod 640 /etc/letsencrypt/archive/your-domain.com/privkey*.pem
 ```
 
-Create a renewal hook to restart XRDP:
+Create a deploy hook to restart XRDP after successful renewals:
 
 ```bash
-# Create post-renewal hook script
-sudo nano /etc/letsencrypt/renewal-hooks/post/restart-xrdp.sh
+# Create deployment hook script
+sudo nano /etc/letsencrypt/renewal-hooks/deploy/restart-xrdp.sh
 ```
 
 Add the following content:
@@ -389,7 +393,7 @@ systemctl restart xrdp
 Make it executable:
 
 ```bash
-sudo chmod +x /etc/letsencrypt/renewal-hooks/post/restart-xrdp.sh
+sudo chmod +x /etc/letsencrypt/renewal-hooks/deploy/restart-xrdp.sh
 ```
 
 ## Firewall Setup
@@ -399,20 +403,19 @@ Proper firewall configuration is essential for security.
 ### Using UFW (Uncomplicated Firewall)
 
 ```bash
-# Enable UFW if not already enabled
-sudo ufw enable
-
 # Allow SSH first to avoid being locked out
 # IMPORTANT: Do this before enabling the firewall if connecting remotely
 sudo ufw allow ssh
 
-# Allow RDP connections on the default port
-# This opens port 3389 for TCP connections
-sudo ufw allow 3389/tcp comment 'XRDP Remote Desktop'
-
-# For more security, restrict to specific IP ranges
+# Choose one of the following RDP rules. For general access, allow the port:
+# sudo ufw allow 3389/tcp comment 'XRDP Remote Desktop'
+#
+# Or, for better security, restrict RDP to specific IP ranges instead:
 # Replace with your actual allowed IP range
 sudo ufw allow from 192.168.1.0/24 to any port 3389 proto tcp comment 'XRDP from local network'
+
+# Enable UFW after adding the allow rules
+sudo ufw enable
 
 # Verify the rules are applied
 sudo ufw status verbose
@@ -467,7 +470,7 @@ Windows includes a built-in RDP client:
    - **Experience**: Optimize for connection speed
 5. Click "Connect" and enter your Ubuntu credentials
 
-For better security, save connection settings to an `.rdp` file:
+To save reusable connection settings, create an `.rdp` file:
 
 ```text
 full address:s:your-server-ip
@@ -475,7 +478,6 @@ username:s:your-username
 authentication level:i:2
 prompt for credentials:i:1
 negotiate security layer:i:1
-enablecredsspsupport:i:0
 ```
 
 ### Connecting from macOS
@@ -534,9 +536,9 @@ Managing XRDP sessions is important for multi-user environments and resource man
 ### Listing Active Sessions
 
 ```bash
-# Show all active XRDP sessions
-# Displays session ID, user, and X display number
-xrdp-seslist
+# Show active XRDP sessions through the session manager
+# This prompts for the sesman administrator password
+sudo xrdp-sesadmin -u=root -c=list
 
 # Alternative: Check running Xvnc/Xorg processes
 ps aux | grep -E "Xvnc|Xorg" | grep -v grep
@@ -548,12 +550,12 @@ loginctl list-sessions
 ### Terminating Sessions
 
 ```bash
-# Kill a specific session by session ID
-# Find the session ID using xrdp-seslist first
-sudo xrdp-sesadmin -u username -k
+# Terminate a systemd session by ID
+# Find the session ID using loginctl list-sessions first
+sudo loginctl terminate-session <SESSION_ID>
 
 # Kill all sessions for a specific user
-pkill -u username -f Xvnc
+sudo pkill -u username -f 'Xvnc|Xorg'
 
 # Force terminate a stuck session by PID
 # Use ps aux to find the PID first
@@ -581,9 +583,10 @@ DisconnectedTimeLimit=3600
 IdleTimeLimit=0
 
 ; Policy for session reconnection
-; always = always reconnect to existing session
-; never = always create new session
-; ask = prompt user (not supported by all clients)
+; Default = session per <User,BitPerPixel>
+; UBD = session per <User,BitPerPixel,DisplaySize>
+; UBI = session per <User,BitPerPixel,IPAddr>
+; UBC = session per <User,BitPerPixel,Connection>
 Policy=Default
 ```
 
@@ -609,58 +612,36 @@ Add limits:
 
 Audio redirection allows you to hear sounds from the remote desktop on your local machine.
 
-### Install PulseAudio Module
+### Install Audio Module
 
 ```bash
-# Install PulseAudio XRDP module for audio support
-# This enables bidirectional audio between client and server
-sudo apt install pulseaudio-module-xrdp -y
+# Install the XRDP audio module for Ubuntu 24.04 and other PipeWire-based systems
+# This enables audio output in XRDP sessions
+sudo apt install pipewire-module-xrdp -y
 
-# The installation should automatically configure PulseAudio
-# If not, manually load the module
-pulseaudio --check || pulseaudio --start
-pactl load-module module-xrdp-sink
-pactl load-module module-xrdp-source
+# Log out and reconnect to the XRDP session so the module can be loaded
 ```
 
-### Configure PulseAudio for XRDP
+### Configure PipeWire for XRDP
 
-Create a PulseAudio configuration for XRDP sessions:
+The Ubuntu package installs an autostart entry that loads the XRDP PipeWire modules in XRDP sessions. If audio does not appear after reconnecting, run the loader manually inside the XRDP session:
 
 ```bash
-# Create PulseAudio configuration directory
-mkdir -p ~/.config/pulse
-
-# Create default.pa for XRDP audio
-cat > ~/.config/pulse/default.pa << 'EOF'
-# PulseAudio configuration for XRDP sessions
-# This file is loaded when PulseAudio starts in an XRDP session
-
-# Load essential modules
-.include /etc/pulse/default.pa
-
-# Load XRDP sink and source modules
-# These redirect audio to/from the RDP client
-load-module module-xrdp-sink
-load-module module-xrdp-source
-
-# Set the XRDP sink as default output
-set-default-sink xrdp-sink
-set-default-source xrdp-source
-EOF
+# Load PipeWire XRDP modules manually if the autostart entry did not run
+/usr/libexec/pipewire-module-xrdp/load_pw_modules.sh
 ```
 
 ### Verify Audio Redirection
 
 ```bash
 # Check if XRDP audio modules are loaded
-pactl list short sinks | grep xrdp
+wpctl status | grep -i xrdp
 
 # Test audio output
 speaker-test -t wav -c 2 -l 1
 
 # Check audio input (microphone)
-pactl list short sources | grep xrdp
+wpctl status | grep -i source
 ```
 
 ### Client-Side Configuration
@@ -699,10 +680,6 @@ XRDP uses FUSE (Filesystem in Userspace) to mount redirected drives:
 ```bash
 # Install FUSE if not already installed
 sudo apt install fuse -y
-
-# Add users to the fuse group
-# This allows them to mount FUSE filesystems
-sudo usermod -a -G fuse $USER
 
 # Configure FUSE to allow non-root users
 sudo nano /etc/fuse.conf
@@ -858,7 +835,7 @@ list_sessions() {
 
     # Get session information from various sources
     echo -e "${YELLOW}Session Manager View:${NC}"
-    xrdp-seslist 2>/dev/null || echo "No sessions found"
+    xrdp-sesadmin -u=root -c=list 2>/dev/null || echo "No sessions found or authentication failed"
 
     echo ""
     echo -e "${YELLOW}System Sessions:${NC}"
@@ -893,7 +870,7 @@ kill_user_sessions() {
     fi
 
     echo -e "${YELLOW}Killing sessions for user: $username${NC}"
-    pkill -u "$username" -f "Xvnc\|Xorg" && \
+    pkill -u "$username" -f "Xvnc|Xorg" && \
         echo -e "${GREEN}Sessions terminated${NC}" || \
         echo -e "${RED}No sessions found or error occurred${NC}"
 }
@@ -1059,17 +1036,14 @@ sudo apt install xclip xsel -y
 ### Audio Not Working
 
 ```bash
-# Verify PulseAudio module is installed
-dpkg -l | grep pulseaudio-module-xrdp
+# Verify the PipeWire XRDP module is installed
+dpkg -l | grep pipewire-module-xrdp
 
 # Check if module is loaded
-pactl list short modules | grep xrdp
+wpctl status | grep -i xrdp
 
 # Manually load the module
-pulseaudio --kill
-pulseaudio --start
-pactl load-module module-xrdp-sink
-pactl load-module module-xrdp-source
+/usr/libexec/pipewire-module-xrdp/load_pw_modules.sh
 
 # Test audio
 speaker-test -t wav -c 2
@@ -1189,10 +1163,6 @@ Add or modify these settings:
 
 ```ini
 [Globals]
-; Use Xorg backend for better performance (requires xorgxrdp package)
-; Xorg provides better performance than Xvnc
-use_vsock=false
-
 ; Enable compression for bandwidth optimization
 ; Higher values = more CPU usage but less bandwidth
 bulk_compression=true
@@ -1201,11 +1171,8 @@ bulk_compression=true
 ; 16 provides good balance between quality and performance
 max_bpp=16
 
-[Xorg]
-; Xorg-specific performance settings
-; Enable hardware cursor for smoother mouse movement
-param=-nolisten
-param=tcp
+; Reduce latency by disabling Nagle's algorithm
+tcp_nodelay=true
 ```
 
 Install xorgxrdp for better performance:
