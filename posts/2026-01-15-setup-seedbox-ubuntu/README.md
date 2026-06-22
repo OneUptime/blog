@@ -39,7 +39,7 @@ Update your system before proceeding.
 sudo apt update && sudo apt upgrade -y
 
 # Install essential utilities for the setup process
-sudo apt install -y curl wget git unzip software-properties-common
+sudo apt install -y curl wget git unzip software-properties-common dnsutils iftop
 ```
 
 ## Installing qBittorrent with Web UI
@@ -60,12 +60,12 @@ sudo apt install -y qbittorrent-nox
 Create a dedicated system user for qBittorrent to enhance security by isolating the service.
 
 ```bash
-# Create a system user with no login shell and a home directory for downloads
-sudo adduser --system --group --no-create-home qbittorrent
+# Create a system user and configuration directory for qBittorrent
+sudo adduser --system --group --home /var/lib/qbittorrent qbittorrent
 
-# Create the download directory and set permissions
+# Create the download and configuration directories and set permissions
 sudo mkdir -p /home/downloads/qbittorrent
-sudo chown -R qbittorrent:qbittorrent /home/downloads/qbittorrent
+sudo chown -R qbittorrent:qbittorrent /home/downloads/qbittorrent /var/lib/qbittorrent
 ```
 
 Create a systemd service file to manage qBittorrent as a background daemon.
@@ -83,7 +83,7 @@ Type=simple
 User=qbittorrent
 Group=qbittorrent
 UMask=007
-ExecStart=/usr/bin/qbittorrent-nox --webui-port=8080
+ExecStart=/usr/bin/qbittorrent-nox --webui-port=8080 --profile=/var/lib/qbittorrent
 Restart=on-failure
 TimeoutStopSec=300
 
@@ -108,7 +108,7 @@ sudo systemctl start qbittorrent-nox
 sudo systemctl status qbittorrent-nox
 ```
 
-Access the web UI at `http://your-server-ip:8080`. The default credentials are `admin` / `adminadmin`. Change these immediately in Settings > Web UI.
+Access the web UI at `http://your-server-ip:8080`. The username is `admin`; on current qBittorrent releases, the first-start temporary password is printed in the service log. View it with `sudo journalctl -u qbittorrent-nox -n 50 --no-pager`, then change it immediately in Settings > Web UI.
 
 ## Installing Deluge with Web UI
 
@@ -210,6 +210,9 @@ sudo apt install -y rtorrent
 # Install web server and PHP for ruTorrent
 sudo apt install -y nginx php-fpm php-cli php-geoip php-xml php-zip
 
+# Detect the PHP-FPM socket path installed by Ubuntu
+PHP_FPM_SOCK=$(find /run/php -name 'php*-fpm.sock' | head -n 1)
+
 # Install additional tools ruTorrent needs for full functionality
 sudo apt install -y mediainfo ffmpeg unrar-free
 ```
@@ -218,7 +221,7 @@ Create a dedicated user for rTorrent operations.
 
 ```bash
 # Create the rtorrent user with a home directory
-sudo adduser --system --group rtorrent
+sudo adduser --system --group --home /home/rtorrent rtorrent
 sudo mkdir -p /home/rtorrent
 sudo chown rtorrent:rtorrent /home/rtorrent
 
@@ -365,7 +368,7 @@ Create the Nginx configuration for ruTorrent.
 
 ```bash
 # Create Nginx server block for ruTorrent
-sudo tee /etc/nginx/sites-available/rutorrent > /dev/null <<'EOF'
+sudo tee /etc/nginx/sites-available/rutorrent > /dev/null <<EOF
 server {
     listen 8090;
     server_name _;
@@ -388,10 +391,10 @@ server {
     # PHP handling
     location ~ \.php$ {
         fastcgi_split_path_info ^(.+\.php)(/.+)$;
-        fastcgi_pass unix:/var/run/php/php-fpm.sock;
+        fastcgi_pass unix:${PHP_FPM_SOCK};
         fastcgi_index index.php;
         include fastcgi_params;
-        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
     }
 
     # RPC endpoint for SCGI
@@ -451,11 +454,6 @@ Address = 10.x.x.x/32
 
 # Use VPN's DNS to prevent leaks
 DNS = 1.1.1.1, 1.0.0.1
-
-# Mark torrent traffic to route through VPN
-Table = 51820
-PostUp = ip rule add from 10.x.x.x table 51820
-PostDown = ip rule del from 10.x.x.x table 51820
 
 [Peer]
 # VPN server's public key
@@ -522,6 +520,9 @@ sudo ufw allow 50002/tcp comment 'Deluge incoming'
 sudo ufw allow 21/tcp comment 'FTP'
 sudo ufw allow 22/tcp comment 'SFTP'
 
+# Allow rsync daemon access if you use the rsyncd configuration below
+sudo ufw allow 873/tcp comment 'rsync daemon'
+
 # Enable the firewall
 sudo ufw enable
 
@@ -551,6 +552,16 @@ sudo tee /usr/local/bin/seedbox-bw-manager.sh > /dev/null <<'EOF'
 # Adjusts limits based on time of day
 
 HOUR=$(date +%H)
+QBIT_URL="http://localhost:8080"
+QBIT_USER="admin"
+QBIT_PASSWORD="YOUR_QBITTORRENT_PASSWORD"
+COOKIE_JAR=$(mktemp)
+trap 'rm -f "$COOKIE_JAR"' EXIT
+
+curl -s --cookie-jar "$COOKIE_JAR" \
+    --data-urlencode "username=${QBIT_USER}" \
+    --data-urlencode "password=${QBIT_PASSWORD}" \
+    "${QBIT_URL}/api/v2/auth/login" > /dev/null
 
 # Peak hours (8 AM - 11 PM): limit to 500 Mbps
 # Off-peak (11 PM - 8 AM): unlimited
@@ -558,17 +569,17 @@ HOUR=$(date +%H)
 if [ $HOUR -ge 8 ] && [ $HOUR -lt 23 ]; then
     # Peak hours - set limits
     # qBittorrent: Use API to set limits
-    curl -s "http://localhost:8080/api/v2/transfer/setDownloadLimit" \
+    curl -s --cookie "$COOKIE_JAR" "${QBIT_URL}/api/v2/transfer/setDownloadLimit" \
         -d "limit=62500000" > /dev/null  # 500 Mbps in bytes
-    curl -s "http://localhost:8080/api/v2/transfer/setUploadLimit" \
+    curl -s --cookie "$COOKIE_JAR" "${QBIT_URL}/api/v2/transfer/setUploadLimit" \
         -d "limit=62500000" > /dev/null
 
     echo "$(date): Peak hours - bandwidth limited to 500 Mbps"
 else
     # Off-peak - remove limits
-    curl -s "http://localhost:8080/api/v2/transfer/setDownloadLimit" \
+    curl -s --cookie "$COOKIE_JAR" "${QBIT_URL}/api/v2/transfer/setDownloadLimit" \
         -d "limit=0" > /dev/null  # 0 = unlimited
-    curl -s "http://localhost:8080/api/v2/transfer/setUploadLimit" \
+    curl -s --cookie "$COOKIE_JAR" "${QBIT_URL}/api/v2/transfer/setUploadLimit" \
         -d "limit=0" > /dev/null
 
     echo "$(date): Off-peak hours - bandwidth unlimited"
@@ -627,8 +638,8 @@ sudo apt install -y rsync
 # Create rsync configuration for the seedbox
 sudo tee /etc/rsyncd.conf > /dev/null <<'EOF'
 # Global settings
-uid = nobody
-gid = nogroup
+uid = root
+gid = root
 use chroot = yes
 max connections = 10
 timeout = 300
@@ -647,6 +658,9 @@ EOF
 # Create secrets file with username:password
 echo "seedbox:YOUR_SECURE_PASSWORD" | sudo tee /etc/rsyncd.secrets > /dev/null
 sudo chmod 600 /etc/rsyncd.secrets
+
+# Enable and start the rsync daemon
+sudo systemctl enable --now rsync
 ```
 
 Create a convenient download script for your local machine.
@@ -660,16 +674,21 @@ cat > ~/sync-seedbox.sh <<'EOF'
 SEEDBOX_HOST="your-seedbox-ip"
 SEEDBOX_USER="seedbox"
 LOCAL_DIR="$HOME/Downloads/Seedbox"
-REMOTE_DIR="/home/downloads/complete/"
+REMOTE_MODULE="downloads"
+PASSWORD_FILE="$HOME/.rsync-seedbox.pass"
 
 # Create local directory if it does not exist
 mkdir -p "$LOCAL_DIR"
 
+# Store only the rsync daemon password in this file and protect it
+printf '%s\n' 'YOUR_SECURE_PASSWORD' > "$PASSWORD_FILE"
+chmod 600 "$PASSWORD_FILE"
+
 # Rsync with progress, compression, and partial resume
 rsync -avhP --compress --partial \
     --bwlimit=50000 \
-    -e "ssh -p 22" \
-    "${SEEDBOX_USER}@${SEEDBOX_HOST}:${REMOTE_DIR}" \
+    --password-file="$PASSWORD_FILE" \
+    "rsync://${SEEDBOX_USER}@${SEEDBOX_HOST}/${REMOTE_MODULE}/" \
     "$LOCAL_DIR/"
 
 echo "Sync completed at $(date)"
@@ -678,7 +697,7 @@ EOF
 chmod +x ~/sync-seedbox.sh
 ```
 
-For automated syncing, use incrontab to trigger rsync when new files appear.
+For automated post-processing, use incrontab to trigger a script when new files appear.
 
 ```bash
 # Install incron for filesystem event monitoring
@@ -687,9 +706,16 @@ sudo apt install -y incron
 # Allow the user to use incron
 echo "rtorrent" | sudo tee -a /etc/incron.allow
 
-# Create incron rule to sync on new file completion
-# (Run as rtorrent user)
-echo "/home/downloads/rtorrent/complete IN_CLOSE_WRITE,IN_MOVED_TO /usr/local/bin/notify-complete.sh \$@/\$#" | incrontab -
+# Create the completion hook script
+sudo tee /usr/local/bin/notify-complete.sh > /dev/null <<'EOF'
+#!/bin/bash
+echo "$(date): Completed download in $1: $2" >> /var/log/seedbox-complete.log
+EOF
+sudo chmod +x /usr/local/bin/notify-complete.sh
+
+# Create incron rule to run the hook on new file completion
+# (Install for the rtorrent user)
+echo "/home/downloads/rtorrent/complete IN_CLOSE_WRITE,IN_MOVED_TO /usr/local/bin/notify-complete.sh \$@ \$#" | sudo -u rtorrent incrontab -
 ```
 
 ## FTP/SFTP Access Setup
@@ -769,7 +795,7 @@ ssl_enable=YES
 allow_anon_ssl=NO
 force_local_data_ssl=YES
 force_local_logins_ssl=YES
-ssl_tlsv1=YES
+ssl_tlsv1=NO
 ssl_sslv2=NO
 ssl_sslv3=NO
 require_ssl_reuse=NO
@@ -901,8 +927,8 @@ Implement comprehensive monitoring to track seedbox performance and health.
 Install vnStat for bandwidth monitoring.
 
 ```bash
-# Install vnStat for network statistics
-sudo apt install -y vnstat
+# Install vnStat for network statistics and jq for JSON parsing
+sudo apt install -y vnstat jq
 
 # Initialize the database for your network interface
 sudo vnstat --add -i eth0
@@ -957,7 +983,16 @@ echo ""
 
 # Active Torrents Count (qBittorrent API)
 echo "--- Active Torrents ---"
-QBIT_COUNT=$(curl -s "http://localhost:8080/api/v2/torrents/info" 2>/dev/null | jq length 2>/dev/null || echo "N/A")
+QBIT_URL="http://localhost:8080"
+QBIT_USER="admin"
+QBIT_PASSWORD="YOUR_QBITTORRENT_PASSWORD"
+COOKIE_JAR=$(mktemp)
+trap 'rm -f "$COOKIE_JAR"' EXIT
+curl -s --cookie-jar "$COOKIE_JAR" \
+    --data-urlencode "username=${QBIT_USER}" \
+    --data-urlencode "password=${QBIT_PASSWORD}" \
+    "${QBIT_URL}/api/v2/auth/login" > /dev/null
+QBIT_COUNT=$(curl -s --cookie "$COOKIE_JAR" "${QBIT_URL}/api/v2/torrents/info" 2>/dev/null | jq length 2>/dev/null || echo "N/A")
 echo "qBittorrent: $QBIT_COUNT torrents"
 echo ""
 
@@ -1049,8 +1084,11 @@ sudo apt install -y apache2-utils
 # Create password file for Nginx authentication
 sudo htpasswd -c /etc/nginx/.htpasswd seedboxadmin
 
+# Detect the PHP-FPM socket path installed by Ubuntu
+PHP_FPM_SOCK=$(find /run/php -name 'php*-fpm.sock' | head -n 1)
+
 # Update Nginx configuration to require authentication
-sudo tee /etc/nginx/sites-available/rutorrent-secure > /dev/null <<'EOF'
+sudo tee /etc/nginx/sites-available/rutorrent-secure > /dev/null <<EOF
 server {
     listen 8090;
     server_name _;
@@ -1071,10 +1109,10 @@ server {
 
     location ~ \.php$ {
         fastcgi_split_path_info ^(.+\.php)(/.+)$;
-        fastcgi_pass unix:/var/run/php/php-fpm.sock;
+        fastcgi_pass unix:${PHP_FPM_SOCK};
         fastcgi_index index.php;
         include fastcgi_params;
-        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
     }
 
     location /RPC2 {
