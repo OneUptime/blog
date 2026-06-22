@@ -75,8 +75,9 @@ services:
 
 ### Docker Daemon Defaults
 
+Create or update `/etc/docker/daemon.json`:
+
 ```json
-// /etc/docker/daemon.json
 {
   "default-ulimits": {
     "nofile": {
@@ -133,9 +134,6 @@ services:
       nofile:
         soft: 65535
         hard: 65535
-      memlock:
-        soft: -1
-        hard: -1
     sysctls:
       - net.core.somaxconn=65535
 ```
@@ -197,7 +195,7 @@ services:
 ```yaml
 services:
   java-app:
-    image: openjdk:21
+    image: eclipse-temurin:21-jdk
     ulimits:
       nofile:
         soft: 65535
@@ -206,7 +204,7 @@ services:
         soft: 4096
         hard: 4096
     environment:
-      - JAVA_OPTS=-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0
+      - JAVA_TOOL_OPTIONS=-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0
 ```
 
 ### Node.js Applications
@@ -245,7 +243,7 @@ docker inspect --format='{{.HostConfig.Ulimits}}' mycontainer
 ## Memory Locking (memlock)
 
 Memory locking prevents memory from being swapped to disk, important for:
-- Databases (Elasticsearch, PostgreSQL)
+- Databases and search services that explicitly lock memory (for example Elasticsearch)
 - Real-time applications
 - Security-sensitive applications
 
@@ -258,7 +256,7 @@ services:
         hard: -1
 ```
 
-**Note**: Container must have `IPC_LOCK` capability:
+**Note**: If the configured `memlock` limit is not sufficient, or if your application requires privileged memory locking, add the `IPC_LOCK` capability:
 ```yaml
 services:
   database:
@@ -422,8 +420,6 @@ done
 ## Complete Production Example
 
 ```yaml
-version: '3.8'
-
 x-ulimits: &default-ulimits
   nofile:
     soft: 65535
@@ -458,11 +454,6 @@ services:
       nofile:
         soft: 65535
         hard: 65535
-      memlock:
-        soft: -1
-        hard: -1
-    cap_add:
-      - IPC_LOCK
 
   elasticsearch:
     image: elasticsearch:8.11.0
@@ -494,10 +485,9 @@ services:
 | Service Type | nofile | nproc | memlock | Notes |
 |-------------|--------|-------|---------|-------|
 | Web servers | 65535 | 4096 | default | High connections |
-| Databases | 65535 | 4096 | -1 | Memory locking |
-| Elasticsearch | 65535 | 4096 | -1 | Requires IPC_LOCK |
+| Databases | 65535 | 4096 | default | Tune for workload |
+| Elasticsearch | 65535 | 4096 | -1 | Set for memory locking |
 | Message queues | 65535 | 4096 | default | High connections |
 | Java apps | 65535 | 4096 | default | Thread pools |
 
 Configure ulimits based on your application's requirements. Start with higher limits in development to avoid hitting them unexpectedly, then tune for production based on actual usage patterns. Always verify limits are applied using `docker exec` to check `/proc/1/limits`.
-
