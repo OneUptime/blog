@@ -172,7 +172,7 @@ global_defs {
     # smtp_server 127.0.0.1
     # smtp_connect_timeout 30
 
-    # Enable scripts to run as root (required for some health checks)
+    # Enforce safe permissions for scripts run by Keepalived
     enable_script_security
 
     # Log detail level
@@ -262,7 +262,7 @@ global_defs {
     # Unique identifier for this keepalived instance
     router_id node2
 
-    # Enable scripts to run as root
+    # Enforce safe permissions for scripts run by Keepalived
     enable_script_security
 }
 
@@ -875,7 +875,8 @@ sudo nano /etc/keepalived/scripts/check_haproxy.sh
 # /etc/keepalived/scripts/check_haproxy.sh
 
 # Configuration
-HAPROXY_STATS_URL="http://127.0.0.1:8404/stats"
+# Leave empty if HAProxy stats are not enabled
+HAPROXY_STATS_URL=""
 HAPROXY_STATS_SOCKET="/var/run/haproxy/admin.sock"
 
 # Method 1: Check if HAProxy process is running
@@ -884,7 +885,7 @@ if ! pgrep -x "haproxy" > /dev/null; then
     exit 1
 fi
 
-# Method 2: Check HAProxy stats page (if enabled)
+# Method 2: Check HAProxy stats page (if configured above)
 if [ -n "$HAPROXY_STATS_URL" ]; then
     HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 3 "$HAPROXY_STATS_URL")
     if [ "$HTTP_CODE" -ne 200 ]; then
@@ -975,17 +976,18 @@ Configure UFW to allow VRRP traffic:
 ```bash
 # Allow VRRP protocol (IP protocol 112)
 # VRRP uses multicast address 224.0.0.18
+# This works on Ubuntu 24.04 and newer UFW versions that support proto vrrp
 sudo ufw allow from 192.168.1.0/24 to 224.0.0.18 proto vrrp
 
 # Alternative: Allow all traffic from peer servers
 sudo ufw allow from 192.168.1.10   # Allow from node1
 sudo ufw allow from 192.168.1.11   # Allow from node2
 
-# If using UFW, you may need to edit before.rules
+# On Ubuntu 20.04/22.04, or if proto vrrp is not supported, edit before.rules
 sudo nano /etc/ufw/before.rules
 ```
 
-Add before the `*filter` section:
+Add these rules inside the `*filter` section before the final `COMMIT` line:
 
 ```bash
 # Allow VRRP traffic
@@ -1089,7 +1091,7 @@ sudo journalctl -u keepalived -f
 # Check if VIP is assigned
 ip addr show eth0 | grep -E "192\.168\.1\.100"
 
-# Check VRRP statistics
+# Dump parsed Keepalived configuration
 sudo keepalived --dump-conf
 ```
 
@@ -1211,7 +1213,7 @@ echo "=== Failover Test Completed ===" | tee -a $LOG_FILE
 sudo systemctl status keepalived
 
 # Check for configuration errors
-sudo keepalived -f /etc/keepalived/keepalived.conf --check
+sudo keepalived --config-test -f /etc/keepalived/keepalived.conf
 
 # Verify network interface name
 ip link show
@@ -1343,13 +1345,13 @@ sudo tail -f /var/log/syslog | grep -i keepalived
 # Check VRRP packets
 sudo tcpdump -i eth0 -nn vrrp
 
-# View Keepalived statistics
+# Write current Keepalived state data
 sudo killall -USR1 keepalived
-sudo cat /tmp/keepalived.stats
-
-# Check current VRRP state
-sudo killall -USR2 keepalived
 sudo cat /tmp/keepalived.data
+
+# Write Keepalived statistics
+sudo killall -USR2 keepalived
+sudo cat /tmp/keepalived.stats
 ```
 
 ### Log Analysis
@@ -1495,14 +1497,11 @@ sudo nano /etc/keepalived/scripts/shutdown.sh
 # Graceful shutdown script for Keepalived
 # /etc/keepalived/scripts/shutdown.sh
 
-# Reduce priority to trigger failover before stopping
-sudo killall -SIGUSR1 keepalived
+# Stop keepalived cleanly so it releases the VIP and advertises priority 0
+sudo systemctl stop keepalived
 
 # Wait for failover
 sleep 5
-
-# Stop keepalived
-sudo systemctl stop keepalived
 ```
 
 ## Complete Production Configuration Example
@@ -1540,7 +1539,7 @@ global_defs {
     vrrp_garp_master_repeat 3
     vrrp_garp_master_refresh 60
 
-    # Reduce priority instead of going to fault state
+    # Unsolicited neighbor advertisement interval for IPv6
     vrrp_gna_interval 0
 }
 
@@ -1576,8 +1575,8 @@ vrrp_script check_load {
 
 # VRRP Instance for Web Services
 vrrp_instance WEB_VIP {
-    # Initial state (MASTER on primary, BACKUP on secondary)
-    state MASTER
+    # Initial state (use BACKUP on both nodes if you want preempt_delay to apply)
+    state BACKUP
 
     # Network interface
     interface eth0
