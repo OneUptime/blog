@@ -55,11 +55,10 @@ sudo apt install -y \
     build-essential \
     libssl-dev \
     libyaml-dev \
-    libreadline6-dev \
+    libreadline-dev \
     zlib1g-dev \
-    libncurses5-dev \
+    libncurses-dev \
     libffi-dev \
-    libgdbm6 \
     libgdbm-dev \
     libdb-dev \
     uuid-dev
@@ -76,11 +75,11 @@ sudo apt install -y \
 | `build-essential` | Meta-package including gcc, g++, and make |
 | `libssl-dev` | OpenSSL development files for secure connections |
 | `libyaml-dev` | YAML parsing library used by Ruby |
-| `libreadline6-dev` | Provides command-line editing in IRB |
+| `libreadline-dev` | Provides command-line editing in IRB |
 | `zlib1g-dev` | Compression library for gems |
-| `libncurses5-dev` | Terminal handling library |
+| `libncurses-dev` | Terminal handling library |
 | `libffi-dev` | Foreign function interface for calling C code |
-| `libgdbm6/libgdbm-dev` | GNU database manager library |
+| `libgdbm-dev` | GNU database manager library |
 | `libdb-dev` | Berkeley DB library |
 | `uuid-dev` | UUID generation library |
 
@@ -147,8 +146,8 @@ rbenv install --list
 
 ```bash
 # Check that rbenv is properly installed and configured
-# This command performs a health check of your rbenv installation
-rbenv doctor
+# This script performs a health check of your rbenv installation
+curl -fsSL https://github.com/rbenv/rbenv-installer/raw/main/bin/rbenv-doctor | bash
 
 # Alternatively, verify with these commands
 rbenv --version          # Should display rbenv version
@@ -167,23 +166,23 @@ rbenv install -l
 
 # List ALL available versions including development and preview releases
 # Useful when you need a specific version or want to test new features
-rbenv install -L | head -50
+rbenv install --list-all | head -50
 ```
 
 ### Install a Specific Ruby Version
 
 ```bash
-# Install Ruby 3.3.0 (or your desired version)
+# Install Ruby 3.4.9 (or your desired version)
 # This process compiles Ruby from source and may take several minutes
-rbenv install 3.3.0
+rbenv install 3.4.9
 
 # Install with verbose output to see compilation progress
 # Useful for debugging installation issues
-rbenv install 3.3.0 --verbose
+rbenv install 3.4.9 --verbose
 
 # Install the latest stable Ruby 3.x version
 # Check the latest version with: rbenv install -l | grep -E "^3\."
-rbenv install 3.3.0
+rbenv install 3.4.9
 ```
 
 ### Install Multiple Versions
@@ -192,14 +191,14 @@ rbenv install 3.3.0
 # Install multiple Ruby versions for different projects
 # This allows switching between versions as needed
 
-# Ruby 3.3.0 - Latest stable release (recommended for new projects)
-rbenv install 3.3.0
+# Ruby 3.4.9 - Maintained Ruby 3.x release (recommended for new projects)
+rbenv install 3.4.9
 
-# Ruby 3.2.2 - Previous stable release (for compatibility)
-rbenv install 3.2.2
+# Ruby 3.3.11 - Previous maintained release (for compatibility)
+rbenv install 3.3.11
 
-# Ruby 2.7.8 - Legacy version (for older projects)
-rbenv install 2.7.8
+# Ruby 3.2.11 - Legacy maintained 3.x version (for older projects)
+rbenv install 3.2.11
 
 # List all installed Ruby versions
 rbenv versions
@@ -218,7 +217,7 @@ rbenv supports three levels of Ruby version configuration:
 ```bash
 # Set the global Ruby version used system-wide
 # This version is used when no local or shell version is specified
-rbenv global 3.3.0
+rbenv global 3.4.9
 
 # Verify the global version
 rbenv global              # Shows current global version
@@ -236,7 +235,7 @@ cd ~/projects/my-ruby-app
 
 # Set a local Ruby version for this project only
 # This creates a .ruby-version file in the current directory
-rbenv local 3.2.2
+rbenv local 3.3.11
 
 # Verify the local version
 rbenv local               # Shows current local version
@@ -246,7 +245,7 @@ ruby --version            # Should match the local version
 # The .ruby-version file should be committed to version control
 # This ensures all team members use the same Ruby version
 git add .ruby-version
-git commit -m "Set Ruby version to 3.2.2"
+git commit -m "Set Ruby version to 3.3.11"
 ```
 
 ### Set Shell Ruby Version
@@ -254,11 +253,11 @@ git commit -m "Set Ruby version to 3.2.2"
 ```bash
 # Set a temporary Ruby version for the current shell session
 # This overrides both global and local versions
-rbenv shell 2.7.8
+rbenv shell 3.2.11
 
 # Verify the shell version
 rbenv shell               # Shows current shell version
-ruby --version            # Should show 2.7.8
+ruby --version            # Should show 3.2.11
 
 # Unset the shell version to revert to local/global
 rbenv shell --unset
@@ -275,7 +274,7 @@ rbenv shell --unset
 
 # Check which version would be used and why
 rbenv version             # Shows active version and source
-# Example output: 3.3.0 (set by /home/user/project/.ruby-version)
+# Example output: 3.4.9 (set by /home/user/project/.ruby-version)
 ```
 
 ## Managing Gems with Bundler
@@ -322,7 +321,7 @@ bundle config list
 source 'https://rubygems.org'
 
 # Specify the Ruby version (should match .ruby-version)
-ruby '3.3.0'
+ruby '3.4.9'
 
 # Core application gems
 gem 'rails', '~> 7.1.0'           # Web framework
@@ -348,6 +347,7 @@ group :development do
   gem 'rack-mini-profiler'        # Performance profiling
   gem 'rubocop', require: false   # Code linting
   gem 'rubocop-rails', require: false
+  gem 'rubocop-rspec', require: false
 end
 
 group :test do
@@ -369,7 +369,8 @@ end
 bundle install
 
 # Install gems without development and test groups (for production)
-bundle install --without development test
+bundle config set --local without 'development test'
+bundle install
 
 # Update a specific gem to its latest allowed version
 bundle update rails
@@ -425,7 +426,7 @@ git init
 
 # Set the Ruby version for this project
 # This creates .ruby-version file
-rbenv local 3.3.0
+rbenv local 3.4.9
 
 # Verify Ruby version
 ruby --version
@@ -434,7 +435,7 @@ ruby --version
 cat > Gemfile << 'EOF'
 source 'https://rubygems.org'
 
-ruby '3.3.0'
+ruby '3.4.9'
 
 # Add your gems here
 gem 'rake'
@@ -467,7 +468,7 @@ EOF
 
 # Commit initial setup
 git add .
-git commit -m "Initial project setup with Ruby 3.3.0"
+git commit -m "Initial project setup with Ruby 3.4.9"
 
 # Test the setup
 bundle exec rake info
@@ -516,7 +517,7 @@ Rails is the most popular Ruby web framework. Here's how to install and configur
 
 ```bash
 # Ensure you're using the correct Ruby version
-rbenv global 3.3.0
+rbenv global 3.4.9
 ruby --version
 
 # Install Rails gem globally for the current Ruby version
@@ -652,33 +653,20 @@ Proper IDE configuration improves development productivity with features like co
 // VS Code settings for Ruby development with rbenv
 
 {
-    // Ruby extension configuration
-    "ruby.useBundler": true,
-    "ruby.useLanguageServer": true,
-    "ruby.lint": {
-        "rubocop": {
-            "useBundler": true
-        }
+    // Ruby LSP configuration
+    "rubyLsp.rubyVersionManager": {
+        "identifier": "rbenv"
     },
-    "ruby.format": "rubocop",
-
-    // Solargraph language server configuration
-    "solargraph.useBundler": true,
-    "solargraph.diagnostics": true,
-    "solargraph.formatting": true,
-    "solargraph.autoformat": true,
-    "solargraph.completion": true,
-    "solargraph.hover": true,
-    "solargraph.references": true,
-    "solargraph.rename": true,
-    "solargraph.symbols": true,
+    "rubyLsp.formatter": "rubocop",
+    "rubyLsp.linters": ["rubocop"],
 
     // Editor settings for Ruby files
     "[ruby]": {
-        "editor.defaultFormatter": "misogi.ruby-rubocop",
+        "editor.defaultFormatter": "Shopify.ruby-lsp",
         "editor.formatOnSave": true,
         "editor.tabSize": 2,
         "editor.insertSpaces": true,
+        "editor.semanticHighlighting.enabled": true,
         "editor.rulers": [80, 120]
     },
 
@@ -714,7 +702,7 @@ Proper IDE configuration improves development productivity with features like co
             "name": "Debug Ruby File",
             "type": "ruby_lsp",
             "request": "launch",
-            "program": "${file}"
+            "program": "ruby ${file}"
         },
         {
             "name": "Debug Rails Server",
@@ -727,8 +715,7 @@ Proper IDE configuration improves development productivity with features like co
             "name": "Debug RSpec",
             "type": "ruby_lsp",
             "request": "launch",
-            "program": "${workspaceFolder}/bin/rspec",
-            "args": ["${file}"]
+            "program": "bundle exec rspec ${file}"
         },
         {
             "name": "Attach to Process",
@@ -759,7 +746,7 @@ code --install-extension ninoseki.vscode-gem-lens  # Gem information
 # Configure the Ruby SDK in Settings > Languages & Frameworks > Ruby SDK and Gems
 
 # Point to your rbenv Ruby installation:
-# ~/.rbenv/versions/3.3.0/bin/ruby
+# ~/.rbenv/versions/3.4.9/bin/ruby
 
 # RubyMine settings for rbenv (automatic)
 # The IDE reads .ruby-version and configures accordingly
@@ -874,11 +861,11 @@ Keep your Ruby installation and rbenv up to date for security and performance im
 ```bash
 # Navigate to rbenv directory and pull latest changes
 cd ~/.rbenv
-git pull origin master
+git pull
 
 # Update ruby-build plugin for latest Ruby versions
 cd ~/.rbenv/plugins/ruby-build
-git pull origin master
+git pull
 
 # Verify the update
 rbenv --version
@@ -892,24 +879,23 @@ rbenv install -l | head -20
 rbenv versions
 
 # Check for newer versions available
-rbenv install -l | grep "^3\."
+rbenv install -l
 
-# Install the new version
-rbenv install 3.3.1
+# Install the new version after checking your application and gem compatibility
+rbenv install 4.0.5
 
-# Migrate gems from old version to new version
-# This reinstalls all gems from 3.3.0 to 3.3.1
-rbenv migrate 3.3.0 3.3.1
+# Optional: export a list of gems from the old version before switching
+RBENV_VERSION=3.4.9 gem list --local --no-versions > ~/ruby-3.4.9-gems.txt
 
-# Or manually reinstall gems
-gem list | cut -d' ' -f1 | xargs gem install
+# Reinstall those gems under the new version if you need global executables
+RBENV_VERSION=4.0.5 xargs -n1 gem install < ~/ruby-3.4.9-gems.txt
 
 # Update global version
-rbenv global 3.3.1
+rbenv global 4.0.5
 
-# Update project local version
+# Update project local version after testing compatibility
 cd ~/projects/myapp
-rbenv local 3.3.1
+rbenv local 4.0.5
 
 # Update .ruby-version and reinstall dependencies
 bundle install
@@ -925,10 +911,10 @@ ruby --version
 rbenv versions
 
 # Uninstall an old version you no longer need
-rbenv uninstall 2.7.8
+rbenv uninstall 3.2.11
 
 # Alternatively, manually remove the version directory
-rm -rf ~/.rbenv/versions/2.7.8
+rm -rf ~/.rbenv/versions/3.2.11
 
 # Clean up old gem caches
 rm -rf ~/.rbenv/cache/*
@@ -945,12 +931,12 @@ set -e
 
 echo "=== Updating rbenv ==="
 cd ~/.rbenv
-git pull origin master
+git pull
 
 echo ""
 echo "=== Updating ruby-build ==="
 cd ~/.rbenv/plugins/ruby-build
-git pull origin master
+git pull
 
 echo ""
 echo "=== Currently installed Ruby versions ==="
@@ -958,8 +944,7 @@ rbenv versions
 
 echo ""
 echo "=== Latest available Ruby versions ==="
-echo "Ruby 3.x:"
-rbenv install -l | grep "^3\." | tail -5
+rbenv install -l | tail -10
 
 echo ""
 echo "=== Current global Ruby version ==="
@@ -986,16 +971,16 @@ chmod +x ~/bin/update-rbenv.sh
 # Solution 1: Install missing dependencies
 sudo apt install -y libssl-dev libyaml-dev libreadline-dev zlib1g-dev
 
-# Solution 2: Install specific OpenSSL version for older Ruby versions
-# Ruby 2.x may require OpenSSL 1.1
-sudo apt install libssl1.1
+# Solution 2: For older Ruby versions, update ruby-build first so it can
+# build or link a compatible OpenSSL version when needed
+cd ~/.rbenv/plugins/ruby-build && git pull
 
 # Solution 3: Use verbose mode to identify the exact error
-rbenv install 3.3.0 --verbose 2>&1 | tee ruby-install.log
+rbenv install 3.4.9 --verbose 2>&1 | tee ruby-install.log
 
 # Solution 4: Clear the build cache and retry
-rm -rf ~/.rbenv/cache/ruby-3.3.0*
-rbenv install 3.3.0
+rm -rf ~/.rbenv/cache/ruby-3.4.9*
+rbenv install 3.4.9
 ```
 
 ### rbenv Not Recognized After Installation
@@ -1088,12 +1073,12 @@ rm -rf ~/.gem/ruby/*/cache/*
 
 # Solution 1: Install development headers for common dependencies
 sudo apt install -y \
-    libpq-dev \           # PostgreSQL
-    libmysqlclient-dev \  # MySQL
-    libsqlite3-dev \      # SQLite
-    libmagickwand-dev \   # ImageMagick
-    libxml2-dev \         # Nokogiri
-    libxslt1-dev          # Nokogiri
+    libpq-dev \
+    libmysqlclient-dev \
+    libsqlite3-dev \
+    libmagickwand-dev \
+    libxml2-dev \
+    libxslt1-dev
 
 # Solution 2: Configure Bundler to use system libraries
 bundle config build.nokogiri --use-system-libraries
@@ -1136,14 +1121,14 @@ git clone https://github.com/rbenv/rbenv.git ~/.rbenv
 ```bash
 # Problem: OpenSSL errors when installing Ruby 2.x
 
-# Solution 1: Install OpenSSL 1.1 for compatibility
-sudo apt install libssl1.1
+# Solution 1: Update ruby-build so it has the latest OpenSSL compatibility fixes
+cd ~/.rbenv/plugins/ruby-build && git pull
 
-# Solution 2: Compile with specific OpenSSL version
-RUBY_CONFIGURE_OPTS="--with-openssl-dir=/usr/local/opt/openssl@1.1" \
+# Solution 2: Compile with a specific OpenSSL installation if you have one
+RUBY_CONFIGURE_OPTS="--with-openssl-dir=$HOME/opt/openssl-1.1" \
     rbenv install 2.7.8
 
-# Solution 3: Use ruby-build's built-in OpenSSL
+# Solution 3: Retry with ruby-build's downloader explicitly set to curl
 RUBY_BUILD_HTTP_CLIENT=curl \
     rbenv install 2.7.8
 ```
@@ -1154,7 +1139,7 @@ RUBY_BUILD_HTTP_CLIENT=curl \
 # Comprehensive diagnostic commands for troubleshooting
 
 # Check rbenv installation health
-rbenv doctor
+curl -fsSL https://github.com/rbenv/rbenv-installer/raw/main/bin/rbenv-doctor | bash
 
 # Show active Ruby version and source
 rbenv version
@@ -1204,13 +1189,13 @@ You now have a complete Ruby development environment on Ubuntu using rbenv. This
 ```bash
 # Essential rbenv commands
 rbenv install -l          # List available versions
-rbenv install 3.3.0       # Install a version
+rbenv install 3.4.9       # Install a version
 rbenv versions            # List installed versions
-rbenv global 3.3.0        # Set global version
-rbenv local 3.3.0         # Set project version
+rbenv global 3.4.9        # Set global version
+rbenv local 3.4.9         # Set project version
 rbenv version             # Show active version
 rbenv rehash              # Update shims after gem install
-rbenv uninstall 2.7.8     # Remove a version
+rbenv uninstall 3.2.11    # Remove a version
 
 # Essential Bundler commands
 bundle install            # Install dependencies
