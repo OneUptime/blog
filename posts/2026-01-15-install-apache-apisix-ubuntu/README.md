@@ -279,6 +279,7 @@ plugins:
   - limit-req                          # Request rate limiting
   - node-status                        # Node status endpoint
   - openid-connect                     # OpenID Connect
+  - public-api                         # Expose internal APIs (e.g. JWT sign)
   - prometheus                         # Prometheus metrics
   - proxy-cache                        # Response caching
   - proxy-mirror                       # Traffic mirroring
@@ -547,9 +548,20 @@ curl -X PUT http://127.0.0.1:9180/apisix/admin/routes/4 \
   }'
 ```
 
-APISIX can also sign JWTs for you using the built-in endpoint.
+APISIX can also sign JWTs for you using the built-in endpoint. In APISIX 3.x this endpoint is not exposed by default — you must publish it with the `public-api` plugin by creating a route for it first.
 
 ```bash
+# Expose the JWT sign endpoint via the public-api plugin
+curl -X PUT http://127.0.0.1:9180/apisix/admin/routes/jwt-sign \
+  -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "uri": "/apisix/plugin/jwt/sign",
+    "plugins": {
+      "public-api": {}
+    }
+  }'
+
 # Generate a JWT token using APISIX's signing endpoint
 # This is useful for testing or simple auth flows
 curl -X GET http://127.0.0.1:9080/apisix/plugin/jwt/sign?key=mobile-app-key
@@ -732,12 +744,14 @@ curl -X PUT http://127.0.0.1:9180/apisix/admin/routes/9 \
                 "weight": 100
               }
             ]
-          }
-        ],
-        "weighted_upstreams": [
+          },
           {
-            "upstream_id": "production",
-            "weight": 100
+            "weighted_upstreams": [
+              {
+                "upstream_id": "production",
+                "weight": 100
+              }
+            ]
           }
         ]
       }
@@ -1146,10 +1160,6 @@ Create the APISIX configuration file for the Docker deployment.
 apisix:
   node_listen: 9080
   enable_ipv6: false
-  enable_admin: true
-  admin_listen:
-    ip: 0.0.0.0
-    port: 9180
 
   ssl:
     enable: true
@@ -1161,16 +1171,22 @@ deployment:
   role_traditional:
     config_provider: etcd
   admin:
+    # Allow admin access from anywhere inside the Docker network
+    allow_admin:
+      - 0.0.0.0/0
+    admin_listen:
+      ip: 0.0.0.0
+      port: 9180
     admin_key:
       - name: admin
         key: edd1c9f034335f136f87ad84b625c8f1
         role: admin
-
-etcd:
-  host:
-    - "http://etcd:2379"                       # Use Docker service name
-  prefix: /apisix
-  timeout: 30
+  # etcd configuration lives under deployment in APISIX 3.x
+  etcd:
+    host:
+      - "http://etcd:2379"                     # Use Docker service name
+    prefix: /apisix
+    timeout: 30
 
 plugin_attr:
   prometheus:
@@ -1190,6 +1206,7 @@ plugins:
   - limit-conn
   - limit-count
   - limit-req
+  - node-status
   - prometheus
   - proxy-rewrite
   - redirect
@@ -1372,7 +1389,7 @@ free -h
 | `upstream unavailable` | All upstream nodes unhealthy | Check backend health and health check configuration |
 | `plugin not found` | Plugin not enabled | Add plugin to config.yaml plugins list |
 | `invalid configuration` | Malformed route/upstream config | Validate JSON and check schema |
-| `connection refused on port 9180` | Admin API not enabled | Set `enable_admin: true` in config |
+| `connection refused on port 9180` | Admin API not enabled | Configure `deployment.admin` (admin_listen/admin_key) in config |
 
 ### Resetting APISIX Configuration
 
