@@ -264,7 +264,6 @@ This command builds your Storybook, uploads it to Chromatic's cloud, captures sc
 ### Chromatic Configuration File
 
 ```json
-// chromatic.config.json
 {
   "projectToken": "chpt_xxxxxxxxxxxxxxx",
   "buildScriptName": "build-storybook",
@@ -276,7 +275,7 @@ This command builds your Storybook, uploads it to Chromatic's cloud, captures sc
 
 | Option | Description |
 |--------|-------------|
-| `projectToken` | Your Chromatic project identifier |
+| `projectToken` | Your Chromatic project token |
 | `buildScriptName` | npm script to build Storybook |
 | `onlyChanged` | Only test stories affected by code changes |
 | `externals` | Files outside src that affect visual output |
@@ -384,7 +383,12 @@ Accepted changes become the new baseline for future comparisons.
 // .storybook/preview.js
 export const parameters = {
   chromatic: {
-    viewports: [320, 768, 1024, 1440],
+    modes: {
+      mobile: { viewport: 320 },
+      tablet: { viewport: 768 },
+      desktop: { viewport: 1024 },
+      wide: { viewport: 1440 },
+    },
   },
 };
 ```
@@ -463,7 +467,7 @@ Capture visual states after user interactions:
 
 ```javascript
 // src/components/Dropdown/Dropdown.stories.jsx
-import { within, userEvent } from '@storybook/testing-library';
+import { Dropdown } from './Dropdown';
 
 export default {
   title: 'Components/Dropdown',
@@ -482,8 +486,7 @@ export const Open = {
     options: ['Option 1', 'Option 2', 'Option 3'],
     placeholder: 'Select an option',
   },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
+  play: async ({ canvas, userEvent }) => {
     await userEvent.click(canvas.getByRole('button'));
   },
 };
@@ -493,8 +496,7 @@ export const WithSelection = {
     options: ['Option 1', 'Option 2', 'Option 3'],
     placeholder: 'Select an option',
   },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
+  play: async ({ canvas, userEvent }) => {
     await userEvent.click(canvas.getByRole('button'));
     await userEvent.click(canvas.getByText('Option 2'));
   },
@@ -504,8 +506,7 @@ export const WithSelection = {
 ### Form Interactions
 
 ```javascript
-import { within, userEvent } from '@storybook/testing-library';
-import { expect } from '@storybook/jest';
+import { LoginForm } from './LoginForm';
 
 export default {
   title: 'Components/Form',
@@ -515,16 +516,14 @@ export default {
 export const Empty = {};
 
 export const Filled = {
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
+  play: async ({ canvas, userEvent }) => {
     await userEvent.type(canvas.getByLabelText('Email'), 'user@example.com');
     await userEvent.type(canvas.getByLabelText('Password'), 'password123');
   },
 };
 
 export const WithValidationErrors = {
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
+  play: async ({ canvas, userEvent }) => {
     await userEvent.type(canvas.getByLabelText('Email'), 'invalid');
     await userEvent.click(canvas.getByRole('button', { name: 'Submit' }));
   },
@@ -555,12 +554,7 @@ export const AsyncContent = {
 
 ### Browser-Specific Rendering
 
-```json
-// chromatic.config.json
-{
-  "browsers": ["chrome", "firefox", "safari"]
-}
-```
+Enable additional browsers from the Chromatic project Manage screen. Chrome is enabled by default, and Chromatic can create separate baselines for Firefox, Safari, and Edge after you enable them.
 
 ## Best Practices
 
