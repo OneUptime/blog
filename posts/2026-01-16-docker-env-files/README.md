@@ -169,7 +169,17 @@ services:
     environment:
       # Key-value format
       DATABASE_URL: postgres://user:pass@db:5432/myapp
+      REDIS_URL: redis://redis:6379
+      # From host environment
+      HOST_VAR:
+```
+
+```yaml
+services:
+  app:
+    environment:
       # Or list format
+      - DATABASE_URL=postgres://user:pass@db:5432/myapp
       - REDIS_URL=redis://redis:6379
       # From host environment
       - HOST_VAR
@@ -187,8 +197,8 @@ services:
 | Aspect | environment | env_file |
 |--------|------------|----------|
 | Visibility | In compose file | In separate file |
-| Interpolation | Supports ${VAR} | No interpolation |
-| Override | Yes | Earlier files overridden |
+| Interpolation | Supports ${VAR} | Supports interpolation in Docker Compose |
+| Override | Overrides env_file values | Later files override earlier files |
 | Git tracking | Often tracked | Often gitignored |
 
 ## .env File Format
@@ -206,41 +216,40 @@ KEY=value
 MESSAGE="Hello World"
 PATH_VAR='C:\Users\name'
 
-# No spaces around =
+# Spaces around = are ignored by Docker Compose
 CORRECT=value
-# WRONG = value  # This won't work
+ALSO_CORRECT = value
 
-# Multi-line values (use quotes)
-MULTI_LINE="line1
+# Multi-line values (use single quotes in Docker Compose)
+MULTI_LINE='line1
 line2
-line3"
+line3'
 
-# Export keyword is optional and ignored
+# Export keyword is optional in Docker Compose .env files
+# Do not use export with docker run --env-file
 export EXPORTED_VAR=value
 
 # Empty value
 EMPTY_VAR=
 
 # Special characters in quotes
-SPECIAL="value with spaces and $pecial chars"
+SPECIAL='value with spaces and $pecial chars'
 ```
 
 ### Common Mistakes
 
 ```bash
-# WRONG: Space around equals
-DATABASE = value
-
-# WRONG: Unquoted special characters
+# WRONG: Unquoted $ expressions may be interpolated by Docker Compose
 PASSWORD=p@ss$word
 
 # CORRECT: Quote special characters
-PASSWORD="p@ss$word"
+PASSWORD='p@ss$word'
 
-# WRONG: Inline comments
-VALUE=something # this is not a comment
+# Compose treats this as an inline comment
+VALUE=something # this is a comment
 
-# The value is "something # this is not a comment"
+# docker run --env-file treats the # as part of the value
+# The value is "something # this is a comment"
 ```
 
 ## Secrets and Sensitive Data
@@ -468,14 +477,13 @@ WORKERS=4
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   app:
     image: myapp:${VERSION:-latest}
     env_file:
       - .env
-      - .env.local
+      - path: .env.local
+        required: false
     environment:
       # Ensure required vars are set
       - DATABASE_URL=${DATABASE_URL:?Required}
@@ -504,4 +512,3 @@ services:
 | Debugging | `docker compose config`, `docker exec env` |
 
 Environment files are essential for managing configuration across environments. Keep sensitive data out of version control, use templates for documentation, provide sensible defaults for development, and validate required variables. This approach makes your Docker applications portable and secure.
-
