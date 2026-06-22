@@ -56,7 +56,7 @@ helm repo add jetstack https://charts.jetstack.io
 
 ### Add a Repository with Authentication
 
-Private repositories often require credentials. Helm supports basic auth, token auth, and certificate-based authentication.
+Private repositories often require credentials. Helm supports basic auth, token-style passwords, and certificate-based authentication.
 
 ```bash
 # Add a private repository with username/password authentication
@@ -64,8 +64,10 @@ helm repo add mycompany https://charts.mycompany.com \
   --username myuser \
   --password mypassword
 
-# Add a repository with a bearer token (common for cloud registries)
+# Add a repository with a token as the password
 helm repo add private-charts https://charts.example.com \
+  --username myuser \
+  --password mytoken \
   --pass-credentials
 
 # Add a repository with TLS client certificate authentication
@@ -201,16 +203,17 @@ helm repo add private-charts https://charts.example.com \
 
 ### Store Credentials Securely
 
-Avoid passing credentials on the command line in scripts. Use environment variables or config files.
+Avoid hardcoding credentials in scripts. Use environment variables and pass the password through standard input when possible.
 
 ```bash
-# Using environment variables (credentials not visible in process list)
+# Using environment variables with --password-stdin
 export HELM_REPO_USERNAME="myuser"
 export HELM_REPO_PASSWORD="mypassword"
 
+printf '%s' "$HELM_REPO_PASSWORD" | \
 helm repo add private https://charts.example.com \
   --username "$HELM_REPO_USERNAME" \
-  --password "$HELM_REPO_PASSWORD"
+  --password-stdin
 ```
 
 ## Repository Best Practices
