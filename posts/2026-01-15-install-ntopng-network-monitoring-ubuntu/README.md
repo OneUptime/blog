@@ -68,7 +68,7 @@ sudo apt install -y software-properties-common wget curl gnupg apt-transport-htt
 
 ### Check Ubuntu Version
 
-ntopng supports Ubuntu 20.04, 22.04, and 24.04 LTS releases.
+The official ntop repository provides ntopng packages for Ubuntu 22.04 and 24.04 LTS releases.
 
 ```bash
 # Verify your Ubuntu version
@@ -87,18 +87,17 @@ The recommended way to install ntopng is from the official ntop repository, whic
 First, add the official ntop repository to your system.
 
 ```bash
-# Download and add the ntop repository GPG key
-wget https://packages.ntop.org/apt-stable/bookworm/all/apt-ntop-stable.deb
-sudo dpkg -i apt-ntop-stable.deb
+# Download the ntop repository configuration package.
+# This .deb installs the repository definition and its GPG signing key.
+# Use the package that matches your Ubuntu release.
 
-# For Ubuntu, use the appropriate package
 # Ubuntu 22.04 (Jammy)
 wget https://packages.ntop.org/apt-stable/22.04/all/apt-ntop-stable.deb
-sudo dpkg -i apt-ntop-stable.deb
+sudo apt install ./apt-ntop-stable.deb
 
 # Ubuntu 24.04 (Noble)
 wget https://packages.ntop.org/apt-stable/24.04/all/apt-ntop-stable.deb
-sudo dpkg -i apt-ntop-stable.deb
+sudo apt install ./apt-ntop-stable.deb
 ```
 
 ### Install ntopng
@@ -177,9 +176,9 @@ Add the following basic configuration.
 --dns-mode=1
 
 # Disable login for initial setup (enable in production!)
-# --disable-login=1
+# --disable-login
 
-# Community edition settings
+# PID file location
 -G=/var/run/ntopng.pid
 ```
 
@@ -381,16 +380,13 @@ Fine-tune application detection settings.
 # Edit ntopng configuration
 sudo nano /etc/ntopng/ntopng.conf
 
-# Enable protocol detection features
---enable-tls-quic-hosts-detection
-
-# Set packet inspection limits (higher values = more accurate detection)
-# but with increased CPU usage
+# Set the maximum number of active flows and hosts ntopng tracks
+# (higher values track more traffic but use more memory)
 --max-num-flows=200000
 --max-num-hosts=65536
 
-# Configure protocol file for custom protocol definitions
---protocols-file=/etc/ntopng/protocols.txt
+# Load custom nDPI protocol definitions from a file
+--ndpi-protocols=/etc/ntopng/protocols.txt
 ```
 
 ### Custom Protocol Definitions
@@ -401,11 +397,12 @@ Create custom protocol definitions for internal applications.
 # Create a custom protocols file
 sudo nano /etc/ntopng/protocols.txt
 
-# Format: protocol_name host:port
+# nDPI custom protocol format: <matcher>@<ProtocolName>
+# where the matcher can be an IP, a host name, or a port.
 # Example entries:
-# internal_erp 192.168.1.100:8080
-# custom_api 10.0.0.50:443
-# monitoring_server 192.168.1.200:9090
+# ip:192.168.1.100@internal_erp
+# ip:10.0.0.50@custom_api
+# host:"monitoring.internal"@monitoring_server
 ```
 
 ### Traffic Policies
@@ -432,15 +429,17 @@ ntopng provides comprehensive alerting capabilities for proactive monitoring.
 Set up notification endpoints for alerts.
 
 ```bash
-# Edit ntopng configuration for email alerts
-sudo nano /etc/ntopng/ntopng.conf
+# Notification endpoints (email, webhooks, etc.) are configured from
+# the web interface, not from the configuration file.
 
-# SMTP settings for email notifications
---smtp-server=smtp.yourserver.com
---smtp-port=587
---smtp-username=alerts@yourdomain.com
---smtp-password=your_smtp_password
---sender-address=ntopng@yourdomain.com
+# In the ntopng web interface:
+# 1. Go to Notifications > Endpoints and add an "Email" endpoint:
+#    - SMTP server (e.g. smtp.yourserver.com:587)
+#    - Username and password
+#    - Sender address (e.g. ntopng@yourdomain.com)
+# 2. Go to Notifications > Recipients and create a recipient that
+#    uses this endpoint
+# 3. Assign the recipient to the alerts you want delivered by email
 ```
 
 ### Alert Types
@@ -589,26 +588,21 @@ influx auth create \
 
 ### Configure ntopng for InfluxDB
 
-Update ntopng configuration to export data to InfluxDB.
+Configure ntopng to export timeseries to InfluxDB. This is done from the web interface, not from the configuration file.
 
 ```bash
-# Edit ntopng configuration
-sudo nano /etc/ntopng/ntopng.conf
+# In the ntopng web interface:
+# 1. Go to Settings > Preferences > Timeseries
+# 2. Set "Timeseries Driver" to "InfluxDB"
+# 3. Enter the InfluxDB connection details:
+#    - InfluxDB version: 2.x (or 1.x)
+#    - URL: http://127.0.0.1:8086
+#    - For 2.x: the organization, bucket, and API token created above
+#    - For 1.x: the database name and (if enabled) username/password
+# 4. Save; ntopng then begins exporting timeseries to InfluxDB
 
-# Add InfluxDB timeseries configuration
-# For InfluxDB 2.x
---ts-driver=influxdb2
---ts-host=http://127.0.0.1:8086
---ts-organization=your_org
---ts-bucket=ntopng
---ts-token=your_influxdb_token
-
-# Configure what data to export
---enable-users-login=1
---enable-minute-timeseries=1
---enable-5min-timeseries=1
---enable-hour-timeseries=1
---enable-day-timeseries=1
+# Which timeseries are collected and their granularity (1 min, 5 min,
+# hourly, etc.) are also controlled from the Timeseries preferences page.
 ```
 
 ### InfluxDB Data Retention Policies
@@ -658,15 +652,12 @@ ntopng can monitor network devices via SNMP for comprehensive infrastructure vis
 Enable SNMP device monitoring in ntopng.
 
 ```bash
-# Edit ntopng configuration
-sudo nano /etc/ntopng/ntopng.conf
+# SNMP monitoring is configured entirely from the web interface,
+# not from the configuration file.
 
-# Enable SNMP monitoring
---snmp-community=public
---snmp-default-version=2c
-
-# For SNMPv3 (recommended for security)
-# Configure via web interface for per-device credentials
+# Community strings and the SNMP version (v1/v2c/v3) are set per device
+# when you add it (see the next section). SNMPv3 credentials are also
+# entered per device for stronger security.
 ```
 
 ### Add SNMP Devices via Web Interface
@@ -755,21 +746,17 @@ Set up nProbe to collect NetFlow data.
 # Create nProbe configuration file
 sudo nano /etc/nprobe/nprobe.conf
 
-# Basic NetFlow v9 collector configuration
-# Listen for NetFlow on UDP port 2055
+# Basic NetFlow collector configuration.
+# -i=none disables packet capture so nProbe acts purely as a collector.
+# The NetFlow/IPFIX version of incoming flows is auto-detected.
+# Listen for flows on UDP port 2055
 -i=none
 --collector-port=2055
 
-# Export to ntopng via ZMQ
+# Export collected flows to ntopng via ZMQ
 --zmq=tcp://127.0.0.1:5556
 
-# NetFlow version support
---netflow-version=9
-
-# Template handling
---dont-drop-unknown-template
-
-# Logging
+# PID file location
 -G=/var/run/nprobe.pid
 ```
 
@@ -781,16 +768,13 @@ Set up sFlow collection from switches.
 # Create sFlow collector configuration
 sudo nano /etc/nprobe/nprobe-sflow.conf
 
-# sFlow collector configuration
+# sFlow collector configuration.
+# nProbe auto-detects sFlow datagrams arriving on the collector port.
 -i=none
 --collector-port=6343
---collector-protocol=sflow
 
 # Export to ntopng via ZMQ
 --zmq=tcp://127.0.0.1:5557
-
-# sFlow-specific settings
---sflow-sample-rate=1024
 
 -G=/var/run/nprobe-sflow.pid
 ```
@@ -843,20 +827,27 @@ Secure your ntopng web interface with HTTPS.
 
 Create SSL certificates for ntopng.
 
-```bash
-# Create directory for certificates
-sudo mkdir -p /etc/ntopng/ssl
+ntopng expects a single PEM file that contains **both** the private key and the certificate, named `ntopng-cert.pem`, in the `httpdocs/ssl` directory under the ntopng share directory (`/usr/share/ntopng` on package installs).
 
-# Option 1: Generate self-signed certificate (for testing)
+```bash
+# Create the SSL directory if it does not exist
+sudo mkdir -p /usr/share/ntopng/httpdocs/ssl
+
+# Option 1: Generate a self-signed certificate (for testing)
 sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-    -keyout /etc/ntopng/ssl/ntopng.key \
-    -out /etc/ntopng/ssl/ntopng.crt \
+    -keyout /tmp/ntopng.key \
+    -out /tmp/ntopng.crt \
     -subj "/C=US/ST=State/L=City/O=Organization/CN=ntopng.yourdomain.com"
 
-# Set proper permissions
-sudo chmod 600 /etc/ntopng/ssl/ntopng.key
-sudo chmod 644 /etc/ntopng/ssl/ntopng.crt
-sudo chown -R ntopng:ntopng /etc/ntopng/ssl
+# Concatenate the private key and certificate into the single PEM file
+# that ntopng expects
+cat /tmp/ntopng.key /tmp/ntopng.crt | \
+    sudo tee /usr/share/ntopng/httpdocs/ssl/ntopng-cert.pem > /dev/null
+sudo rm /tmp/ntopng.key /tmp/ntopng.crt
+
+# Set proper ownership and permissions
+sudo chown ntopng:ntopng /usr/share/ntopng/httpdocs/ssl/ntopng-cert.pem
+sudo chmod 600 /usr/share/ntopng/httpdocs/ssl/ntopng-cert.pem
 ```
 
 ### Use Let's Encrypt Certificates
@@ -874,9 +865,16 @@ sudo certbot certonly --standalone -d ntopng.yourdomain.com
 # /etc/letsencrypt/live/ntopng.yourdomain.com/fullchain.pem
 # /etc/letsencrypt/live/ntopng.yourdomain.com/privkey.pem
 
-# Create symbolic links for ntopng
-sudo ln -sf /etc/letsencrypt/live/ntopng.yourdomain.com/fullchain.pem /etc/ntopng/ssl/ntopng.crt
-sudo ln -sf /etc/letsencrypt/live/ntopng.yourdomain.com/privkey.pem /etc/ntopng/ssl/ntopng.key
+# Combine the private key and certificate chain into the single
+# ntopng-cert.pem file that ntopng expects
+sudo bash -c 'cat /etc/letsencrypt/live/ntopng.yourdomain.com/privkey.pem \
+    /etc/letsencrypt/live/ntopng.yourdomain.com/fullchain.pem \
+    > /usr/share/ntopng/httpdocs/ssl/ntopng-cert.pem'
+sudo chown ntopng:ntopng /usr/share/ntopng/httpdocs/ssl/ntopng-cert.pem
+sudo chmod 600 /usr/share/ntopng/httpdocs/ssl/ntopng-cert.pem
+
+# Note: repeat this step after each certificate renewal (e.g. via a
+# Certbot deploy hook), since ntopng reads its own copy of the file.
 ```
 
 ### Configure ntopng for HTTPS
@@ -887,20 +885,13 @@ Update ntopng configuration to use HTTPS.
 # Edit ntopng configuration
 sudo nano /etc/ntopng/ntopng.conf
 
-# Disable HTTP and enable HTTPS
-# Comment out or remove the HTTP line
-# -w=0.0.0.0:3000
-
-# Enable HTTPS
+# Enable HTTPS on port 3001. ntopng automatically reads the certificate
+# from httpdocs/ssl/ntopng-cert.pem, so no certificate path is specified
+# on the command line.
 -W=0.0.0.0:3001
 
-# Specify certificate paths
---https-cert=/etc/ntopng/ssl/ntopng.crt
---https-key=/etc/ntopng/ssl/ntopng.key
-
-# Optional: Redirect HTTP to HTTPS
-# -w=0.0.0.0:3000
-# --http-redirect-https
+# Optional: disable plain HTTP entirely by setting the HTTP port to 0
+# -w=0
 ```
 
 ### Restart ntopng with HTTPS
@@ -969,17 +960,20 @@ Understand the different user roles.
 Configure LDAP authentication for enterprise environments.
 
 ```bash
-# Edit ntopng configuration
-sudo nano /etc/ntopng/ntopng.conf
+# LDAP / Active Directory authentication is configured from the web
+# interface, not from the configuration file (and requires a paid
+# ntopng Enterprise license).
 
-# Enable LDAP authentication
---ldap-server=ldap://ldap.yourdomain.com:389
---ldap-bind-dn=cn=ntopng,ou=services,dc=yourdomain,dc=com
---ldap-bind-password=your_bind_password
---ldap-search-base=ou=users,dc=yourdomain,dc=com
---ldap-user-search-filter=(sAMAccountName=%username%)
---ldap-group-search-filter=(member=%userdn%)
---ldap-admin-group=cn=ntopng-admins,ou=groups,dc=yourdomain,dc=com
+# In the ntopng web interface:
+# 1. Go to Settings > Preferences > User Authentication
+# 2. Enable "LDAP Authentication" and provide:
+#    - LDAP server URL (e.g. ldap://ldap.yourdomain.com:389)
+#    - Bind DN and bind password
+#      (e.g. cn=ntopng,ou=services,dc=yourdomain,dc=com)
+#    - Search base (e.g. ou=users,dc=yourdomain,dc=com)
+#    - User and (optionally) group search filters
+#    - The group that maps to administrator privileges
+# 3. Save and test login with an LDAP account
 ```
 
 ### Session Management
@@ -987,17 +981,16 @@ sudo nano /etc/ntopng/ntopng.conf
 Configure session settings for security.
 
 ```bash
-# Edit ntopng configuration
+# Session-related options such as the login/idle timeout are configured
+# from the web interface under Settings > Preferences (Authentication),
+# not from the configuration file.
+
+# The configuration file can, however, disable the automatic logout of
+# idle sessions:
 sudo nano /etc/ntopng/ntopng.conf
 
-# Session timeout (in seconds)
---user-session-timeout=3600
-
-# Maximum concurrent sessions per user
---max-sessions-per-user=3
-
-# Enable session logging
---enable-login-tracking
+# Disable automatic logout of idle web sessions
+# -q   (equivalent to --disable-autologout)
 ```
 
 ## API Usage
@@ -1210,8 +1203,9 @@ sudo setcap cap_net_raw,cap_net_admin=eip /usr/bin/ntopng
 sudo mkdir -p /var/lib/ntopng
 sudo chown ntopng:ntopng /var/lib/ntopng
 
-# 4. Invalid configuration
-ntopng --check-config -F /etc/ntopng/ntopng.conf
+# 4. Invalid configuration: run ntopng in the foreground pointing at the
+#    config file and watch the startup output for errors (Ctrl+C to stop)
+sudo ntopng /etc/ntopng/ntopng.conf
 ```
 
 ### No Traffic Detected
@@ -1251,16 +1245,13 @@ sudo nano /etc/ntopng/ntopng.conf
 --max-num-flows=100000
 --max-num-hosts=32768
 
-# Disable expensive features if not needed
---disable-dns-resolution
---disable-host-name-resolution
+# Reduce DNS-related work: mode 3 skips decoding DNS responses and
+# host name resolution entirely
+--dns-mode=3
 
-# Reduce timeseries resolution
---disable-minute-timeseries
-
-# Increase idle timeouts to reduce flow churn
---host-idle-timeout=600
---flow-idle-timeout=60
+# Timeseries granularity and host/flow idle timeouts are tuned from the
+# web interface under Settings > Preferences. Lowering the timeseries
+# resolution and raising the idle timeouts both reduce CPU load.
 
 # Consider using packet sampling on high-traffic interfaces
 # (requires hardware/driver support)
@@ -1302,11 +1293,11 @@ curl -v http://localhost:3000
 # Check binding address
 netstat -tlnp | grep ntopng
 
-# Verify SSL certificates (for HTTPS)
-openssl x509 -in /etc/ntopng/ssl/ntopng.crt -text -noout
+# Verify the SSL certificate (for HTTPS)
+openssl x509 -in /usr/share/ntopng/httpdocs/ssl/ntopng-cert.pem -text -noout
 
 # Check certificate permissions
-ls -la /etc/ntopng/ssl/
+ls -la /usr/share/ntopng/httpdocs/ssl/
 
 # Test HTTPS connection
 curl -kv https://localhost:3001
