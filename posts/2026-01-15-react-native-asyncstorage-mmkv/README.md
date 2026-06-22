@@ -117,7 +117,7 @@ cd ios && pod install
 
 - **Exceptional performance**: Up to 30x faster than AsyncStorage
 - **Synchronous API**: No need for async/await in most cases
-- **Encryption support**: Built-in AES-256 encryption
+- **Encryption support**: Built-in AES encryption (AES-128 by default, with AES-256 available)
 - **Small footprint**: Minimal impact on app size
 - **Memory-mapped files**: Efficient I/O operations
 - **Multi-process access**: Safe for apps with multiple processes
