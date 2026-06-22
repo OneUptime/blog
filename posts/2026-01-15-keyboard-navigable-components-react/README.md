@@ -670,7 +670,7 @@ import React, { useState, useRef, useCallback, useEffect } from 'react';
 
 function Listbox({ label, options, value, onChange }) {
   const [focusedIndex, setFocusedIndex] = useState(
-    options.findIndex((opt) => opt.value === value) || 0
+    Math.max(0, options.findIndex((opt) => opt.value === value))
   );
   const [typeAheadBuffer, setTypeAheadBuffer] = useState('');
 
@@ -799,7 +799,7 @@ function Listbox({ label, options, value, onChange }) {
               {option.label || option.value}
               {isSelected && (
                 <span aria-hidden="true" style={{ float: 'right' }}>
-                  \u2713
+                  {'\u2713'}
                 </span>
               )}
             </li>
@@ -853,7 +853,7 @@ function App() {
 Modals must trap focus within their boundaries. Tab should cycle through focusable elements inside the modal, not escape to the page behind.
 
 ```jsx
-import React, { useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 
 function useFocusTrap(isActive) {
   const containerRef = useRef(null);
