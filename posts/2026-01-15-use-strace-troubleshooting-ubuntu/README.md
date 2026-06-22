@@ -56,7 +56,7 @@ strace --version
 You should see output similar to:
 
 ```text
-strace -- version 5.x
+strace -- version 6.x
 ```
 
 ## Basic strace Usage
@@ -144,20 +144,19 @@ The `-e` option lets you filter which system calls to trace, reducing noise and 
 strace -e open,openat ls
 
 # Trace only file-related calls using trace sets
-strace -e trace=file ls
+strace -e trace=%file ls
 
 # Trace only network-related calls
-strace -e trace=network curl https://example.com
+strace -e trace=%network curl https://example.com
 
 # Trace only process-related calls
-strace -e trace=process bash -c "ls"
+strace -e trace=%process bash -c "ls"
 
 # Trace only memory-related calls
-strace -e trace=memory python3 -c "print('hello')"
+strace -e trace=%memory python3 -c "print('hello')"
 
 # Trace only signal-related calls
-strace -e trace=signal sleep 10 &
-kill -USR1 $!
+strace -e trace=%signal bash -c 'trap "" USR1; kill -USR1 $$'
 ```
 
 ### Available Trace Sets
@@ -181,7 +180,7 @@ You can exclude specific system calls using the `!` operator:
 strace -e '!mmap,mprotect' ls
 
 # Exclude all memory-related calls
-strace -e 'trace=!memory' python3 script.py
+strace -e 'trace=!%memory' python3 script.py
 ```
 
 ## Following Child Processes with -f
@@ -308,20 +307,20 @@ One of the most common uses of strace is debugging file access problems:
 
 ```bash
 # Trace all file-related system calls
-strace -e trace=file ./my_application
+strace -e trace=%file ./my_application
 
 # Common file-related syscalls to look for:
 # open/openat - Opening files
 # stat/lstat/fstat - Getting file information
 # access - Checking file permissions
-# read/write - Reading/writing file contents
+# read/write - Reading/writing file contents when traced explicitly
 ```
 
 ### Finding Missing Files
 
 ```bash
 # Look for ENOENT (No such file or directory) errors
-strace -e trace=file ./my_app 2>&1 | grep ENOENT
+strace -e trace=%file ./my_app 2>&1 | grep ENOENT
 
 # Example output showing a missing configuration file:
 # openat(AT_FDCWD, "/etc/myapp/config.yaml", O_RDONLY) = -1 ENOENT (No such file or directory)
@@ -334,10 +333,10 @@ strace -e openat ./my_app 2>&1 | grep -v "= -1"
 
 ```bash
 # Discover where an application looks for its configuration
-strace -e trace=file -s 200 nginx -t 2>&1 | grep -E "(open|access)"
+strace -e trace=%file -s 200 nginx -t 2>&1 | grep -E "(open|access)"
 
 # Example: Find where Python looks for modules
-strace -e trace=file python3 -c "import requests" 2>&1 | grep "\.py"
+strace -e trace=%file python3 -c "import requests" 2>&1 | grep "\.py"
 ```
 
 ## Debugging Permission Problems
@@ -346,26 +345,26 @@ Permission issues often manifest as `EACCES` or `EPERM` errors:
 
 ```bash
 # Look for permission denied errors
-strace -e trace=file ./my_app 2>&1 | grep -E "(EACCES|EPERM)"
+strace -e trace=%file ./my_app 2>&1 | grep -E "(EACCES|EPERM)"
 
 # Example output:
 # openat(AT_FDCWD, "/var/log/myapp.log", O_WRONLY|O_CREAT) = -1 EACCES (Permission denied)
 
 # Trace a specific application with permission issues
-strace -e trace=file,desc -s 200 sudo -u www-data ./my_web_app 2>&1 | grep -E "(EACCES|EPERM)"
+strace -e trace=%file,%desc -s 200 sudo -u www-data ./my_web_app 2>&1 | grep -E "(EACCES|EPERM)"
 ```
 
 ### Common Permission Scenarios
 
 ```bash
 # Debug a web server permission issue
-sudo strace -f -e trace=file -p $(pgrep nginx) 2>&1 | grep -E "(EACCES|EPERM)"
+sudo strace -f -e trace=%file -p "$(pgrep nginx)" 2>&1 | grep -E "(EACCES|EPERM)"
 
 # Debug a database permission issue
-sudo strace -e trace=file -p $(pgrep postgres) 2>&1 | grep -E "(open|EACCES)"
+sudo strace -e trace=%file -p "$(pgrep postgres)" 2>&1 | grep -E "(open|EACCES)"
 
 # Check what user/group the process is running as
-strace -e trace=process id
+strace -e trace=%process id
 # Look for setuid, setgid, setgroups calls
 ```
 
@@ -377,7 +376,7 @@ strace is invaluable for debugging network issues:
 
 ```bash
 # Trace all network-related system calls
-strace -e trace=network curl https://api.example.com
+strace -e trace=%network curl https://api.example.com
 
 # Key network syscalls to watch:
 # socket() - Creating a socket
@@ -393,23 +392,23 @@ strace -e trace=network curl https://api.example.com
 
 ```bash
 # Look for connection errors
-strace -e trace=network ./my_client 2>&1 | grep -E "(connect|ECONNREFUSED|ETIMEDOUT)"
+strace -e trace=%network ./my_client 2>&1 | grep -E "(connect|ECONNREFUSED|ETIMEDOUT)"
 
 # Example output for connection refused:
 # connect(3, {sa_family=AF_INET, sin_port=htons(5432), sin_addr=inet_addr("127.0.0.1")}, 16) = -1 ECONNREFUSED
 
 # Debug DNS resolution issues
-strace -e trace=network,file getent hosts example.com 2>&1 | grep -E "(open|connect|sendto|recvfrom)"
+strace -e trace=%network,%file getent hosts example.com 2>&1 | grep -E "(open|connect|sendto|recvfrom)"
 ```
 
 ### Tracing Network Traffic with Content
 
 ```bash
 # Show network data being sent/received (increase string size)
-strace -s 1000 -e trace=network,read,write curl https://api.example.com 2>&1 | less
+strace -s 1000 -e trace=%network,read,write curl https://api.example.com 2>&1 | less
 
 # Trace a specific process's network activity
-sudo strace -f -e trace=network -p $(pgrep -f "python.*server") 2>&1 | tee /tmp/network_trace.log
+sudo strace -f -e trace=%network -p "$(pgrep -f 'python.*server')" 2>&1 | tee /tmp/network_trace.log
 ```
 
 ## Performance Analysis
@@ -482,14 +481,14 @@ strace ./my_application 2>&1 | grep -E "(open|access).*\.so" | grep ENOENT
 
 ```bash
 # Attach to the hanging process
-sudo strace -p $(pgrep -f my_hanging_app)
+sudo strace -p "$(pgrep -o -f my_hanging_app)"
 
 # If nothing appears, the process might be waiting
 # Look for what it's blocked on:
-sudo cat /proc/$(pgrep -f my_hanging_app)/wchan
+sudo cat /proc/$(pgrep -o -f my_hanging_app)/wchan
 
 # Trace with follow-forks to catch all threads
-sudo strace -f -p $(pgrep -f my_hanging_app)
+sudo strace -f -p "$(pgrep -o -f my_hanging_app)"
 ```
 
 ### Pattern 3: Application Crashes
@@ -527,7 +526,7 @@ strace -e trace=openat -s 200 ./my_application 2>&1 | grep -v ENOENT | head -50
 # Find which config file is being used
 strace -e trace=openat -s 200 ./my_application 2>&1 | grep -E "\.(conf|cfg|yaml|json|ini)"
 
-# See what environment variables are accessed
+# See the environment variables passed during execve
 strace -v -e trace=execve ./my_application 2>&1 | head -20
 ```
 
@@ -543,7 +542,7 @@ strace -v -e trace=execve ./my_application 2>&1 | head -20
 BACKEND_PID=$(pgrep -f "gunicorn.*myapp")
 
 # Trace network and file operations
-sudo strace -f -e trace=network,file -p $BACKEND_PID -o /tmp/backend_trace.log &
+sudo strace -f -e trace=%network,%file -p "$BACKEND_PID" -o /tmp/backend_trace.log &
 STRACE_PID=$!
 
 # Make a request that causes 502
@@ -595,11 +594,9 @@ if [ "$MAIN_PID" == "0" ]; then
     # Modify the service to run under strace temporarily
     sudo systemctl stop $SERVICE_NAME
 
-    # Get the ExecStart command
-    EXEC_CMD=$(systemctl show -p ExecStart $SERVICE_NAME | sed 's/ExecStart=//')
-
-    # Run manually with strace
-    sudo strace -f -o /tmp/service_trace.log $EXEC_CMD &
+    # Get the service definition and run the ExecStart command manually with strace
+    systemctl cat $SERVICE_NAME
+    sudo strace -f -o /tmp/service_trace.log /path/to/service-command &
     sleep 10
 
     echo "Check /tmp/service_trace.log for issues"
@@ -618,7 +615,7 @@ fi
 APP_NAME="myapp"
 
 # Trace the application focusing on network calls
-strace -f -e trace=network -s 500 -o /tmp/db_trace.log ./my_application &
+strace -f -e trace=%network -s 500 -o /tmp/db_trace.log ./my_application &
 APP_PID=$!
 
 # Wait for the application to attempt connection
@@ -644,7 +641,7 @@ grep -E "connect.*= -1" /tmp/db_trace.log
 
 ```bash
 # Filter to only relevant syscalls
-strace -e trace=file,network ./my_app
+strace -e trace=%file,%network ./my_app
 
 # Exclude common noisy calls
 strace -e '!mmap,mprotect,munmap,brk' ./my_app
@@ -671,8 +668,8 @@ strace -f -o /tmp/trace_$(date +%Y%m%d_%H%M%S).log ./my_app
 
 ```bash
 # Trace only specific processes in a multi-process application
-strace -p $(pgrep -f "worker.*1") -o /tmp/worker1.log &
-strace -p $(pgrep -f "worker.*2") -o /tmp/worker2.log &
+strace -p "$(pgrep -o -f 'worker.*1')" -o /tmp/worker1.log &
+strace -p "$(pgrep -o -f 'worker.*2')" -o /tmp/worker2.log &
 ```
 
 ### 5. Combine with Other Tools
