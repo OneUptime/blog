@@ -353,8 +353,8 @@ TestFlight builds expire after 90 days. Plan your testing cycles accordingly:
 // Example: Check beta expiration in your app
 import DeviceInfo from 'react-native-device-info';
 
-const checkBetaExpiration = (): void => {
-  const installTime = DeviceInfo.getFirstInstallTime();
+const checkBetaExpiration = async (): Promise<void> => {
+  const installTime = await DeviceInfo.getFirstInstallTime();
   const expirationDays = 90;
   const msPerDay = 24 * 60 * 60 * 1000;
 
@@ -592,7 +592,7 @@ const getAppVersionInfo = async (): Promise<AppVersionInfo> => {
   const installerPackageName = await DeviceInfo.getInstallerPackageName();
 
   const isBeta = Platform.select({
-    ios: installerPackageName === 'com.apple.testflight',
+    ios: installerPackageName === 'TestFlight',
     android: installerPackageName === 'com.android.vending' &&
              version.includes('beta'),
     default: false,
