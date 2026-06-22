@@ -695,14 +695,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     async (code: string, callbackState: string) => {
       dispatch({ type: 'LOGIN_START' });
       try {
-        // Exchange code for tokens
-        const tokens = await exchangeCodeForTokens(code, callbackState);
-
-        // Get provider from stored PKCE state
+        // Read the provider from stored PKCE state before the exchange,
+        // since exchangeCodeForTokens clears the PKCE state on success
         const pkceState = sessionStorage.getItem('oauth_pkce_state');
         const provider = pkceState
           ? JSON.parse(pkceState).provider
           : 'unknown';
+
+        // Exchange code for tokens
+        const tokens = await exchangeCodeForTokens(code, callbackState);
 
         // Fetch user information
         const user = await fetchUserInfo(tokens.accessToken, provider);
