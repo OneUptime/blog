@@ -45,13 +45,13 @@ Postfix is responsible for:
 Dovecot handles:
 - **IMAP access** (port 993 for SSL, port 143 for STARTTLS)
 - **POP3 access** (port 995 for SSL, port 110 for STARTTLS)
-- **Local mail delivery** to user mailboxes
+- **LMTP-based local mail delivery** to user mailboxes
 - **User authentication**
 
 ### How They Work Together
 
 ```text
-Internet → Postfix (SMTP) → Dovecot LDA → Mailbox → Dovecot (IMAP/POP3) → Email Client
+Internet → Postfix (SMTP) → Dovecot LMTP → Mailbox → Dovecot (IMAP/POP3) → Email Client
                 ↓
          Outgoing Mail → Remote Mail Servers
 ```
@@ -88,7 +88,7 @@ example.com.         IN  MX  10  mail.example.com.
 # SPF Record - Specifies which servers can send mail for your domain
 example.com.         IN  TXT    "v=spf1 mx ip4:203.0.113.10 -all"
 
-# DKIM Record - Added after DKIM setup (see later section)
+# DKIM Record - Add this if you configure DKIM signing separately
 # DMARC Record - Policy for handling authentication failures
 _dmarc.example.com.  IN  TXT    "v=DMARC1; p=quarantine; rua=mailto:postmaster@example.com"
 ```
@@ -127,6 +127,7 @@ sudo ufw allow 993/tcp   # IMAPS - IMAP over SSL
 sudo ufw allow 995/tcp   # POP3S - POP3 over SSL
 sudo ufw allow 143/tcp   # IMAP with STARTTLS
 sudo ufw allow 110/tcp   # POP3 with STARTTLS
+sudo ufw allow 80/tcp    # HTTP - required temporarily for Let's Encrypt HTTP-01 validation
 
 # Reload firewall rules
 sudo ufw reload
@@ -147,7 +148,7 @@ sudo apt update
 
 # Install Postfix and required utilities
 # mailutils provides helpful command-line mail tools
-sudo apt install -y postfix postfix-mysql mailutils
+sudo apt install -y postfix mailutils
 
 # During installation, select:
 # - "Internet Site" for mail configuration type
@@ -508,9 +509,8 @@ sudo nano /etc/dovecot/dovecot.conf
 # /etc/dovecot/dovecot.conf
 # Dovecot Main Configuration
 
-# Enable IMAP and LMTP protocols
-# POP3 is optional - uncomment if needed
-protocols = imap lmtp sieve
+# Enable IMAP, POP3, LMTP, and ManageSieve protocols
+protocols = imap pop3 lmtp sieve
 
 # Listen on all interfaces
 listen = *, ::
@@ -741,18 +741,18 @@ service imap {
 }
 
 #-----------------------------------------------------------------------------
-# POP3 SERVICE (uncomment if needed)
+# POP3 SERVICE
 #-----------------------------------------------------------------------------
 
-#service pop3-login {
-#  inet_listener pop3 {
-#    port = 110
-#  }
-#  inet_listener pop3s {
-#    port = 995
-#    ssl = yes
-#  }
-#}
+service pop3-login {
+  inet_listener pop3 {
+    port = 110
+  }
+  inet_listener pop3s {
+    port = 995
+    ssl = yes
+  }
+}
 
 #-----------------------------------------------------------------------------
 # LMTP SERVICE - Local Mail Transfer Protocol
@@ -791,7 +791,7 @@ service auth {
     group = vmail
   }
 
-  # Run auth as root to access shadow passwords
+  # Use Dovecot's internal user for passwd-file authentication
   user = dovecot
 }
 
@@ -800,7 +800,7 @@ service auth {
 #-----------------------------------------------------------------------------
 
 service auth-worker {
-  user = vmail
+  user = dovecot
 }
 
 #-----------------------------------------------------------------------------
@@ -822,7 +822,7 @@ service stats {
 }
 ```
 
-### LDA Configuration
+### LDA/LMTP Configuration
 
 Edit `/etc/dovecot/conf.d/15-lda.conf`:
 
@@ -864,6 +864,9 @@ protocol lmtp {
 ```bash
 # Install Certbot
 sudo apt install -y certbot
+
+# Certbot standalone uses the HTTP-01 challenge, so port 80 must be reachable
+sudo ufw allow 80/tcp
 
 # Stop any services using port 80 temporarily
 sudo systemctl stop apache2 2>/dev/null || true
@@ -1033,6 +1036,13 @@ john@example.com:{SHA512-CRYPT}$6$rounds=100000$randomsalt$hashedpasswordhere:50
 jane@example.com:{SHA512-CRYPT}$6$rounds=100000$randomsalt$hashedpasswordhere:5000:5000::/var/mail/vhosts/example.com/jane::
 ```
 
+Secure the password file so Dovecot can read it without exposing hashes to every local user:
+
+```bash
+sudo chown root:dovecot /etc/dovecot/users
+sudo chmod 640 /etc/dovecot/users
+```
+
 ### Generating Password Hashes
 
 ```bash
@@ -1080,7 +1090,7 @@ if ! echo "$EMAIL" | grep -qE "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
 fi
 
 # Check if user already exists
-if grep -q "^${EMAIL}:" /etc/dovecot/users 2>/dev/null; then
+if grep -Fq "${EMAIL}:" /etc/dovecot/users 2>/dev/null; then
     echo "Error: User $EMAIL already exists"
     exit 1
 fi
@@ -1101,6 +1111,10 @@ echo "${EMAIL}    ${DOMAIN}/${USER}/Maildir/" | sudo tee -a /etc/postfix/vmailbo
 
 # Regenerate Postfix lookup tables
 sudo postmap /etc/postfix/vmailbox
+
+# Keep the Dovecot password file permissions restricted
+sudo chown root:dovecot /etc/dovecot/users
+sudo chmod 640 /etc/dovecot/users
 
 echo "User $EMAIL created successfully!"
 echo "Mail directory: ${VMAIL_BASE}/${DOMAIN}/${USER}/Maildir"
@@ -1189,9 +1203,6 @@ plugin {
   # User-specific sieve script location
   sieve = file:~/sieve;active=~/.dovecot.sieve
 
-  # Directory for personal sieve scripts
-  sieve_dir = ~/sieve
-
   # Global sieve scripts run before user scripts
   sieve_before = /var/mail/vhosts/sieve/before.d/
 
@@ -1206,7 +1217,7 @@ plugin {
   #---------------------------------------------------------------------------
 
   # Enable commonly used sieve extensions
-  sieve_extensions = +fileinto +reject +envelope +variables +imap4flags +notify +include +body +relational +regex +subaddress +copy +mailbox +date +index +duplicate +vacation +vacation-seconds
+  sieve_extensions = +fileinto +reject +envelope +variables +imap4flags +notify +include +body +relational +comparator-i;ascii-numeric +regex +subaddress +copy +mailbox +date +index +duplicate +vacation +vacation-seconds
 
   # Global extensions available to all users
   sieve_global_extensions = +vnd.dovecot.pipe +vnd.dovecot.environment
@@ -1298,7 +1309,7 @@ sudo nano /var/mail/vhosts/sieve/before.d/00-spam.sieve
 # /var/mail/vhosts/sieve/before.d/00-spam.sieve
 # Global spam filtering - runs before user scripts
 
-require ["fileinto", "mailbox", "imap4flags", "variables", "envelope"];
+require ["fileinto", "mailbox", "imap4flags", "variables", "envelope", "relational", "comparator-i;ascii-numeric"];
 
 # -------------------------------------------------------------------
 # SPAM DETECTION
@@ -1312,7 +1323,7 @@ if header :contains "X-Spam-Status" "Yes" {
     stop;
 }
 
-# Check for high spam score
+# Check for high positive integer spam score
 if header :value "gt" :comparator "i;ascii-numeric" "X-Spam-Score" "5" {
     fileinto :create "Junk";
     stop;
@@ -1345,7 +1356,7 @@ sudo chown -R vmail:vmail /var/mail/vhosts/sieve
 Users can create their own sieve scripts in their mail directory:
 
 ```sieve
-# Example user sieve script (~/.dovecot.sieve or ~/sieve/default.sieve)
+# Example user sieve script (stored under ~/sieve with ~/.dovecot.sieve pointing to the active script)
 # Personal mail filtering rules
 
 require ["fileinto", "mailbox", "envelope", "variables", "vacation", "body", "imap4flags"];
@@ -1747,7 +1758,7 @@ sudo grep "authentication failed" /var/log/mail.log | tail -20
 You have now set up a complete mail server with:
 
 - **Postfix** as the Mail Transfer Agent for sending and receiving email
-- **Dovecot** for IMAP access and user authentication
+- **Dovecot** for IMAP/POP3 access and user authentication
 - **Let's Encrypt SSL/TLS** for encrypted connections
 - **Virtual mailboxes** for hosting multiple users
 - **SASL authentication** for secure client access
@@ -1760,10 +1771,11 @@ flowchart TB
     client["Email Client<br/>(Thunderbird, Outlook, etc.)"]
     remote["Remote Mail Servers<br/>(Gmail, etc.)"]
     postfix["Postfix<br/>(MTA)"]
-    dovecot["Dovecot<br/>(IMAP/LDA)"]
+    dovecot["Dovecot<br/>(IMAP/POP3/LMTP)"]
     maildir["Maildir<br/>/var/mail/vhosts/"]
     
-    client -->|"IMAP (993) / SMTP (587)"| postfix
+    client -->|"SMTP submission (587)"| postfix
+    client -->|"IMAP (993) / POP3 (995)"| dovecot
     remote -->|"SMTP (25)"| postfix
     postfix -->|"LMTP"| dovecot
     dovecot --> maildir
