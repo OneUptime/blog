@@ -377,22 +377,21 @@ const SnapPointsExample: React.FC = () => {
 For content with variable heights, you can calculate snap points dynamically:
 
 ```tsx
-import React, { useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React, { useCallback } from 'react';
+import { View, Text, StyleSheet, LayoutChangeEvent } from 'react-native';
 import BottomSheet, { BottomSheetView } from '@gorhom/bottom-sheet';
 
 const DynamicContentBottomSheet: React.FC = () => {
-  const snapPoints = useMemo(() => ['CONTENT_HEIGHT'], []);
-
   const handleContentLayout = useCallback((event: LayoutChangeEvent) => {
     const { height } = event.nativeEvent.layout;
-    // You can update snap points based on content height
+    // Inspect the measured content height if you need it
     console.log('Content height:', height);
   }, []);
 
   return (
     <BottomSheet
-      snapPoints={snapPoints}
+      // enableDynamicSizing (default true in v5) sizes the sheet to the
+      // BottomSheetView content automatically - no snap points required.
       enableDynamicSizing={true}
     >
       <BottomSheetView onLayout={handleContentLayout}>
@@ -860,25 +859,12 @@ export default NestedScrollBottomSheet;
 When your bottom sheet content has variable heights, dynamic sizing ensures the sheet adapts properly:
 
 ```tsx
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { View, Text, Button, StyleSheet } from 'react-native';
-import BottomSheet, {
-  BottomSheetView,
-  useBottomSheetDynamicSnapPoints,
-} from '@gorhom/bottom-sheet';
+import BottomSheet, { BottomSheetView } from '@gorhom/bottom-sheet';
 
 const DynamicSizingBottomSheet: React.FC = () => {
   const [items, setItems] = useState<string[]>(['Item 1', 'Item 2']);
-
-  // Enable dynamic sizing
-  const initialSnapPoints = useMemo(() => ['CONTENT_HEIGHT'], []);
-
-  const {
-    animatedHandleHeight,
-    animatedSnapPoints,
-    animatedContentHeight,
-    handleContentLayout,
-  } = useBottomSheetDynamicSnapPoints(initialSnapPoints);
 
   const addItem = useCallback(() => {
     setItems((prev) => [...prev, `Item ${prev.length + 1}`]);
@@ -890,15 +876,13 @@ const DynamicSizingBottomSheet: React.FC = () => {
 
   return (
     <BottomSheet
-      snapPoints={animatedSnapPoints}
-      handleHeight={animatedHandleHeight}
-      contentHeight={animatedContentHeight}
+      // In v5, enableDynamicSizing defaults to true. The sheet measures the
+      // BottomSheetView content automatically, so no snap points or the old
+      // useBottomSheetDynamicSnapPoints hook (removed in v5) are needed.
+      enableDynamicSizing={true}
       enablePanDownToClose={true}
     >
-      <BottomSheetView
-        style={styles.contentContainer}
-        onLayout={handleContentLayout}
-      >
+      <BottomSheetView style={styles.contentContainer}>
         <Text style={styles.title}>Dynamic Content</Text>
 
         <View style={styles.buttonRow}>
@@ -918,11 +902,8 @@ const DynamicSizingBottomSheet: React.FC = () => {
 
 // Alternative: Using maxDynamicContentSize
 const ConstrainedDynamicSheet: React.FC = () => {
-  const snapPoints = useMemo(() => ['CONTENT_HEIGHT'], []);
-
   return (
     <BottomSheet
-      snapPoints={snapPoints}
       enableDynamicSizing={true}
       maxDynamicContentSize={500} // Maximum height in pixels
     >
@@ -969,7 +950,7 @@ Understanding when to use modal versus inline bottom sheets is essential for goo
 ```tsx
 import React, { useCallback, useMemo, useRef } from 'react';
 import { View, Text, Button, StyleSheet } from 'react-native';
-import BottomSheet, { BottomSheetModal, BottomSheetModalProvider } from '@gorhom/bottom-sheet';
+import BottomSheet, { BottomSheetModal, BottomSheetModalProvider, BottomSheetBackdrop } from '@gorhom/bottom-sheet';
 
 // Modal Bottom Sheet - blocks background interaction
 const ModalExample: React.FC = () => {
