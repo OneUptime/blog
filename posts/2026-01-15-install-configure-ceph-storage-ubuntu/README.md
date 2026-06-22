@@ -304,15 +304,13 @@ spec:
     rotational: 0
   # Encryption settings
   encrypted: false
-  # OSD memory target (important for performance tuning)
-  osd_memory_target: 4294967296  # 4GB
 EOF
 
 # Apply the DriveGroup specification
 ceph orch apply -i /tmp/osd-spec.yaml
 
 # Monitor OSD deployment progress
-ceph orch osd status
+ceph osd status
 
 # Verify OSDs are up and running
 ceph osd tree
@@ -395,7 +393,7 @@ ceph osd crush rule dump
 ceph osd crush rule create-replicated ssd-rule default host ssd
 
 # Create a rule that spreads data across racks
-ceph osd crush rule create-replicated rack-rule default rack host
+ceph osd crush rule create-replicated rack-rule default rack
 
 # Apply CRUSH rule to a pool
 ceph osd pool set mypool crush_rule ssd-rule
@@ -969,7 +967,7 @@ ceph pg dump
 
 # Monitor in real-time
 ceph -w                    # Watch cluster events
-ceph health --watch        # Watch health changes
+watch -n 5 ceph health detail  # Refresh health status every 5 seconds
 ```
 
 ### Common Maintenance Tasks
@@ -1021,15 +1019,18 @@ ceph pg deep-scrub <pg_id>
 # Check for inconsistent PGs
 ceph health detail | grep inconsistent
 
-# Export and import PGs for recovery
-ceph pg export <pg_id> > pg_export.bin
-ceph pg import pg_export.bin
+# Export and import PGs for recovery (the OSD must be stopped first)
+# Use ceph-objectstore-tool directly on the OSD's data path
+ceph-objectstore-tool --op export --pgid <pg_id> \
+    --data-path /var/lib/ceph/osd/ceph-<osd_id> --file pg_export.bin
+ceph-objectstore-tool --op import \
+    --data-path /var/lib/ceph/osd/ceph-<osd_id> --file pg_export.bin
 
-# Recover missing objects
-ceph pg list-unfound <pg_id>
-ceph pg mark_unfound_lost revert <pg_id>  # Revert to prior version
+# Recover missing objects (note: pgid comes before the subcommand)
+ceph pg <pg_id> list_unfound
+ceph pg <pg_id> mark_unfound_lost revert  # Revert to prior version
 # OR
-ceph pg mark_unfound_lost delete <pg_id>   # Delete unfound objects
+ceph pg <pg_id> mark_unfound_lost delete   # Delete unfound objects
 ```
 
 ### Performance Tuning
