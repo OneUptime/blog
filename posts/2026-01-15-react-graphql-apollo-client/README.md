@@ -58,11 +58,11 @@ npm install
 ### Step 2: Install Apollo Client Dependencies
 
 ```bash
-npm install @apollo/client graphql
+npm install @apollo/client@^3 graphql
 ```
 
 This installs:
-- `@apollo/client`: The core Apollo Client library with React hooks
+- `@apollo/client`: The core Apollo Client library with React hooks. The patterns in this guide target Apollo Client 3.x, which is why the install command pins the major version. Apollo Client 4.0 introduced breaking changes (for example, the error link and testing import paths changed), so if you upgrade, consult the official 3-to-4 migration guide.
 - `graphql`: The JavaScript reference implementation for GraphQL
 
 ### Step 3: Project Structure
