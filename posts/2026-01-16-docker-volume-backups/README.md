@@ -42,8 +42,6 @@ done
 ## Docker Compose Backup Service
 
 ```yaml
-version: '3.8'
-
 services:
   backup:
     image: alpine
@@ -125,7 +123,7 @@ for volume in $(docker volume ls -q); do
 done
 
 # Upload to S3
-aws s3 sync ${BACKUP_DIR} ${S3_BUCKET}/ --delete
+aws s3 sync ${BACKUP_DIR} ${S3_BUCKET}/
 
 # Cleanup local backups
 rm -rf ${BACKUP_DIR}
@@ -134,8 +132,6 @@ rm -rf ${BACKUP_DIR}
 ## Backup Service Container
 
 ```yaml
-version: '3.8'
-
 services:
   backup:
     image: offen/docker-volume-backup:latest
@@ -176,8 +172,6 @@ docker run --rm \
 ## Complete Backup Solution
 
 ```yaml
-version: '3.8'
-
 services:
   app:
     image: myapp:latest
@@ -186,6 +180,10 @@ services:
 
   postgres:
     image: postgres:15
+    container_name: postgres
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: mydb
     volumes:
       - pg_data:/var/lib/postgresql/data
 
@@ -224,4 +222,3 @@ volumes:
 | Database dumps | Database-specific backups |
 
 Automated backups protect against data loss. Use rotation policies to manage storage, upload to remote storage for disaster recovery, and test restores regularly. For container migration, see our post on [Migrating Docker Containers Between Hosts](https://oneuptime.com/blog/post/2026-01-16-docker-container-migration/view).
-
