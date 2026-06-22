@@ -17,8 +17,8 @@ Docker provides several network modes, each with different port mapping behavior
 | Mode | Description | Port Mapping |
 |------|-------------|--------------|
 | `bridge` | Default. Isolated network with NAT | Required for external access |
-| `host` | Container shares host's network | Not needed, all ports exposed |
-| `none` | No networking | Not possible |
+| `host` | Container shares host's network | Not used; applications bind directly to host ports |
+| `none` | Only loopback networking | Not possible |
 | `container:<name>` | Share another container's network | Shares ports with target |
 
 ## Bridge Network (Default)
@@ -80,7 +80,7 @@ docker run -p 8000-8010 my-app
 
 ## Host Network Mode
 
-In host mode, the container shares the host's network stack directly. No port mapping is needed or possible.
+In host mode, the container shares the host's network stack directly. No port mapping is needed; publishing flags such as `-p` and `-P` are ignored with a warning.
 
 ```bash
 # Container binds directly to host ports
@@ -96,7 +96,7 @@ Use host networking when:
 Drawbacks:
 - No network isolation
 - Port conflicts with host services
-- Not available on Docker Desktop (macOS/Windows)
+- Available on Docker Desktop 4.34 and later only when host networking is enabled in Settings
 
 ## Container Network Mode
 
@@ -118,8 +118,6 @@ This is useful for:
 ## Docker Compose Port Mapping
 
 ```yaml
-version: '3.8'
-
 services:
   web:
     image: nginx
@@ -133,7 +131,7 @@ services:
     ports:
       # Long syntax with more options
       - target: 3000        # Container port
-        published: 3000     # Host port
+        published: "3000"   # Host port
         protocol: tcp
         mode: host          # or 'ingress' for swarm
 
@@ -148,7 +146,7 @@ services:
 services:
   database:
     image: postgres
-    # EXPOSE documents the port but doesn't publish it
+    # expose lists internal ports but doesn't publish them
     expose:
       - "5432"
 
@@ -159,7 +157,7 @@ services:
       - "80:80"
 ```
 
-`expose` is documentation only. It doesn't publish ports but indicates which ports the container listens on.
+`expose` doesn't publish ports to the host. It defines the container ports that should be exposed to other services on the Docker network.
 
 ## Custom Bridge Networks
 
@@ -180,8 +178,6 @@ docker run -d --network my-network --name web -p 80:80 nginx
 ### Docker Compose Networks
 
 ```yaml
-version: '3.8'
-
 services:
   web:
     image: nginx
@@ -296,8 +292,6 @@ docker run -p 127.0.0.1:3306:3306 mysql
 ### Use Internal Networks for Databases
 
 ```yaml
-version: '3.8'
-
 services:
   web:
     image: my-web
