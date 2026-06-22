@@ -307,6 +307,13 @@ jobs:
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
 
+      - name: Login to GHCR for Cosign
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Add dependencies
         run: |
           helm repo add bitnami https://charts.bitnami.com/bitnami
@@ -445,6 +452,10 @@ jobs:
   trivy:
     name: Trivy Scan
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
     steps:
       - uses: actions/checkout@v6
 
@@ -467,6 +478,10 @@ jobs:
   checkov:
     name: Checkov Scan
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
     steps:
       - uses: actions/checkout@v6
 
@@ -569,26 +584,27 @@ jobs:
       - name: Set up Helm
         uses: azure/setup-helm@v4
 
-      - name: Install helm-diff
-        run: helm plugin install https://github.com/databus23/helm-diff
-
       - name: Generate diff
         id: diff
         run: |
           # Get changed charts
-          CHANGED=$(git diff --name-only origin/main...HEAD | grep '^charts/' | cut -d'/' -f2 | sort -u)
+          CHANGED=$(git diff --name-only origin/main...HEAD | awk -F/ '/^charts\// {print $2}' | sort -u)
           
           DIFF=""
           for chart in $CHANGED; do
             if [ -d "charts/$chart" ]; then
               echo "Generating diff for $chart"
-              
-              # Checkout main version
-              git show origin/main:charts/$chart/Chart.yaml > /tmp/main-chart.yaml 2>/dev/null || continue
-              
-              # Generate diff
-              CHART_DIFF=$(helm template test charts/$chart 2>/dev/null | head -100)
-              DIFF="$DIFF\n### $chart\n```yaml\n$CHART_DIFF\n```\n"
+
+              BASE_DIR=$(mktemp -d)
+              git archive origin/main "charts/$chart" | tar -x -C "$BASE_DIR" 2>/dev/null || continue
+
+              helm template test "$BASE_DIR/charts/$chart" > "/tmp/${chart}-base.yaml"
+              helm template test "charts/$chart" > "/tmp/${chart}-head.yaml"
+
+              CHART_DIFF=$(diff -u "/tmp/${chart}-base.yaml" "/tmp/${chart}-head.yaml" | head -200 || true)
+              if [ -n "$CHART_DIFF" ]; then
+                DIFF="$DIFF\n### $chart\n```diff\n$CHART_DIFF\n```\n"
+              fi
             fi
           done
           
@@ -600,7 +616,7 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const diff = `${{ steps.diff.outputs.diff }}`;
+            const diff = ${{ toJSON(steps.diff.outputs.diff) }};
             if (diff.trim()) {
               github.rest.issues.createComment({
                 issue_number: context.issue.number,
@@ -633,6 +649,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           ref: ${{ github.head_ref }}
+          fetch-depth: 0
 
       - name: Determine bump type
         id: bump
@@ -646,7 +663,7 @@ jobs:
       - name: Bump versions
         run: |
           # Find changed charts
-          CHANGED=$(git diff --name-only origin/main...HEAD | grep '^charts/' | cut -d'/' -f2 | sort -u)
+          CHANGED=$(git diff --name-only origin/main...HEAD | awk -F/ '/^charts\// {print $2}' | sort -u)
           
           for chart in $CHANGED; do
             if [ -f "charts/$chart/Chart.yaml" ]; then
@@ -669,6 +686,10 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add charts/*/Chart.yaml
+          if git diff --cached --quiet; then
+            echo "No chart version changes to commit"
+            exit 0
+          fi
           git commit -m "chore: bump chart versions [${{ steps.bump.outputs.type }}]"
           git push
 ```
