@@ -836,7 +836,7 @@ aws iam list-mfa-devices --user-name your-username
 
 # Configuration
 MFA_DEVICE_ARN="arn:aws:iam::123456789012:mfa/your-username"
-DURATION_SECONDS=43200  # 12 hours (max for session tokens)
+DURATION_SECONDS=43200  # 12 hours (default; IAM users can request up to 129600s / 36 hours)
 
 # Prompt for MFA code
 read -p "Enter MFA code: " MFA_CODE
