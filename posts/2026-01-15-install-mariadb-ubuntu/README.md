@@ -288,8 +288,8 @@ SHOW PROCESSLIST;
 ### Performance Schema
 
 ```sql
--- Enable performance schema
-SET GLOBAL performance_schema = ON;
+-- performance_schema is a read-only variable; enable it in the config
+-- file ([mysqld] performance_schema = ON) and restart MariaDB
 
 -- Query performance
 SELECT * FROM performance_schema.events_statements_summary_by_digest
