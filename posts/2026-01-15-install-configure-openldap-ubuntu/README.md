@@ -1324,10 +1324,8 @@ sudo systemctl stop slapd
 sudo slapcat -n 1 > /dev/null
 echo $?  # 0 means success
 
-# If corrupted, try recovery
-sudo db_recover -h /var/lib/ldap
-
-# Rebuild database from backup
+# If corrupted, rebuild from backup
+# (the MDB/LMDB backend has no separate recovery tool like Berkeley DB's db_recover)
 sudo rm -rf /var/lib/ldap/*
 sudo slapadd -n 1 -l /backup/ldap-backup.ldif
 sudo chown -R openldap:openldap /var/lib/ldap
