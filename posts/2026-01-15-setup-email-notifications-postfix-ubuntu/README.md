@@ -130,6 +130,11 @@ sudo grep "your@email.com" /var/log/mail.log
 
 For better deliverability, relay through an external SMTP provider.
 
+```bash
+# Install SASL mechanisms for authenticated SMTP relays
+sudo apt install libsasl2-modules -y
+```
+
 ### Gmail SMTP Relay
 
 ```bash
@@ -192,6 +197,11 @@ smtp_sasl_auth_enable = yes
 smtp_sasl_password_maps = hash:/etc/postfix/sasl_passwd
 smtp_sasl_security_options = noanonymous
 smtp_tls_security_level = encrypt
+```
+
+Password file:
+```text
+[email-smtp.us-east-1.amazonaws.com]:587 SMTPUSERNAME:SMTPPASSWORD
 ```
 
 ## Configure Sender Address
@@ -330,9 +340,6 @@ crontab -e
 # Send cron output to this address
 MAILTO=admin@example.com
 
-# Set sender address
-MAILFROM=cron@example.com
-
 # Cron jobs
 0 * * * * /usr/local/bin/hourly-task.sh
 0 2 * * * /usr/local/bin/nightly-backup.sh
@@ -393,8 +400,8 @@ default_destination_rate_delay = 1s
 ### Enable TLS
 
 ```text
-# Outgoing TLS
-smtp_tls_security_level = encrypt
+# Opportunistic outgoing TLS
+smtp_tls_security_level = may
 smtp_tls_note_starttls_offer = yes
 smtp_tls_CApath = /etc/ssl/certs
 ```
