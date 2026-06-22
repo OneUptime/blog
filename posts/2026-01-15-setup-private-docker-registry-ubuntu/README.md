@@ -55,18 +55,19 @@ sudo apt install certbot -y
 sudo certbot certonly --standalone -d registry.example.com
 
 # Copy certificates
-sudo cp /etc/letsencrypt/live/registry.example.com/fullchain.pem /opt/registry/certs/
-sudo cp /etc/letsencrypt/live/registry.example.com/privkey.pem /opt/registry/certs/
+sudo cp /etc/letsencrypt/live/registry.example.com/fullchain.pem /opt/registry/certs/domain.crt
+sudo cp /etc/letsencrypt/live/registry.example.com/privkey.pem /opt/registry/certs/domain.key
 ```
 
 For self-signed certificates:
 
 ```bash
 # Generate self-signed certificate
-openssl req -newkey rsa:4096 -nodes -sha256 \
+sudo openssl req -newkey rsa:4096 -nodes -sha256 \
   -keyout /opt/registry/certs/domain.key \
   -x509 -days 365 \
   -out /opt/registry/certs/domain.crt \
+  -addext "subjectAltName = DNS:registry.example.com" \
   -subj "/CN=registry.example.com"
 ```
 
@@ -77,22 +78,20 @@ openssl req -newkey rsa:4096 -nodes -sha256 \
 sudo apt install apache2-utils -y
 
 # Create password file
-htpasswd -Bc /opt/registry/auth/htpasswd admin
+sudo htpasswd -Bc /opt/registry/auth/htpasswd admin
 # Enter password when prompted
 
 # Add more users
-htpasswd -B /opt/registry/auth/htpasswd developer
+sudo htpasswd -B /opt/registry/auth/htpasswd developer
 ```
 
 ### Create Docker Compose File
 
 ```bash
-nano /opt/registry/docker-compose.yml
+sudo nano /opt/registry/docker-compose.yml
 ```
 
 ```yaml
-version: '3.8'
-
 services:
   registry:
     image: registry:2
@@ -255,7 +254,7 @@ Add web interface:
     ports:
       - "8080:80"
     environment:
-      - REGISTRY_URL=https://registry:5000
+      - REGISTRY_URL=https://registry.example.com:5000
       - SINGLE_REGISTRY=true
       - REGISTRY_TITLE=My Docker Registry
       - DELETE_IMAGES=true
@@ -264,13 +263,14 @@ Add web interface:
 ```
 
 Access at `http://registry.example.com:8080`
+If the UI is served from a different origin than the registry, configure CORS on the registry or use the UI's `NGINX_PROXY_PASS_URL` option.
 
 ## Advanced Configuration
 
 ### Custom Configuration File
 
 ```bash
-nano /opt/registry/config.yml
+sudo nano /opt/registry/config.yml
 ```
 
 ```yaml
@@ -335,8 +335,6 @@ storage:
 ### Caching with Redis
 
 ```yaml
-version: '3.8'
-
 services:
   registry:
     # ... existing config
@@ -365,7 +363,7 @@ http:
       path: /metrics
 ```
 
-Access metrics at `https://registry.example.com:5001/metrics`
+If you publish the debug port, access metrics at `http://registry.example.com:5001/metrics` and keep this endpoint private.
 
 ### Health Check
 
@@ -459,7 +457,7 @@ ls -la /etc/docker/certs.d/registry.example.com:5000/
 curl -v -u admin:password https://registry.example.com:5000/v2/
 
 # Regenerate htpasswd if needed
-htpasswd -Bc /opt/registry/auth/htpasswd admin
+sudo htpasswd -Bc /opt/registry/auth/htpasswd admin
 docker compose restart
 ```
 
