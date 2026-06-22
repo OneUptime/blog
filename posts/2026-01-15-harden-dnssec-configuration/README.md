@@ -125,8 +125,8 @@ dnssec-policy "hardened" {
 ```bash
 # Generate ECDSA keys
 
-pdnsutil add-zone-key example.com ksk active ecdsap256sha256
-pdnsutil add-zone-key example.com zsk active ecdsap256sha256
+pdnsutil add-zone-key example.com ksk active ecdsa256
+pdnsutil add-zone-key example.com zsk active ecdsa256
 
 # Verify algorithm
 pdnsutil show-zone example.com
@@ -182,8 +182,8 @@ dnssec-policy "hardened" {
 };
 
 # PowerDNS
-pdnsutil add-zone-key example.com ksk active ecdsap256sha256
-pdnsutil add-zone-key example.com zsk active ecdsap256sha256
+pdnsutil add-zone-key example.com ksk active ecdsa256
+pdnsutil add-zone-key example.com zsk active ecdsa256
 ```
 
 ---
@@ -359,8 +359,8 @@ dnssec-policy "hardened" {
 
 ```bash
 # PowerDNS
-pdnsutil set-meta example.com SOA-EDIT-API INCEPTION-INCREMENT
-# Signature validity is controlled by default-soa-edit-signed
+pdnsutil set-meta example.com SOA-EDIT-API DEFAULT
+# SOA serial handling for signed zones is controlled by default-soa-edit-signed
 ```
 
 ---
