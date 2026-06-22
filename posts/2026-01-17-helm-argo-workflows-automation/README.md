@@ -81,7 +81,7 @@ helm install argo-workflows argo/argo-workflows \
 brew install argo
 
 # Linux
-curl -sLO https://github.com/argoproj/argo-workflows/releases/download/v3.5.0/argo-linux-amd64.gz
+curl -sLO https://github.com/argoproj/argo-workflows/releases/download/v4.0.6/argo-linux-amd64.gz
 gunzip argo-linux-amd64.gz
 chmod +x argo-linux-amd64
 mv ./argo-linux-amd64 /usr/local/bin/argo
@@ -311,6 +311,7 @@ spec:
         args:
           - |
             cd /workspace
+            apk add --no-cache git wget tar gzip
             
             # Template and validate
             helm template test {{inputs.parameters.chart-path}} > /tmp/rendered.yaml
@@ -333,10 +334,6 @@ spec:
       inputs:
         parameters:
           - name: chart-path
-      outputs:
-        artifacts:
-          - name: chart-package
-            path: /workspace/*.tgz
       container:
         image: alpine/helm:3.13.0
         command: ["/bin/sh", "-c"]
@@ -357,9 +354,6 @@ spec:
       inputs:
         parameters:
           - name: registry
-        artifacts:
-          - name: chart-package
-            path: /workspace
       container:
         image: alpine/helm:3.13.0
         command: ["/bin/sh", "-c"]
@@ -508,6 +502,8 @@ spec:
         command: ["/bin/sh", "-c"]
         args:
           - |
+            apk add --no-cache git
+            
             # Clone values repo
             git clone {{workflow.parameters.values-repo}} /tmp/values
             
@@ -617,9 +613,11 @@ spec:
             valueFrom:
               path: /tmp/result
       script:
-        image: curlimages/curl:latest
+        image: alpine:3.20
         command: ["/bin/sh"]
         source: |
+          apk add --no-cache curl jq bc
+          
           # Query Prometheus for error rate
           ERROR_RATE=$(curl -s "http://prometheus:9090/api/v1/query" \
             --data-urlencode 'query=sum(rate(http_requests_total{status=~"5.*",release="canary"}[5m])) / sum(rate(http_requests_total{release="canary"}[5m]))' \
@@ -714,7 +712,11 @@ spec:
       - name: update-helm-repos
         container:
           image: alpine/helm:3.13.0
-          command: [helm, repo, update]
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              helm repo add bitnami https://charts.bitnami.com/bitnami
+              helm repo update
           
       - name: check-chart-updates
         container:
@@ -722,6 +724,10 @@ spec:
           command: ["/bin/sh", "-c"]
           args:
             - |
+              apk add --no-cache jq
+              helm repo add bitnami https://charts.bitnami.com/bitnami
+              helm repo update
+              
               # Check for available updates
               helm list -A -o json | jq -r '.[] | "\(.name) \(.namespace) \(.chart)"' | while read name ns chart; do
                 chart_name=$(echo $chart | sed 's/-[0-9].*//')
@@ -739,6 +745,8 @@ spec:
           command: ["/bin/sh", "-c"]
           args:
             - |
+              apk add --no-cache jq aws-cli
+              
               # Backup all releases
               mkdir -p /tmp/backups
               
@@ -756,6 +764,10 @@ spec:
           command: ["/bin/sh", "-c"]
           args:
             - |
+              apk add --no-cache jq
+              helm repo add bitnami https://charts.bitnami.com/bitnami
+              helm repo update
+              
               # Update releases in dev namespace to latest
               helm list -n dev -o json | jq -r '.[] | "\(.name) \(.chart)"' | while read name chart; do
                 chart_name=$(echo $chart | sed 's/-[0-9].*//')
