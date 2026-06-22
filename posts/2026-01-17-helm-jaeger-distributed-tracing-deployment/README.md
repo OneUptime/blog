@@ -18,11 +18,13 @@ flowchart TB
     app3[Service C]
   end
   
-  subgraph "Jaeger Components"
-    agent[Jaeger Agent]
-    collector[Jaeger Collector]
-    query[Jaeger Query]
-    ui[Jaeger UI]
+  subgraph "Telemetry Collection"
+    otel[OpenTelemetry Collector]
+  end
+  
+  subgraph "Jaeger Backend"
+    jaeger[Jaeger v2 Backend]
+    query[Jaeger Query UI]
   end
   
   subgraph "Storage Backend"
@@ -32,25 +34,25 @@ flowchart TB
   end
   
   subgraph "Ingestion"
-    otel[OpenTelemetry Collector]
+    otlp[OTLP]
     zipkin[Zipkin Protocol]
+    kafka[Kafka Buffer]
   end
   
-  app1 --> agent
-  app2 --> agent
-  app3 --> otel
+  app1 --> otlp
+  app2 --> otel
+  app3 --> zipkin
   
-  agent --> collector
-  otel --> collector
-  zipkin --> collector
+  otlp --> jaeger
+  otel --> jaeger
+  zipkin --> jaeger
+  jaeger --> kafka
+  kafka --> jaeger
   
-  collector --> es
-  collector --> cassandra
-  collector --> memory
-  
-  query --> es
-  query --> cassandra
-  ui --> query
+  jaeger --> es
+  jaeger --> cassandra
+  jaeger --> memory
+  query --> jaeger
 ```
 
 ## Prerequisites
@@ -69,25 +71,22 @@ helm search repo jaegertracing --versions
 
 | Strategy | Description | Use Case |
 |----------|-------------|----------|
-| All-in-One | Single pod deployment | Development/testing |
-| Production | Separate collector, query, agent | Production workloads |
-| Operator | CRD-based management | Enterprise deployments |
+| All-in-One | Single Jaeger v2 deployment with memory storage | Development/testing |
+| External Storage | Jaeger v2 deployment with Elasticsearch or Cassandra | Production workloads |
+| Operator | OpenTelemetry Operator-managed collectors and instrumentation | Enterprise deployments |
 
 ## Deploy Jaeger All-in-One (Development)
 
 ```yaml
 # jaeger-allinone-values.yaml
-provisionDataStore:
-  cassandra: false
-  elasticsearch: false
-  kafka: false
+tag: "2.19.0"
 
-allInOne:
+jaeger:
   enabled: true
+  replicas: 1
   
   image:
-    repository: jaegertracing/all-in-one
-    tag: 1.52
+    repository: jaegertracing/jaeger
     
   resources:
     requests:
@@ -97,32 +96,56 @@ allInOne:
       cpu: 500m
       memory: 512Mi
       
-  extraEnv:
-    - name: COLLECTOR_OTLP_ENABLED
-      value: "true"
-    - name: SPAN_STORAGE_TYPE
-      value: memory
-    - name: MEMORY_MAX_TRACES
-      value: "10000"
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    hosts:
+      - jaeger.example.com
 
-storage:
-  type: memory
-
-agent:
-  enabled: false
-
-collector:
-  enabled: false
-
-query:
-  enabled: false
-
-ingress:
-  enabled: true
-  annotations:
-    kubernetes.io/ingress.class: nginx
-  hosts:
-    - jaeger.example.com
+userconfig:
+  service:
+    extensions: [jaeger_storage, jaeger_query, healthcheckv2]
+    pipelines:
+      traces:
+        receivers: [otlp, zipkin]
+        processors: [batch]
+        exporters: [jaeger_storage_exporter]
+    telemetry:
+      metrics:
+        level: detailed
+        readers:
+          - pull:
+              exporter:
+                prometheus:
+                  host: 0.0.0.0
+                  port: 8888
+  extensions:
+    healthcheckv2:
+      use_v2: true
+      http:
+        endpoint: 0.0.0.0:13133
+    jaeger_query:
+      storage:
+        traces: memory_store
+    jaeger_storage:
+      backends:
+        memory_store:
+          memory:
+            max_traces: 10000
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+    zipkin:
+      endpoint: 0.0.0.0:9411
+  processors:
+    batch:
+  exporters:
+    jaeger_storage_exporter:
+      trace_storage: memory_store
 ```
 
 ```bash
@@ -161,6 +184,7 @@ esConfig:
     cluster.name: "jaeger-es"
     network.host: 0.0.0.0
     xpack.security.enabled: true
+    xpack.security.http.ssl.enabled: true
     xpack.security.transport.ssl.enabled: true
 ```
 
@@ -168,46 +192,14 @@ esConfig:
 
 ```yaml
 # jaeger-elasticsearch-values.yaml
-provisionDataStore:
-  cassandra: false
-  elasticsearch: false
-  kafka: false
+tag: "2.19.0"
 
-storage:
-  type: elasticsearch
-  elasticsearch:
-    host: elasticsearch-master
-    port: 9200
-    scheme: https
-    user: elastic
-    usePassword: true
-    existingSecret: elasticsearch-master-credentials
-    existingSecretKey: password
-    
-    # Index configuration
-    indexPrefix: jaeger
-    createIndexTemplates: true
-    
-    # Index settings
-    numShards: 5
-    numReplicas: 1
-    
-    # Index lifecycle
-    useILM: true
-    ilmPolicyName: jaeger-ilm
-    
-    # TLS
-    tls:
-      enabled: true
-      secretName: elasticsearch-tls
-
-collector:
+jaeger:
   enabled: true
-  replicaCount: 3
+  replicas: 3
   
   image:
-    repository: jaegertracing/jaeger-collector
-    tag: 1.52
+    repository: jaegertracing/jaeger
     
   resources:
     requests:
@@ -217,109 +209,144 @@ collector:
       cpu: 1000m
       memory: 1Gi
       
-  autoscaling:
+  ingress:
     enabled: true
-    minReplicas: 3
-    maxReplicas: 10
-    targetCPUUtilizationPercentage: 70
-    
+    ingressClassName: nginx
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt-prod
+    hosts:
+      - jaeger.example.com
+    tls:
+      - secretName: jaeger-tls
+        hosts:
+          - jaeger.example.com
+
+storage:
+  type: elasticsearch
+  elasticsearch:
+    url: https://elasticsearch-master:9200
+    tls:
+      enabled: true
+      secretName: elasticsearch-tls
+
+esIndexCleaner:
+  enabled: true
+  numberOfDays: 7
+  schedule: "55 23 * * *"
+
+userconfig:
   service:
-    type: ClusterIP
-    grpc:
-      port: 14250
-    http:
-      port: 14268
-    otlp:
-      grpc:
-        port: 4317
+    extensions: [jaeger_storage, jaeger_query, healthcheckv2]
+    pipelines:
+      traces:
+        receivers: [otlp, jaeger, zipkin]
+        processors: [batch]
+        exporters: [jaeger_storage_exporter]
+    telemetry:
+      resource:
+        service.name: jaeger
+      metrics:
+        level: detailed
+        readers:
+          - pull:
+              exporter:
+                prometheus:
+                  host: 0.0.0.0
+                  port: 8888
+  extensions:
+    healthcheckv2:
+      use_v2: true
       http:
-        port: 4318
+        endpoint: 0.0.0.0:13133
+    jaeger_query:
+      storage:
+        traces: primary_store
+        traces_archive: archive_store
+    jaeger_storage:
+      backends:
+        primary_store:
+          elasticsearch:
+            server_urls:
+              - https://elasticsearch-master:9200
+            auth:
+              basic:
+                username: elastic
+                password: "${env:ES_PASSWORD}"
+            indices:
+              index_prefix: jaeger
+              spans:
+                date_layout: "2006-01-02"
+                rollover_frequency: day
+                shards: 5
+                replicas: 1
+              services:
+                date_layout: "2006-01-02"
+                rollover_frequency: day
+                shards: 5
+                replicas: 1
+        archive_store:
+          elasticsearch:
+            server_urls:
+              - https://elasticsearch-master:9200
+            auth:
+              basic:
+                username: elastic
+                password: "${env:ES_PASSWORD}"
+            indices:
+              index_prefix: jaeger-archive
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+    jaeger:
+      protocols:
+        grpc:
+        thrift_binary:
+        thrift_compact:
+        thrift_http:
     zipkin:
-      port: 9411
-      
-  extraEnv:
-    - name: COLLECTOR_OTLP_ENABLED
-      value: "true"
-    - name: SPAN_STORAGE_TYPE
-      value: elasticsearch
-    - name: ES_SERVER_URLS
-      value: https://elasticsearch-master:9200
-    - name: ES_TLS_ENABLED
-      value: "true"
-
-query:
-  enabled: true
-  replicaCount: 2
-  
-  image:
-    repository: jaegertracing/jaeger-query
-    tag: 1.52
-    
-  resources:
-    requests:
-      cpu: 200m
-      memory: 256Mi
-    limits:
-      cpu: 500m
-      memory: 512Mi
-      
-  service:
-    type: ClusterIP
-    port: 16686
-    
-  extraEnv:
-    - name: SPAN_STORAGE_TYPE
-      value: elasticsearch
-    - name: ES_SERVER_URLS
-      value: https://elasticsearch-master:9200
-
-agent:
-  enabled: true
-  
-  image:
-    repository: jaegertracing/jaeger-agent
-    tag: 1.52
-    
-  # Deploy as DaemonSet
-  daemonset:
-    enabled: true
-    
-  resources:
-    requests:
-      cpu: 50m
-      memory: 64Mi
-    limits:
-      cpu: 100m
-      memory: 128Mi
-
-ingress:
-  enabled: true
-  annotations:
-    kubernetes.io/ingress.class: nginx
-    cert-manager.io/cluster-issuer: letsencrypt-prod
-  hosts:
-    - jaeger.example.com
-  tls:
-    - secretName: jaeger-tls
-      hosts:
-        - jaeger.example.com
+      endpoint: 0.0.0.0:9411
+  processors:
+    batch:
+  exporters:
+    jaeger_storage_exporter:
+      trace_storage: primary_store
 ```
 
 ```bash
+kubectl create secret generic elasticsearch-credentials \
+  --namespace jaeger \
+  --from-literal=ES_PASSWORD='change-me'
+
 helm install jaeger jaegertracing/jaeger \
   --namespace jaeger \
   --create-namespace \
-  -f jaeger-elasticsearch-values.yaml
+  -f jaeger-elasticsearch-values.yaml \
+  --set jaeger.extraEnv[0].name=ES_PASSWORD \
+  --set jaeger.extraEnv[0].valueFrom.secretKeyRef.name=elasticsearch-credentials \
+  --set jaeger.extraEnv[0].valueFrom.secretKeyRef.key=ES_PASSWORD
 ```
 
 ## Deploy Jaeger with Cassandra
 
 ```yaml
 # jaeger-cassandra-values.yaml
-provisionDataStore:
-  cassandra: true
-  elasticsearch: false
-  kafka: false
+tag: "2.19.0"
+
+jaeger:
+  enabled: true
+  replicas: 3
+  
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
 
 storage:
   type: cassandra
@@ -327,46 +354,75 @@ storage:
     host: cassandra
     port: 9042
     keyspace: jaeger_v1_dc1
-    
-    # Authentication
     user: cassandra
     usePassword: true
     existingSecret: cassandra-password
-    
-    # Replication
-    datacenters: dc1
-    replicationFactor: 3
-    
-    # Connection pool
-    connectionPerHost: 5
 
-cassandra:
-  persistence:
-    enabled: true
-    size: 100Gi
-    storageClass: fast-ssd
-    
-  resources:
-    requests:
-      cpu: 2000m
-      memory: 8Gi
-    limits:
-      cpu: 4000m
-      memory: 16Gi
-      
-  cluster:
-    replicaCount: 3
-    datacenters:
-      - name: dc1
-        size: 3
-
-collector:
-  enabled: true
-  replicaCount: 3
-
-query:
-  enabled: true
-  replicaCount: 2
+userconfig:
+  service:
+    extensions: [jaeger_storage, jaeger_query, remote_sampling, healthcheckv2]
+    pipelines:
+      traces:
+        receivers: [otlp, jaeger]
+        processors: [batch, adaptive_sampling]
+        exporters: [jaeger_storage_exporter]
+  extensions:
+    healthcheckv2:
+      use_v2: true
+      http:
+        endpoint: 0.0.0.0:13133
+    jaeger_query:
+      storage:
+        traces: primary_store
+        traces_archive: archive_store
+    jaeger_storage:
+      backends:
+        primary_store:
+          cassandra:
+            schema:
+              keyspace: jaeger_v1_dc1
+              create: true
+            connection:
+              servers: ["cassandra:9042"]
+              auth:
+                basic:
+                  username: cassandra
+                  password: "${env:CASSANDRA_PASSWORD}"
+        archive_store:
+          cassandra:
+            schema:
+              keyspace: jaeger_v1_dc1_archive
+              create: true
+            connection:
+              servers: ["cassandra:9042"]
+              auth:
+                basic:
+                  username: cassandra
+                  password: "${env:CASSANDRA_PASSWORD}"
+    remote_sampling:
+      adaptive:
+        sampling_store: primary_store
+        initial_sampling_probability: 0.1
+        target_samples_per_second: 1.0
+      http:
+      grpc:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+        http:
+    jaeger:
+      protocols:
+        grpc:
+        thrift_binary:
+        thrift_compact:
+        thrift_http:
+  processors:
+    batch:
+    adaptive_sampling:
+  exporters:
+    jaeger_storage_exporter:
+      trace_storage: primary_store
 ```
 
 ## Deploy Jaeger with Kafka
@@ -375,47 +431,102 @@ query:
 
 ```yaml
 # jaeger-kafka-values.yaml
-provisionDataStore:
-  cassandra: false
-  elasticsearch: false
-  kafka: false
+tag: "2.19.0"
 
-storage:
-  type: elasticsearch
-  elasticsearch:
-    host: elasticsearch-master
-    port: 9200
-
-# Kafka for buffering
-kafka:
-  brokers:
-    - kafka-0.kafka.kafka.svc:9092
-    - kafka-1.kafka.kafka.svc:9092
-    - kafka-2.kafka.kafka.svc:9092
-  topic: jaeger-spans
-  authentication: none
-
-collector:
+jaeger:
   enabled: true
-  replicaCount: 3
+  replicas: 3
   
   extraEnv:
-    - name: SPAN_STORAGE_TYPE
-      value: kafka
-    - name: KAFKA_PRODUCER_BROKERS
-      value: kafka-0.kafka.kafka.svc:9092,kafka-1.kafka.kafka.svc:9092,kafka-2.kafka.kafka.svc:9092
-    - name: KAFKA_PRODUCER_TOPIC
+    - name: KAFKA_BROKER
+      value: kafka-0.kafka.kafka.svc:9092
+    - name: KAFKA_TOPIC
       value: jaeger-spans
 
-# Ingester reads from Kafka and writes to storage
-ingester:
-  enabled: true
-  replicaCount: 3
+userconfig:
+  service:
+    extensions: [jaeger_storage, jaeger_query, healthcheckv2]
+    pipelines:
+      traces/ingest:
+        receivers: [otlp, jaeger]
+        processors: [batch]
+        exporters: [kafka]
+      traces/store:
+        receivers: [kafka]
+        processors: [batch]
+        exporters: [jaeger_storage_exporter]
+  extensions:
+    healthcheckv2:
+      use_v2: true
+      http:
+        endpoint: 0.0.0.0:13133
+    jaeger_query:
+      storage:
+        traces: primary_store
+    jaeger_storage:
+      backends:
+        primary_store:
+          elasticsearch:
+            server_urls:
+              - http://elasticsearch-master:9200
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+        http:
+    jaeger:
+      protocols:
+        grpc:
+        thrift_binary:
+        thrift_compact:
+        thrift_http:
+    kafka:
+      brokers:
+        - ${env:KAFKA_BROKER}
+      topic: ${env:KAFKA_TOPIC}
+      encoding: otlp_proto
+  processors:
+    batch:
+  exporters:
+    kafka:
+      brokers:
+        - ${env:KAFKA_BROKER}
+      topic: ${env:KAFKA_TOPIC}
+      encoding: otlp_proto
+    jaeger_storage_exporter:
+      trace_storage: primary_store
+```
+
+## Kubernetes Operator
+
+### Install Operator
+
+```bash
+# Install the OpenTelemetry Operator
+helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
+helm repo update
+
+helm install opentelemetry-operator open-telemetry/opentelemetry-operator \
+  --namespace observability \
+  --create-namespace \
+  --set "manager.collectorImage.repository=otel/opentelemetry-collector-k8s" \
+  --set admissionWebhooks.certManager.enabled=false \
+  --set admissionWebhooks.autoGenerateCert.enabled=true
+```
+
+### OpenTelemetry Collector CR
+
+```yaml
+# otel-collector.yaml
+apiVersion: opentelemetry.io/v1beta1
+kind: OpenTelemetryCollector
+metadata:
+  name: otel-gateway
+  namespace: observability
+spec:
+  mode: deployment
+  replicas: 3
   
-  image:
-    repository: jaegertracing/jaeger-ingester
-    tag: 1.52
-    
   resources:
     requests:
       cpu: 500m
@@ -424,98 +535,37 @@ ingester:
       cpu: 1000m
       memory: 1Gi
       
-  extraEnv:
-    - name: SPAN_STORAGE_TYPE
-      value: elasticsearch
-    - name: KAFKA_CONSUMER_BROKERS
-      value: kafka-0.kafka.kafka.svc:9092,kafka-1.kafka.kafka.svc:9092,kafka-2.kafka.kafka.svc:9092
-    - name: KAFKA_CONSUMER_TOPIC
-      value: jaeger-spans
-    - name: KAFKA_CONSUMER_GROUP
-      value: jaeger-ingester
-```
-
-## Jaeger Operator
-
-### Install Operator
-
-```bash
-# Install cert-manager first (required)
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.0/cert-manager.yaml
-
-# Install Jaeger Operator
-kubectl create namespace observability
-kubectl apply -n observability -f https://github.com/jaegertracing/jaeger-operator/releases/download/v1.52.0/jaeger-operator.yaml
-```
-
-### Jaeger CR (Custom Resource)
-
-```yaml
-# jaeger-production.yaml
-apiVersion: jaegertracing.io/v1
-kind: Jaeger
-metadata:
-  name: jaeger-production
-  namespace: observability
-spec:
-  strategy: production
-  
-  collector:
-    replicas: 3
-    maxReplicas: 10
-    
-    resources:
-      requests:
-        cpu: 500m
-        memory: 512Mi
-      limits:
-        cpu: 1000m
-        memory: 1Gi
+  config:
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+            
+    processors:
+      batch:
+        timeout: 1s
+        send_batch_size: 1024
         
-    options:
-      collector:
-        num-workers: 100
-        queue-size: 10000
+      memory_limiter:
+        check_interval: 1s
+        limit_mib: 1000
+        spike_limit_mib: 200
         
-  query:
-    replicas: 2
-    
-    resources:
-      requests:
-        cpu: 200m
-        memory: 256Mi
-      limits:
-        cpu: 500m
-        memory: 512Mi
-        
-    options:
-      query:
-        base-path: /jaeger
-        
-  storage:
-    type: elasticsearch
-    
-    options:
-      es:
-        server-urls: https://elasticsearch-master:9200
-        index-prefix: jaeger
-        num-shards: 5
-        num-replicas: 1
-        
-    esIndexCleaner:
-      enabled: true
-      numberOfDays: 7
-      schedule: "55 23 * * *"
-      
-    secretName: es-secret
-    
-  ingress:
-    enabled: true
-    annotations:
-      kubernetes.io/ingress.class: nginx
-      
-  agent:
-    strategy: DaemonSet
+    exporters:
+      otlp/jaeger:
+        endpoint: jaeger.jaeger.svc.cluster.local:4317
+        tls:
+          insecure: true
+          
+    service:
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [memory_limiter, batch]
+          exporters: [otlp/jaeger]
 ```
 
 ## OpenTelemetry Integration
@@ -549,8 +599,8 @@ data:
         spike_limit_mib: 200
         
     exporters:
-      jaeger:
-        endpoint: jaeger-collector.jaeger:14250
+      otlp/jaeger:
+        endpoint: jaeger.jaeger.svc.cluster.local:4317
         tls:
           insecure: true
           
@@ -559,7 +609,7 @@ data:
         traces:
           receivers: [otlp]
           processors: [memory_limiter, batch]
-          exporters: [jaeger]
+          exporters: [otlp/jaeger]
 ```
 
 ## Sampling Configuration
@@ -573,7 +623,7 @@ kind: ConfigMap
 metadata:
   name: jaeger-sampling
 data:
-  sampling.json: |
+  sampling-strategies.json: |
     {
       "service_strategies": [
         {
@@ -598,20 +648,25 @@ data:
 
 ```yaml
 # rate-limiting-sampling.yaml
-sampling.json: |
-  {
-    "service_strategies": [
-      {
-        "service": "high-volume-service",
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jaeger-rate-limiting-sampling
+data:
+  sampling-strategies.json: |
+    {
+      "service_strategies": [
+        {
+          "service": "high-volume-service",
+          "type": "ratelimiting",
+          "param": 100
+        }
+      ],
+      "default_strategy": {
         "type": "ratelimiting",
-        "param": 100
+        "param": 50
       }
-    ],
-    "default_strategy": {
-      "type": "ratelimiting",
-      "param": 50
     }
-  }
 ```
 
 ## Application Instrumentation
@@ -621,24 +676,23 @@ sampling.json: |
 ```python
 # app.py
 from opentelemetry import trace
-from opentelemetry.exporter.jaeger.thrift import JaegerExporter
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.sdk.resources import Resource
 
 # Configure tracer
 resource = Resource.create({"service.name": "my-python-service"})
-trace.set_tracer_provider(TracerProvider(resource=resource))
+provider = TracerProvider(resource=resource)
+trace.set_tracer_provider(provider)
 
-# Configure Jaeger exporter
-jaeger_exporter = JaegerExporter(
-    agent_host_name="jaeger-agent",
-    agent_port=6831,
+# Configure OTLP exporter
+otlp_exporter = OTLPSpanExporter(
+    endpoint="jaeger.jaeger.svc.cluster.local:4317",
+    insecure=True,
 )
 
-trace.get_tracer_provider().add_span_processor(
-    BatchSpanProcessor(jaeger_exporter)
-)
+provider.add_span_processor(BatchSpanProcessor(otlp_exporter))
 
 tracer = trace.get_tracer(__name__)
 
@@ -648,64 +702,73 @@ with tracer.start_as_current_span("my-operation") as span:
     # Your code here
 ```
 
-### Go with Jaeger Client
+### Go with OpenTelemetry
 
 ```go
 // main.go
 package main
 
 import (
-    "github.com/uber/jaeger-client-go"
-    jaegercfg "github.com/uber/jaeger-client-go/config"
+    "context"
+
+    "go.opentelemetry.io/otel"
+    "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+    "go.opentelemetry.io/otel/sdk/resource"
+    sdktrace "go.opentelemetry.io/otel/sdk/trace"
+    semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
+    "google.golang.org/grpc/credentials/insecure"
 )
 
-func initTracer(service string) (opentracing.Tracer, io.Closer, error) {
-    cfg := jaegercfg.Configuration{
-        ServiceName: service,
-        Sampler: &jaegercfg.SamplerConfig{
-            Type:  jaeger.SamplerTypeConst,
-            Param: 1,
-        },
-        Reporter: &jaegercfg.ReporterConfig{
-            LogSpans:           true,
-            LocalAgentHostPort: "jaeger-agent:6831",
-        },
-    }
-    
-    tracer, closer, err := cfg.NewTracer()
+func initTracer(ctx context.Context, service string) (*sdktrace.TracerProvider, error) {
+    exporter, err := otlptracegrpc.New(
+        ctx,
+        otlptracegrpc.WithEndpoint("jaeger.jaeger.svc.cluster.local:4317"),
+        otlptracegrpc.WithTLSCredentials(insecure.NewCredentials()),
+    )
     if err != nil {
-        return nil, nil, err
+        return nil, err
     }
-    
-    opentracing.SetGlobalTracer(tracer)
-    return tracer, closer, nil
+
+    provider := sdktrace.NewTracerProvider(
+        sdktrace.WithBatcher(exporter),
+        sdktrace.WithResource(resource.NewWithAttributes(
+            semconv.SchemaURL,
+            semconv.ServiceName(service),
+        )),
+    )
+
+    otel.SetTracerProvider(provider)
+    return provider, nil
 }
 ```
 
-### Node.js with Jaeger
+### Node.js with OpenTelemetry
 
 ```javascript
 // tracing.js
+const { trace } = require('@opentelemetry/api');
+const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 const { NodeTracerProvider } = require('@opentelemetry/sdk-trace-node');
-const { JaegerExporter } = require('@opentelemetry/exporter-jaeger');
 const { BatchSpanProcessor } = require('@opentelemetry/sdk-trace-base');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { ATTR_SERVICE_NAME } = require('@opentelemetry/semantic-conventions');
 
 const provider = new NodeTracerProvider({
-  resource: new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: 'my-node-service',
+  resource: resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: 'my-node-service',
   }),
+  spanProcessors: [
+    new BatchSpanProcessor(
+      new OTLPTraceExporter({
+        url: 'http://jaeger.jaeger.svc.cluster.local:4317',
+      })
+    ),
+  ],
 });
 
-const exporter = new JaegerExporter({
-  endpoint: 'http://jaeger-collector:14268/api/traces',
-});
-
-provider.addSpanProcessor(new BatchSpanProcessor(exporter));
 provider.register();
 
-const tracer = provider.getTracer('my-node-service');
+const tracer = trace.getTracer('my-node-service');
 
 // Use tracer
 const span = tracer.startSpan('my-operation');
@@ -792,7 +855,7 @@ spec:
     matchNames:
       - jaeger
   endpoints:
-    - port: admin-http
+    - port: internal-metrics
       path: /metrics
       interval: 30s
 ```
@@ -809,32 +872,32 @@ spec:
   groups:
     - name: jaeger
       rules:
-        - alert: JaegerCollectorQueueFull
+        - alert: JaegerPipelineQueueHigh
           expr: |
-            jaeger_collector_queue_length / jaeger_collector_queue_capacity > 0.9
+            otelcol_exporter_queue_size / otelcol_exporter_queue_capacity > 0.9
           for: 5m
           labels:
             severity: warning
           annotations:
-            summary: "Jaeger collector queue is filling up"
+            summary: "Jaeger exporter queue is filling up"
             
-        - alert: JaegerCollectorDroppedSpans
+        - alert: JaegerExporterFailures
           expr: |
-            increase(jaeger_collector_spans_dropped_total[5m]) > 0
+            increase(otelcol_exporter_send_failed_spans[5m]) > 0
           for: 1m
           labels:
             severity: critical
           annotations:
-            summary: "Jaeger is dropping spans"
+            summary: "Jaeger is failing to export spans"
             
-        - alert: JaegerStorageFailures
+        - alert: JaegerReceiverRefusedSpans
           expr: |
-            increase(jaeger_collector_save_latency_count{result="err"}[5m]) > 0
+            increase(otelcol_receiver_refused_spans[5m]) > 0
           for: 5m
           labels:
             severity: critical
           annotations:
-            summary: "Jaeger storage write failures"
+            summary: "Jaeger is refusing incoming spans"
 ```
 
 ## Troubleshooting
@@ -843,28 +906,22 @@ spec:
 # Check Jaeger pods
 kubectl get pods -n jaeger
 
-# Check collector logs
-kubectl logs -n jaeger -l app.kubernetes.io/component=collector
-
-# Check query logs
-kubectl logs -n jaeger -l app.kubernetes.io/component=query
+# Check Jaeger logs
+kubectl logs -n jaeger -l app.kubernetes.io/name=jaeger
 
 # Access Jaeger UI
-kubectl port-forward -n jaeger svc/jaeger-query 16686:16686
+kubectl port-forward -n jaeger svc/jaeger 16686:16686
 
-# Check collector health
-kubectl exec -n jaeger deploy/jaeger-collector -- wget -qO- http://localhost:14269/
-
-# Check agent health
-kubectl exec -n jaeger ds/jaeger-agent -- wget -qO- http://localhost:14271/
+# Check Jaeger health
+kubectl exec -n jaeger deploy/jaeger -- wget -qO- http://localhost:13133/status
 
 # Verify spans are being received
-kubectl exec -n jaeger deploy/jaeger-collector -- wget -qO- http://localhost:14269/metrics | grep jaeger_collector_spans_received
+kubectl exec -n jaeger deploy/jaeger -- wget -qO- http://localhost:8888/metrics | grep otelcol_receiver_accepted_spans
 
 # Check Elasticsearch indices
-kubectl exec -n elasticsearch elasticsearch-master-0 -- curl -s http://localhost:9200/_cat/indices?v | grep jaeger
+kubectl exec -n elasticsearch elasticsearch-master-0 -- curl -ks https://localhost:9200/_cat/indices?v | grep jaeger
 ```
 
 ## Wrap-up
 
-Jaeger provides comprehensive distributed tracing for microservices architectures. Choose the appropriate storage backend based on your scale and retention requirements - Elasticsearch for production workloads, Cassandra for massive scale, or Kafka for high-volume ingestion. Configure proper sampling strategies to balance observability with storage costs, and integrate with OpenTelemetry for vendor-neutral instrumentation.
+Jaeger provides comprehensive distributed tracing for microservices architectures. Choose the appropriate storage backend based on your scale and retention requirements - Elasticsearch or OpenSearch for production workloads, Cassandra for large existing Cassandra environments, or Kafka for high-volume buffered ingestion. Configure proper sampling strategies to balance observability with storage costs, and integrate with OpenTelemetry for vendor-neutral instrumentation.
