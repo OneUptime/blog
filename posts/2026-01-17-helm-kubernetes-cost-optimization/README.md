@@ -59,17 +59,17 @@ flowchart TB
 ### Add Helm Repository
 
 ```bash
-helm repo add kubecost https://kubecost.github.io/cost-analyzer
+helm repo add kubecost https://kubecost.github.io/kubecost/
 helm repo update
 ```
 
 ### Basic Installation
 
 ```bash
-helm install kubecost kubecost/cost-analyzer \
+helm install kubecost kubecost/kubecost \
   --namespace kubecost \
   --create-namespace \
-  --set kubecostToken="YOUR_TOKEN"
+  --set global.clusterId="my-cluster"
 ```
 
 ### Production Configuration
@@ -79,15 +79,10 @@ helm install kubecost kubecost/cost-analyzer \
 
 # Global settings
 global:
-  prometheus:
-    enabled: true
-    fqdn: http://prometheus-server.monitoring.svc
-
-# Kubecost configuration
-kubecostToken: "YOUR_KUBECOST_TOKEN"
+  clusterId: "my-cluster"
 
 # Cost analyzer
-costAnalyzer:
+localStore:
   resources:
     requests:
       cpu: 200m
@@ -96,24 +91,23 @@ costAnalyzer:
       cpu: 1000m
       memory: 1Gi
 
-# Prometheus integration
-prometheus:
-  server:
-    enabled: false  # Use existing Prometheus
-  alertmanager:
-    enabled: false
-  nodeExporter:
-    enabled: false
-  pushgateway:
-    enabled: false
+# Metrics collection
+finopsagent:
+  agent:
+    collectorDataSource:
+      enabled: true
+  kubecost:
+    projectID: "123456789012"
+    awsSpotDataBucket: "kubecost-athena-results"
+    awsSpotDataRegion: "us-east-1"
 
 # Network costs
 networkCosts:
   enabled: true
-  prometheusFQDN: http://prometheus-server.monitoring.svc
+  prometheusScrape: true
 
-# Grafana
-grafana:
+# Frontend
+frontend:
   enabled: true
   resources:
     requests:
@@ -125,35 +119,17 @@ ingress:
   enabled: true
   className: nginx
   hosts:
-    - host: kubecost.example.com
-      paths:
-        - path: /
-          pathType: Prefix
-
-# Cloud provider integration
-kubecostProductConfigs:
-  cloudIntegrationJSON: |
-    {
-      "aws": [{
-        "athenaBucketName": "s3://kubecost-athena-results",
-        "athenaRegion": "us-east-1",
-        "athenaDatabase": "athenacurcfn_kubecost",
-        "athenaTable": "kubecost",
-        "projectID": "123456789012",
-        "serviceKeyName": "arn:aws:iam::123456789012:role/kubecost"
-      }]
-    }
-
-# Savings recommendations
-savings:
-  enabled: true
+    - kubecost.example.com
+  paths:
+    - /
+  pathType: Prefix
 
 # Product configuration
-kubecostModel:
-  warmCache: true
-  warmSavingsCache: true
-  etl: true
-  maxQueryConcurrency: 5
+aggregator:
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
 ```
 
 ## Installing OpenCost
@@ -161,17 +137,28 @@ kubecostModel:
 ```yaml
 # opencost-values.yaml
 opencost:
+  cloudIntegrationJSON: |
+    {
+      "aws": [{
+        "athenaBucketName": "s3://opencost-athena-results",
+        "athenaRegion": "us-east-1",
+        "athenaDatabase": "athenacurcfn_opencost",
+        "athenaTable": "opencost",
+        "projectID": "123456789012",
+        "serviceKeyName": "arn:aws:iam::123456789012:role/opencost"
+      }]
+    }
+
   exporter:
     defaultClusterId: "my-cluster"
+    cloudProviderApiKey: "YOUR_API_KEY"
     
     aws:
-      service_key_name: ""
-      service_key_secret: ""
-      spot_data_region: "us-east-1"
-      spot_data_bucket: "spot-pricing-bucket"
+      access_key_id: ""
+      secret_access_key: ""
       
     extraEnv:
-      CLOUD_PROVIDER_API_KEY: "YOUR_API_KEY"
+      PROMETHEUS_HEADER_X_SCOPE_ORGID: "anonymous"
       
   ui:
     enabled: true
@@ -278,8 +265,8 @@ spec:
         maxAllowed:
           cpu: 2000m
           memory: 2Gi
-        controlledResources: ["cpu", "memory"]
-        controlledValues: RequestsAndLimits
+        controlledResources: ["memory"]  # Avoid controlling the same CPU metric as an HPA
+        controlledValues: RequestsOnly
 ```
 
 ## Goldilocks for Right-Sizing
@@ -300,14 +287,14 @@ dashboard:
       cpu: 200m
       memory: 256Mi
       
-  ingress:
-    enabled: true
-    ingressClassName: nginx
-    hosts:
-      - host: goldilocks.example.com
-        paths:
-          - path: /
-            pathType: Prefix
+    ingress:
+      enabled: true
+      ingressClassName: nginx
+      hosts:
+        - host: goldilocks.example.com
+          paths:
+            - path: /
+              type: ImplementationSpecific
 
 controller:
   enabled: true
@@ -348,7 +335,7 @@ kubectl label namespace production goldilocks.fairwinds.com/enabled=true
 # AWS EKS
 export CLUSTER_NAME=my-cluster
 export AWS_REGION=us-east-1
-export KARPENTER_VERSION=v0.32.0
+export KARPENTER_VERSION=1.13.0
 
 helm upgrade --install karpenter oci://public.ecr.aws/karpenter/karpenter \
   --version "${KARPENTER_VERSION}" \
@@ -367,7 +354,7 @@ helm upgrade --install karpenter oci://public.ecr.aws/karpenter/karpenter \
 
 ```yaml
 # karpenter-nodepool.yaml
-apiVersion: karpenter.sh/v1beta1
+apiVersion: karpenter.sh/v1
 kind: NodePool
 metadata:
   name: default
@@ -378,6 +365,9 @@ spec:
         - key: kubernetes.io/arch
           operator: In
           values: ["amd64"]
+        - key: kubernetes.io/os
+          operator: In
+          values: ["linux"]
         - key: karpenter.sh/capacity-type
           operator: In
           values: ["spot", "on-demand"]
@@ -388,21 +378,25 @@ spec:
           operator: Gt
           values: ["2"]
       nodeClassRef:
+        group: karpenter.k8s.aws
+        kind: EC2NodeClass
         name: default
+      expireAfter: 720h
   limits:
-    cpu: 1000
+    cpu: "1000"
     memory: 1000Gi
   disruption:
-    consolidationPolicy: WhenUnderutilized
-    consolidateAfter: 30s
+    consolidationPolicy: WhenEmptyOrUnderutilized
+    consolidateAfter: 1m
 
 ---
-apiVersion: karpenter.k8s.aws/v1beta1
+apiVersion: karpenter.k8s.aws/v1
 kind: EC2NodeClass
 metadata:
   name: default
 spec:
-  amiFamily: AL2
+  amiSelectorTerms:
+    - alias: al2023@v20240807
   subnetSelectorTerms:
     - tags:
         karpenter.sh/discovery: ${CLUSTER_NAME}
@@ -573,7 +567,13 @@ metadata:
   name: batch-processor
 spec:
   replicas: 5
+  selector:
+    matchLabels:
+      app: batch-processor
   template:
+    metadata:
+      labels:
+        app: batch-processor
     spec:
       affinity:
         nodeAffinity:
@@ -599,6 +599,8 @@ spec:
               app: batch-processor
       containers:
         - name: processor
+          image: public.ecr.aws/docker/library/busybox:1.36
+          command: ["sh", "-c", "while true; do sleep 3600; done"]
           resources:
             requests:
               cpu: 500m
@@ -655,7 +657,7 @@ data:
           "type": "bargauge",
           "targets": [
             {
-              "expr": "sum(kubecost_cluster_costs) by (namespace)"
+              "expr": "sum(container_cpu_allocation * on(node) group_left() node_cpu_hourly_cost + container_memory_allocation_bytes / 1024 / 1024 / 1024 * on(node) group_left() node_ram_hourly_cost) by (namespace)"
             }
           ]
         },
@@ -664,7 +666,7 @@ data:
           "type": "stat",
           "targets": [
             {
-              "expr": "avg(container_cpu_usage_seconds_total) / avg(kube_pod_container_resource_requests{resource=\"cpu\"})"
+              "expr": "sum(rate(container_cpu_usage_seconds_total{container!=\"\",pod!=\"\"}[5m])) / sum(kube_pod_container_resource_requests{resource=\"cpu\",unit=\"core\"})"
             }
           ]
         },
@@ -673,7 +675,7 @@ data:
           "type": "gauge",
           "targets": [
             {
-              "expr": "sum(kube_pod_container_resource_requests{resource=\"cpu\"}) - sum(rate(container_cpu_usage_seconds_total[5m]))"
+              "expr": "sum(kube_pod_container_resource_requests{resource=\"cpu\",unit=\"core\"}) - sum(rate(container_cpu_usage_seconds_total{container!=\"\",pod!=\"\"}[5m]))"
             }
           ]
         }
@@ -698,7 +700,7 @@ data:
 ```bash
 # Check Kubecost status
 kubectl get pods -n kubecost
-kubectl logs -n kubecost deployment/kubecost-cost-analyzer
+kubectl logs -n kubecost deployment/kubecost-aggregator
 
 # View VPA recommendations
 kubectl get vpa -A
