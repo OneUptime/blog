@@ -283,7 +283,9 @@ fi
 
 file="/etc/passwd"
 dir="/home"
-link="/usr/bin/python"
+link="/usr/bin/python3"
+file1="/etc/passwd"
+file2="/etc/hosts"
 
 # File exists
 if [ -e "$file" ]; then echo "File exists"; fi
@@ -727,7 +729,7 @@ echo "World" >> output.txt
 command_that_fails 2> error.log
 
 # Redirect both stdout and stderr to same file
-command 2>&1 > all_output.log
+command > all_output.log 2>&1
 
 # Modern syntax for redirecting both streams
 command &> all_output.log
@@ -1288,21 +1290,27 @@ set +xv
 ```bash
 #!/bin/bash
 
-# Redirect debug output to file
+# Redirect all stderr, including debug output, to file
+exec 3>&2
 exec 2> debug.log
 set -x
 
 echo "This debug output goes to debug.log"
 name="Test"
 echo "Hello, $name"
+set +x
+exec 2>&3
+exec 3>&-
 
-# Or use BASH_XTRACEFD for separate debug file
-exec 3> debug_trace.log
-BASH_XTRACEFD=3
+# Or use BASH_XTRACEFD for a separate debug file
+exec 4> debug_trace.log
+BASH_XTRACEFD=4
 set -x
 
 echo "Debug trace goes to debug_trace.log"
 echo "Stderr still goes to terminal" >&2
+set +x
+unset BASH_XTRACEFD
 ```
 
 ### Custom Debug Functions
@@ -1403,7 +1411,7 @@ breakpoint() {
     echo "Location: ${BASH_SOURCE[1]}:${BASH_LINENO[0]}"
     echo "Function: ${FUNCNAME[1]}"
     echo "Press Enter to continue..."
-    read
+    read -r
 }
 
 # Variable inspector
@@ -1554,16 +1562,14 @@ severity=style
 set -euo pipefail
 
 # Find all shell scripts
-scripts=$(find . -type f -name "*.sh" -o -type f -exec sh -c 'head -1 "$1" | grep -q "^#!.*bash"' _ {} \; -print)
-
 # Run ShellCheck
 exit_code=0
-for script in $scripts; do
+while IFS= read -r script; do
     echo "Checking: $script"
     if ! shellcheck --severity=warning "$script"; then
         exit_code=1
     fi
-done
+done < <(find . -type f \( -name "*.sh" -o -exec sh -c 'head -n 1 "$1" | grep -q "^#!.*bash"' _ {} \; \) -print)
 
 exit $exit_code
 ```
@@ -1657,6 +1663,11 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         -o|--output)
+            if [ $# -lt 2 ]; then
+                echo "Error: --output requires a file argument" >&2
+                show_help >&2
+                exit 2
+            fi
             output_file="$2"
             shift 2
             ;;
@@ -1736,11 +1747,11 @@ log() {
     timestamp=$(timestamp)
 
     if [ "$level" -ge "$LOG_LEVEL" ]; then
-        echo -e "${color}[$(timestamp)] $message${NC}"
+        echo -e "${color}[$timestamp] $message${NC}"
 
         # Also write to log file if specified
         if [ -n "$LOG_FILE" ]; then
-            echo "[$(timestamp)] $message" >> "$LOG_FILE"
+            echo "[$timestamp] $message" >> "$LOG_FILE"
         fi
     fi
 }
@@ -1904,7 +1915,7 @@ check_cpu_usage() {
     log_info "Checking CPU usage..."
 
     local cpu_usage
-    cpu_usage=$(top -bn1 | grep "Cpu(s)" | awk '{print int($2)}')
+    cpu_usage=$(LC_ALL=C top -bn1 | awk -F'id,' '/Cpu\(s\)/ { split($1, fields, ","); split(fields[length(fields)], idle, " "); printf "%d", 100 - idle[1] }')
 
     if [ "$cpu_usage" -ge "$CPU_THRESHOLD" ]; then
         print_status "CRITICAL" "CPU usage is ${cpu_usage}% (threshold: ${CPU_THRESHOLD}%)"
@@ -1949,7 +1960,7 @@ check_disk_usage() {
 
         if [ "$usage" -ge "$DISK_THRESHOLD" ]; then
             print_status "CRITICAL" "Disk usage on $mount is ${usage}%"
-            ((issues++))
+            ((++issues))
         elif [ "$usage" -ge $((DISK_THRESHOLD - 10)) ]; then
             print_status "WARNING" "Disk usage on $mount is ${usage}%"
         else
@@ -1972,7 +1983,7 @@ check_services() {
             print_status "OK" "Service $service is running"
         else
             print_status "CRITICAL" "Service $service is not running"
-            ((issues++))
+            ((++issues))
         fi
     done
 
@@ -1988,8 +1999,8 @@ check_load_average() {
     load_1min=$(awk '{print $1}' /proc/loadavg)
     cpu_count=$(nproc)
 
-    # Compare using bc for floating point
-    if (( $(echo "$load_1min > $cpu_count" | bc -l) )); then
+    # Compare floating point values with awk
+    if awk -v load="$load_1min" -v cpus="$cpu_count" 'BEGIN { exit !(load > cpus) }'; then
         print_status "WARNING" "Load average ($load_1min) exceeds CPU count ($cpu_count)"
         return 0
     else
@@ -2095,27 +2106,27 @@ main() {
 
     # Run selected checks
     if [ "$check_cpu" = true ]; then
-        check_cpu_usage || ((total_issues++))
+        check_cpu_usage || ((++total_issues))
         echo
     fi
 
     if [ "$check_memory" = true ]; then
-        check_memory_usage || ((total_issues++))
+        check_memory_usage || ((++total_issues))
         echo
     fi
 
     if [ "$check_disk" = true ]; then
-        check_disk_usage || ((total_issues+=$?))
+        check_disk_usage || ((total_issues += $?))
         echo
     fi
 
     if [ "$check_services_flag" = true ]; then
-        check_services || ((total_issues+=$?))
+        check_services || ((total_issues += $?))
         echo
     fi
 
     if [ "$check_load" = true ]; then
-        check_load_average || ((total_issues++))
+        check_load_average || ((++total_issues))
         echo
     fi
 
