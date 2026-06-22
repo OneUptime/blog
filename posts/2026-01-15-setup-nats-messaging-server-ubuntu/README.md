@@ -30,7 +30,7 @@ NATS consists of several key components:
 
 1. **NATS Server**: The core message broker
 2. **Core NATS**: Basic publish/subscribe and request/reply messaging
-3. **JetStream**: Persistence layer for streaming and exactly-once delivery
+3. **JetStream**: Persistence layer for streaming, at-least-once delivery, and exactly-once semantics when using message deduplication and confirmed acknowledgments
 4. **NATS CLI**: Command-line tools for administration and testing
 
 ### Why Choose NATS?
@@ -56,7 +56,7 @@ Before we begin, ensure you have:
 sudo apt update && sudo apt upgrade -y
 
 # Install essential tools
-sudo apt install -y curl wget gnupg2 software-properties-common
+sudo apt install -y curl wget gnupg2 software-properties-common jq unzip netcat-openbsd
 ```
 
 ## Installing NATS Server
@@ -70,7 +70,7 @@ This method provides the latest stable version directly from the official releas
 ```bash
 # Define the version to install
 # Check https://github.com/nats-io/nats-server/releases for latest version
-NATS_VERSION="2.10.22"
+NATS_VERSION="2.14.2"
 
 # Download the NATS server binary for Linux AMD64
 wget https://github.com/nats-io/nats-server/releases/download/v${NATS_VERSION}/nats-server-v${NATS_VERSION}-linux-amd64.tar.gz
@@ -83,7 +83,7 @@ sudo mv nats-server-v${NATS_VERSION}-linux-amd64/nats-server /usr/local/bin/
 
 # Verify the installation
 nats-server --version
-# Output: nats-server: v2.10.22
+# Output: nats-server: v2.14.2
 
 # Clean up downloaded files
 rm -rf nats-server-v${NATS_VERSION}-linux-amd64*
@@ -263,7 +263,7 @@ pid_file: "/var/run/nats/nats-server.pid"
 
 jetstream {
     # Enable JetStream
-    # Required for persistence, streams, and exactly-once delivery
+    # Required for persistence, streams, and higher delivery guarantees
 
     # Storage directory for JetStream data
     store_dir: "/var/lib/nats/jetstream"
@@ -301,7 +301,7 @@ Before starting the server, validate the configuration:
 
 ```bash
 # Check configuration syntax
-nats-server -c /etc/nats/nats-server.conf --dry-run
+nats-server -c /etc/nats/nats-server.conf -t
 
 # If valid, you'll see:
 # nats-server: configuration file /etc/nats/nats-server.conf is valid
@@ -407,11 +407,11 @@ First, install the NATS CLI tool for testing:
 
 ```bash
 # Download NATS CLI
-NATS_CLI_VERSION="0.1.5"
-wget https://github.com/nats-io/natscli/releases/download/v${NATS_CLI_VERSION}/nats-${NATS_CLI_VERSION}-linux-amd64.tar.gz
+NATS_CLI_VERSION="0.4.0"
+wget https://github.com/nats-io/natscli/releases/download/v${NATS_CLI_VERSION}/nats-${NATS_CLI_VERSION}-linux-amd64.zip
 
 # Extract and install
-tar -xzf nats-${NATS_CLI_VERSION}-linux-amd64.tar.gz
+unzip nats-${NATS_CLI_VERSION}-linux-amd64.zip
 sudo mv nats-${NATS_CLI_VERSION}-linux-amd64/nats /usr/local/bin/
 
 # Verify installation
@@ -497,7 +497,7 @@ The request/reply pattern works by:
 
 ## JetStream for Persistence
 
-JetStream adds persistence, replay, and exactly-once delivery to NATS. It's essential for applications that need durable messaging.
+JetStream adds persistence, replay, at-least-once delivery, and exactly-once semantics when publishers use message deduplication and consumers use confirmed acknowledgments. It's essential for applications that need durable messaging.
 
 ### Creating Streams
 
@@ -534,7 +534,7 @@ nats stream ls
 nats stream info ORDERS
 
 # View stream configuration
-nats stream config ORDERS
+nats stream info ORDERS --json | jq .config
 
 # Stream report (shows real-time statistics)
 nats stream report
@@ -772,7 +772,7 @@ async def request_reply_example():
 async def jetstream_example():
     """
     JetStream example showing persistent messaging.
-    Demonstrates streams, consumers, and exactly-once delivery.
+    Demonstrates streams, consumers, and durable delivery.
     """
     nc = NATS()
     await nc.connect(servers=["nats://localhost:4222"])
@@ -1123,7 +1123,7 @@ func jetStreamExample() {
 	defer nc.Close()
 
 	// Create JetStream context
-	// JetStream provides persistence and exactly-once delivery
+	// JetStream provides persistence and higher delivery guarantees
 	js, err := nc.JetStream(
 		nats.PublishAsyncMaxPending(256), // Max pending async publishes
 	)
@@ -1647,8 +1647,8 @@ Connect with token:
 # Using NATS CLI with token
 nats pub test "Hello" --server nats://s3cr3t_t0k3n_h3r3@localhost:4222
 
-# Or using the --creds flag
-nats pub test "Hello" -s nats://localhost:4222 --user "" --password "s3cr3t_t0k3n_h3r3"
+# Or using the --token flag
+nats pub test "Hello" -s nats://localhost:4222 --token "s3cr3t_t0k3n_h3r3"
 ```
 
 ### Username/Password Authentication
@@ -1668,7 +1668,7 @@ authorization {
         # Admin user with full access
         {
             user: "admin"
-            password: "$2a$11$..."  # Use nats-server --gen-password to generate
+            password: "$2a$11$..."  # Use nats server passwd to generate
             permissions: {
                 publish: ">"      # Can publish to any subject
                 subscribe: ">"    # Can subscribe to any subject
@@ -1714,7 +1714,7 @@ Generate password hashes:
 
 ```bash
 # Generate a bcrypt password hash
-nats-server --gen-password
+nats server passwd
 # Enter your password when prompted
 # Copy the generated hash to your config
 ```
@@ -1763,7 +1763,7 @@ For multi-tenant environments, use accounts with JWTs:
 
 ```bash
 # Install nsc (NATS Security CLI)
-curl -L https://github.com/nats-io/nsc/releases/download/v2.8.6/nsc-linux-amd64.zip -o nsc.zip
+curl -L https://github.com/nats-io/nsc/releases/download/v2.15.0/nsc-linux-amd64.zip -o nsc.zip
 unzip nsc.zip
 sudo mv nsc /usr/local/bin/
 
@@ -2048,7 +2048,7 @@ nats stream add ORDERS \
 nats stream info ORDERS
 
 # View stream configuration
-nats stream config ORDERS
+nats stream info ORDERS --json | jq .config
 
 # View messages in a stream
 nats stream view ORDERS
@@ -2249,12 +2249,13 @@ if [ "$SLOW_CONSUMERS" -gt 0 ]; then
     echo "WARNING: ${SLOW_CONSUMERS} slow consumers detected at ${TIMESTAMP}"
 fi
 
-# Alert on high memory usage (>80% of max)
-MAX_MEM=$(echo "$VARZ" | jq -r '.max_memory // 0')
+# Alert on high JetStream memory usage (>80% of max)
+JS_MEM_USAGE=$(echo "$JSZ" | jq -r '.memory // 0')
+MAX_MEM=$(echo "$JSZ" | jq -r '.config.max_memory // 0')
 if [ "$MAX_MEM" -gt 0 ]; then
-    MEM_PCT=$((MEM_USAGE * 100 / MAX_MEM))
+    MEM_PCT=$((JS_MEM_USAGE * 100 / MAX_MEM))
     if [ "$MEM_PCT" -gt 80 ]; then
-        echo "WARNING: Memory usage at ${MEM_PCT}% at ${TIMESTAMP}"
+        echo "WARNING: JetStream memory usage at ${MEM_PCT}% at ${TIMESTAMP}"
     fi
 fi
 EOF
@@ -2272,8 +2273,8 @@ NATS can export metrics in Prometheus format using the NATS Prometheus Exporter:
 
 ```bash
 # Install Prometheus NATS Exporter
-wget https://github.com/nats-io/prometheus-nats-exporter/releases/download/v0.15.0/prometheus-nats-exporter-v0.15.0-linux-amd64.tar.gz
-tar -xzf prometheus-nats-exporter-v0.15.0-linux-amd64.tar.gz
+wget https://github.com/nats-io/prometheus-nats-exporter/releases/download/v0.20.1/prometheus-nats-exporter-v0.20.1-linux-x86_64.tar.gz
+tar -xzf prometheus-nats-exporter-v0.20.1-linux-x86_64.tar.gz
 sudo mv prometheus-nats-exporter /usr/local/bin/
 
 # Run the exporter
@@ -2418,8 +2419,8 @@ echo "   Uptime: $UPTIME"
 # Check JetStream
 echo "4. Checking JetStream..."
 JSZ=$(curl -s "http://${NATS_HOST}:${NATS_HTTP_PORT}/jsz")
-JS_ENABLED=$(echo "$JSZ" | jq -r '.disabled // true')
-if [ "$JS_ENABLED" = "false" ] || [ "$JS_ENABLED" = "null" ]; then
+JS_TOTAL=$(echo "$JSZ" | jq -r '.total // 0')
+if [ "$JS_TOTAL" -gt 0 ]; then
     STREAMS=$(echo "$JSZ" | jq -r '.streams // 0')
     CONSUMERS=$(echo "$JSZ" | jq -r '.consumers // 0')
     echo "   JetStream: Enabled"
@@ -2510,7 +2511,7 @@ nats stream rm OLD_STREAM
 curl http://localhost:8222/routez | jq
 
 # Verify cluster configuration
-nats-server -c /etc/nats/nats-server.conf --dry-run
+nats-server -c /etc/nats/nats-server.conf -t
 
 # Check logs for route errors
 journalctl -u nats-server | grep -i route
