@@ -55,17 +55,19 @@ ansible_ssh_private_key_file=~/.ssh/id_rsa
           - curl
           - gnupg
           - lsb-release
+          - python3-debian
         state: present
         update_cache: yes
 
-    - name: Add Docker GPG key
-      apt_key:
-        url: https://download.docker.com/linux/ubuntu/gpg
-        state: present
-
     - name: Add Docker repository
-      apt_repository:
-        repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+      ansible.builtin.deb822_repository:
+        name: docker
+        types: deb
+        uris: https://download.docker.com/linux/ubuntu
+        suites: "{{ ansible_distribution_release }}"
+        components: stable
+        architectures: amd64
+        signed_by: https://download.docker.com/linux/ubuntu/gpg
         state: present
 
     - name: Install Docker
@@ -324,7 +326,7 @@ ansible-galaxy install geerlingguy.docker
   community.docker.docker_compose_v2:
     project_src: /opt/app
     env_files:
-      - /opt/app/.env
+      - .env
     state: present
 ```
 
@@ -337,7 +339,7 @@ ansible-galaxy install geerlingguy.docker
   hosts: docker_hosts
   become: yes
   vars:
-    app_version: "{{ lookup('env', 'APP_VERSION') | default('latest') }}"
+    app_version: "{{ lookup('env', 'APP_VERSION') | default('latest', true) }}"
     db_password: "{{ lookup('env', 'DB_PASSWORD') }}"
 
   tasks:
@@ -505,4 +507,3 @@ handlers:
 | docker_prune | Cleanup unused resources |
 
 Ansible provides idempotent Docker management across multiple hosts. Use it for automated deployments, configuration management, and orchestrating container infrastructure. For managing Docker with Terraform, see our post on [Managing Docker with Terraform](https://oneuptime.com/blog/post/2026-01-16-docker-terraform/view).
-
