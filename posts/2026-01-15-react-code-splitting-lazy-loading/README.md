@@ -44,7 +44,7 @@ Lazy loading is the practice of deferring the loading of resources until they ar
 The combination of code splitting and lazy loading allows you to:
 
 - Reduce initial bundle size
-- Improve Time to First Byte (TTFB)
+- Improve First Contentful Paint (FCP)
 - Decrease Time to Interactive (TTI)
 - Optimize bandwidth usage
 - Provide better user experience
@@ -378,6 +378,7 @@ import Footer from './components/Footer';
 const Home = lazy(() => import('./pages/Home'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Profile = lazy(() => import('./pages/Profile'));
+const Analytics = lazy(() => import('./pages/Analytics'));
 
 // Main layout with navigation
 function MainLayout() {
@@ -426,7 +427,7 @@ function App() {
               path="analytics"
               element={
                 <Suspense fallback={<ContentLoader />}>
-                  {lazy(() => import('./pages/Analytics'))}
+                  <Analytics />
                 </Suspense>
               }
             />
@@ -877,7 +878,7 @@ function Navigation() {
 ### Advanced Preloading with Custom Hook
 
 ```jsx
-import { useCallback, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 
 // Create a preloadable lazy component
 function lazyWithPreload(importFn) {
@@ -1331,7 +1332,7 @@ const Dashboard = lazyWithMetrics(
 ### Web Vitals Integration
 
 ```jsx
-import { getLCP, getFID, getCLS, getFCP, getTTFB } from 'web-vitals';
+import { onLCP, onINP, onCLS, onFCP, onTTFB } from 'web-vitals';
 
 function reportWebVitals(metric) {
   console.log(metric);
@@ -1347,11 +1348,11 @@ function reportWebVitals(metric) {
 }
 
 // Initialize monitoring
-getCLS(reportWebVitals);
-getFID(reportWebVitals);
-getLCP(reportWebVitals);
-getFCP(reportWebVitals);
-getTTFB(reportWebVitals);
+onCLS(reportWebVitals);
+onINP(reportWebVitals);
+onLCP(reportWebVitals);
+onFCP(reportWebVitals);
+onTTFB(reportWebVitals);
 ```
 
 ---
