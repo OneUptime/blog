@@ -59,7 +59,7 @@ helm diff upgrade myapp charts/myapp -f values.yaml --color
 # Suppress secrets in diff
 helm diff upgrade myapp charts/myapp -f values.yaml --suppress-secrets
 
-# Show only specific resources
+# Show secret values instead of redacting them
 helm diff upgrade myapp charts/myapp -f values.yaml --show-secrets
 
 # Detailed diff with context
@@ -187,13 +187,18 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: myapp
+  namespace: argocd
 spec:
+  project: default
   source:
     repoURL: https://github.com/org/charts.git
     path: charts/myapp
     helm:
       valueFiles:
         - values.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
   syncPolicy:
     automated:
       prune: true
@@ -228,7 +233,7 @@ jobs:
       - name: Configure Kubeconfig
         run: |
           echo "${{ secrets.KUBECONFIG }}" > kubeconfig
-          export KUBECONFIG=kubeconfig
+          echo "KUBECONFIG=$PWD/kubeconfig" >> "$GITHUB_ENV"
           
       - name: Check for Drift
         run: |
@@ -265,8 +270,7 @@ kind: ClusterPolicy
 metadata:
   name: prevent-manual-helm-changes
 spec:
-  validationFailureAction: enforce
-  background: true
+  background: false
   rules:
     - name: check-helm-managed
       match:
@@ -280,10 +284,11 @@ spec:
                 matchLabels:
                   app.kubernetes.io/managed-by: Helm
       validate:
+        failureAction: Enforce
         message: "Resources managed by Helm cannot be modified directly. Use Helm to make changes."
         deny:
           conditions:
-            any:
+            all:
               - key: "{{request.operation}}"
                 operator: In
                 value: ["UPDATE", "DELETE"]
@@ -367,13 +372,14 @@ spec:
 #!/bin/bash
 # drift-check.sh
 
-RELEASES=$(helm list -q)
+RELEASES=${RELEASES:-myapp}
+CHART_PATH=${CHART_PATH:-charts/myapp}
 
 for release in $RELEASES; do
   echo "Checking drift for $release..."
   
-  drift=$(helm diff upgrade "$release" "$(helm get chart "$release")" \
-    -f <(helm get values "$release") 2>&1)
+  drift=$(helm diff upgrade "$release" "$CHART_PATH" \
+    -f <(helm get values "$release" -o yaml) 2>&1)
   
   if [ -n "$drift" ]; then
     echo "DRIFT DETECTED in $release:"
