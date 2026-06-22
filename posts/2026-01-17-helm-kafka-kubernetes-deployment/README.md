@@ -79,9 +79,7 @@ helm install kafka bitnami/kafka \
 ```yaml
 # kafka-values.yaml
 # KRaft mode (no ZooKeeper)
-kraft:
-  enabled: true
-  clusterId: "MkU3OEVBNTcwNTJENDM2Qk"
+clusterId: "MkU3OEVBNTcwNTJENDM2Qk"
 
 controller:
   replicaCount: 3
@@ -123,9 +121,6 @@ broker:
     storageClass: "fast-ssd"
     size: 100Gi
   
-  # Heap size should be ~50% of memory limit
-  heapOpts: "-Xmx2g -Xms2g"
-  
   affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
@@ -134,31 +129,43 @@ broker:
             app.kubernetes.io/component: broker
         topologyKey: kubernetes.io/hostname
 
+# Heap size should be ~50% of memory limit
+heapOpts: "-Xmx2g -Xms2g"
+
 # Kafka configuration
-extraConfig: |
+overrideConfiguration:
   # Replication
-  default.replication.factor=3
-  min.insync.replicas=2
-  
+  default.replication.factor: 3
+  min.insync.replicas: 2
+
   # Performance
-  num.io.threads=8
-  num.network.threads=3
-  num.partitions=12
-  
+  num.io.threads: 8
+  num.network.threads: 3
+  num.partitions: 12
+
   # Retention
-  log.retention.hours=168
-  log.retention.bytes=107374182400
-  
+  log.retention.hours: 168
+  log.retention.bytes: 107374182400
+
   # Segment
-  log.segment.bytes=1073741824
-  log.cleanup.policy=delete
+  log.segment.bytes: 1073741824
+  log.cleanup.policy: delete
 
 # Authentication
-auth:
-  clientProtocol: sasl
-  interBrokerProtocol: sasl
-  sasl:
-    enabledMechanisms: SCRAM-SHA-512
+sasl:
+  enabledMechanisms: SCRAM-SHA-512
+  interBrokerMechanism: SCRAM-SHA-512
+  controllerMechanism: SCRAM-SHA-512
+  client:
+    users:
+      - my-app
+    passwords: "password"
+  interbroker:
+    user: inter_broker_user
+    password: "inter-broker-password"
+  controller:
+    user: controller_user
+    password: "controller-password"
 
 # Listeners
 listeners:
@@ -174,17 +181,18 @@ listeners:
 # External access
 externalAccess:
   enabled: true
-  service:
-    type: LoadBalancer
-    ports:
-      external: 9094
+  broker:
+    service:
+      type: LoadBalancer
+      ports:
+        external: 9094
+
+defaultInitContainers:
   autoDiscovery:
     enabled: true
 
 # Metrics
 metrics:
-  kafka:
-    enabled: true
   jmx:
     enabled: true
   serviceMonitor:
@@ -239,15 +247,89 @@ helm install strimzi-kafka-operator strimzi/strimzi-kafka-operator \
 
 ```yaml
 # kafka-cluster.yaml
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaNodePool
+metadata:
+  name: controller
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: my-cluster
+spec:
+  replicas: 3
+  roles:
+    - controller
+  storage:
+    type: jbod
+    volumes:
+      - id: 0
+        type: persistent-claim
+        size: 20Gi
+        class: fast-ssd
+        kraftMetadata: shared
+        deleteClaim: false
+  resources:
+    requests:
+      memory: 1Gi
+      cpu: 500m
+    limits:
+      memory: 2Gi
+      cpu: 2000m
+  template:
+    pod:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  strimzi.io/name: my-cluster-controller
+              topologyKey: kubernetes.io/hostname
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaNodePool
+metadata:
+  name: broker
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: my-cluster
+spec:
+  replicas: 3
+  roles:
+    - broker
+  storage:
+    type: jbod
+    volumes:
+      - id: 0
+        type: persistent-claim
+        size: 100Gi
+        class: fast-ssd
+        kraftMetadata: shared
+        deleteClaim: false
+  resources:
+    requests:
+      memory: 2Gi
+      cpu: 500m
+    limits:
+      memory: 4Gi
+      cpu: 2000m
+  template:
+    pod:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  strimzi.io/name: my-cluster-broker
+              topologyKey: kubernetes.io/hostname
+---
+apiVersion: kafka.strimzi.io/v1
 kind: Kafka
 metadata:
   name: my-cluster
   namespace: kafka
 spec:
   kafka:
-    version: 3.6.0
-    replicas: 3
+    version: 4.2.0
+    metadataVersion: 4.2-IV1
     
     listeners:
       - name: plain
@@ -277,59 +359,12 @@ spec:
       num.partitions: 12
       log.retention.hours: 168
     
-    storage:
-      type: persistent-claim
-      size: 100Gi
-      class: fast-ssd
-      deleteClaim: false
-    
-    resources:
-      requests:
-        memory: 2Gi
-        cpu: 500m
-      limits:
-        memory: 4Gi
-        cpu: 2000m
-    
     metricsConfig:
       type: jmxPrometheusExporter
       valueFrom:
         configMapKeyRef:
           name: kafka-metrics
           key: kafka-metrics-config.yml
-    
-    template:
-      pod:
-        affinity:
-          podAntiAffinity:
-            requiredDuringSchedulingIgnoredDuringExecution:
-              - labelSelector:
-                  matchLabels:
-                    strimzi.io/name: my-cluster-kafka
-                topologyKey: kubernetes.io/hostname
-
-  zookeeper:
-    replicas: 3
-    storage:
-      type: persistent-claim
-      size: 20Gi
-      class: fast-ssd
-    resources:
-      requests:
-        memory: 512Mi
-        cpu: 250m
-      limits:
-        memory: 1Gi
-        cpu: 500m
-    template:
-      pod:
-        affinity:
-          podAntiAffinity:
-            requiredDuringSchedulingIgnoredDuringExecution:
-              - labelSelector:
-                  matchLabels:
-                    strimzi.io/name: my-cluster-zookeeper
-                topologyKey: kubernetes.io/hostname
 
   entityOperator:
     topicOperator:
@@ -383,7 +418,7 @@ kubectl apply -f kafka-cluster.yaml
 
 ```yaml
 # kafka-topic.yaml
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaTopic
 metadata:
   name: events
@@ -402,7 +437,7 @@ spec:
 
 ```yaml
 # kafka-user.yaml
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaUser
 metadata:
   name: my-app
@@ -447,8 +482,8 @@ yamlApplicationConfig:
           sasl.mechanism: SCRAM-SHA-512
           sasl.jaas.config: |
             org.apache.kafka.common.security.scram.ScramLoginModule required
-            username="admin"
-            password="admin-password";
+            username="my-app"
+            password="password";
   auth:
     type: disabled
   management:
@@ -459,10 +494,9 @@ yamlApplicationConfig:
 ingress:
   enabled: true
   ingressClassName: nginx
-  hosts:
-    - host: kafka-ui.example.com
-      paths:
-        - path: /
+  host: kafka-ui.example.com
+  path: /
+  pathType: Prefix
 ```
 
 ### Install Kafka UI
@@ -482,11 +516,15 @@ helm install kafka-ui kafka-ui/kafka-ui \
 replicaCount: 2
 
 image:
-  repository: confluentinc/cp-schema-registry
+  repository: bitnami/schema-registry
   tag: 7.5.0
 
 kafka:
-  bootstrapServers: kafka:9092
+  enabled: false
+
+externalKafka:
+  brokers:
+    - PLAINTEXT://kafka:9092
 
 resources:
   requests:
@@ -510,7 +548,7 @@ ingress:
 
 ```yaml
 # kafka-connect.yaml
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaConnect
 metadata:
   name: my-connect
@@ -518,16 +556,16 @@ metadata:
   annotations:
     strimzi.io/use-connector-resources: "true"
 spec:
-  version: 3.6.0
+  version: 4.2.0
   replicas: 2
   
   bootstrapServers: my-cluster-kafka-bootstrap:9092
+  groupId: connect-cluster
+  offsetStorageTopic: connect-offsets
+  configStorageTopic: connect-configs
+  statusStorageTopic: connect-status
   
   config:
-    group.id: connect-cluster
-    offset.storage.topic: connect-offsets
-    config.storage.topic: connect-configs
-    status.storage.topic: connect-status
     config.storage.replication.factor: 3
     offset.storage.replication.factor: 3
     status.storage.replication.factor: 3
@@ -559,7 +597,7 @@ spec:
 
 ```yaml
 # kafka-connector.yaml
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaConnector
 metadata:
   name: postgres-source
@@ -629,33 +667,37 @@ while True:
 ```javascript
 const { Kafka } = require('kafkajs');
 
-const kafka = new Kafka({
-  clientId: 'my-app',
-  brokers: ['kafka.kafka.svc.cluster.local:9092'],
-  sasl: {
-    mechanism: 'scram-sha-512',
-    username: 'my-app',
-    password: 'password'
-  }
-});
+async function main() {
+  const kafka = new Kafka({
+    clientId: 'my-app',
+    brokers: ['kafka.kafka.svc.cluster.local:9092'],
+    sasl: {
+      mechanism: 'scram-sha-512',
+      username: 'my-app',
+      password: 'password'
+    }
+  });
 
-// Producer
-const producer = kafka.producer();
-await producer.connect();
-await producer.send({
-  topic: 'events',
-  messages: [{ key: 'key', value: 'value' }]
-});
+  // Producer
+  const producer = kafka.producer();
+  await producer.connect();
+  await producer.send({
+    topic: 'events',
+    messages: [{ key: 'key', value: 'value' }]
+  });
 
-// Consumer
-const consumer = kafka.consumer({ groupId: 'my-app-group' });
-await consumer.connect();
-await consumer.subscribe({ topic: 'events', fromBeginning: true });
-await consumer.run({
-  eachMessage: async ({ topic, partition, message }) => {
-    console.log(`Received: ${message.value}`);
-  }
-});
+  // Consumer
+  const consumer = kafka.consumer({ groupId: 'my-app-group' });
+  await consumer.connect();
+  await consumer.subscribe({ topic: 'events', fromBeginning: true });
+  await consumer.run({
+    eachMessage: async ({ topic, partition, message }) => {
+      console.log(`Received: ${message.value}`);
+    }
+  });
+}
+
+main().catch(console.error);
 ```
 
 Resource Sizing Guide
@@ -673,17 +715,17 @@ Resource Sizing Guide
 
 ```bash
 # Connect to broker
-kubectl exec -it kafka-0 -n kafka -- kafka-metadata.sh --snapshot /var/lib/kafka/data/__cluster_metadata-0/00000000000000000000.log --command describe
+kubectl exec -it my-cluster-broker-0 -n kafka -- bin/kafka-metadata-quorum.sh --bootstrap-server localhost:9092 describe --status
 
 # List topics
-kubectl exec -it kafka-0 -n kafka -- kafka-topics.sh --bootstrap-server localhost:9092 --list
+kubectl exec -it my-cluster-broker-0 -n kafka -- bin/kafka-topics.sh --bootstrap-server localhost:9092 --list
 
 # Describe topic
-kubectl exec -it kafka-0 -n kafka -- kafka-topics.sh --bootstrap-server localhost:9092 --describe --topic events
+kubectl exec -it my-cluster-broker-0 -n kafka -- bin/kafka-topics.sh --bootstrap-server localhost:9092 --describe --topic events
 
 # Consumer groups
-kubectl exec -it kafka-0 -n kafka -- kafka-consumer-groups.sh --bootstrap-server localhost:9092 --list
-kubectl exec -it kafka-0 -n kafka -- kafka-consumer-groups.sh --bootstrap-server localhost:9092 --describe --group my-app-group
+kubectl exec -it my-cluster-broker-0 -n kafka -- bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --list
+kubectl exec -it my-cluster-broker-0 -n kafka -- bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --describe --group my-app-group
 ```
 
 ## Troubleshooting
@@ -692,7 +734,7 @@ kubectl exec -it kafka-0 -n kafka -- kafka-consumer-groups.sh --bootstrap-server
 
 ```bash
 # Kafka broker logs
-kubectl logs kafka-0 -n kafka
+kubectl logs my-cluster-broker-0 -n kafka
 
 # Strimzi operator logs
 kubectl logs -n kafka deploy/strimzi-cluster-operator
@@ -702,12 +744,12 @@ kubectl logs -n kafka deploy/strimzi-cluster-operator
 
 **Under-replicated partitions:**
 ```bash
-kubectl exec -it kafka-0 -n kafka -- kafka-topics.sh --bootstrap-server localhost:9092 --describe --under-replicated-partitions
+kubectl exec -it my-cluster-broker-0 -n kafka -- bin/kafka-topics.sh --bootstrap-server localhost:9092 --describe --under-replicated-partitions
 ```
 
 **Consumer lag:**
 ```bash
-kubectl exec -it kafka-0 -n kafka -- kafka-consumer-groups.sh --bootstrap-server localhost:9092 --describe --group my-app-group
+kubectl exec -it my-cluster-broker-0 -n kafka -- bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --describe --group my-app-group
 ```
 
 ## Wrap-up
