@@ -62,8 +62,6 @@ backend app_servers
 ### Docker Compose
 
 ```yaml
-version: '3.8'
-
 services:
   haproxy:
     image: haproxy:2.8
@@ -240,14 +238,15 @@ services:
       - "443:443"
     volumes:
       - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
-      - certs:/etc/ssl/certs:ro
+      - certs:/etc/letsencrypt:ro
 
   certbot:
     image: certbot/certbot
     volumes:
       - certs:/etc/letsencrypt
       - ./certbot:/var/www/certbot
-    command: certonly --webroot -w /var/www/certbot -d example.com --non-interactive --agree-tos --email admin@example.com
+    entrypoint: ["/bin/sh", "-c"]
+    command: "certbot certonly --webroot -w /var/www/certbot -d example.com --non-interactive --agree-tos --email admin@example.com && cat /etc/letsencrypt/live/example.com/fullchain.pem /etc/letsencrypt/live/example.com/privkey.pem > /etc/letsencrypt/live/example.com/haproxy.pem"
 
 volumes:
   certs:
@@ -385,7 +384,7 @@ frontend stats
     stats enable
     stats uri /stats
     stats refresh 10s
-    stats auth admin:${STATS_PASSWORD}
+    stats auth "admin:${STATS_PASSWORD}"
     http-request use-service prometheus-exporter if { path /metrics }
 
 # HTTP Frontend
@@ -430,8 +429,6 @@ backend web_servers
 ### Docker Compose Production
 
 ```yaml
-version: '3.8'
-
 services:
   haproxy:
     image: haproxy:2.8-alpine
@@ -445,6 +442,12 @@ services:
       - ./certs:/etc/ssl/certs:ro
     environment:
       - STATS_PASSWORD=${STATS_PASSWORD}
+    depends_on:
+      - api1
+      - api2
+      - api3
+      - web1
+      - web2
     networks:
       - frontend
     deploy:
@@ -453,18 +456,31 @@ services:
           memory: 512M
           cpus: '1'
 
-  api:
+  api1:
     image: myapi:latest
-    deploy:
-      replicas: 3
     networks:
       - frontend
       - backend
 
-  web:
+  api2:
+    image: myapi:latest
+    networks:
+      - frontend
+      - backend
+
+  api3:
+    image: myapi:latest
+    networks:
+      - frontend
+      - backend
+
+  web1:
     image: myweb:latest
-    deploy:
-      replicas: 2
+    networks:
+      - frontend
+
+  web2:
+    image: myweb:latest
     networks:
       - frontend
 
@@ -480,35 +496,23 @@ networks:
 
 ```yaml
 services:
-  haproxy1:
+  haproxy:
     image: haproxy:2.8
-    networks:
-      frontend:
-        ipv4_address: 172.20.0.10
+    network_mode: host
+    volumes:
+      - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
 
-  haproxy2:
-    image: haproxy:2.8
-    networks:
-      frontend:
-        ipv4_address: 172.20.0.11
-
-  keepalived1:
+  keepalived:
     image: osixia/keepalived
     network_mode: host
     cap_add:
       - NET_ADMIN
+      - NET_RAW
+      - NET_BROADCAST
     environment:
-      - KEEPALIVED_VIRTUAL_IPS=192.168.1.100
-      - KEEPALIVED_PRIORITY=100
-
-  keepalived2:
-    image: osixia/keepalived
-    network_mode: host
-    cap_add:
-      - NET_ADMIN
-    environment:
-      - KEEPALIVED_VIRTUAL_IPS=192.168.1.100
-      - KEEPALIVED_PRIORITY=99
+      - "KEEPALIVED_VIRTUAL_IPS=#PYTHON2BASH:['192.168.1.100']"
+      - "KEEPALIVED_UNICAST_PEERS=#PYTHON2BASH:['192.168.1.10','192.168.1.11']"
+      - KEEPALIVED_PRIORITY=100  # Use 99 on the backup node
 ```
 
 ## Summary
@@ -524,4 +528,3 @@ services:
 | Stats | stats enable + stats uri |
 
 HAProxy provides enterprise-grade load balancing for Docker containers. Use health checks to ensure traffic only goes to healthy backends, sticky sessions for stateful applications, and rate limiting for protection. For simpler setups, consider [Traefik](https://oneuptime.com/blog/post/2026-01-16-docker-traefik-reverse-proxy/view) or [Caddy](https://oneuptime.com/blog/post/2026-01-16-docker-caddy-automatic-https/view).
-
