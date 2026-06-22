@@ -88,7 +88,7 @@ helm search repo kong/kong --versions
 # kong-dbless-values.yaml
 image:
   repository: kong
-  tag: "3.4"
+  tag: "3.4.1"
 
 env:
   database: "off"
@@ -151,7 +151,7 @@ kubectl create secret generic kong-postgres-password \
 # kong-postgres-values.yaml
 image:
   repository: kong
-  tag: "3.4"
+  tag: "3.4.1"
 
 env:
   database: postgres
@@ -223,18 +223,7 @@ admin:
     containerPort: 8001
     
 manager:
-  enabled: true
-  type: ClusterIP
-  http:
-    enabled: true
-    servicePort: 8002
-    containerPort: 8002
-  ingress:
-    enabled: true
-    hostname: kong-manager.example.com
-    annotations:
-      cert-manager.io/cluster-issuer: letsencrypt-prod
-    tls: kong-manager-tls
+  enabled: false
 
 replicaCount: 3
 
@@ -298,31 +287,35 @@ spec:
       secretName: api-tls
 ```
 
-### Kong-Specific Ingress
+### Kong-Specific Ingress Annotations
 
 ```yaml
-# kong-ingress.yaml
-apiVersion: configuration.konghq.com/v1
-kind: KongIngress
+# kong-annotated-ingress.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
 metadata:
   name: custom-routing
-route:
-  methods:
-    - GET
-    - POST
-  strip_path: true
-  preserve_host: true
-  
-upstream:
-  hash_on: header
-  hash_on_header: X-User-ID
-  hash_fallback: ip
-  
-proxy:
-  connect_timeout: 10000
-  read_timeout: 60000
-  write_timeout: 60000
-  retries: 5
+  annotations:
+    konghq.com/methods: "GET,POST"
+    konghq.com/strip-path: "true"
+    konghq.com/preserve-host: "true"
+    konghq.com/connect-timeout: "10000"
+    konghq.com/read-timeout: "60000"
+    konghq.com/write-timeout: "60000"
+    konghq.com/retries: "5"
+spec:
+  ingressClassName: kong
+  rules:
+    - host: api.example.com
+      http:
+        paths:
+          - path: /custom
+            pathType: Prefix
+            backend:
+              service:
+                name: custom-service
+                port:
+                  number: 80
 ```
 
 ## Kong Plugins
@@ -340,7 +333,7 @@ metadata:
 config:
   minute: 100
   hour: 1000
-  policy: local
+  policy: redis
   fault_tolerant: true
   hide_client_headers: false
   redis_host: redis.redis.svc.cluster.local
@@ -379,13 +372,13 @@ credentials:
 
 ---
 # JWT credential
-apiVersion: configuration.konghq.com/v1
-kind: KongCredential
+apiVersion: v1
+kind: Secret
 metadata:
   name: jwt-credential
-consumerRef: api-consumer
-type: jwt
-config:
+  labels:
+    konghq.com/credential: jwt
+stringData:
   key: "my-jwt-issuer"
   algorithm: "RS256"
   rsa_public_key: |
@@ -424,7 +417,7 @@ credentials:
 
 ---
 # API Key credential
-apiVersion: configuration.konghq.com/v1
+apiVersion: v1
 kind: Secret
 metadata:
   name: partner-api-key
@@ -432,7 +425,6 @@ metadata:
     konghq.com/credential: key-auth
 stringData:
   key: "super-secret-api-key-12345"
-  kongCredType: key-auth
 ```
 
 ### OAuth2 Plugin
@@ -604,38 +596,38 @@ spec:
 
 ```yaml
 # upstream-config.yaml
-apiVersion: configuration.konghq.com/v1
-kind: KongIngress
+apiVersion: configuration.konghq.com/v1beta1
+kind: KongUpstreamPolicy
 metadata:
   name: load-balanced-upstream
-upstream:
+spec:
   algorithm: round-robin  # round-robin, consistent-hashing, least-connections
   slots: 10000
   healthchecks:
     active:
       concurrency: 10
       healthy:
-        http_statuses:
+        httpStatuses:
           - 200
           - 302
         interval: 5
         successes: 2
-      http_path: /health
-      https_verify_certificate: true
+      httpPath: /health
+      httpsVerifyCertificate: true
       timeout: 5
       type: http
       unhealthy:
-        http_failures: 3
-        http_statuses:
+        httpFailures: 3
+        httpStatuses:
           - 429
           - 500
           - 503
         interval: 5
-        tcp_failures: 3
+        tcpFailures: 3
         timeouts: 3
     passive:
       healthy:
-        http_statuses:
+        httpStatuses:
           - 200
           - 201
           - 202
@@ -657,13 +649,27 @@ upstream:
           - 308
         successes: 5
       unhealthy:
-        http_failures: 5
-        http_statuses:
+        httpFailures: 5
+        httpStatuses:
           - 429
           - 500
           - 503
-        tcp_failures: 5
+        tcpFailures: 5
         timeouts: 5
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-service
+  annotations:
+    konghq.com/upstream-policy: load-balanced-upstream
+spec:
+  ports:
+    - port: 80
+      targetPort: 8080
+  selector:
+    app: api
 ```
 
 ## Kong Enterprise Features
@@ -672,6 +678,10 @@ upstream:
 
 ```yaml
 # kong-enterprise-values.yaml
+image:
+  repository: kong/kong-gateway
+  tag: "3.4.1"
+
 enterprise:
   enabled: true
   license_secret: kong-enterprise-license
@@ -704,10 +714,10 @@ portalapi:
     servicePort: 8004
 ```
 
-### RBAC Configuration
+### Basic Auth Credential
 
 ```yaml
-# rbac-admin.yaml
+# basic-auth-admin.yaml
 apiVersion: configuration.konghq.com/v1
 kind: KongConsumer
 metadata:
@@ -716,19 +726,20 @@ metadata:
     kubernetes.io/ingress.class: kong
 username: admin
 custom_id: admin-001
+credentials:
+  - admin-basic-auth
 
 ---
-# Admin role
+# Basic auth credential
 apiVersion: v1
 kind: Secret
 metadata:
-  name: admin-rbac-token
+  name: admin-basic-auth
   labels:
     konghq.com/credential: basic-auth
 stringData:
   username: admin
   password: "secure-admin-password"
-  kongCredType: basic-auth
 ```
 
 ## Monitoring Kong
@@ -746,11 +757,12 @@ spec:
   selector:
     matchLabels:
       app.kubernetes.io/name: kong
+      enable-metrics: "true"
   namespaceSelector:
     matchNames:
       - kong
   endpoints:
-    - port: metrics
+    - targetPort: status
       interval: 30s
       path: /metrics
 ```
@@ -770,7 +782,7 @@ spec:
         - alert: KongHighLatency
           expr: |
             histogram_quantile(0.99, 
-              sum(rate(kong_latency_bucket{type="request"}[5m])) by (le, service)
+              sum(rate(kong_request_latency_ms_bucket[5m])) by (le, service)
             ) > 5000
           for: 5m
           labels:
@@ -780,8 +792,8 @@ spec:
             
         - alert: KongHighErrorRate
           expr: |
-            sum(rate(kong_http_status{code=~"5.."}[5m])) by (service)
-            / sum(rate(kong_http_status[5m])) by (service) > 0.05
+            sum(rate(kong_http_requests_total{code=~"5.."}[5m])) by (service)
+            / sum(rate(kong_http_requests_total[5m])) by (service) > 0.05
           for: 5m
           labels:
             severity: critical
@@ -811,7 +823,7 @@ kubectl logs -n kong -l app.kubernetes.io/name=kong
 kubectl logs -n kong -l app.kubernetes.io/component=ingress-controller
 
 # Validate configuration
-kubectl get kongplugins,kongconsumers,kongingresses -A
+kubectl get kongplugins,kongconsumers,kongupstreampolicies -A
 
 # Check proxy status
 kubectl exec -n kong deploy/kong-kong -- kong health
