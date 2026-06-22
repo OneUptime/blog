@@ -32,6 +32,7 @@ docker ps -a
 | 0 | Success | Command completed normally |
 | 1 | General error | Application error, bad configuration |
 | 2 | Shell error | Invalid command syntax |
+| 125 | Docker run error | Docker daemon or CLI error before the container command starts |
 | 126 | Command not executable | Permission issue |
 | 127 | Command not found | Binary missing, wrong PATH |
 | 128 | Invalid exit argument | Exit called with non-number |
@@ -119,10 +120,10 @@ docker logs myapp
 
 ```bash
 # Check if node_modules exists
-docker run --rm myimage ls -la /app/node_modules
+docker run --rm --entrypoint ls myimage -la /app/node_modules
 
 # Check Python packages
-docker run --rm myimage pip list
+docker run --rm --entrypoint pip myimage list
 ```
 
 #### Solution
@@ -153,7 +154,7 @@ docker inspect myapp --format='{{json .Config.Env}}' | jq
 docker inspect myapp --format='{{json .Mounts}}' | jq
 
 # Check if config file exists
-docker run --rm -v $(pwd)/config:/app/config myimage ls -la /app/config/
+docker run --rm -v "$(pwd)/config:/app/config" --entrypoint ls myimage -la /app/config/
 ```
 
 ### Issue: Port Already Bound
@@ -393,12 +394,11 @@ docker inspect $CONTAINER --format='{{json .Mounts}}' | jq
 | Step | Command |
 |------|---------|
 | Check status | `docker ps -a` |
-| View exit code | `docker inspect --format='{{.State.ExitCode}}'` |
+| View exit code | `docker inspect container --format='{{.State.ExitCode}}'` |
 | Check logs | `docker logs container` |
-| Check OOM | `docker inspect --format='{{.State.OOMKilled}}'` |
+| Check OOM | `docker inspect container --format='{{.State.OOMKilled}}'` |
 | Debug interactively | `docker run -it --entrypoint sh image` |
 | Check config | `docker inspect image` |
-| Check health | `docker inspect --format='{{json .State.Health}}'` |
+| Check health | `docker inspect container --format='{{json .State.Health}}'` |
 
 Container startup failures are usually caused by missing files, permission issues, missing dependencies, or configuration errors. Start with logs and exit codes, then interactively debug by overriding the entrypoint to investigate the container environment.
-
