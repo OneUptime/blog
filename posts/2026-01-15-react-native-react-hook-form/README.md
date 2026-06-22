@@ -17,7 +17,7 @@ React Hook Form stands out for mobile development because of its performance cha
 Key advantages include:
 - Minimal re-renders through uncontrolled inputs
 - Built-in TypeScript support with generic form types
-- Small bundle size (around 9KB minified)
+- Small bundle size (around 9KB minified and gzipped)
 - No dependencies
 - Flexible validation with schema libraries like Zod
 
@@ -561,7 +561,7 @@ const registrationSchema = z.object({
     )
     .nullable(),
   acceptTerms: z.literal(true, {
-    errorMap: () => ({ message: 'You must accept the terms and conditions' }),
+    message: 'You must accept the terms and conditions',
   }),
 }).refine((data) => data.password === data.confirmPassword, {
   message: 'Passwords do not match',
@@ -1672,7 +1672,7 @@ const accountSchema = z
       .regex(/[0-9]/, 'Must contain number'),
     confirmPassword: z.string(),
     acceptTerms: z.literal(true, {
-      errorMap: () => ({ message: 'You must accept the terms' }),
+      message: 'You must accept the terms',
     }),
   })
   .refine((data) => data.password === data.confirmPassword, {
