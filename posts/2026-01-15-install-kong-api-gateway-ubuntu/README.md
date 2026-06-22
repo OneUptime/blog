@@ -95,7 +95,7 @@ df -h
 
 ## Installing Kong on Ubuntu
 
-Kong can run in two modes: with a database (PostgreSQL/Cassandra) or DB-less (declarative configuration). We'll cover both approaches.
+Kong can run in two modes: with a database (PostgreSQL) or DB-less (declarative configuration). We'll cover both approaches.
 
 ### Method 1: Installing Kong with APT Repository
 
@@ -623,12 +623,12 @@ curl -i -X POST http://localhost:8001/services/user-service/plugins \
 Generate and test JWT tokens:
 
 ```bash
-# Install JWT CLI tool
-npm install -g jwt-cli
+# Install JWT CLI tool (jwt-cli by mike-engel, built in Rust)
+cargo install jwt-cli
 
 # Generate a JWT token (adjust payload as needed)
 JWT_TOKEN=$(jwt encode \
-  --algorithm HS256 \
+  --alg HS256 \
   --secret "your-256-bit-secret" \
   --exp "+1h" \
   --iss "mobile-app-key" \
@@ -798,7 +798,7 @@ curl -i -X PATCH http://localhost:8001/upstreams/user-api-upstream \
 curl -i -X PATCH http://localhost:8001/upstreams/user-api-upstream \
   --data "algorithm=least-connections"
 
-# Latency - routes to server with lowest latency (Enterprise only)
+# Latency - routes to server with lowest measured latency
 curl -i -X PATCH http://localhost:8001/upstreams/user-api-upstream \
   --data "algorithm=latency"
 ```
@@ -1002,7 +1002,7 @@ Validate your declarative configuration before applying:
 kong config parse /etc/kong/kong.yml
 
 # Validate with verbose output
-kong config parse /etc/kong/kong.yml -v
+kong config parse /etc/kong/kong.yml --v
 
 # Check for errors in specific sections
 kong config parse /etc/kong/kong.yml 2>&1 | grep -i error
@@ -1071,7 +1071,7 @@ curl -s http://localhost:8001/metrics
 curl -s http://localhost:8001/metrics | grep kong_http_requests_total
 
 # View latency metrics
-curl -s http://localhost:8001/metrics | grep kong_latency
+curl -s http://localhost:8001/metrics | grep kong_request_latency_ms
 ```
 
 ### Key Metrics to Monitor
@@ -1081,7 +1081,7 @@ curl -s http://localhost:8001/metrics | grep kong_latency
 kong_http_requests_total{service="user-service",route="user-route",code="200"}
 
 # Request latency histogram
-kong_latency_bucket{service="user-service",type="request",le="100"}
+kong_request_latency_ms_bucket{service="user-service",le="100"}
 
 # Bandwidth by service and direction
 kong_bandwidth_bytes{service="user-service",direction="ingress"}
@@ -1124,7 +1124,7 @@ Import the official Kong Grafana dashboard:
 ```bash
 # Download official Kong dashboard
 curl -o kong-dashboard.json \
-  https://raw.githubusercontent.com/Kong/kong/master/grafana/kong-official.json
+  https://raw.githubusercontent.com/Kong/kong/master/kong/plugins/prometheus/grafana/kong-official.json
 
 # Import through Grafana UI or API
 curl -X POST http://grafana:3000/api/dashboards/db \
@@ -1257,8 +1257,8 @@ curl -s http://localhost:8001/consumers | jq '.data | length'
 # Test upstream health
 curl -s http://localhost:8001/upstreams/user-api-upstream/health | jq
 
-# View Kong configuration
-kong config parse /etc/kong/kong.conf --v
+# Validate the Kong configuration file
+kong check /etc/kong/kong.conf
 
 # Check database migrations status
 kong migrations list -c /etc/kong/kong.conf
