@@ -45,10 +45,10 @@ flowchart TB
 ```yaml
 # lookup(apiVersion, kind, namespace, name)
 
-# Returns empty dict if resource not found
+# Returns empty value if resource not found
 
 # Returns resource if found
-# During helm template (no cluster), always returns empty dict
+# During helm template (no cluster), always returns empty value
 ```
 
 ### Query Single Resource
@@ -111,10 +111,10 @@ spec:
       containers:
         - name: myapp
           envFrom:
-            {{- range $name, $cm := $configMaps.items }}
-            {{- if hasPrefix "myapp-" $name }}
+            {{- range $configMaps.items }}
+            {{- if hasPrefix "myapp-" .metadata.name }}
             - configMapRef:
-                name: {{ $name }}
+                name: {{ .metadata.name }}
             {{- end }}
             {{- end }}
 ```
@@ -126,7 +126,8 @@ spec:
 {{- define "myapp.clusterDomain" -}}
 {{- $kubeSystem := lookup "v1" "ConfigMap" "kube-system" "coredns" }}
 {{- if $kubeSystem }}
-{{- default "cluster.local" (index $kubeSystem.data "Corefile" | regexFind "kubernetes\\s+([^\\s]+)") }}
+{{- $corefile := default "" (index $kubeSystem.data "Corefile") }}
+{{- default "cluster.local" ($corefile | regexFind "kubernetes\\s+[^\\s]+" | trimPrefix "kubernetes ") }}
 {{- else }}
 cluster.local
 {{- end }}
@@ -187,7 +188,7 @@ spec:
 {{- $ingressClasses := lookup "networking.k8s.io/v1" "IngressClass" "" "" }}
 {{- $defaultClass := "" }}
 {{- range $ingressClasses.items }}
-  {{- if index .metadata.annotations "ingressclass.kubernetes.io/is-default-class" }}
+  {{- if eq (index (.metadata.annotations | default dict) "ingressclass.kubernetes.io/is-default-class") "true" }}
     {{- $defaultClass = .metadata.name }}
   {{- end }}
 {{- end }}
@@ -207,7 +208,7 @@ spec:
 {{- $storageClasses := lookup "storage.k8s.io/v1" "StorageClass" "" "" }}
 {{- $defaultSC := "" }}
 {{- range $storageClasses.items }}
-  {{- if eq (index .metadata.annotations "storageclass.kubernetes.io/is-default-class") "true" }}
+  {{- if eq (index (.metadata.annotations | default dict) "storageclass.kubernetes.io/is-default-class") "true" }}
     {{- $defaultSC = .metadata.name }}
   {{- end }}
 {{- end }}
@@ -230,7 +231,7 @@ spec:
 ```yaml
 # templates/network-policy.yaml
 {{- $namespace := lookup "v1" "Namespace" "" .Release.Namespace }}
-{{- if and $namespace (index $namespace.metadata.labels "istio-injection") }}
+{{- if and $namespace (index ($namespace.metadata.labels | default dict) "istio-injection") }}
 # Namespace has Istio, configure accordingly
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -314,7 +315,7 @@ data:
 
 ```yaml
 # During `helm template` (no cluster connection):
-# - lookup always returns empty dict
+# - lookup always returns empty value
 # - Cannot query cluster resources
 
 # Safe pattern for both modes
@@ -351,11 +352,12 @@ data:
 # Lookup works during:
 # - helm install
 # - helm upgrade
-# - helm upgrade --dry-run (connects to cluster)
+# - helm upgrade --dry-run=server (connects to cluster)
 
 # Lookup returns empty during:
 # - helm template
-# - helm upgrade --dry-run --dry-run-server=false
+# - helm upgrade --dry-run
+# - helm upgrade --dry-run=client
 ```
 
 ## Testing Lookup Functions
@@ -421,7 +423,7 @@ tests:
 
 ```bash
 # Debug lookup results
-helm install myapp ./myapp --debug --dry-run 2>&1 | grep -A10 "lookup"
+helm install myapp ./myapp --debug --dry-run=server 2>&1 | grep -A10 "lookup"
 
 # Verify API access
 kubectl auth can-i get secrets --as=system:serviceaccount:default:default
