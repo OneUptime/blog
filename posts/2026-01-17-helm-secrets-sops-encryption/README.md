@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Helm, Kubernetes, DevOps, Security, Secret, SOPS
 
-Description: Learn how to encrypt and manage sensitive values in Helm charts using helm-secrets plugin and Mozilla SOPS for secure GitOps workflows.
+Description: Learn how to encrypt and manage sensitive values in Helm charts using helm-secrets plugin and SOPS for secure GitOps workflows.
 
 > Storing secrets in plain text in Git is a security nightmare. helm-secrets with SOPS lets you encrypt sensitive values while keeping your GitOps workflow intact-secrets live in Git, but only authorized systems can decrypt them.
 
@@ -29,7 +29,7 @@ flowchart LR
 
 ## Install SOPS
 
-SOPS (Secrets OPerationS) is Mozilla's tool for encrypting files with various key providers.
+SOPS (Secrets OPerationS) is a tool for encrypting files with various key providers.
 
 ```bash
 # macOS
@@ -37,9 +37,9 @@ SOPS (Secrets OPerationS) is Mozilla's tool for encrypting files with various ke
 brew install sops
 
 # Linux
-curl -LO https://github.com/getsops/sops/releases/download/v3.8.1/sops-v3.8.1.linux.amd64
-chmod +x sops-v3.8.1.linux.amd64
-sudo mv sops-v3.8.1.linux.amd64 /usr/local/bin/sops
+curl -LO https://github.com/getsops/sops/releases/download/v3.13.1/sops-v3.13.1.linux.amd64
+chmod +x sops-v3.13.1.linux.amd64
+sudo mv sops-v3.13.1.linux.amd64 /usr/local/bin/sops
 
 # Verify installation
 sops --version
@@ -50,8 +50,13 @@ sops --version
 The helm-secrets plugin integrates SOPS with Helm.
 
 ```bash
-# Install the plugin
-helm plugin install https://github.com/jkroepke/helm-secrets
+# Install the plugin with Helm 3
+helm plugin install https://github.com/jkroepke/helm-secrets --version v4.7.7
+
+# Or install the plugin with Helm 4
+helm plugin install oci://ghcr.io/jkroepke/helm-secrets/secrets:4.7.7
+helm plugin install oci://ghcr.io/jkroepke/helm-secrets/secrets-getter:4.7.7
+helm plugin install oci://ghcr.io/jkroepke/helm-secrets/secrets-post-renderer:4.7.7
 
 # Verify installation
 helm secrets --help
@@ -69,7 +74,7 @@ Age is a simple, modern encryption tool that works well for teams.
 # Install age
 brew install age  # macOS
 # or
-apt install age   # Ubuntu
+sudo apt install age   # Ubuntu
 
 # Generate a key pair
 age-keygen -o key.txt
@@ -142,14 +147,14 @@ creation_rules:
 # .sops.yaml
 creation_rules:
   - path_regex: secrets\.yaml$
-    kms: 'arn:aws:kms:us-east-1:123456789:key/mrk-xxxxxxxxxxxxx'
+    kms: 'arn:aws:kms:us-east-1:123456789012:key/mrk-xxxxxxxxxxxxx'
     
   # Different keys per environment
   - path_regex: environments/dev/secrets\.yaml$
-    kms: 'arn:aws:kms:us-east-1:123456789:key/dev-key-id'
+    kms: 'arn:aws:kms:us-east-1:123456789012:key/dev-key-id'
     
   - path_regex: environments/production/secrets\.yaml$
-    kms: 'arn:aws:kms:us-east-1:123456789:key/prod-key-id'
+    kms: 'arn:aws:kms:us-east-1:123456789012:key/prod-key-id'
 ```
 
 ### Multi-Key Configuration
@@ -165,7 +170,7 @@ creation_rules:
       age1team1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx,
       age1team2xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
     # Also encrypt with KMS for CI/CD
-    kms: 'arn:aws:kms:us-east-1:123456789:key/ci-key-id'
+    kms: 'arn:aws:kms:us-east-1:123456789012:key/ci-key-id'
 ```
 
 ## Create Encrypted Secrets File
@@ -246,7 +251,7 @@ sops:
             -----END AGE ENCRYPTED FILE-----
     lastmodified: "2024-01-15T10:30:00Z"
     mac: ENC[AES256_GCM,data:...,iv:...,tag:...,type:str]
-    version: 3.8.1
+    version: 3.13.1
 ```
 
 ## Edit Encrypted Files
@@ -407,16 +412,18 @@ jobs:
       - uses: actions/checkout@v4
       
       - name: Set up Helm
-        uses: azure/setup-helm@v3
+        uses: azure/setup-helm@v5.0.0
+        with:
+          version: v3.21.2
         
       - name: Install SOPS
         run: |
-          curl -LO https://github.com/getsops/sops/releases/download/v3.8.1/sops-v3.8.1.linux.amd64
-          chmod +x sops-v3.8.1.linux.amd64
-          sudo mv sops-v3.8.1.linux.amd64 /usr/local/bin/sops
+          curl -LO https://github.com/getsops/sops/releases/download/v3.13.1/sops-v3.13.1.linux.amd64
+          chmod +x sops-v3.13.1.linux.amd64
+          sudo mv sops-v3.13.1.linux.amd64 /usr/local/bin/sops
           
       - name: Install helm-secrets
-        run: helm plugin install https://github.com/jkroepke/helm-secrets
+        run: helm plugin install https://github.com/jkroepke/helm-secrets --version v4.7.7
         
       - name: Configure age key
         run: |
@@ -426,7 +433,7 @@ jobs:
       - name: Configure kubectl
         run: |
           echo "${{ secrets.KUBECONFIG }}" | base64 -d > kubeconfig
-          export KUBECONFIG=kubeconfig
+          echo "KUBECONFIG=$PWD/kubeconfig" >> "$GITHUB_ENV"
           
       - name: Deploy
         run: |
@@ -439,7 +446,7 @@ jobs:
 
 ### AWS KMS in CI/CD
 
-For AWS KMS, use IAM roles or credentials.
+For AWS KMS, use IAM roles or credentials after installing Helm, SOPS, and helm-secrets as above.
 
 ```yaml
 # .github/workflows/deploy.yml
@@ -455,7 +462,7 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::123456789:role/deploy-role
+          role-to-assume: arn:aws:iam::123456789012:role/deploy-role
           aws-region: us-east-1
           
       # SOPS will automatically use AWS credentials for KMS
@@ -474,11 +481,11 @@ deploy:
   stage: deploy
   image: alpine/helm:latest
   before_script:
-    - apk add --no-cache curl
-    - curl -LO https://github.com/getsops/sops/releases/download/v3.8.1/sops-v3.8.1.linux.amd64
-    - chmod +x sops-v3.8.1.linux.amd64
-    - mv sops-v3.8.1.linux.amd64 /usr/local/bin/sops
-    - helm plugin install https://github.com/jkroepke/helm-secrets
+    - apk add --no-cache bash curl git
+    - curl -LO https://github.com/getsops/sops/releases/download/v3.13.1/sops-v3.13.1.linux.amd64
+    - chmod +x sops-v3.13.1.linux.amd64
+    - mv sops-v3.13.1.linux.amd64 /usr/local/bin/sops
+    - helm plugin install https://github.com/jkroepke/helm-secrets --version v4.7.7
     - mkdir -p ~/.config/sops/age
     - echo "$SOPS_AGE_KEY" > ~/.config/sops/age/keys.txt
   script:
@@ -512,14 +519,19 @@ spec:
           command: ["/bin/sh", "-c"]
           args:
             - |
-              apk add --no-cache curl bash
-              curl -LO https://github.com/getsops/sops/releases/download/v3.8.1/sops-v3.8.1.linux.amd64
-              chmod +x sops-v3.8.1.linux.amd64
-              mv sops-v3.8.1.linux.amd64 /custom-tools/sops
-              helm plugin install https://github.com/jkroepke/helm-secrets
+              apk add --no-cache curl tar
+              SOPS_VERSION=3.13.1
+              HELM_SECRETS_VERSION=4.7.7
+              curl -fsSL "https://github.com/getsops/sops/releases/download/v${SOPS_VERSION}/sops-v${SOPS_VERSION}.linux.amd64" -o /custom-tools/sops
+              chmod +x /custom-tools/sops
+              mkdir -p /helm-plugins
+              curl -fsSL "https://github.com/jkroepke/helm-secrets/releases/download/v${HELM_SECRETS_VERSION}/helm-secrets.tar.gz" \
+                | tar -xz -C /helm-plugins
           volumeMounts:
             - name: custom-tools
               mountPath: /custom-tools
+            - name: helm-plugins
+              mountPath: /helm-plugins
       containers:
         - name: repo-server
           env:
@@ -531,10 +543,14 @@ spec:
             - name: custom-tools
               mountPath: /usr/local/bin/sops
               subPath: sops
+            - name: helm-plugins
+              mountPath: /home/argocd/.local/share/helm/plugins
             - name: sops-age-key
               mountPath: /sops/age
       volumes:
         - name: custom-tools
+          emptyDir: {}
+        - name: helm-plugins
           emptyDir: {}
         - name: sops-age-key
           secret:
@@ -544,6 +560,21 @@ spec:
 ### ArgoCD Application with Secrets
 
 Reference encrypted values in your Application.
+
+Allow helm-secrets value file schemes in `argocd-cm` before using `secrets://` value files.
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+  namespace: argocd
+data:
+  helm.valuesFileSchemes: >-
+    secrets+gpg-import,secrets+gpg-import-kubernetes,
+    secrets+age-import,secrets+age-import-kubernetes,
+    secrets,secrets+literal,https
+```
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -577,7 +608,7 @@ age-keygen -o new-key.txt
 sops updatekeys secrets.yaml
 
 # Or re-encrypt manually
-sops --decrypt secrets.yaml | sops --encrypt /dev/stdin > secrets.new.yaml
+sops --decrypt secrets.yaml | sops --encrypt --filename-override secrets.yaml > secrets.new.yaml
 mv secrets.new.yaml secrets.yaml
 ```
 
