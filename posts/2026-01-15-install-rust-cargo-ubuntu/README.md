@@ -132,7 +132,7 @@ rustup install 1.70.0
 rustup default stable
 
 # Override the toolchain for the current directory only
-# Creates a rust-toolchain.toml file or uses rustup override
+# Records the override in rustup's internal settings (does not create a file)
 rustup override set nightly
 
 # List all overrides currently in effect
@@ -269,7 +269,8 @@ name = "hello_rust"
 version = "0.1.0"
 
 # Rust edition - determines which language features are available
-# 2021 is the current edition, providing modern syntax and features
+# 2024 is the latest edition (default since Rust 1.85); 2021 is still
+# fully supported and a safe choice for broad compatibility
 edition = "2021"
 
 # Package authors - typically name and email
@@ -651,8 +652,11 @@ mod tests {
     #[test]
     #[should_panic(expected = "divide by zero")]
     fn test_panic_on_divide_by_zero() {
-        // This function would panic, and we expect it to
-        let _ = 10 / 0;  // This will panic with "divide by zero"
+        // We expect this to panic at runtime.
+        // The divisor is hidden behind black_box so the compiler does not
+        // reject it at compile time via the `unconditional_panic` lint.
+        let divisor = std::hint::black_box(0);
+        let _ = 10 / divisor;  // This will panic with "attempt to divide by zero"
     }
 
     // Ignored test - won't run unless specifically requested
@@ -996,7 +1000,10 @@ rustup target list
 # List installed targets
 rustup target list --installed
 
-# Show current default target
+# Show the host (default) target that rustc compiles for
+rustc -vV | grep host
+
+# List all targets rustc knows about (first 20 shown here)
 rustc --print target-list | head -20
 ```
 
@@ -1018,7 +1025,7 @@ rustup target add aarch64-apple-darwin          # 64-bit macOS (Apple Silicon)
 
 # Add WebAssembly targets
 rustup target add wasm32-unknown-unknown        # WebAssembly
-rustup target add wasm32-wasi                   # WebAssembly with WASI
+rustup target add wasm32-wasip1                 # WebAssembly with WASI (Preview 1)
 
 # Add embedded targets (no standard library)
 rustup target add thumbv7em-none-eabihf         # ARM Cortex-M4/M7
