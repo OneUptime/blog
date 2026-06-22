@@ -208,7 +208,7 @@ master:
     enabled: true
     size: 50Gi
   
-  podDisruptionBudget:
+  pdb:
     create: true
     minAvailable: 1
   
@@ -265,7 +265,7 @@ replica:
     enabled: true
     size: 50Gi
   
-  podDisruptionBudget:
+  pdb:
     create: true
     minAvailable: 2
   
@@ -296,10 +296,9 @@ sentinel:
       memory: 256Mi
       cpu: 200m
   
-  configuration: |
-    down-after-milliseconds 5000
-    failover-timeout 60000
-    parallel-syncs 1
+  downAfterMilliseconds: 5000
+  failoverTimeout: 60000
+  parallelSyncs: 1
 
 networkPolicy:
   enabled: true
@@ -366,7 +365,7 @@ redis:
       memory: 4Gi
       cpu: 2000m
   
-  configuration: |
+  configmap: |
     maxmemory 3gb
     maxmemory-policy allkeys-lru
     cluster-require-full-coverage no
@@ -443,7 +442,7 @@ from redis.sentinel import Sentinel
 
 sentinel = Sentinel([
     ('redis.cache.svc.cluster.local', 26379)
-], socket_timeout=0.5, password='your-password')
+], socket_timeout=0.5, sentinel_kwargs={'password': 'your-password'})
 
 # Get master
 master = sentinel.master_for('mymaster', password='your-password')
@@ -469,7 +468,7 @@ const redis = new Redis({
 });
 
 // With Sentinel
-const redis = new Redis({
+const sentinelRedis = new Redis({
   sentinels: [
     { host: 'redis.cache.svc.cluster.local', port: 26379 }
   ],
@@ -531,6 +530,7 @@ spec:
           volumes:
           - name: backup
             persistentVolumeClaim:
+              # Create this PVC separately, or replace it with your object-storage upload flow.
               claimName: redis-backup-pvc
 ```
 
@@ -609,8 +609,8 @@ kubectl logs redis-node-0 -c sentinel -n cache
 kubectl exec -it redis-master-0 -n cache -- redis-cli -a $REDIS_PASSWORD INFO replication
 
 # Check sentinel status
-kubectl exec -it redis-node-0 -c sentinel -n cache -- redis-cli -p 26379 SENTINEL masters
-kubectl exec -it redis-node-0 -c sentinel -n cache -- redis-cli -p 26379 SENTINEL replicas mymaster
+kubectl exec -it redis-node-0 -c sentinel -n cache -- redis-cli -p 26379 -a $REDIS_PASSWORD SENTINEL masters
+kubectl exec -it redis-node-0 -c sentinel -n cache -- redis-cli -p 26379 -a $REDIS_PASSWORD SENTINEL replicas mymaster
 ```
 
 ### Common Issues
