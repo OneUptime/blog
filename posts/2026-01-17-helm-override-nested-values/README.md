@@ -141,8 +141,8 @@ resources:
     cpu: 100m
     memory: 128Mi
 
-# Override with --set replaces entire leaf
-# This only sets cpu, memory is NOT preserved
+# Override with --set replaces only the specified leaf
+# This only sets cpu; memory is still preserved
 helm install myapp ./myapp --set resources.limits.cpu=1000m
 
 # Result
@@ -221,9 +221,9 @@ global:
 
 # Accessible in subcharts as .Values.global.imageRegistry
 postgresql:
-  # Subchart can access global values
-  global:
-    imageRegistry: gcr.io/myproject
+  # Subchart-specific values still go under the subchart name
+  auth:
+    database: myapp_db
 ```
 
 ### Access Global in Templates
@@ -231,13 +231,13 @@ postgresql:
 ```yaml
 # templates/deployment.yaml
 spec:
+  imagePullSecrets:
+    {{- range .Values.global.imagePullSecrets }}
+    - name: {{ .name }}
+    {{- end }}
   containers:
     - name: myapp
       image: {{ .Values.global.imageRegistry }}/myapp:{{ .Values.image.tag }}
-      imagePullSecrets:
-        {{- range .Values.global.imagePullSecrets }}
-        - name: {{ .name }}
-        {{- end }}
 ```
 
 ## Advanced Override Patterns
@@ -248,18 +248,18 @@ spec:
 # values.yaml
 database:
   enabled: true
-  external: false
   internal:
     host: postgresql
     port: 5432
   external:
+    enabled: false
     host: ""
     port: 5432
 
 # templates/deployment.yaml
 env:
   - name: DB_HOST
-    {{- if .Values.database.external }}
+    {{- if .Values.database.external.enabled }}
     value: {{ .Values.database.external.host }}
     {{- else }}
     value: {{ .Values.database.internal.host }}
@@ -284,11 +284,13 @@ env:
 
 ```yaml
 # values.yaml
+environment: production
 config:
   baseConfig: |
     server.port=8080
     server.host=0.0.0.0
-  additionalConfig: ""
+  additionalConfig: |
+    app.environment={{ .Values.environment }}
 
 # templates/configmap.yaml
 apiVersion: v1
@@ -297,13 +299,13 @@ metadata:
   name: {{ include "myapp.fullname" . }}
 data:
   application.properties: |
-    {{ .Values.config.baseConfig }}
-    {{ .Values.config.additionalConfig }}
+    {{- tpl .Values.config.baseConfig . | nindent 4 }}
+    {{- tpl .Values.config.additionalConfig . | nindent 4 }}
 ```
 
 ## Subchart Value Isolation
 
-### Prevent Value Leaking
+### Import Specific Child Values
 
 ```yaml
 # Chart.yaml
@@ -322,7 +324,9 @@ dependencies:
 ```yaml
 # charts/database/values.yaml
 exports:
-  connectionString: postgresql://{{ .Values.auth.username }}@{{ include "postgresql.primary.fullname" . }}:5432/{{ .Values.auth.database }}
+  data:
+    port: 5432
+    serviceName: database
 
 # Parent can import
 # Chart.yaml
@@ -373,10 +377,10 @@ helm install myapp ./myapp --set database=null
 # values.yaml
 port: 8080  # number
 
-# Override with string causes issues
-helm install myapp ./myapp --set port="8080"
+# Keep numeric values unquoted with --set
+helm install myapp ./myapp --set port=8080
 
-# Force number type
+# Force string type when the chart expects a string
 helm install myapp ./myapp --set-string port="8080"
 ```
 
