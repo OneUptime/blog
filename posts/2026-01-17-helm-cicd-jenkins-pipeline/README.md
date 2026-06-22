@@ -28,9 +28,10 @@ flowchart LR
 
 Install required Jenkins plugins and tools:
 
-- Kubernetes CLI plugin
+- Kubernetes plugin
 - Docker Pipeline plugin
 - Credentials Binding plugin
+- JUnit plugin
 - Pipeline Utility Steps plugin
 
 ## Repository Structure
@@ -89,7 +90,8 @@ pipeline {
     
     environment {
         CHART_DIR = 'charts'
-        REGISTRY = 'ghcr.io/myorg'
+        REGISTRY_HOST = 'ghcr.io'
+        REGISTRY_PATH = 'myorg/charts'
         REGISTRY_CREDS = credentials('ghcr-credentials')
     }
     
@@ -199,9 +201,9 @@ pipeline {
                                 trivy config ${CHART_DIR}/ \
                                     --format json \
                                     --output trivy-results.json
-                                    
+
                                 trivy config ${CHART_DIR}/ \
-                                    --exit-code 0 \
+                                    --exit-code 1 \
                                     --severity HIGH,CRITICAL
                             '''
                         }
@@ -224,7 +226,7 @@ pipeline {
                                 
                                 for chart in ${CHART_DIR}/*/; do
                                     echo "Policy testing $chart"
-                                    helm template test "$chart" | ./conftest test - --policy ./policy || true
+                                    helm template test "$chart" | ./conftest test - --policy ./policy
                                 done
                             '''
                         }
@@ -266,11 +268,11 @@ pipeline {
             steps {
                 container('helm') {
                     sh '''
-                        echo "${REGISTRY_CREDS_PSW}" | helm registry login ${REGISTRY} -u ${REGISTRY_CREDS_USR} --password-stdin
+                        echo "${REGISTRY_CREDS_PSW}" | helm registry login ${REGISTRY_HOST} -u ${REGISTRY_CREDS_USR} --password-stdin
                         
                         for pkg in packages/*.tgz; do
                             echo "Publishing $pkg"
-                            helm push "$pkg" oci://${REGISTRY}/charts
+                            helm push "$pkg" oci://${REGISTRY_HOST}/${REGISTRY_PATH}
                         done
                     '''
                 }
@@ -292,7 +294,7 @@ pipeline {
                                     
                                     echo "Deploying $CHART_NAME to staging"
                                     helm upgrade --install ${CHART_NAME}-staging \
-                                        oci://${REGISTRY}/charts/${CHART_NAME} \
+                                        oci://${REGISTRY_HOST}/${REGISTRY_PATH}/${CHART_NAME} \
                                         --version ${VERSION} \
                                         --namespace staging \
                                         --create-namespace \
@@ -314,37 +316,28 @@ pipeline {
             input {
                 message 'Deploy to production?'
                 ok 'Deploy'
-                parameters {
-                    choice(name: 'CONFIRM', choices: ['No', 'Yes'], description: 'Confirm production deployment')
-                }
             }
             steps {
-                script {
-                    if (params.CONFIRM == 'Yes') {
-                        container('kubectl') {
-                            withCredentials([file(credentialsId: 'kubeconfig-production', variable: 'KUBECONFIG')]) {
-                                container('helm') {
-                                    sh '''
-                                        for chart in ${CHART_DIR}/*/; do
-                                            CHART_NAME=$(basename "$chart")
-                                            VERSION=$(grep '^version:' "${chart}Chart.yaml" | awk '{print $2}')
-                                            
-                                            echo "Deploying $CHART_NAME to production"
-                                            helm upgrade --install ${CHART_NAME} \
-                                                oci://${REGISTRY}/charts/${CHART_NAME} \
-                                                --version ${VERSION} \
-                                                --namespace production \
-                                                --create-namespace \
-                                                -f ${chart}values-production.yaml \
-                                                --wait \
-                                                --timeout 10m
-                                        done
-                                    '''
-                                }
-                            }
+                container('kubectl') {
+                    withCredentials([file(credentialsId: 'kubeconfig-production', variable: 'KUBECONFIG')]) {
+                        container('helm') {
+                            sh '''
+                                for chart in ${CHART_DIR}/*/; do
+                                    CHART_NAME=$(basename "$chart")
+                                    VERSION=$(grep '^version:' "${chart}Chart.yaml" | awk '{print $2}')
+
+                                    echo "Deploying $CHART_NAME to production"
+                                    helm upgrade --install ${CHART_NAME} \
+                                        oci://${REGISTRY_HOST}/${REGISTRY_PATH}/${CHART_NAME} \
+                                        --version ${VERSION} \
+                                        --namespace production \
+                                        --create-namespace \
+                                        -f ${chart}values-production.yaml \
+                                        --wait \
+                                        --timeout 10m
+                                done
+                            '''
                         }
-                    } else {
-                        echo 'Production deployment cancelled'
                     }
                 }
             }
@@ -374,7 +367,8 @@ For more complex logic, use a scripted pipeline:
 // Jenkinsfile (Scripted)
 node('kubernetes') {
     def chartDir = 'charts'
-    def registry = 'ghcr.io/myorg'
+    def registryHost = 'ghcr.io'
+    def registryPath = 'myorg/charts'
     def changedCharts = []
     
     stage('Checkout') {
@@ -419,7 +413,7 @@ node('kubernetes') {
     
     stage('Security Scan') {
         docker.image('aquasec/trivy:latest').inside('--entrypoint=""') {
-            sh "trivy config ${chartDir}/ --severity HIGH,CRITICAL"
+            sh "trivy config ${chartDir}/ --severity HIGH,CRITICAL --exit-code 1"
         }
     }
     
@@ -445,10 +439,10 @@ node('kubernetes') {
             )]) {
                 docker.image('alpine/helm:3.13.0').inside {
                     sh """
-                        echo \${REGISTRY_PASS} | helm registry login ${registry} -u \${REGISTRY_USER} --password-stdin
+                        echo \${REGISTRY_PASS} | helm registry login ${registryHost} -u \${REGISTRY_USER} --password-stdin
                         
                         for pkg in packages/*.tgz; do
-                            helm push "\$pkg" oci://${registry}/charts
+                            helm push "\$pkg" oci://${registryHost}/${registryPath}
                         done
                     """
                 }
@@ -456,17 +450,17 @@ node('kubernetes') {
         }
         
         stage('Deploy Staging') {
-            deployToEnvironment('staging', changedCharts, chartDir, registry)
+            deployToEnvironment('staging', changedCharts, chartDir, registryHost, registryPath)
         }
         
         stage('Deploy Production') {
             input message: 'Deploy to production?', ok: 'Deploy'
-            deployToEnvironment('production', changedCharts, chartDir, registry)
+            deployToEnvironment('production', changedCharts, chartDir, registryHost, registryPath)
         }
     }
 }
 
-def deployToEnvironment(String environment, List charts, String chartDir, String registry) {
+def deployToEnvironment(String environment, List charts, String chartDir, String registryHost, String registryPath) {
     withCredentials([file(credentialsId: "kubeconfig-${environment}", variable: 'KUBECONFIG')]) {
         docker.image('alpine/helm:3.13.0').inside {
             charts.each { chart ->
@@ -479,7 +473,7 @@ def deployToEnvironment(String environment, List charts, String chartDir, String
                 
                 sh """
                     helm upgrade --install ${releaseName} \
-                        oci://${registry}/charts/${chart} \
+                        oci://${registryHost}/${registryPath}/${chart} \
                         --version ${version} \
                         --namespace ${environment} \
                         --create-namespace \
@@ -501,7 +495,8 @@ Create a shared library for reusable Helm functions:
 // vars/helmPipeline.groovy
 def call(Map config = [:]) {
     def chartDir = config.chartDir ?: 'charts'
-    def registry = config.registry ?: 'ghcr.io/myorg'
+    def registryHost = config.registryHost ?: 'ghcr.io'
+    def registryPath = config.registryPath ?: 'myorg/charts'
     
     pipeline {
         agent {
@@ -538,7 +533,7 @@ def call(Map config = [:]) {
                 steps {
                     container('helm') {
                         script {
-                            helmPackageAndPublish(chartDir, registry)
+                            helmPackageAndPublish(chartDir, registryHost, registryPath)
                         }
                     }
                 }
@@ -585,19 +580,19 @@ def helmTest(String chartDir) {
     """
 }
 
-def helmPackageAndPublish(String chartDir, String registry) {
+def helmPackageAndPublish(String chartDir, String registryHost, String registryPath) {
     withCredentials([usernamePassword(
         credentialsId: 'registry-credentials',
         usernameVariable: 'USER',
         passwordVariable: 'PASS'
     )]) {
         sh """
-            echo \${PASS} | helm registry login ${registry} -u \${USER} --password-stdin
+            echo \${PASS} | helm registry login ${registryHost} -u \${USER} --password-stdin
             
             for chart in ${chartDir}/*/; do
                 helm dependency build "\$chart"
                 helm package "\$chart"
-                helm push *.tgz oci://${registry}/charts
+                helm push *.tgz oci://${registryHost}/${registryPath}
                 rm *.tgz
             done
         """
@@ -612,7 +607,8 @@ Usage in Jenkinsfile:
 
 helmPipeline(
     chartDir: 'charts',
-    registry: 'ghcr.io/myorg'
+    registryHost: 'ghcr.io',
+    registryPath: 'myorg/charts'
 )
 ```
 
@@ -715,6 +711,7 @@ pipeline {
         }
         stage('Test') {
             steps {
+                sh 'helm plugin install https://github.com/helm-unittest/helm-unittest || true'
                 sh 'helm unittest charts/*/'
             }
         }
@@ -723,7 +720,8 @@ pipeline {
                 branch 'main'
             }
             steps {
-                sh 'helm push charts/*/ oci://registry/charts'
+                sh 'mkdir -p packages && for chart in charts/*/; do helm package "$chart" -d packages/; done'
+                sh 'for pkg in packages/*.tgz; do helm push "$pkg" oci://registry/charts; done'
             }
         }
     }
