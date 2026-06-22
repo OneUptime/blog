@@ -42,8 +42,6 @@ flowchart LR
 ## Basic Anchors and Aliases
 
 ```yaml
-version: '3.8'
-
 # Define common configurations using extension fields (x-)
 
 x-common-env: &common-env
@@ -77,8 +75,6 @@ services:
 Extension fields starting with `x-` are ignored by Compose but perfect for anchors.
 
 ```yaml
-version: '3.8'
-
 # Reusable blocks
 x-app-common: &app-common
   restart: unless-stopped
@@ -108,8 +104,7 @@ x-resource-limits: &default-resources
 
 services:
   api:
-    <<: *app-common
-    <<: *default-resources
+    <<: [*app-common, *default-resources]
     image: myapi:latest
     ports:
       - "3000:3000"
@@ -118,8 +113,7 @@ services:
       test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
 
   worker:
-    <<: *app-common
-    <<: *default-resources
+    <<: [*app-common, *default-resources]
     image: myworker:latest
     healthcheck:
       <<: *default-healthcheck
@@ -132,8 +126,6 @@ networks:
 ## Environment Variables
 
 ```yaml
-version: '3.8'
-
 x-database-env: &db-env
   POSTGRES_USER: ${DB_USER:-app}
   POSTGRES_PASSWORD: ${DB_PASSWORD}
@@ -167,8 +159,6 @@ services:
 ## Volume Mounts
 
 ```yaml
-version: '3.8'
-
 x-app-volumes: &app-volumes
   - ./src:/app/src:ro
   - ./config:/app/config:ro
@@ -201,8 +191,6 @@ volumes:
 ## Deploy Configuration
 
 ```yaml
-version: '3.8'
-
 x-deploy-default: &deploy-default
   replicas: 2
   update_config:
@@ -246,8 +234,6 @@ services:
 ## Combining Multiple Anchors
 
 ```yaml
-version: '3.8'
-
 # Base configurations
 x-base: &base
   restart: unless-stopped
@@ -308,8 +294,6 @@ services:
 ## Complete Production Example
 
 ```yaml
-version: '3.8'
-
 # ============================================
 # Reusable Configuration Blocks
 # ============================================
@@ -324,17 +308,16 @@ x-logging: &default-logging
 
 x-healthcheck-http: &healthcheck-http
   healthcheck:
-    test: ["CMD", "wget", "-q", "--spider", "http://localhost:${PORT:-8080}/health"]
+    test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/health"]
     interval: 30s
     timeout: 10s
     retries: 3
     start_period: 40s
 
 x-healthcheck-tcp: &healthcheck-tcp
-  healthcheck:
-    interval: 30s
-    timeout: 10s
-    retries: 3
+  interval: 30s
+  timeout: 10s
+  retries: 3
 
 x-restart-policy: &restart-policy
   restart: unless-stopped
@@ -498,4 +481,3 @@ services:
 | Extension | `x-name:` | Hidden config blocks |
 
 YAML anchors and aliases reduce duplication within a single Compose file. For cross-file reuse, combine with extends as described in our post on [Docker Compose Extends](https://oneuptime.com/blog/post/2026-01-16-docker-compose-extends/view).
-
