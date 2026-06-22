@@ -40,15 +40,13 @@ docker run -d \
 |----------|---------|
 | `MONGO_INITDB_ROOT_USERNAME` | Admin username (enables auth) |
 | `MONGO_INITDB_ROOT_PASSWORD` | Admin password |
-| `MONGO_INITDB_DATABASE` | Initial database to create |
+| `MONGO_INITDB_DATABASE` | Database used for initialization scripts |
 
 ## Docker Compose Configuration
 
 ### Basic Setup
 
 ```yaml
-version: '3.8'
-
 services:
   mongodb:
     image: mongo:7
@@ -70,8 +68,6 @@ volumes:
 ### Production Setup with Secrets
 
 ```yaml
-version: '3.8'
-
 services:
   mongodb:
     image: mongo:7
@@ -182,8 +178,6 @@ services:
 # Storage
 storage:
   dbPath: /data/db
-  journal:
-    enabled: true
   wiredTiger:
     engineConfig:
       cacheSizeGB: 1
@@ -246,6 +240,12 @@ services:
     environment:
       MONGO_INITDB_ROOT_USERNAME: admin
       MONGO_INITDB_ROOT_PASSWORD: secret
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     networks:
       - app-network
 
@@ -286,8 +286,6 @@ For production, run MongoDB as a replica set for high availability.
 ### Single Node Replica Set (Development)
 
 ```yaml
-version: '3.8'
-
 services:
   mongodb:
     image: mongo:7
@@ -315,8 +313,6 @@ volumes:
 ### Three-Node Replica Set
 
 ```yaml
-version: '3.8'
-
 services:
   mongo1:
     image: mongo:7
@@ -416,8 +412,6 @@ docker exec mongodb mongorestore \
 ### Automated Backup Service
 
 ```yaml
-version: '3.8'
-
 services:
   mongodb:
     image: mongo:7
@@ -456,7 +450,7 @@ volumes:
 
 ### Memory Configuration
 
-MongoDB uses WiredTiger's cache. By default, it uses 50% of RAM minus 1GB.
+MongoDB uses WiredTiger's cache. By default, it uses the larger of 50% of (RAM minus 1GB), or 256MB.
 
 ```yaml
 services:
