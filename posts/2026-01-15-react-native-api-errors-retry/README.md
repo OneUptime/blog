@@ -95,12 +95,12 @@ Request interceptors allow you to modify requests before they are sent:
 
 ```typescript
 // src/api/interceptors/requestInterceptor.ts
-import { AxiosRequestConfig } from 'axios';
+import { AxiosInstance, InternalAxiosRequestConfig, AxiosError } from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export const setupRequestInterceptor = (instance: AxiosInstance): void => {
   instance.interceptors.request.use(
-    async (config: AxiosRequestConfig) => {
+    async (config: InternalAxiosRequestConfig) => {
       // Add authentication token
       const token = await AsyncStorage.getItem('authToken');
       if (token && config.headers) {
@@ -465,12 +465,15 @@ export const calculateJitter = (
       // Equal jitter: half the delay plus random half
       return (baseDelay / 2) + (Math.random() * baseDelay / 2);
 
-    case 'decorrelated':
+    case 'decorrelated': {
       // Decorrelated jitter: random between base and 3x previous delay
+      const lower = defaultRetryConfig.baseDelay;
+      const upper = baseDelay * 3;
       return Math.min(
         defaultRetryConfig.maxDelay,
-        Math.random() * baseDelay * 3
+        lower + Math.random() * (upper - lower)
       );
+    }
 
     default:
       return baseDelay;
