@@ -803,7 +803,7 @@ class AccessibilityAuditor {
 
   private checkImageAccessibility(node: ReactTestInstance): void {
     if (node.type === 'Image') {
-      if (!node.props.accessibilityLabel && !node.props.accessible === false) {
+      if (!node.props.accessibilityLabel && node.props.accessible !== false) {
         this.warnings.push({
           rule: 'image-has-alt',
           element: 'Image',
