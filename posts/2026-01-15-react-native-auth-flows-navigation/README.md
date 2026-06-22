@@ -50,7 +50,7 @@ For this guide, we will primarily focus on token-based authentication while inco
 First, let us set up a new React Native project with the necessary dependencies:
 
 ```bash
-npx react-native init AuthFlowDemo --template react-native-template-typescript
+npx @react-native-community/cli@latest init AuthFlowDemo
 cd AuthFlowDemo
 
 # Install React Navigation dependencies
@@ -90,6 +90,7 @@ interface User {
   email: string;
   name: string;
   avatar?: string;
+  role?: string;
 }
 
 interface AuthTokens {
@@ -362,6 +363,8 @@ import SplashScreen from '../screens/SplashScreen';
 import LoginScreen from '../screens/LoginScreen';
 import RegisterScreen from '../screens/RegisterScreen';
 import ForgotPasswordScreen from '../screens/ForgotPasswordScreen';
+import ProfileScreen from '../screens/ProfileScreen';
+import SettingsScreen from '../screens/SettingsScreen';
 import MainTabNavigator from './MainTabNavigator';
 
 // Type definitions for navigation
@@ -500,7 +503,7 @@ export default function LoginScreen({ navigation }: Props): React.ReactElement {
 
     if (!password) {
       errors.password = 'Password is required';
-    } else if (!validatePassword(password)) {
+    } else if (!validatePassword(password).isValid) {
       errors.password = 'Password must be at least 8 characters';
     }
 
@@ -1559,6 +1562,7 @@ Implementing biometric authentication for returning users:
 // src/hooks/useBiometricAuth.ts
 import { useState, useEffect, useCallback } from 'react';
 import ReactNativeBiometrics, { BiometryTypes } from 'react-native-biometrics';
+import * as Keychain from 'react-native-keychain';
 import { SecureStorage } from '../services/SecureStorage';
 import { useAuth } from '../contexts/AuthContext';
 import { Alert, Platform } from 'react-native';
