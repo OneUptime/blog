@@ -55,10 +55,11 @@ docker build -t myapp:$GIT_SHA .
 
 # Tag with branch name
 GIT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-docker build -t myapp:$GIT_BRANCH .
+SAFE_BRANCH=$(echo "$GIT_BRANCH" | sed 's/[^A-Za-z0-9_.-]/-/g' | sed 's/^[.-]/_/')
+docker build -t myapp:$SAFE_BRANCH .
 
 # Combined approach
-docker build -t myapp:${GIT_BRANCH}-${GIT_SHA} .
+docker build -t myapp:${SAFE_BRANCH}-${GIT_SHA} .
 ```
 
 ### Date-Based Tags
@@ -212,7 +213,7 @@ VERSION=v1.0.0 docker buildx bake --push
 ### Docker Hub
 
 ```bash
-docker login docker.io -u username -p password
+echo "$DOCKERHUB_TOKEN" | docker login docker.io -u username --password-stdin
 # Or interactively
 docker login
 ```
@@ -250,7 +251,7 @@ gcloud auth configure-docker us-docker.pkg.dev
 az acr login --name myregistry
 
 # Using service principal
-docker login myregistry.azurecr.io -u $SP_APP_ID -p $SP_PASSWORD
+echo "$SP_PASSWORD" | docker login myregistry.azurecr.io -u "$SP_APP_ID" --password-stdin
 ```
 
 ## CI/CD Examples
@@ -272,23 +273,23 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Login to Docker Hub
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Login to AWS ECR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: 123456789.dkr.ecr.us-east-1.amazonaws.com
           username: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -299,7 +300,7 @@ jobs:
         run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
 
       - name: Build and push
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/amd64,linux/arm64
@@ -332,9 +333,9 @@ build:
     - docker:24-dind
   before_script:
     # Login to all registries
-    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
-    - docker login -u $DOCKERHUB_USER -p $DOCKERHUB_TOKEN docker.io
-    - echo $GHCR_TOKEN | docker login ghcr.io -u $GHCR_USER --password-stdin
+    - echo "$CI_REGISTRY_PASSWORD" | docker login "$CI_REGISTRY" -u "$CI_REGISTRY_USER" --password-stdin
+    - echo "$DOCKERHUB_TOKEN" | docker login docker.io -u "$DOCKERHUB_USER" --password-stdin
+    - echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
   script:
     - docker buildx create --use
     - |
@@ -364,8 +365,8 @@ pipeline {
         stage('Login') {
             steps {
                 sh '''
-                    echo $DOCKERHUB_CREDS_PSW | docker login docker.io -u $DOCKERHUB_CREDS_USR --password-stdin
-                    echo $GHCR_CREDS_PSW | docker login ghcr.io -u $GHCR_CREDS_USR --password-stdin
+                    echo "$DOCKERHUB_CREDS_PSW" | docker login docker.io -u "$DOCKERHUB_CREDS_USR" --password-stdin
+                    echo "$GHCR_CREDS_PSW" | docker login ghcr.io -u "$GHCR_CREDS_USR" --password-stdin
                 '''
             }
         }
@@ -450,11 +451,11 @@ done
 
 ```bash
 # Good: Specific version
-docker push myapp:v1.0.0
-docker push myapp:v1.0.1
+docker push docker.io/mycompany/myapp:v1.0.0
+docker push docker.io/mycompany/myapp:v1.0.1
 
 # Avoid relying on mutable tags for production
-docker push myapp:latest  # OK for development
+docker push docker.io/mycompany/myapp:latest  # OK for development
 ```
 
 ### 2. Include Metadata
@@ -471,10 +472,6 @@ LABEL org.opencontainers.image.revision="abc123"
 ```bash
 # Sign with cosign
 cosign sign docker.io/mycompany/myapp:v1.0.0
-
-# Sign with Docker Content Trust
-export DOCKER_CONTENT_TRUST=1
-docker push docker.io/mycompany/myapp:v1.0.0
 ```
 
 ### 4. Clean Up Old Tags
@@ -498,4 +495,3 @@ crane delete ghcr.io/mycompany/myapp:old-tag
 | Login to registry | `docker login registry` |
 
 Pushing to multiple registries ensures availability and provides flexibility for multi-cloud deployments. Use buildx for efficient multi-registry pushes, implement proper tagging strategies, and automate the process in your CI/CD pipeline for consistent, reliable deployments.
-
