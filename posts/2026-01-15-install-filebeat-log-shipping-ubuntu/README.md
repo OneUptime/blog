@@ -250,8 +250,8 @@ filebeat.inputs:
         check_interval: 10s
         # Fingerprint method for file identity (more reliable than path)
         fingerprint.enabled: true
-    # File identity method
-    file_identity.native: ~
+    # File identity method - use fingerprint to match the scanner setting above
+    file_identity.fingerprint: ~
     # Parsers for structured log formats
     parsers:
       - ndjson:
@@ -680,16 +680,14 @@ monitoring:
     hosts: ["https://monitoring-es.example.com:9200"]
     username: "monitoring_user"
     password: "${MONITORING_PASSWORD}"
-    # Separate index for monitoring data
-    metrics.index: ".monitoring-filebeat"
-    state.index: ".monitoring-filebeat"
-  # Collection interval
-  period: 30s
+    # How often metrics and state snapshots are sent (monitoring indices are managed automatically)
+    metrics.period: 30s
+    state.period: 60s
 ```
 
 ### HTTP Metrics Endpoint
 
-Enable the HTTP endpoint to expose metrics for Prometheus or other monitoring systems.
+Enable the HTTP endpoint to expose internal metrics as JSON for monitoring systems. (Filebeat serves JSON, not the Prometheus exposition format; use an exporter if you need Prometheus scraping.)
 
 ```yaml
 # Enable HTTP endpoint for metrics
@@ -697,9 +695,10 @@ http:
   enabled: true
   host: "0.0.0.0"
   port: 5066
-  # Named URL for specific metrics
-  # /stats - runtime stats
-  # /state - current state
+  # Available paths:
+  # /        - basic beat info
+  # /stats   - runtime stats
+  # /inputs/ - per-input metrics
 ```
 
 Query the metrics endpoint to check Filebeat health.
@@ -714,8 +713,8 @@ curl -s http://localhost:5066/stats | jq '.filebeat.harvester'
 # Check output metrics
 curl -s http://localhost:5066/stats | jq '.libbeat.output'
 
-# Prometheus metrics endpoint
-curl -s http://localhost:5066/metrics
+# Per-input metrics
+curl -s http://localhost:5066/inputs/ | jq .
 ```
 
 ### Key Metrics to Monitor
@@ -929,7 +928,7 @@ output.elasticsearch:
   # Increase workers for parallel processing
   worker: 4  # Default is 1
   # Larger bulk size for efficiency
-  bulk_max_size: 4096  # Default is 2048
+  bulk_max_size: 4096  # Default is 1600
   # Connection pool
   max_retries: 5
   timeout: 180
@@ -941,7 +940,7 @@ filebeat.inputs:
     paths:
       - /var/log/app/*.log
     # Larger read buffer
-    harvester_buffer_size: 32768  # Default is 16384
+    buffer_size: 32768  # Default is 16384
     # Increase prospector frequency for fast-rotating files
     prospector.scanner.check_interval: 5s
 ```
