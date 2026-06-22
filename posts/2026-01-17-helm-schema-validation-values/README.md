@@ -342,12 +342,12 @@ Allow mutually exclusive configurations.
 
 ### References for Reusability
 
-Define reusable schemas with `$defs`.
+Define reusable schemas with `definitions`.
 
 ```json
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$defs": {
+  "definitions": {
     "resources": {
       "type": "object",
       "properties": {
@@ -379,9 +379,9 @@ Define reusable schemas with `$defs`.
     }
   },
   "properties": {
-    "resources": { "$ref": "#/$defs/resources" },
-    "livenessProbe": { "$ref": "#/$defs/probe" },
-    "readinessProbe": { "$ref": "#/$defs/probe" }
+    "resources": { "$ref": "#/definitions/resources" },
+    "livenessProbe": { "$ref": "#/definitions/probe" },
+    "readinessProbe": { "$ref": "#/definitions/probe" }
   }
 }
 ```
@@ -396,7 +396,7 @@ Here's a comprehensive schema for a typical web application chart:
   "type": "object",
   "title": "Web Application Chart Values",
   "description": "Helm values for deploying a web application",
-  "$defs": {
+  "definitions": {
     "resourceQuantity": {
       "type": "string",
       "pattern": "^[0-9]+(m|Mi|Gi)?$"
@@ -407,15 +407,15 @@ Here's a comprehensive schema for a typical web application chart:
         "requests": {
           "type": "object",
           "properties": {
-            "cpu": { "$ref": "#/$defs/resourceQuantity" },
-            "memory": { "$ref": "#/$defs/resourceQuantity" }
+            "cpu": { "$ref": "#/definitions/resourceQuantity" },
+            "memory": { "$ref": "#/definitions/resourceQuantity" }
           }
         },
         "limits": {
           "type": "object",
           "properties": {
-            "cpu": { "$ref": "#/$defs/resourceQuantity" },
-            "memory": { "$ref": "#/$defs/resourceQuantity" }
+            "cpu": { "$ref": "#/definitions/resourceQuantity" },
+            "memory": { "$ref": "#/definitions/resourceQuantity" }
           }
         }
       }
@@ -602,7 +602,7 @@ Here's a comprehensive schema for a typical web application chart:
         "required": ["hosts"]
       }
     },
-    "resources": { "$ref": "#/$defs/resources" },
+    "resources": { "$ref": "#/definitions/resources" },
     "autoscaling": {
       "type": "object",
       "properties": {
@@ -675,7 +675,7 @@ helm install my-release ./my-chart -f values.yaml
 # Validation also runs during template
 helm template my-release ./my-chart -f values.yaml
 
-# Force validation with dry-run
+# Validate the install path with dry-run
 helm install my-release ./my-chart -f values.yaml --dry-run
 ```
 
@@ -700,7 +700,8 @@ npm install -g ajv-cli
 ajv validate -s values.schema.json -d values.yaml
 
 # Convert YAML to JSON for validation
-yq eval -o=json values.yaml | ajv validate -s values.schema.json
+yq eval -o=json values.yaml > values.json
+ajv validate -s values.schema.json -d values.json
 ```
 
 ## IDE Integration
@@ -785,7 +786,7 @@ Use tools to generate a starting schema from your values.yaml.
 helm plugin install https://github.com/losisin/helm-values-schema-json
 
 # Generate schema from values.yaml
-helm schema -input values.yaml -output values.schema.json
+helm schema --values values.yaml --output values.schema.json
 ```
 
 ## Best Practices
@@ -798,7 +799,7 @@ helm schema -input values.yaml -output values.schema.json
 | Use enums where possible | Catch typos |
 | Validate patterns | Kubernetes naming rules |
 | Add examples | Help users understand format |
-| Use $defs for reusability | DRY schema definitions |
+| Use definitions for reusability | DRY schema definitions |
 
 ## Common Patterns
 
@@ -815,7 +816,7 @@ Resource Quantity Pattern
 
 ```json
 {
-  "pattern": "^([0-9]+)(m|Mi|Gi|Ki|Ti|Pi|Ei)?$"
+  "pattern": "^([+-]?([0-9]+(\\.[0-9]*)?|\\.[0-9]+)([eE][+-]?[0-9]+)?)(n|u|m|k|M|G|T|P|E|Ki|Mi|Gi|Ti|Pi|Ei)?$"
 }
 ```
 
@@ -829,4 +830,4 @@ Resource Quantity Pattern
 
 ## Wrap-up
 
-JSON Schema validation for Helm charts catches configuration errors before deployment, provides IDE autocomplete, and documents your chart's interface. Start with a basic schema covering required values and common constraints, then expand as needed. Use conditional validation for interdependent values, define reusable schemas with `$defs`, and integrate validation into your CI/CD pipeline. A well-designed schema significantly improves the chart user experience and reduces deployment failures.
+JSON Schema validation for Helm charts catches configuration errors before deployment, provides IDE autocomplete, and documents your chart's interface. Start with a basic schema covering required values and common constraints, then expand as needed. Use conditional validation for interdependent values, define reusable schemas with `definitions`, and integrate validation into your CI/CD pipeline. A well-designed schema significantly improves the chart user experience and reduces deployment failures.
