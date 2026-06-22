@@ -231,10 +231,10 @@ def test_ipv6_connectivity(host, port=443):
     except socket.gaierror as e:
         print(f"DNS resolution failed: {e}")
         return False
-    except socket.timeout:
+    except TimeoutError:
         print(f"Connection timed out")
         return False
-    except socket.error as e:
+    except OSError as e:
         print(f"Socket error: {e}")
         return False
 
@@ -720,12 +720,18 @@ class IPv6WebTester:
 
             ws_url = self.base_url.replace("http", "ws") + ws_path
 
-            ws = websocket.create_connection(
-                ws_url,
-                timeout=10,
-                sockopt=((socket.AF_INET6, socket.SOCK_STREAM, 0),)
-            )
-            ws.close()
+            old_getaddrinfo = socket.getaddrinfo
+
+            def ipv6_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
+                return old_getaddrinfo(host, port, socket.AF_INET6, type, proto, flags)
+
+            socket.getaddrinfo = ipv6_getaddrinfo
+
+            try:
+                ws = websocket.create_connection(ws_url, timeout=10)
+                ws.close()
+            finally:
+                socket.getaddrinfo = old_getaddrinfo
 
             return self._pass(test_name, "WebSocket connection successful")
 
@@ -1214,12 +1220,13 @@ class IPv6LoadTester:
             print(f"  Max:              {max(durations)*1000:.2f}ms")
             print(f"  Mean:             {statistics.mean(durations)*1000:.2f}ms")
             print(f"  Median:           {statistics.median(durations)*1000:.2f}ms")
-            print(f"  Std Dev:          {statistics.stdev(durations)*1000:.2f}ms")
+            std_dev = statistics.stdev(durations) if len(durations) > 1 else 0
+            print(f"  Std Dev:          {std_dev*1000:.2f}ms")
 
             # Percentiles
             sorted_durations = sorted(durations)
-            p95_idx = int(len(sorted_durations) * 0.95)
-            p99_idx = int(len(sorted_durations) * 0.99)
+            p95_idx = min(int(len(sorted_durations) * 0.95), len(sorted_durations) - 1)
+            p99_idx = min(int(len(sorted_durations) * 0.99), len(sorted_durations) - 1)
 
             print(f"  95th percentile:  {sorted_durations[p95_idx]*1000:.2f}ms")
             print(f"  99th percentile:  {sorted_durations[p99_idx]*1000:.2f}ms")
@@ -1299,8 +1306,8 @@ jobs:
 
       - name: Verify IPv6 connectivity
         run: |
-          # Test IPv6 connectivity to Google
-          ping6 -c 3 ipv6.google.com || echo "IPv6 not available in runner"
+          # Test IPv6 HTTPS connectivity to Google
+          curl -6 --connect-timeout 10 https://ipv6.google.com || echo "IPv6 not available in runner"
 
       - name: Run IPv6 DNS tests
         run: |
@@ -1339,8 +1346,8 @@ jobs:
         run: |
           python scripts/ipv6_load_test.py \
             ${{ secrets.APP_URL }} \
-            --requests 500 \
-            --concurrency 20
+            500 \
+            20
 
       - name: Compare with IPv4 baseline
         run: |
@@ -1351,8 +1358,6 @@ jobs:
 
 ```yaml
 # docker-compose.test-ipv6.yml
-version: '3.8'
-
 services:
   app:
     build: .
