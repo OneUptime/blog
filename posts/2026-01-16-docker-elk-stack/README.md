@@ -23,11 +23,9 @@ flowchart LR
 ## Basic ELK Setup
 
 ```yaml
-version: '3.8'
-
 services:
   elasticsearch:
-    image: elasticsearch:8.11.0
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
     environment:
       - discovery.type=single-node
       - xpack.security.enabled=false
@@ -38,14 +36,14 @@ services:
       - "9200:9200"
 
   logstash:
-    image: logstash:8.11.0
+    image: docker.elastic.co/logstash/logstash:8.11.0
     volumes:
       - ./logstash.conf:/usr/share/logstash/pipeline/logstash.conf
     depends_on:
       - elasticsearch
 
   kibana:
-    image: kibana:8.11.0
+    image: docker.elastic.co/kibana/kibana:8.11.0
     ports:
       - "5601:5601"
     environment:
@@ -54,14 +52,14 @@ services:
       - elasticsearch
 
   filebeat:
-    image: elastic/filebeat:8.11.0
+    image: docker.elastic.co/beats/filebeat:8.11.0
     user: root
     volumes:
       - ./filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
     depends_on:
-      - elasticsearch
+      - logstash
 
 volumes:
   esdata:
@@ -73,17 +71,18 @@ volumes:
 # filebeat.yml
 
 filebeat.inputs:
-  - type: container
+  - type: filestream
+    id: docker-container-logs
     paths:
       - '/var/lib/docker/containers/*/*.log'
+    parsers:
+      - container: ~
     processors:
       - add_docker_metadata:
           host: "unix:///var/run/docker.sock"
 
-output.elasticsearch:
-  hosts: ["elasticsearch:9200"]
-  indices:
-    - index: "docker-logs-%{+yyyy.MM.dd}"
+output.logstash:
+  hosts: ["logstash:5044"]
 
 setup.kibana:
   host: "kibana:5601"
@@ -135,11 +134,11 @@ services:
     logging:
       driver: gelf
       options:
-        gelf-address: "udp://logstash:12201"
+        gelf-address: "udp://127.0.0.1:12201"
         tag: "myapp"
 
   logstash:
-    image: logstash:8.11.0
+    image: docker.elastic.co/logstash/logstash:8.11.0
     ports:
       - "12201:12201/udp"
     volumes:
@@ -165,11 +164,9 @@ output {
 ## Complete Production Setup
 
 ```yaml
-version: '3.8'
-
 services:
   elasticsearch:
-    image: elasticsearch:8.11.0
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
     restart: unless-stopped
     environment:
       - discovery.type=single-node
@@ -188,8 +185,17 @@ services:
       timeout: 10s
       retries: 5
 
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.11.0
+    restart: unless-stopped
+    volumes:
+      - ./logstash.conf:/usr/share/logstash/pipeline/logstash.conf
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+
   kibana:
-    image: kibana:8.11.0
+    image: docker.elastic.co/kibana/kibana:8.11.0
     restart: unless-stopped
     ports:
       - "5601:5601"
@@ -200,7 +206,7 @@ services:
         condition: service_healthy
 
   filebeat:
-    image: elastic/filebeat:8.11.0
+    image: docker.elastic.co/beats/filebeat:8.11.0
     restart: unless-stopped
     user: root
     volumes:
@@ -208,8 +214,7 @@ services:
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
     depends_on:
-      elasticsearch:
-        condition: service_healthy
+      - logstash
     command: ["filebeat", "-e", "-strict.perms=false"]
 
 volumes:
@@ -226,4 +231,3 @@ volumes:
 | Filebeat | Log shipping from containers |
 
 The ELK stack provides comprehensive log management for Docker. Use Filebeat for lightweight log collection and Logstash for complex parsing. For simpler setups, consider Fluentd as described in our post on [Docker Logging Drivers](https://oneuptime.com/blog/post/2026-01-16-docker-logging-drivers/view).
-
