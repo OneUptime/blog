@@ -137,15 +137,14 @@ keepCRDs: true
 
 # Notifications controller
 notifications:
-  enabled: true
+  configmap:
+    create: true
   
-  resources:
-    requests:
-      cpu: 50m
-      memory: 64Mi
-    limits:
-      cpu: 200m
-      memory: 128Mi
+  secret:
+    create: true
+    items:
+      slack-token: "<slack-token>"
+      webhook-token: "<webhook-token>"
   
   # Notification templates
   notifiers:
@@ -313,6 +312,26 @@ spec:
   ports:
     - port: 80
       targetPort: 8080
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: myapp-ingress
+  namespace: default
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: myapp.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: myapp-stable
+                port:
+                  number: 80
 ```
 
 ### Analysis Templates
@@ -581,19 +600,29 @@ spec:
         - setWeight: 50
         - pause: { duration: 5m }
       
-      canaryService: myapp-canary
-      stableService: myapp-stable
-      
       trafficRouting:
         istio:
-          virtualServices:
-            - name: myapp-vsvc
-              routes:
-                - primary
+          virtualService:
+            name: myapp-vsvc
+            routes:
+              - primary
           destinationRule:
             name: myapp-destrule
             canarySubsetName: canary
             stableSubsetName: stable
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: myapp-istio
+  namespace: default
+spec:
+  selector:
+    app: myapp-istio
+  ports:
+    - port: 80
+      targetPort: 8080
 
 ---
 apiVersion: networking.istio.io/v1beta1
@@ -608,11 +637,11 @@ spec:
     - name: primary
       route:
         - destination:
-            host: myapp-stable
+            host: myapp-istio
             subset: stable
           weight: 100
         - destination:
-            host: myapp-canary
+            host: myapp-istio
             subset: canary
           weight: 0
 
@@ -623,7 +652,7 @@ metadata:
   name: myapp-destrule
   namespace: default
 spec:
-  host: myapp
+  host: myapp-istio
   subsets:
     - name: stable
       labels:
