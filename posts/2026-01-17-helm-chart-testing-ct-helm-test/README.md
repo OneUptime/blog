@@ -50,8 +50,8 @@ flowchart TB
 brew install chart-testing
 
 # Linux
-wget https://github.com/helm/chart-testing/releases/download/v3.10.0/chart-testing_3.10.0_linux_amd64.tar.gz
-tar xzvf chart-testing_3.10.0_linux_amd64.tar.gz
+wget https://github.com/helm/chart-testing/releases/download/v3.14.0/chart-testing_3.14.0_linux_amd64.tar.gz
+tar xzvf chart-testing_3.14.0_linux_amd64.tar.gz
 mv ct /usr/local/bin/
 
 # Verify installation
@@ -168,7 +168,7 @@ rules:
 
 ```json
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
   "required": ["image", "service"],
   "properties": {
@@ -273,7 +273,7 @@ rules:
 helm lint charts/myapp --strict
 
 # Using ct
-ct lint --charts charts/myapp --validate-chart-schema
+ct lint --charts charts/myapp --helm-lint-extra-args "--strict"
 ```
 
 ## Installation Testing
@@ -348,7 +348,7 @@ ct install --config ct.yaml
 ct install --charts charts/myapp
 
 # Test with specific values
-ct install --charts charts/myapp --helm-extra-set-args "--values=charts/myapp/ci/test-values-ha.yaml"
+ct install --charts charts/myapp --helm-extra-args "--values charts/myapp/ci/test-values-ha.yaml"
 
 # Test upgrade
 ct install --charts charts/myapp --upgrade
@@ -527,22 +527,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5.0.0
         with:
           fetch-depth: 0
 
       - name: Set up Helm
-        uses: azure/setup-helm@v3
+        uses: azure/setup-helm@v4.3.1
         with:
-          version: v3.13.0
+          version: v3.21.2
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6.0.0
         with:
-          python-version: '3.11'
+          python-version: '3.x'
+          check-latest: true
 
       - name: Set up chart-testing
-        uses: helm/chart-testing-action@v2.6.1
+        uses: helm/chart-testing-action@v2.8.0
 
       - name: List changed charts
         id: list-changed
@@ -558,7 +559,7 @@ jobs:
 
       - name: Create kind cluster
         if: steps.list-changed.outputs.changed == 'true'
-        uses: helm/kind-action@v1.8.0
+        uses: helm/kind-action@v1.12.0
 
       - name: Run chart-testing install
         if: steps.list-changed.outputs.changed == 'true'
@@ -568,10 +569,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5.0.0
 
       - name: Set up Helm
-        uses: azure/setup-helm@v3
+        uses: azure/setup-helm@v4.3.1
+        with:
+          version: v3.21.2
 
       - name: Install helm-unittest
         run: helm plugin install https://github.com/helm-unittest/helm-unittest.git
@@ -594,8 +597,8 @@ stages:
   - test
 
 variables:
-  HELM_VERSION: "3.13.0"
-  CT_VERSION: "3.10.0"
+  HELM_VERSION: "3.21.2"
+  CT_VERSION: "3.14.0"
 
 lint:
   stage: lint
@@ -620,7 +623,7 @@ test:
     DOCKER_TLS_CERTDIR: ""
   before_script:
     - apk add --no-cache curl kubectl helm
-    - curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.20.0/kind-linux-amd64
+    - curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.32.0/kind-linux-amd64
     - chmod +x ./kind && mv ./kind /usr/local/bin/
     - kind create cluster --wait 60s
     - curl -LO https://github.com/helm/chart-testing/releases/download/v${CT_VERSION}/chart-testing_${CT_VERSION}_linux_amd64.tar.gz
@@ -736,10 +739,10 @@ helm lint charts/myapp --strict
 ct lint --config ct.yaml --debug
 
 # View test pod logs
-kubectl logs -n test myapp-test-connection
+kubectl logs -n <namespace> myapp-test-connection
 
 # List test resources
-kubectl get pods -l helm.sh/hook=test
+kubectl get pods -n <namespace> -o json | jq -r '.items[] | select(.metadata.annotations["helm.sh/hook"] == "test") | .metadata.name'
 ```
 
 ## Wrap-up
