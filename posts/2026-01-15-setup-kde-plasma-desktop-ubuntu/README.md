@@ -143,10 +143,9 @@ Numlock=on
 # First, install the sddm-theme package if available
 sudo apt install sddm-theme-breeze -y
 
-# For custom themes, download to the themes directory
-# Example: Installing a custom theme
+# For custom themes, download a theme archive from KDE Store,
+# extract it, then copy the extracted theme directory here
 cd /usr/share/sddm/themes/
-sudo git clone https://github.com/example/custom-theme.git
 ```
 
 ## First Login and Initial Setup
@@ -194,7 +193,7 @@ One of Plasma's greatest strengths is its extensive customization options.
 
 ```bash
 # Access system settings from terminal
-systemsettings5
+systemsettings
 
 # Or use the GUI:
 # Right-click desktop → Configure Desktop and Wallpaper
@@ -273,10 +272,10 @@ sudo apt install kate -y
 sudo apt install ark -y
 
 # System monitor
-sudo apt install ksysguard plasma-systemmonitor -y
+sudo apt install plasma-systemmonitor -y
 
 # Screenshot utility
-sudo apt install spectacle -y
+sudo apt install kde-spectacle -y
 
 # Image viewer
 sudo apt install gwenview -y
@@ -308,7 +307,7 @@ sudo apt install calligra -y
 # Video player with excellent codec support
 sudo apt install vlc -y
 # Or the KDE native option:
-sudo apt install dragon -y
+sudo apt install dragonplayer -y
 
 # Audio player
 sudo apt install elisa -y
@@ -402,7 +401,7 @@ KDE System Settings provides comprehensive control over your desktop.
 
 ```bash
 # Launch from terminal
-systemsettings5
+systemsettings
 
 # Or from application menu:
 # System Settings (gear icon)
@@ -483,8 +482,8 @@ KDE Connect enables seamless integration between your desktop and Android device
 # Install KDE Connect on Ubuntu
 sudo apt install kdeconnect -y
 
-# Install indicator for system tray (useful if using GNOME)
-sudo apt install indicator-kdeconnect -y
+# GNOME users may prefer GSConnect, a GNOME Shell extension
+# that implements the KDE Connect protocol
 ```
 
 ### Configuring KDE Connect
@@ -602,8 +601,9 @@ free -h
 ps aux --sort=-%mem | head -20
 
 # Reduce Baloo (file indexer) resource usage
-# Edit Baloo configuration:
-balooctl config set "Basic Indexing Level" false
+# Configure Baloo to index file names only:
+kwriteconfig5 --file baloofilerc --group General --key "only basic indexing" true
+balooctl disable && balooctl enable
 
 # Or disable Baloo entirely if not needed
 balooctl disable
@@ -651,7 +651,6 @@ sudo apt install kubuntu-desktop -y
 
 # Browser bookmarks and settings
 ls ~/.config/google-chrome/    # Chrome
-ls ~/.config/firefox/          # Firefox
 ls ~/.mozilla/firefox/         # Firefox profiles
 
 # Create backup before major changes
@@ -675,7 +674,7 @@ If you decide to fully switch to KDE and want to remove GNOME:
 
 ```bash
 # WARNING: Make sure KDE Plasma is working properly before removing GNOME
-# This is irreversible without reinstalling
+# This can remove many packages; confirm the apt transaction before proceeding
 
 # Remove GNOME desktop environment
 sudo apt remove ubuntu-desktop gnome-shell -y
@@ -772,7 +771,10 @@ coredumpctl list
 journalctl --user -u plasma-plasmashell
 
 # Restart Plasma shell without logging out
+# Plasma 5:
 kquitapp5 plasmashell && kstart5 plasmashell
+# Plasma 6:
+kquitapp6 plasmashell && kstart plasmashell
 
 # Reset Plasma to defaults (nuclear option)
 rm -rf ~/.config/plasma-org.kde.plasma.desktop-appletsrc
@@ -818,7 +820,10 @@ sudo apt install pavucontrol -y
 # Install KDE audio applet if missing
 sudo apt install plasma-pa -y
 
-# Restart PulseAudio
+# Restart the audio services on current Ubuntu/Kubuntu releases using PipeWire
+systemctl --user restart pipewire pipewire-pulse wireplumber
+
+# If your system still uses PulseAudio instead:
 pulseaudio --kill
 pulseaudio --start
 
