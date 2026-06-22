@@ -1641,7 +1641,7 @@ Handling file uploads and downloads in React Native requires careful considerati
 
 Key takeaways:
 
-1. **Choose the right libraries** - Use `react-native-fs` for file system operations, `react-native-document-picker` for file selection, and specialized libraries for background transfers.
+1. **Choose the right libraries** - Use `react-native-fs` for file system operations, `@react-native-documents/picker` for file selection, and specialized libraries for background transfers.
 
 2. **Always track progress** - Users need feedback during file operations, especially for large files.
 
