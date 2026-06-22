@@ -79,7 +79,7 @@ my-app/
 │   └── settings.gradle
 ├── ios/                     # Native iOS project
 │   ├── MyApp/
-│   │   ├── AppDelegate.m
+│   │   ├── AppDelegate.mm
 │   │   └── Info.plist
 │   ├── MyApp.xcodeproj/
 │   └── Podfile
