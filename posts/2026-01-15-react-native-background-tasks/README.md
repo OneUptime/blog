@@ -796,7 +796,7 @@ Register the service in `AndroidManifest.xml`:
 
 ```typescript
 // HeadlessTask.ts
-import { AppRegistry, Platform } from 'react-native';
+import { Platform } from 'react-native';
 import BackgroundFetch from 'react-native-background-fetch';
 
 interface HeadlessEvent {
@@ -839,17 +839,11 @@ const performBackgroundSync = async (): Promise<void> => {
 };
 
 // Register headless task for Android
+// react-native-background-fetch provides its own static
+// registerHeadlessTask method, which expects the task function
+// directly (it receives an { taskId, timeout } event).
 if (Platform.OS === 'android') {
-    AppRegistry.registerHeadlessTask(
-        'BackgroundFetch',
-        () => headlessTask
-    );
-
-    // Register custom headless task
-    AppRegistry.registerHeadlessTask(
-        'BackgroundSync',
-        () => headlessTask
-    );
+    BackgroundFetch.registerHeadlessTask(headlessTask);
 }
 
 export default headlessTask;
