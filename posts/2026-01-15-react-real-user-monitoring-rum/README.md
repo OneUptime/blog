@@ -100,9 +100,9 @@ Measures visual stability: how much the page layout shifts unexpectedly.
 |--------|-------------|----------------|
 | First Contentful Paint (FCP) | First content rendered | Early feedback to user |
 | Time to First Byte (TTFB) | Server response time | Backend/network performance |
-| First Input Delay (FID) | Legacy responsiveness metric | Replaced by INP but still useful |
-| Total Blocking Time (TBT) | Main thread blocking | JavaScript performance |
-| Time to Interactive (TTI) | When page is fully interactive | Complete readiness |
+| First Input Delay (FID) | Legacy responsiveness metric | Replaced by INP; useful mainly for historical comparisons |
+| Long task blocking time | Main thread blocking observed in the field | JavaScript performance |
+| Time to Interactive (TTI) | Legacy lab metric | Removed from Lighthouse 10; prefer INP and long task analysis |
 
 ---
 
@@ -193,6 +193,7 @@ export interface ErrorData {
   lineno?: number;
   colno?: number;
   componentStack?: string;
+  occurrences?: number;
 }
 
 export interface NavigationData {
@@ -310,7 +311,7 @@ The Performance Observer API is the foundation for collecting browser performanc
 // src/rum/collector.ts
 
 import { MetricEntry, RUMConfig, RUMEvent } from './types';
-import { generateId, getRating, getDeviceInfo, getPageContext } from './utils';
+import { getRating, getDeviceInfo, getPageContext } from './utils';
 import { SessionManager } from './session';
 import { Reporter } from './reporter';
 
@@ -449,14 +450,35 @@ export class MetricsCollector {
   private observeLayoutShift(): void {
     try {
       let clsValue = 0;
+      let sessionValue = 0;
+      let sessionEntries: PerformanceEntry[] = [];
       let clsEntries: PerformanceEntry[] = [];
 
       const observer = new PerformanceObserver((list) => {
         for (const entry of list.getEntries() as any[]) {
           // Only count shifts without recent input
           if (!entry.hadRecentInput) {
-            clsValue += entry.value;
-            clsEntries.push(entry);
+            const firstSessionEntry = sessionEntries[0];
+            const lastSessionEntry = sessionEntries[sessionEntries.length - 1];
+
+            if (
+              sessionValue &&
+              firstSessionEntry &&
+              lastSessionEntry &&
+              entry.startTime - lastSessionEntry.startTime < 1000 &&
+              entry.startTime - firstSessionEntry.startTime < 5000
+            ) {
+              sessionValue += entry.value;
+              sessionEntries.push(entry);
+            } else {
+              sessionValue = entry.value;
+              sessionEntries = [entry];
+            }
+
+            if (sessionValue > clsValue) {
+              clsValue = sessionValue;
+              clsEntries = sessionEntries;
+            }
           }
         }
       });
@@ -482,15 +504,17 @@ export class MetricsCollector {
   private observeLongTasks(): void {
     try {
       let longTaskCount = 0;
-      let totalBlockingTime = 0;
+      let totalLongTaskBlockingTime = 0;
 
       const observer = new PerformanceObserver((list) => {
         for (const entry of list.getEntries()) {
           longTaskCount++;
-          // TBT is time beyond 50ms for each long task
+          // Blocking time is the portion of each long task beyond 50ms.
+          // Lighthouse TBT is a lab metric measured from FCP to TTI, so this
+          // field RUM metric is reported separately.
           const blockingTime = entry.duration - 50;
           if (blockingTime > 0) {
-            totalBlockingTime += blockingTime;
+            totalLongTaskBlockingTime += blockingTime;
           }
         }
       });
@@ -504,8 +528,8 @@ export class MetricsCollector {
           if (longTaskCount > 0) {
             this.recordMetric('LONG_TASK_COUNT', longTaskCount);
           }
-          if (totalBlockingTime > 0) {
-            this.recordMetric('TBT', totalBlockingTime);
+          if (totalLongTaskBlockingTime > 0) {
+            this.recordMetric('LONG_TASK_BLOCKING_TIME', totalLongTaskBlockingTime);
           }
         }
       });
@@ -662,7 +686,7 @@ export class WebVitalsCollector {
 ```tsx
 // src/rum/RUMProvider.tsx
 
-import React, { createContext, useContext, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useCallback, useEffect, useMemo, useState } from 'react';
 import { RUMConfig, MetricEntry } from './types';
 import { RUMClient } from './index';
 
@@ -681,37 +705,44 @@ const RUMContext = createContext<RUMContextValue>({
 });
 
 interface RUMProviderProps {
-  config: RUMConfig;
+  config: Partial<RUMConfig>;
   children: React.ReactNode;
 }
 
 export function RUMProvider({ config, children }: RUMProviderProps): JSX.Element {
-  const clientRef = useRef<RUMClient | null>(null);
+  const [client, setClient] = useState<RUMClient | null>(null);
 
   useEffect(() => {
     // Initialize RUM client
-    clientRef.current = new RUMClient(config);
-    clientRef.current.start();
+    const rumClient = new RUMClient(config);
+    rumClient.start();
+    setClient(rumClient);
 
     return () => {
-      clientRef.current?.stop();
+      rumClient.stop();
+      setClient(null);
     };
   }, [config]);
 
-  const trackEvent = (name: string, data?: Record<string, unknown>) => {
-    clientRef.current?.trackCustomEvent(name, data);
-  };
+  const trackEvent = useCallback((name: string, data?: Record<string, unknown>) => {
+    client?.trackCustomEvent(name, data);
+  }, [client]);
 
-  const trackError = (error: Error, componentStack?: string) => {
-    clientRef.current?.trackError(error, componentStack);
-  };
+  const trackError = useCallback((error: Error, componentStack?: string) => {
+    client?.trackError(error, componentStack);
+  }, [client]);
 
-  const getMetrics = () => {
-    return clientRef.current?.getMetrics() || new Map();
-  };
+  const getMetrics = useCallback(() => {
+    return client?.getMetrics() || new Map();
+  }, [client]);
+
+  const value = useMemo(
+    () => ({ client, trackEvent, trackError, getMetrics }),
+    [client, trackEvent, trackError, getMetrics]
+  );
 
   return (
-    <RUMContext.Provider value={{ client: clientRef.current, trackEvent, trackError, getMetrics }}>
+    <RUMContext.Provider value={value}>
       {children}
     </RUMContext.Provider>
   );
@@ -1471,73 +1502,95 @@ interface LazyOptions {
 export function lazyWithRUM<T extends ComponentType<any>>(
   importFn: () => Promise<{ default: T }>,
   options: LazyOptions
-): React.LazyExoticComponent<T> {
+): ComponentType<React.ComponentProps<T>> {
+  let loadPromise: Promise<{ default: T }> | null = null;
+  let loadResult: { duration: number; error?: Error } | null = null;
+  let reported = false;
+
   const LazyComponent = lazy(async () => {
+    if (loadPromise) return loadPromise;
+
     const startTime = performance.now();
 
-    try {
-      const module = await importFn();
-      const duration = performance.now() - startTime;
+    loadPromise = importFn()
+      .then((module) => {
+        loadResult = { duration: performance.now() - startTime };
+        return module;
+      })
+      .catch((error) => {
+        loadResult = {
+          duration: performance.now() - startTime,
+          error: error as Error,
+        };
+        throw error;
+      });
 
-      // We will track this in the wrapper
-      (LazyComponent as any).__rumLoadTime = duration;
-      (LazyComponent as any).__rumChunkName = options.chunkName;
-
-      return module;
-    } catch (error) {
-      const duration = performance.now() - startTime;
-      (LazyComponent as any).__rumLoadError = error;
-      (LazyComponent as any).__rumLoadTime = duration;
-      throw error;
-    }
+    return loadPromise;
   });
 
-  return LazyComponent;
+  function LazyWithRUM(props: React.ComponentProps<T>): JSX.Element {
+    const { trackEvent, trackError } = useRUM();
+
+    React.useEffect(() => {
+      let cancelled = false;
+
+      loadPromise
+        ?.then(() => {
+          if (!cancelled && loadResult && !reported) {
+            reported = true;
+            trackEvent('lazy_load', {
+              chunkName: options.chunkName,
+              duration: loadResult.duration,
+            });
+          }
+        })
+        .catch((error) => {
+          if (!cancelled && loadResult && !reported) {
+            reported = true;
+            trackEvent('lazy_load_error', {
+              chunkName: options.chunkName,
+              duration: loadResult.duration,
+              error: (error as Error).message,
+            });
+            trackError(error as Error);
+          }
+        });
+
+      return () => {
+        cancelled = true;
+      };
+    }, [trackEvent, trackError]);
+
+    return (
+      <Suspense fallback={options.fallback || null}>
+        <LazyComponent {...props} />
+      </Suspense>
+    );
+  }
+
+  return LazyWithRUM;
 }
 
-// Wrapper component that tracks the load
+// Wrapper component for grouping lazy-loaded routes with a shared fallback
 export function TrackedSuspense({
   children,
   fallback,
-  chunkName,
 }: {
   children: React.ReactNode;
   fallback: React.ReactNode;
-  chunkName: string;
 }): JSX.Element {
-  const { trackEvent } = useRUM();
-  const loadStartRef = React.useRef(performance.now());
-  const [loaded, setLoaded] = React.useState(false);
-
-  React.useEffect(() => {
-    if (!loaded) {
-      const checkLoaded = () => {
-        setLoaded(true);
-        const duration = performance.now() - loadStartRef.current;
-        trackEvent('lazy_load', {
-          chunkName,
-          duration,
-        });
-      };
-
-      // Small delay to ensure component has mounted
-      const timer = setTimeout(checkLoaded, 0);
-      return () => clearTimeout(timer);
-    }
-  }, [loaded, chunkName, trackEvent]);
-
   return <Suspense fallback={fallback}>{children}</Suspense>;
 }
 
 // Usage
 const ProductDetails = lazyWithRUM(
   () => import('./pages/ProductDetails'),
-  { chunkName: 'ProductDetails' }
+  { chunkName: 'ProductDetails', fallback: <Spinner /> }
 );
 
 function App() {
   return (
-    <TrackedSuspense fallback={<Spinner />} chunkName="ProductDetails">
+    <TrackedSuspense fallback={<Spinner />}>
       <ProductDetails />
     </TrackedSuspense>
   );
@@ -1613,8 +1666,14 @@ export class Reporter {
 
     try {
       if (useBeacon && navigator.sendBeacon) {
-        // Use sendBeacon for reliability during page unload
-        const blob = new Blob([payload], { type: 'application/json' });
+        // Use sendBeacon for reliability during page unload. Beacon requests
+        // cannot set custom headers, so include the API key in the payload.
+        const beaconPayload = JSON.stringify({
+          events,
+          timestamp: Date.now(),
+          apiKey: this.config.apiKey,
+        });
+        const blob = new Blob([beaconPayload], { type: 'application/json' });
         navigator.sendBeacon(this.config.endpoint, blob);
       } else {
         // Use fetch for normal operation
@@ -1978,6 +2037,7 @@ function MetricCard({ title, metric, unit, target }: {
 }): JSX.Element {
   const p75Value = metric.p75;
   const status = p75Value <= target ? 'good' : p75Value <= target * 1.5 ? 'medium' : 'poor';
+  const percentage = (count: number) => metric.count > 0 ? (count / metric.count) * 100 : 0;
 
   return (
     <div className={`metric-card ${status}`}>
@@ -1985,9 +2045,9 @@ function MetricCard({ title, metric, unit, target }: {
       <div className="value">{p75Value.toFixed(unit === 'ms' ? 0 : 3)}{unit}</div>
       <div className="label">P75</div>
       <div className="distribution">
-        <div className="bar good" style={{ width: `${(metric.goodCount / metric.count) * 100}%` }} />
-        <div className="bar medium" style={{ width: `${(metric.needsImprovementCount / metric.count) * 100}%` }} />
-        <div className="bar poor" style={{ width: `${(metric.poorCount / metric.count) * 100}%` }} />
+        <div className="bar good" style={{ width: `${percentage(metric.goodCount)}%` }} />
+        <div className="bar medium" style={{ width: `${percentage(metric.needsImprovementCount)}%` }} />
+        <div className="bar poor" style={{ width: `${percentage(metric.poorCount)}%` }} />
       </div>
     </div>
   );
@@ -2042,7 +2102,7 @@ export class RUMClient {
 
   constructor(config: Partial<RUMConfig>) {
     this.config = {
-      endpoint: config.endpoint || 'https://oneuptime.com/api/rum/ingest',
+      endpoint: config.endpoint || '/api/rum/ingest',
       apiKey: config.apiKey || '',
       sampleRate: config.sampleRate ?? 1.0,
       sessionTimeout: config.sessionTimeout ?? 30 * 60 * 1000, // 30 minutes
@@ -2155,7 +2215,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { RUMProvider, RUMErrorBoundary, useRUM, useRouteTracking } from './rum';
 
 const rumConfig = {
-  endpoint: process.env.REACT_APP_ONEUPTIME_RUM_ENDPOINT,
+  endpoint: process.env.REACT_APP_RUM_ENDPOINT,
   apiKey: process.env.REACT_APP_ONEUPTIME_API_KEY,
   sampleRate: 1.0,
   enableErrorTracking: true,
@@ -2251,7 +2311,7 @@ Real User Monitoring transforms performance optimization from guesswork into dat
 
 ---
 
-*Send your RUM data to [OneUptime](https://oneuptime.com) for unified observability across frontend performance, backend traces, and infrastructure metrics.*
+*To send this RUM data to [OneUptime](https://oneuptime.com), forward it from your collector to OneUptime's OTLP/HTTP endpoints with a telemetry ingestion token.*
 
 ---
 
