@@ -61,8 +61,9 @@ helm repo update
 helm install helm-exporter sstarcher/helm-exporter \
   --namespace monitoring \
   --create-namespace \
-  --set serviceMonitor.enabled=true \
-  --set serviceMonitor.namespace=monitoring
+  --set serviceMonitor.create=true \
+  --set serviceMonitor.namespace=monitoring \
+  --set statusInMetric=true
 ```
 
 ### Custom Helm Exporter Values
@@ -73,17 +74,19 @@ replicaCount: 1
 
 image:
   repository: sstarcher/helm-exporter
-  tag: "1.2.5"
+  tag: "1.3.0"
 
-# Namespaces to monitor (empty = all)
-namespaces: []
+# Namespaces to monitor (empty string = all)
+namespaces: ""
 
 # Metrics configuration
-config:
-  helmDriver: secrets  # or configmaps
+env:
+  - name: HELM_DRIVER
+    value: secret  # or configmap
+statusInMetric: true
   
 serviceMonitor:
-  enabled: true
+  create: true
   namespace: monitoring
   interval: 30s
   scrapeTimeout: 10s
@@ -102,7 +105,8 @@ resources:
 ```bash
 helm install helm-exporter sstarcher/helm-exporter \
   -f helm-exporter-values.yaml \
-  --namespace monitoring
+  --namespace monitoring \
+  --create-namespace
 ```
 
 ## Prometheus Configuration
@@ -151,27 +155,26 @@ scrape_configs:
 # Release information
 helm_chart_info{
   chart="myapp",
-  chart_version="1.2.3",
-  app_version="v1.0.0",
+  version="1.2.3",
+  appVersion="v1.0.0",
+  revision="3",
+  updated="1768608000000",
   namespace="production",
-  release="myapp-prod"
+  release="myapp-prod",
+  status="deployed"
 }
 
-# Release status
-helm_release_status{
+# Release status code (with statusInMetric enabled)
+helm_chart_info{
   release="myapp-prod",
   namespace="production",
-  status="deployed"  # deployed, failed, pending-upgrade, etc.
-}
+  status="deployed"
+} 1
 
-# Release revision
-helm_release_revision{
-  release="myapp-prod",
-  namespace="production"
-}
+# Status labels include deployed, failed, pending-upgrade, etc.
 
 # Release timestamps
-helm_release_updated_timestamp{
+helm_chart_timestamp{
   release="myapp-prod",
   namespace="production"
 }
@@ -215,7 +218,7 @@ kube_pod_container_status_restarts_total{
       "type": "piechart",
       "targets": [
         {
-          "expr": "count by (status) (helm_release_status)",
+          "expr": "count by (status) (helm_chart_info)",
           "legendFormat": "{{status}}"
         }
       ],
@@ -226,7 +229,7 @@ kube_pod_container_status_restarts_total{
       "type": "timeseries",
       "targets": [
         {
-          "expr": "changes(helm_release_revision[1h])",
+          "expr": "max by (release, namespace) (helm_chart_timestamp / 1000)",
           "legendFormat": "{{release}}"
         }
       ],
@@ -250,8 +253,8 @@ kube_pod_container_status_restarts_total{
               "release": "Release",
               "namespace": "Namespace",
               "chart": "Chart",
-              "chart_version": "Version",
-              "app_version": "App Version"
+              "version": "Version",
+              "appVersion": "App Version"
             }
           }
         }
@@ -273,7 +276,7 @@ panels:
     
   - name: Failed Releases
     type: stat
-    query: count(helm_release_status{status="failed"})
+    query: count(helm_chart_info{status="failed"})
     thresholds:
       - value: 0
         color: green
@@ -283,15 +286,14 @@ panels:
   - name: Recent Deployments
     type: table
     query: |
-      topk(10, 
-        helm_release_updated_timestamp * on(release, namespace) 
-        group_left(chart, chart_version) helm_chart_info
+      topk(10,
+        max by (release, namespace, chart, version) (helm_chart_timestamp / 1000)
       )
     
   - name: Release Age
     type: bargauge
     query: |
-      (time() - helm_release_updated_timestamp) / 86400
+      (time() - (helm_chart_timestamp / 1000)) / 86400
     unit: days
 ```
 
@@ -312,7 +314,7 @@ spec:
       rules:
         # Failed release alert
         - alert: HelmReleaseFailed
-          expr: helm_release_status{status="failed"} == 1
+          expr: helm_chart_info{status="failed"} == -1
           for: 5m
           labels:
             severity: critical
@@ -322,7 +324,7 @@ spec:
         
         # Pending release alert
         - alert: HelmReleasePending
-          expr: helm_release_status{status=~"pending.*"} == 1
+          expr: helm_chart_info{status=~"pending-.*"} > 0
           for: 10m
           labels:
             severity: warning
@@ -332,7 +334,7 @@ spec:
         
         # Stale release alert
         - alert: HelmReleaseStale
-          expr: (time() - helm_release_updated_timestamp) > 2592000  # 30 days
+          expr: (time() - (helm_chart_timestamp / 1000)) > 2592000  # 30 days
           labels:
             severity: info
           annotations:
@@ -341,12 +343,12 @@ spec:
         
         # Rollback detected
         - alert: HelmRollbackDetected
-          expr: delta(helm_release_revision[5m]) < 0
+          expr: increase(helm_rollback_total[5m]) > 0
           labels:
             severity: warning
           annotations:
             summary: "Helm rollback detected for {{ $labels.release }}"
-            description: "Release {{ $labels.release }} was rolled back"
+            description: "Release {{ $labels.release }} emitted a rollback hook metric"
 ```
 
 ### Workload Health Alerts
@@ -418,16 +420,8 @@ spec:
               # Push deployment metric to Prometheus Pushgateway
               cat <<EOF | curl --data-binary @- \
                 http://pushgateway.monitoring.svc.cluster.local:9091/metrics/job/helm_deploy
-              helm_deployment_timestamp{
-                release="{{ .Release.Name }}",
-                namespace="{{ .Release.Namespace }}",
-                chart="{{ .Chart.Name }}",
-                version="{{ .Chart.Version }}"
-              } $(date +%s)
-              helm_deployment_success{
-                release="{{ .Release.Name }}",
-                namespace="{{ .Release.Namespace }}"
-              } 1
+              helm_deployment_timestamp{release="{{ .Release.Name }}",namespace="{{ .Release.Namespace }}",chart="{{ .Chart.Name }}",version="{{ .Chart.Version }}"} $(date +%s)
+              helm_deployment_success{release="{{ .Release.Name }}",namespace="{{ .Release.Namespace }}"} 1
               EOF
 {{- end }}
 ```
@@ -457,10 +451,7 @@ spec:
               # Push rollback metric
               cat <<EOF | curl --data-binary @- \
                 http://pushgateway.monitoring.svc.cluster.local:9091/metrics/job/helm_rollback
-              helm_rollback_total{
-                release="{{ .Release.Name }}",
-                namespace="{{ .Release.Namespace }}"
-              } 1
+              helm_rollback_total{release="{{ .Release.Name }}",namespace="{{ .Release.Namespace }}"} 1
               EOF
               
               # Notify via webhook
@@ -499,14 +490,14 @@ spec:
         # Failed releases ratio
         - record: helm:releases_failed:ratio
           expr: |
-            count(helm_release_status{status="failed"})
+            count(helm_chart_info{status="failed"})
             /
-            count(helm_release_status)
+            count(helm_chart_info)
         
         # Average release age in days
         - record: helm:release_age_days:avg
           expr: |
-            avg((time() - helm_release_updated_timestamp) / 86400)
+            avg((time() - (helm_chart_timestamp / 1000)) / 86400)
         
         # Releases per chart
         - record: helm:releases_per_chart:count
@@ -536,8 +527,8 @@ stringData:
       repeat_interval: 1h
       receiver: 'oneuptime'
       routes:
-        - match:
-            severity: critical
+        - matchers:
+            - severity="critical"
           receiver: 'oneuptime-critical'
     
     receivers:
@@ -587,11 +578,11 @@ service:
 | Purpose | Query |
 |---------|-------|
 | Total releases | `count(helm_chart_info)` |
-| Failed releases | `helm_release_status{status="failed"}` |
+| Failed releases | `helm_chart_info{status="failed"} == -1` |
 | Releases by namespace | `count by (namespace) (helm_chart_info)` |
-| Outdated releases | `(time() - helm_release_updated_timestamp) > 604800` |
-| Recent deployments | `changes(helm_release_revision[24h]) > 0` |
-| Chart versions in use | `count by (chart, chart_version) (helm_chart_info)` |
+| Outdated releases | `helm_chart_outdated == 1` |
+| Recent deployments | `topk(10, max by (release, namespace, chart, version) (helm_chart_timestamp / 1000))` |
+| Chart versions in use | `count by (chart, version) (helm_chart_info)` |
 
 ## Best Practices
 
