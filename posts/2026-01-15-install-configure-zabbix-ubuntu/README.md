@@ -26,7 +26,7 @@ Zabbix is a powerful open-source monitoring solution for networks, servers, appl
 | RAM | 2GB | 8GB+ |
 | CPU | 2 cores | 4+ cores |
 | Disk | 50GB | 200GB+ |
-| Database | MySQL 5.7+ | MariaDB 10.5+ |
+| Database | MySQL 8.0.30+ | MariaDB 10.5+ |
 
 ## Install Dependencies
 
@@ -264,7 +264,7 @@ sudo ufw allow 10050/tcp
    - Interfaces: Agent (IP address, port 10050)
 3. Link templates:
    - Linux by Zabbix agent
-   - Template OS Linux by Zabbix agent active
+   - Linux by Zabbix agent active
 4. Click Add
 
 ### Template Configuration
