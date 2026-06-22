@@ -56,7 +56,8 @@ sudo apt install neo4j -y
 
 ```bash
 # For Enterprise edition (requires license)
-echo "deb [signed-by=/usr/share/keyrings/neo4j-archive-keyring.gpg] https://debian.neo4j.com stable enterprise" | sudo tee /etc/apt/sources.list.d/neo4j.list
+# The repository is the same as Community; the edition is chosen by the package name
+echo "deb [signed-by=/usr/share/keyrings/neo4j-archive-keyring.gpg] https://debian.neo4j.com stable latest" | sudo tee /etc/apt/sources.list.d/neo4j.list
 sudo apt update
 sudo apt install neo4j-enterprise -y
 ```
@@ -377,8 +378,8 @@ sudo neo4j-admin database import full \
 # Create backup
 sudo neo4j-admin database backup --to-path=/backups neo4j
 
-# Restore from backup
-sudo neo4j-admin database restore --from-path=/backups/neo4j-2024-01-15 --database=neo4j
+# Restore from backup (the database name is a positional argument)
+sudo neo4j-admin database restore --from-path=/backups/neo4j-2024-01-15 neo4j
 ```
 
 ### Offline Backup (Community)
@@ -400,8 +401,8 @@ sudo systemctl start neo4j
 # Dump database
 sudo neo4j-admin database dump --to-path=/backups neo4j
 
-# Load database
-sudo neo4j-admin database load --from-path=/backups/neo4j.dump neo4j
+# Load database (--from-path is the directory containing neo4j.dump)
+sudo neo4j-admin database load --from-path=/backups neo4j
 ```
 
 ## User Management
@@ -501,25 +502,26 @@ db.logs.query.path=/var/log/neo4j/query.log
 
 ## Clustering (Enterprise)
 
-### Causal Clustering Configuration
+### Cluster Configuration
 
 ```properties
 # /etc/neo4j/neo4j.conf
 
-# Enable clustering
-dbms.mode=CORE
+# Listen and advertised addresses
+server.default_listen_address=0.0.0.0
+server.default_advertised_address=server1
 
-# Initial cluster members
-causal_clustering.initial_discovery_members=server1:5000,server2:5000,server3:5000
+# Discovery endpoints for all cluster members
+dbms.cluster.endpoints=server1:6000,server2:6000,server3:6000
 
-# Discovery listen address
-causal_clustering.discovery_listen_address=:5000
+# Number of primary servers that bootstrap the cluster
+initial.dbms.default_primaries_count=3
 
-# Transaction listen address
-causal_clustering.transaction_listen_address=:6000
+# Cluster (transaction) listen address
+server.cluster.listen_address=:6000
 
 # Raft listen address
-causal_clustering.raft_listen_address=:7000
+server.cluster.raft.listen_address=:7000
 ```
 
 ## Troubleshooting
