@@ -110,12 +110,12 @@ cert-manager automates TLS certificate management. It integrates with Let's Encr
 helm repo add jetstack https://charts.jetstack.io
 helm repo update
 
-# cert-manager requires CRDs installed separately (or use installCRDs flag)
+# cert-manager requires CRDs installed separately (or use the crds.enabled flag)
 helm install cert-manager jetstack/cert-manager \
   --namespace cert-manager \
   --create-namespace \
-  --version v1.14.0 \
-  --set installCRDs=true
+  --version v1.20.2 \
+  --set crds.enabled=true
 
 # Verify the installation
 kubectl get pods -n cert-manager
@@ -141,7 +141,7 @@ spec:
     solvers:
       - http01:
           ingress:
-            class: nginx
+            ingressClassName: nginx
 ```
 
 Apply the issuer:
@@ -240,7 +240,7 @@ helm install my-postgresql bitnami/postgresql \
 
 ### Production PostgreSQL Configuration
 
-For production workloads, use a values file with proper resource allocation and backup configuration.
+For production workloads, use a values file with proper resource allocation, persistent storage, and metrics configuration.
 
 ```yaml
 # postgresql-values.yaml
@@ -303,7 +303,8 @@ helm install my-app bitnami/nginx \
 
 # Set array values
 helm install my-app bitnami/nginx \
-  --set 'ingress.hosts[0].name=example.com'
+  --set 'ingress.extraHosts[0].name=example.com' \
+  --set 'ingress.extraHosts[0].path=/'
 ```
 
 ## Installation Options Reference
@@ -318,7 +319,7 @@ helm install my-app bitnami/nginx \
 | `--dry-run` | Simulate install without deploying | `--dry-run` |
 | `--debug` | Show rendered templates | `--debug` |
 | `--wait` | Wait for resources to be ready | `--wait --timeout 5m` |
-| `--atomic` | Rollback on failure | `--atomic` |
+| `--rollback-on-failure` | Uninstall the release on failure | `--rollback-on-failure` |
 
 ## Viewing Chart Values Before Installing
 
@@ -384,7 +385,7 @@ helm install my-app bitnami/nginx \
   --version 15.4.0 \
   --wait \
   --timeout 10m \
-  --atomic \
+  --rollback-on-failure \
   -f production-values.yaml
 ```
 
