@@ -130,7 +130,7 @@ services:
 ```yaml
 services:
   node-app:
-    image: node:20-alpine
+    image: node:24-alpine
     read_only: true
     tmpfs:
       - /tmp:size=100M
@@ -191,7 +191,7 @@ services:
 ```yaml
 services:
   java-app:
-    image: openjdk:21-slim
+    image: eclipse-temurin:21
     read_only: true
     tmpfs:
       - /tmp:size=200M
@@ -231,7 +231,7 @@ VOLUME /data          # Needs volume
 ### Method 4: Check with inotifywait
 
 ```bash
-# Monitor filesystem writes
+# For Alpine-based images, install inotify-tools and monitor filesystem writes
 docker run -it myapp sh -c 'apk add inotify-tools && inotifywait -r -m /'
 ```
 
@@ -297,8 +297,6 @@ services:
 ### Complete Hardened Configuration
 
 ```yaml
-version: '3.8'
-
 services:
   app:
     image: myapp:latest
@@ -311,7 +309,6 @@ services:
       - NET_BIND_SERVICE
     security_opt:
       - no-new-privileges:true
-      - seccomp:default
     user: "65534:65534"
     deploy:
       resources:
@@ -381,8 +378,6 @@ metadata:
 ## Production Example
 
 ```yaml
-version: '3.8'
-
 x-security-defaults: &security-defaults
   read_only: true
   cap_drop:
@@ -468,4 +463,3 @@ docker exec container_name mount | grep tmpfs
 | Generic | /tmp |
 
 Read-only containers significantly improve security by preventing filesystem modifications. Combine with dropped capabilities, non-root users, and resource limits for comprehensive container hardening. For more on dropping capabilities, see our post on [Dropping Linux Capabilities in Docker Containers](https://oneuptime.com/blog/post/2026-01-16-docker-drop-capabilities/view).
-
