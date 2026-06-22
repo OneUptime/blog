@@ -182,7 +182,7 @@ Redis and Memcached servers handling IPv6 connections need monitoring, especiall
 
 ```plaintext
 Example configuration:
-- Host: 2001:db8:3::cache
+- Host: 2001:db8:3::3
 - Port: 6379
 - Interval: 1 minute
 ```
@@ -193,7 +193,7 @@ Monitor RabbitMQ, Kafka, or other message broker ports to catch IPv6-specific co
 
 ```plaintext
 Example configuration:
-- Host: 2001:db8:4::mq
+- Host: 2001:db8:4::4
 - Port: 5672
 - Interval: 2 minutes
 ```
@@ -569,8 +569,9 @@ docker run -d \
   --name oneuptime-probe \
   --network host \
   -e PROBE_KEY=your-probe-key \
+  -e PROBE_ID=your-probe-id \
   -e ONEUPTIME_URL=https://oneuptime.com \
-  oneuptime/probe:latest
+  oneuptime/probe:release
 ```
 
 The `--network host` flag ensures the container uses the host's IPv6 stack.
@@ -599,13 +600,18 @@ spec:
       hostNetwork: true
       containers:
       - name: probe
-        image: oneuptime/probe:latest
+        image: oneuptime/probe:release
         env:
         - name: PROBE_KEY
           valueFrom:
             secretKeyRef:
               name: oneuptime-probe-secret
               key: probe-key
+        - name: PROBE_ID
+          valueFrom:
+            secretKeyRef:
+              name: oneuptime-probe-secret
+              key: probe-id
         - name: ONEUPTIME_URL
           value: "https://oneuptime.com"
 ```
