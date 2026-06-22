@@ -30,7 +30,7 @@ OpenSCAP is an open-source implementation of the SCAP standard. It provides:
 - Command-line tools for scanning systems
 - Libraries for integrating SCAP into applications
 - A graphical workbench for creating and running scans
-- Support for multiple compliance profiles (CIS, DISA STIG, PCI-DSS)
+- Support for multiple compliance profiles, depending on the SCAP content you install (for example CIS, Standard, DISA STIG, or PCI-DSS)
 
 OpenSCAP enables organizations to automate vulnerability assessments, configuration compliance checks, and security policy enforcement.
 
@@ -46,7 +46,7 @@ First, update your package list and install the OpenSCAP scanner:
 sudo apt update
 
 # Install OpenSCAP scanner and utilities
-sudo apt install -y libopenscap8 openscap-scanner openscap-utils
+sudo apt install -y openscap-scanner openscap-utils
 
 # Verify installation
 oscap --version
@@ -64,8 +64,8 @@ Copyright 2009--2021 Red Hat Inc., Durham, North Carolina.
 The SCAP Security Guide (SSG) provides pre-built security policies and profiles:
 
 ```bash
-# Install SCAP Security Guide for Ubuntu
-sudo apt install -y scap-security-guide
+# Install SCAP Security Guide content for Ubuntu
+sudo apt install -y ssg-base ssg-debderived
 
 # List available SCAP content files
 ls -la /usr/share/xml/scap/ssg/content/
@@ -102,7 +102,7 @@ ls /usr/share/xml/scap/ssg/content/*.xml
 # Common Ubuntu content files:
 # - ssg-ubuntu2004-ds.xml (Ubuntu 20.04)
 # - ssg-ubuntu2204-ds.xml (Ubuntu 22.04)
-# - ssg-ubuntu2404-ds.xml (Ubuntu 24.04)
+# Ubuntu 24.04 content may require newer ComplianceAsCode content or Ubuntu Security Guide packages.
 ```
 
 ### Viewing Available Profiles
@@ -118,7 +118,6 @@ oscap info /usr/share/xml/scap/ssg/content/ssg-ubuntu2204-ds.xml
 # - xccdf_org.ssgproject.content_profile_cis_level1_workstation
 # - xccdf_org.ssgproject.content_profile_cis_level2_server
 # - xccdf_org.ssgproject.content_profile_cis_level2_workstation
-# - xccdf_org.ssgproject.content_profile_stig
 # - xccdf_org.ssgproject.content_profile_standard
 ```
 
@@ -128,9 +127,9 @@ oscap info /usr/share/xml/scap/ssg/content/ssg-ubuntu2204-ds.xml
 |---------|-------------|----------|
 | CIS Level 1 Server | Basic security hardening for servers | Production servers with minimal security requirements |
 | CIS Level 2 Server | Enhanced security hardening | High-security environments |
-| DISA STIG | Department of Defense security requirements | Government/military systems |
+| DISA STIG | Department of Defense security requirements, when provided by the installed content | Government/military systems |
 | Standard | Basic security checks | Development environments |
-| PCI-DSS | Payment Card Industry compliance | Systems handling credit card data |
+| PCI-DSS | Payment Card Industry compliance, when provided by the installed content | Systems handling credit card data |
 
 ## Running Vulnerability Scans (OVAL)
 
@@ -278,7 +277,7 @@ The scan produces several result categories:
 | informational | Informational rule only |
 | fixed | Issue was automatically remediated |
 
-## Available Profiles: CIS and DISA STIG
+## Available Profiles: CIS and Standard
 
 ### CIS Benchmarks
 
@@ -310,17 +309,16 @@ sudo oscap xccdf eval \
     /usr/share/xml/scap/ssg/content/ssg-ubuntu2204-ds.xml
 ```
 
-### DISA STIG Profile
+### Standard Profile
 
-The Defense Information Systems Agency (DISA) Security Technical Implementation Guides (STIGs):
+The Standard profile provides a basic security baseline:
 
 ```bash
-# DISA STIG Profile
-# Strict security requirements for government/military systems
+# Standard Profile
 sudo oscap xccdf eval \
-    --profile xccdf_org.ssgproject.content_profile_stig \
-    --results /tmp/stig-results.xml \
-    --report /tmp/stig-report.html \
+    --profile xccdf_org.ssgproject.content_profile_standard \
+    --results /tmp/standard-results.xml \
+    --report /tmp/standard-report.html \
     /usr/share/xml/scap/ssg/content/ssg-ubuntu2204-ds.xml
 ```
 
@@ -340,7 +338,6 @@ mkdir -p "${OUTPUT_DIR}"
 declare -A PROFILES=(
     ["cis_l1"]="xccdf_org.ssgproject.content_profile_cis_level1_server"
     ["cis_l2"]="xccdf_org.ssgproject.content_profile_cis_level2_server"
-    ["stig"]="xccdf_org.ssgproject.content_profile_stig"
     ["standard"]="xccdf_org.ssgproject.content_profile_standard"
 )
 
@@ -553,12 +550,18 @@ fi
 # Find specific rule IDs from results
 grep -oP 'idref="[^"]*"' /tmp/xccdf-results.xml | head -20
 
-# Generate fix for specific rule only
+# Evaluate a specific rule only
+sudo oscap xccdf eval \
+    --rule xccdf_org.ssgproject.content_rule_sshd_disable_root_login \
+    --results /tmp/single-rule-results.xml \
+    /usr/share/xml/scap/ssg/content/ssg-ubuntu2204-ds.xml
+
+# Generate a fix script from that result file
 oscap xccdf generate fix \
     --fix-type bash \
     --output /tmp/single-fix.sh \
-    --rule-id xccdf_org.ssgproject.content_rule_sshd_disable_root_login \
-    /usr/share/xml/scap/ssg/content/ssg-ubuntu2204-ds.xml
+    --result-id "" \
+    /tmp/single-rule-results.xml
 ```
 
 ## Automated Scanning with Cron
@@ -644,7 +647,6 @@ EOF
 sudo chmod 644 /etc/cron.d/openscap-scan
 
 # Verify cron job is installed
-sudo crontab -l
 cat /etc/cron.d/openscap-scan
 ```
 
@@ -739,7 +741,7 @@ sudo systemctl status openscap-scan.timer
             </xccdf:rationale>
             <xccdf:fix system="urn:xccdf:fix:script:sh">
                 sed -i 's/^PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config
-                systemctl restart sshd
+                systemctl restart ssh
             </xccdf:fix>
             <xccdf:check system="http://oval.mitre.org/XMLSchema/oval-definitions-5">
                 <xccdf:check-content-ref
@@ -970,7 +972,7 @@ compliance_scan:
   before_script:
     # Install OpenSCAP tools
     - apt-get update
-    - apt-get install -y openscap-scanner openscap-utils scap-security-guide
+    - apt-get install -y openscap-scanner openscap-utils ssg-base ssg-debderived
   script:
     # Run compliance scan
     - |
@@ -994,8 +996,6 @@ compliance_scan:
     paths:
       - compliance-results.xml
       - compliance-report.html
-    reports:
-      junit: compliance-results.xml
     expire_in: 30 days
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
@@ -1037,7 +1037,8 @@ jobs:
           sudo apt-get install -y \
             openscap-scanner \
             openscap-utils \
-            scap-security-guide
+            ssg-base \
+            ssg-debderived
 
       - name: Run Compliance Scan
         id: scan
@@ -1141,7 +1142,8 @@ pipeline {
                     apt-get install -y \
                         openscap-scanner \
                         openscap-utils \
-                        scap-security-guide \
+                        ssg-base \
+                        ssg-debderived \
                         bc
                 '''
             }
@@ -1297,7 +1299,10 @@ detect_ubuntu_version() {
     case "${version}" in
         20.04) echo "ssg-ubuntu2004-ds.xml" ;;
         22.04) echo "ssg-ubuntu2204-ds.xml" ;;
-        24.04) echo "ssg-ubuntu2404-ds.xml" ;;
+        24.04)
+            echo "ERROR: Ubuntu 24.04 SCAP content is not included in the standard ssg-debderived package on all releases; install newer ComplianceAsCode or Ubuntu Security Guide content first." >&2
+            exit 1
+            ;;
         *)
             echo "ERROR: Unsupported Ubuntu version: ${version}" >&2
             exit 1
@@ -1481,9 +1486,9 @@ main "$@"
 
 OpenSCAP provides a powerful, standardized framework for security compliance scanning on Ubuntu systems. Key takeaways from this guide:
 
-1. **Install the essentials**: `openscap-scanner`, `openscap-utils`, and `scap-security-guide` packages provide everything needed for compliance scanning.
+1. **Install the essentials**: `openscap-scanner`, `openscap-utils`, `ssg-base`, and `ssg-debderived` packages provide the scanner and Ubuntu SCAP Security Guide content.
 
-2. **Choose appropriate profiles**: Select CIS Level 1 for basic hardening, CIS Level 2 for enhanced security, or DISA STIG for government requirements.
+2. **Choose appropriate profiles**: Select CIS Level 1 for basic hardening, CIS Level 2 for enhanced security, or another profile shown by `oscap info` for your installed content.
 
 3. **Automate scanning**: Use cron jobs or systemd timers to run regular compliance scans and maintain security posture.
 
