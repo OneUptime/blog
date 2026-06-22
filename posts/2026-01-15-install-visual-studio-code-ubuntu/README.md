@@ -138,15 +138,18 @@ echo "Setting up Microsoft VS Code repository..."
 
 # Install required packages for secure repository access
 sudo apt update
-sudo apt install -y software-properties-common apt-transport-https wget
+sudo apt install -y apt-transport-https wget gpg
+
+# Ensure the keyrings directory exists
+sudo install -m 0755 -d /etc/apt/keyrings
 
 # Import Microsoft GPG key
-# GPG keys are used to verify package authenticity
-wget -q https://packages.microsoft.com/keys/microsoft.asc -O- | sudo apt-key add -
+# apt-key is deprecated, so store the dearmored key in /etc/apt/keyrings instead
+wget -qO- https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | sudo tee /etc/apt/keyrings/packages.microsoft.gpg > /dev/null
 
 # Add the official VS Code repository
 # This enables automatic updates through apt
-sudo add-apt-repository "deb [arch=amd64] https://packages.microsoft.com/repos/vscode stable main"
+echo "deb [arch=amd64,arm64,armhf signed-by=/etc/apt/keyrings/packages.microsoft.gpg] https://packages.microsoft.com/repos/code stable main" | sudo tee /etc/apt/sources.list.d/vscode.list > /dev/null
 
 # Update package list to include new repository
 sudo apt update
@@ -1895,7 +1898,6 @@ Optimize VS Code for better performance, especially on large projects:
         "comments": false,
         "strings": false
     },
-    "editor.suggest.maxVisibleSuggestions": 10,
 
     // ===========================================
     // TELEMETRY AND BACKGROUND PROCESSES
