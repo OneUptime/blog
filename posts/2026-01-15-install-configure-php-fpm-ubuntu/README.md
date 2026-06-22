@@ -1195,7 +1195,7 @@ upload_max_filesize = 10M
 max_file_uploads = 5
 
 ; Prevent null byte attacks
-; magic_quotes_gpc is removed in PHP 8.0+
+; magic_quotes_gpc was removed in PHP 5.4+ (not present in PHP 8)
 
 ; Limit error information exposure
 display_errors = Off
