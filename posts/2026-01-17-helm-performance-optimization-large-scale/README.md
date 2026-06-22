@@ -45,10 +45,11 @@ Helm stores release history in Kubernetes secrets, which grow with each upgrade.
 ```bash
 # Check release secret sizes
 
-kubectl get secrets -n my-namespace -l owner=helm -o custom-columns="NAME:.metadata.name,SIZE:.data" | head -20
+kubectl get secrets -n my-namespace -l owner=helm -o json | \
+  jq -r '.items[] | "\(.metadata.name)\t\((.data.release | length) // 0)"' | head -20
 
 # Check specific release history size
-kubectl get secret sh.helm.release.v1.my-release.v15 -o json | jq '.data | to_entries | map(.value | length) | add'
+kubectl get secret sh.helm.release.v1.my-release.v15 -o json | jq '.data.release | length'
 ```
 
 ### Solution: Limit Release History
@@ -70,7 +71,7 @@ helmDefaults:
 kubectl get secrets -l owner=helm,name=my-release
 
 # Manual cleanup (keep last 3)
-for secret in $(kubectl get secrets -l owner=helm,name=my-release -o name | head -n -3); do
+for secret in $(kubectl get secrets -l owner=helm,name=my-release --sort-by=.metadata.creationTimestamp -o name | head -n -3); do
   kubectl delete $secret
 done
 ```
@@ -172,8 +173,11 @@ helm install my-release ./mychart --skip-crds
 ### Batch Operations
 
 ```bash
-# Use atomic flag to batch operations
+# Roll back changes automatically if the upgrade fails (Helm 3)
 helm upgrade my-release ./mychart --atomic
+
+# Helm 4 equivalent
+helm upgrade my-release ./mychart --rollback-on-failure
 
 # Increase timeout for large deployments
 helm upgrade my-release ./mychart --timeout 30m
@@ -184,7 +188,7 @@ helm upgrade my-release ./mychart --timeout 30m
 ```bash
 # Use server-side apply for better performance
 helm upgrade my-release ./mychart \
-  --server-side \
+  --server-side=true \
   --force-conflicts
 ```
 
@@ -241,17 +245,10 @@ helmfile --concurrency 4 apply
 ### ArgoCD Parallel Sync
 
 ```yaml
-# ArgoCD Application with wave annotations
-apiVersion: argoproj.io/v1alpha1
-kind: Application
-spec:
-  syncPolicy:
-    syncOptions:
-      - PrunePropagationPolicy=foreground
-      - PruneLast=true
-    automated:
-      selfHeal: true
-      prune: true
+# Argo CD resource with a sync-wave annotation
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
 ```
 
 ## Memory and CPU Optimization
@@ -282,13 +279,19 @@ deploy:
 
 ```bash
 # Use local ChartMuseum for frequently used charts
-docker run -d -p 8080:8080 chartmuseum/chartmuseum
-
-# Push charts locally
-helm push mychart.tgz http://localhost:8080
+mkdir -p charts
+docker run -d -p 8080:8080 \
+  -e STORAGE=local \
+  -e STORAGE_LOCAL_ROOTDIR=/charts \
+  -v "$(pwd)/charts:/charts" \
+  ghcr.io/helm/chartmuseum:v0.16.3
 
 # Add local repo
 helm repo add local http://localhost:8080
+
+# Push charts locally with the ChartMuseum push plugin
+helm plugin install https://github.com/chartmuseum/helm-push
+helm cm-push mychart.tgz local
 ```
 
 ### OCI Registry Caching
@@ -312,8 +315,8 @@ time helm template my-release ./mychart > /dev/null
 # Time with debug output
 time helm template my-release ./mychart --debug 2>&1 | tail -1
 
-# Profile with verbose output
-helm upgrade my-release ./mychart -v 5 2>&1 | grep -E "time|duration"
+# Review debug output
+helm upgrade my-release ./mychart --debug
 ```
 
 ### Create Performance Tests
@@ -332,11 +335,11 @@ done
 
 # Dry run
 echo "Dry run:"
-time helm upgrade test ./mychart --dry-run > /dev/null
+time helm upgrade --install test ./mychart --dry-run > /dev/null
 
 # Full upgrade (if safe)
 echo "Upgrade:"
-time helm upgrade test ./mychart
+time helm upgrade --install test ./mychart
 ```
 
 ## Values File Optimization
