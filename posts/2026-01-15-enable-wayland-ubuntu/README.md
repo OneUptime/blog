@@ -285,7 +285,7 @@ sudo nano /etc/udev/rules.d/61-gdm.rules
 #
 # Comment out or remove the NVIDIA-specific rules that disable Wayland
 # The original file in /usr/lib/udev/rules.d/61-gdm.rules may contain:
-# DRIVER=="nvidia", RUN+="/usr/lib/gdm-runtime-config set daemon PreferredDisplayServer xorg"
+# DRIVER=="nvidia", RUN+="/usr/lib/gdm-runtime-config set daemon WaylandEnable false"
 #
 # By creating an empty override file or removing these rules,
 # we allow Wayland to work with NVIDIA drivers
@@ -326,11 +326,16 @@ xlsclients
 # hostname  code
 
 # Use xprop to check if a specific window is running through XWayland
-# Click on a window after running this command
-xprop | grep -i wayland
+# Click on a window after running this command. If xprop can select the
+# window and prints its properties, it is an XWayland (X11) window;
+# native Wayland windows cannot be selected by xprop at all.
+xprop
 
 # For native Wayland apps, you can use wlr-randr or similar tools
-# Install wlr-randr for Wayland display information
+# Note: wlr-randr only works on wlroots-based compositors (e.g. sway).
+# It does NOT work on GNOME's Mutter compositor (the Ubuntu default),
+# which does not implement the wlr-output-management protocol.
+# On GNOME, use Settings > Displays instead.
 sudo apt install wlr-randr
 ```
 
@@ -344,7 +349,8 @@ Some applications work better with X11. You can force them to use XWayland:
 GDK_BACKEND=x11 firefox
 
 # Method 2: For Qt applications, use QT_QPA_PLATFORM
-QT_QPA_PLATFORM=xcb obs-studio
+# Note: the OBS Studio executable is named "obs" (obs-studio is the package name)
+QT_QPA_PLATFORM=xcb obs
 
 # Method 3: For Electron apps, use specific flags
 # --ozone-platform-hint=x11 forces X11 mode
@@ -417,7 +423,8 @@ echo 'MOZ_ENABLE_WAYLAND=1' | sudo tee -a /etc/environment
 
 # For Chrome/Chromium, enable Wayland with flags
 # Create a config file for persistent settings
-mkdir -p ~/.config/chromium-flags.conf
+# Note: chromium-flags.conf is a FILE, so only create the parent directory
+mkdir -p ~/.config
 echo "--ozone-platform-hint=auto" >> ~/.config/chromium-flags.conf
 echo "--enable-features=WaylandWindowDecorations" >> ~/.config/chromium-flags.conf
 ```
@@ -494,6 +501,11 @@ sudo apt install obs-studio
 # 2. Select the screen or window from the portal dialog
 
 # For command-line screen recording, use wf-recorder
+# IMPORTANT: wf-recorder, slurp and wlr-randr only work on wlroots-based
+# compositors (e.g. sway). They do NOT work on GNOME's Mutter compositor
+# (the Ubuntu default) because Mutter does not implement the wlr-screencopy
+# and wlr-layer-shell protocols they depend on. On GNOME, use OBS Studio
+# (PipeWire capture) or the built-in screen recorder instead.
 sudo apt install wf-recorder
 
 # Record entire screen
@@ -515,6 +527,9 @@ gnome-screenshot -f ~/screenshot.png  # Save to file
 gnome-screenshot -a  # Select area
 
 # grim is a lightweight Wayland screenshot tool
+# Note: grim (and slurp) require the wlr-screencopy/wlr-layer-shell protocols,
+# so they only work on wlroots-based compositors, NOT on GNOME's Mutter.
+# On GNOME (Ubuntu default), use gnome-screenshot or the built-in tool above.
 sudo apt install grim
 
 # Capture entire screen
@@ -627,11 +642,13 @@ Understanding Wayland's current limitations helps set realistic expectations.
 # - GNOME's built-in screen recorder (Ctrl+Shift+Alt+R)
 
 # GNOME screen recording
-# Start recording (30-second default limit)
 # Press Ctrl+Shift+Alt+R to start/stop
 # Recording saved to ~/Videos/
 
-# To remove the 30-second limit:
+# Note: On older GNOME (3.x) the recorder had a 30-second default limit that
+# could be removed with the gsettings key below. On GNOME 42+ (Ubuntu 22.04
+# and newer) the recorder was rewritten, the limit was removed, and this key
+# no longer exists, so the command below applies only to older releases:
 gsettings set org.gnome.settings-daemon.plugins.media-keys max-screencast-length 0
 ```
 
@@ -641,7 +658,8 @@ gsettings set org.gnome.settings-daemon.plugins.media-keys max-screencast-length
 # Some multi-monitor scenarios may have issues:
 #
 # Check current monitor configuration
-gnome-randr  # Or use Settings > Displays
+# Note: GNOME on Wayland has no built-in display CLI (xrandr only works on X11,
+# and gnome-randr is an unofficial third-party script). Use Settings > Displays.
 
 # For mixed DPI setups (fractional scaling)
 gsettings get org.gnome.mutter experimental-features
@@ -914,7 +932,7 @@ WAYLAND_DEBUG=1 gnome-shell --wayland 2>&1 | tee wayland-debug.log
 journalctl --user -u org.gnome.Shell -f
 
 # Monitor Wayland protocol messages
-# Install wlr-protocols for additional tools
+# Install wayland-utils, which provides the wayland-info tool
 sudo apt install wayland-utils
 
 # Use wayland-info to check compositor capabilities
@@ -992,7 +1010,7 @@ Enabling Wayland on Ubuntu provides a more secure and modern display server expe
 | Enable Wayland | Edit `/etc/gdm3/custom.conf`, set `WaylandEnable=true` |
 | NVIDIA KMS | Add `nvidia-drm.modeset=1` to GRUB |
 | Force X11 for app | `GDK_BACKEND=x11 app-name` |
-| Screen recording | Use OBS with PipeWire or `wf-recorder` |
+| Screen recording | Use OBS with PipeWire or GNOME's built-in recorder (Ctrl+Shift+Alt+R) |
 | Switch to X11 | Select "Ubuntu on Xorg" at login |
 
 Wayland continues to mature rapidly, with more applications gaining native support. While some workflows may require XWayland compatibility, the security and performance benefits make Wayland the future of Linux desktop graphics.
