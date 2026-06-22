@@ -91,7 +91,7 @@ Ensure your Kubernetes cluster is properly configured.
 
 ```bash
 # Verify Kubernetes version (1.24 or later recommended)
-kubectl version --short
+kubectl version
 
 # Ensure no other CNI is installed
 ls /etc/cni/net.d/
@@ -356,9 +356,6 @@ spec:
   ipipMTU: 1480
   vxlanMTU: 1450
   wireguardMTU: 1440
-
-  # Connection tracking tuning
-  conntrackTableSize: 512000
 
   # iptables refresh interval
   iptablesRefreshInterval: "90s"
@@ -900,10 +897,7 @@ spec:
   # Alternatively, apply to all nodes
   # node: all
 
-  # Keep alive interval
-  keepAliveTime: 30s
-
-  # Source address for BGP session
+  # Source address for BGP session (UseNodeIP or None)
   sourceAddress: None
 
   # Password for BGP session (MD5 authentication)
@@ -940,7 +934,7 @@ spec:
   # Peer with nodes labeled as route reflectors
   peerSelector: route-reflector == 'true'
   # All other nodes peer with route reflectors
-  nodeSelector: '!route-reflector == "true"'
+  nodeSelector: "!has(route-reflector)"
 ---
 # Route reflectors peer with each other
 apiVersion: projectcalico.org/v3
@@ -1201,10 +1195,8 @@ spec:
   bpfMapSizeConntrack: 512000
   bpfMapSizeIPSets: 1048576
 
-  # PSP (Pod Security Policy) compatibility
-  bpfPSNATPorts:
-    - 32768
-    - 60999
+  # Port source NAT (PSNAT) range used for host-to-service connections
+  bpfPSNATPorts: "32768:60999"
 ```
 
 ### Verify eBPF is Active
