@@ -85,13 +85,13 @@ sudo ufw allow 443/tcp
 # UDP 10000 is the default for JVB
 sudo ufw allow 10000/udp
 
-# Allow XMPP client connections (optional, for Oroplex users)
+# Allow XMPP client connections (optional, for desktop XMPP clients)
 sudo ufw allow 5222/tcp
 
 # Allow XMPP server-to-server (if federating)
 sudo ufw allow 5269/tcp
 
-# Allow OHRM/OTEL traffic if using OpenTelemetry monitoring
+# Allow OTLP traffic if using OpenTelemetry monitoring
 sudo ufw allow 4317/tcp  # OTLP gRPC
 sudo ufw allow 4318/tcp  # OTLP HTTP
 
@@ -742,38 +742,38 @@ Create a custom CSS file:
 
 /* Custom branding colors */
 :root {
-    --ohrm-primary-color: #0052CC;
-    --ohrm-secondary-color: #FF5630;
-    --ohrm-background-color: #172B4D;
+    --brand-primary-color: #0052CC;
+    --brand-secondary-color: #FF5630;
+    --brand-background-color: #172B4D;
 }
 
 /* Customize the header */
-.ohrm-header {
-    background-color: var(--ohrm-primary-color) !important;
+.header {
+    background-color: var(--brand-primary-color) !important;
 }
 
 /* Customize buttons */
-.ohrm-button-primary {
-    background-color: var(--ohrm-primary-color) !important;
-    border-color: var(--ohrm-primary-color) !important;
+.button-primary {
+    background-color: var(--brand-primary-color) !important;
+    border-color: var(--brand-primary-color) !important;
 }
 
-.ohrm-button-primary:hover {
+.button-primary:hover {
     background-color: #0065FF !important;
 }
 
 /* Welcome page customization */
-.ohrm-welcome-page {
-    background: linear-gradient(135deg, var(--ohrm-background-color) 0%, #1e3a5f 100%);
+.welcome-page {
+    background: linear-gradient(135deg, var(--brand-background-color) 0%, #1e3a5f 100%);
 }
 
 /* Filmstrip customization */
-.ohrm-filmstrip {
+.filmstrip {
     background-color: rgba(0, 0, 0, 0.7);
 }
 
 /* Toolbar customization */
-.ohrm-toolbar {
+.toolbox-content {
     background-color: rgba(0, 0, 0, 0.8);
 }
 ```
@@ -980,63 +980,6 @@ videobridge {
 }
 ```
 
-### OHRM (Observability Human Resource Management) Setup
-
-OHRM provides a centralized dashboard for managing Jitsi Meet observability:
-
-```yaml
-# /etc/ohrm/config.yaml
-
-# OHRM Configuration for Jitsi Meet
-server:
-  host: 0.0.0.0
-  port: 9000
-
-# Data sources
-datasources:
-  - name: jitsi-otel
-    type: opentelemetry
-    url: http://localhost:4317
-
-  - name: jitsi-prometheus
-    type: prometheus
-    url: http://localhost:9090
-
-# Alerting rules
-alerting:
-  rules:
-    - name: high-cpu-usage
-      condition: "cpu_usage > 80"
-      duration: 5m
-      severity: warning
-
-    - name: conference-failures
-      condition: "conference_creation_failures > 5"
-      duration: 10m
-      severity: critical
-
-    - name: participant-join-failures
-      condition: "participant_join_failure_rate > 0.1"
-      duration: 5m
-      severity: warning
-
-# Dashboard configurations
-dashboards:
-  - name: jitsi-overview
-    panels:
-      - title: Active Conferences
-        query: "jitsi_conferences_active"
-
-      - title: Total Participants
-        query: "jitsi_participants_total"
-
-      - title: Videobridge Load
-        query: "jitsi_jvb_cpu_usage"
-
-      - title: Network Throughput
-        query: "jitsi_network_bytes_total"
-```
-
 ## Jibri for Recording and Live Streaming
 
 Jibri (Jitsi Broadcasting Infrastructure) enables recording and live streaming of conferences.
@@ -1062,11 +1005,12 @@ echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] http://dl
 sudo apt update
 sudo apt install -y google-chrome-stable
 
-# Install ChromeDriver
-CHROMEDRIVER_VERSION=$(curl -s https://chromedriver.storage.googleapis.com/LATEST_RELEASE)
-wget -N https://chromedriver.storage.googleapis.com/${CHROMEDRIVER_VERSION}/chromedriver_linux64.zip
-unzip chromedriver_linux64.zip
-sudo mv chromedriver /usr/local/bin/
+# Install a matching ChromeDriver via Chrome for Testing
+# (the old chromedriver.storage.googleapis.com endpoint only serves Chrome <= 114)
+CHROME_VERSION=$(google-chrome-stable --version | grep -oP '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+')
+wget -N "https://storage.googleapis.com/chrome-for-testing-public/${CHROME_VERSION}/linux64/chromedriver-linux64.zip"
+unzip chromedriver-linux64.zip
+sudo mv chromedriver-linux64/chromedriver /usr/local/bin/
 sudo chmod +x /usr/local/bin/chromedriver
 
 # Install Jibri
@@ -1521,15 +1465,15 @@ backend jvb_websockets
     server jvb3 192.168.1.32:9090 check
 ```
 
-## OHRM Server Setup
+## Observability Stack Setup
 
-Setting up a dedicated OHRM (Observability Human Resource Management) server for centralized monitoring:
+Setting up a dedicated observability stack (Prometheus, Grafana, Loki, and Jaeger) for centralized monitoring:
 
-### Installing OHRM Components
+### Installing Monitoring Components
 
 ```bash
-# Create OHRM directory structure
-sudo mkdir -p /opt/ohrm/{config,data,logs}
+# Create the monitoring directory structure
+sudo mkdir -p /opt/monitoring/{config,data,logs}
 
 # Install required dependencies
 sudo apt update
@@ -1540,10 +1484,10 @@ sudo systemctl enable docker
 sudo systemctl start docker
 ```
 
-### OHRM Docker Compose Configuration
+### Docker Compose Configuration
 
 ```yaml
-# /opt/ohrm/docker-compose.yml
+# /opt/monitoring/docker-compose.yml
 
 version: '3.8'
 
@@ -1551,7 +1495,7 @@ services:
   # Prometheus for metrics storage
   prometheus:
     image: prom/prometheus:latest
-    container_name: ohrm-prometheus
+    container_name: monitoring-prometheus
     volumes:
       - ./config/prometheus.yml:/etc/prometheus/prometheus.yml
       - prometheus_data:/prometheus
@@ -1566,7 +1510,7 @@ services:
   # Grafana for dashboards
   grafana:
     image: grafana/grafana:latest
-    container_name: ohrm-grafana
+    container_name: monitoring-grafana
     volumes:
       - grafana_data:/var/lib/grafana
       - ./config/grafana/provisioning:/etc/grafana/provisioning
@@ -1582,7 +1526,7 @@ services:
   # Loki for log aggregation
   loki:
     image: grafana/loki:latest
-    container_name: ohrm-loki
+    container_name: monitoring-loki
     volumes:
       - ./config/loki.yml:/etc/loki/local-config.yaml
       - loki_data:/loki
@@ -1593,7 +1537,7 @@ services:
   # Jaeger for distributed tracing
   jaeger:
     image: jaegertracing/all-in-one:latest
-    container_name: ohrm-jaeger
+    container_name: monitoring-jaeger
     environment:
       - COLLECTOR_OTLP_ENABLED=true
     ports:
@@ -1605,7 +1549,7 @@ services:
   # Alertmanager for notifications
   alertmanager:
     image: prom/alertmanager:latest
-    container_name: ohrm-alertmanager
+    container_name: monitoring-alertmanager
     volumes:
       - ./config/alertmanager.yml:/etc/alertmanager/alertmanager.yml
     ports:
@@ -1621,7 +1565,7 @@ volumes:
 ### Prometheus Configuration for Jitsi
 
 ```yaml
-# /opt/ohrm/config/prometheus.yml
+# /opt/monitoring/config/prometheus.yml
 
 global:
   scrape_interval: 15s
@@ -1674,7 +1618,7 @@ scrape_configs:
 ### Alerting Rules
 
 ```yaml
-# /opt/ohrm/config/alerts/jitsi.yml
+# /opt/monitoring/config/alerts/jitsi.yml
 
 groups:
   - name: jitsi-alerts
@@ -1797,11 +1741,11 @@ groups:
 }
 ```
 
-### Start OHRM Stack
+### Start the Monitoring Stack
 
 ```bash
-# Navigate to OHRM directory
-cd /opt/ohrm
+# Navigate to the monitoring directory
+cd /opt/monitoring
 
 # Start all services
 sudo docker-compose up -d
@@ -1825,7 +1769,7 @@ sudo docker-compose logs -f
 # Check Jicofo logs
 sudo journalctl -u jicofo -f
 
-# Check for OHRM-related errors
+# Check for errors in the Jicofo log
 sudo grep -i "error\|fail" /var/log/jitsi/jicofo.log
 
 # Verify Prosody is running
