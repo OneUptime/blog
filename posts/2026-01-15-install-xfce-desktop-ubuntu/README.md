@@ -751,12 +751,13 @@ xfce4-keyboard-settings
 | `Alt+F4` | Close window |
 | `Alt+F5` | Maximize window horizontally |
 | `Alt+F6` | Maximize window vertically |
-| `Alt+F7` | Maximize window |
-| `Alt+F8` | Stick window (visible on all workspaces) |
+| `Alt+F7` | Move window |
+| `Alt+F8` | Resize window |
 | `Alt+F9` | Minimize window |
 | `Alt+F10` | Maximize/restore window |
 | `Alt+F11` | Toggle fullscreen |
-| `Alt+F12` | Show window menu |
+| `Alt+F12` | Toggle always on top |
+| `Alt+Space` | Show window menu |
 | `Super+D` | Show desktop |
 | `Super+L` | Lock screen |
 | `Ctrl+Alt+Delete` | Lock screen |
@@ -864,10 +865,10 @@ xfconf-query -c xfce4-desktop -p /desktop-icons/style -s 0
 
 ```bash
 # Disable thumbnail generation (saves memory and CPU)
-xfconf-query -c thunar -p /misc-show-thumbnails -s "THUNAR_THUMBNAIL_MODE_NEVER"
+xfconf-query -c thunar -p /misc-thumbnail-mode -s "THUNAR_THUMBNAIL_MODE_NEVER"
 
 # Or set to only show thumbnails for local files:
-xfconf-query -c thunar -p /misc-show-thumbnails -s "THUNAR_THUMBNAIL_MODE_LOCAL_ONLY"
+xfconf-query -c thunar -p /misc-thumbnail-mode -s "THUNAR_THUMBNAIL_MODE_ONLY_LOCAL"
 ```
 
 ### Disable Animations
@@ -910,7 +911,7 @@ ls ~/.config/autostart/
 # Replace heavy applications with lighter alternatives
 
 # Web browser: Use lightweight browsers
-sudo apt install midori -y        # Ultra-lightweight browser
+sudo apt install epiphany-browser -y  # Lightweight GTK/WebKit browser (GNOME Web)
 sudo apt install falkon -y        # Qt-based lightweight browser
 
 # Office: Use lighter office suites or online alternatives
@@ -942,7 +943,7 @@ xfconf-query -c xfwm4 -p /general/use_compositing -s false
 xfconf-query -c xfce4-desktop -p /desktop-icons/style -s 0
 
 # Disable thumbnails in Thunar
-xfconf-query -c thunar -p /misc-show-thumbnails -s "THUNAR_THUMBNAIL_MODE_NEVER"
+xfconf-query -c thunar -p /misc-thumbnail-mode -s "THUNAR_THUMBNAIL_MODE_NEVER"
 
 # Disable animations
 xfconf-query -c xfwm4 -p /general/box_move -s false
