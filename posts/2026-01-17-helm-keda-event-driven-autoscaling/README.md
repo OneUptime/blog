@@ -92,15 +92,7 @@ helm install keda kedacore/keda \
 operator:
   name: keda-operator
   replicaCount: 2
-  
-  resources:
-    requests:
-      cpu: 100m
-      memory: 100Mi
-    limits:
-      cpu: 1000m
-      memory: 1000Mi
-      
+
   affinity:
     podAntiAffinity:
       preferredDuringSchedulingIgnoredDuringExecution:
@@ -117,21 +109,29 @@ operator:
 # Metrics server configuration
 metricsServer:
   replicaCount: 2
-  
-  resources:
+
+# Admission webhooks
+webhooks:
+  enabled: true
+  replicaCount: 2
+
+# Resource configuration
+resources:
+  operator:
     requests:
       cpu: 100m
       memory: 100Mi
     limits:
       cpu: 1000m
       memory: 1000Mi
-
-# Admission webhooks
-webhooks:
-  enabled: true
-  replicaCount: 2
-  
-  resources:
+  metricServer:
+    requests:
+      cpu: 100m
+      memory: 100Mi
+    limits:
+      cpu: 1000m
+      memory: 1000Mi
+  webhooks:
     requests:
       cpu: 50m
       memory: 50Mi
@@ -143,16 +143,25 @@ webhooks:
 podDisruptionBudget:
   operator:
     minAvailable: 1
-  metricsServer:
+  metricServer:
     minAvailable: 1
   webhooks:
     minAvailable: 1
 
 # Service account
 serviceAccount:
-  create: true
-  name: keda-operator
-  annotations: {}
+  operator:
+    create: true
+    name: keda-operator
+    annotations: {}
+  metricServer:
+    create: true
+    name: keda-metrics-server
+    annotations: {}
+  webhooks:
+    create: true
+    name: keda-webhook
+    annotations: {}
 
 # Prometheus integration
 prometheus:
@@ -173,8 +182,9 @@ logging:
   operator:
     level: info
     format: console
-  metricsServer:
-    level: "0"
+  metricServer:
+    zapLevel: info
+    zapEncoder: console
   webhooks:
     level: info
 
@@ -403,7 +413,7 @@ metadata:
   name: aws-auth
 spec:
   podIdentity:
-    provider: aws-eks
+    provider: aws
     # Or use secrets
   # secretTargetRef:
   #   - parameter: awsAccessKeyID
@@ -463,28 +473,39 @@ spec:
 ### HTTP Scaler (KEDA HTTP Add-on)
 
 ```yaml
-# http-scaledobject.yaml
-apiVersion: http.keda.sh/v1alpha1
-kind: HTTPScaledObject
+# http-interceptorroute.yaml
+apiVersion: http.keda.sh/v1beta1
+kind: InterceptorRoute
+metadata:
+  name: web-app
+spec:
+  target:
+    service: web-app-svc
+    port: 80
+  rules:
+    - hosts:
+        - myapp.example.com
+      paths:
+        - value: /api
+  scalingMetric:
+    concurrency:
+      targetValue: 100
+
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
 metadata:
   name: web-app-scaler
 spec:
-  hosts:
-    - myapp.example.com
-    
-  pathPrefixes:
-    - /api
-    
-  targetPendingRequests: 100
-  
   scaleTargetRef:
-    deployment: web-app
-    service: web-app-svc
-    port: 80
-    
-  replicas:
-    min: 2
-    max: 100
+    name: web-app
+  minReplicaCount: 2
+  maxReplicaCount: 100
+  triggers:
+    - type: external-push
+      metadata:
+        scalerAddress: keda-add-ons-http-external-scaler.keda:9090
+        interceptorRoute: web-app
 ```
 
 ### Cron Scaler
@@ -688,7 +709,7 @@ spec:
       rules:
         - alert: KEDAScalerErrors
           expr: |
-            sum(rate(keda_scaler_errors_total[5m])) by (scaler) > 0
+            sum(rate(keda_scaler_detail_errors_total[5m])) by (scaler) > 0
           for: 5m
           labels:
             severity: warning
@@ -707,8 +728,7 @@ spec:
             
         - alert: KEDAMaxReplicasReached
           expr: |
-            keda_scaler_active == 1 and
-            kube_deployment_spec_replicas >= kube_deployment_spec_replicas_max
+            kube_horizontalpodautoscaler_status_desired_replicas >= kube_horizontalpodautoscaler_spec_max_replicas
           for: 15m
           labels:
             severity: warning
