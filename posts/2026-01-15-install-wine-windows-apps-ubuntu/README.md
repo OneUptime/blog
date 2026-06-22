@@ -223,8 +223,9 @@ winetricks --gui
 # Install Visual C++ Redistributables (required by many applications)
 winetricks vcrun2019
 
-# Install DirectX for games
-winetricks directx9
+# Install DirectX 9 runtime libraries for games
+# (the old "directx9" verb is deprecated; install individual components instead)
+winetricks d3dx9
 
 # Install .NET Framework 4.8
 winetricks dotnet48
@@ -474,9 +475,9 @@ cp -r ~/.wine/user.reg ~/.wine/user.reg.backup
 ### Memory and Performance Issues
 
 ```bash
-# Increase Wine's memory limit
-# Edit or create ~/.wine/dosdevices/c:/windows/system32/winevdm.exe.so
-# This is rarely needed but can help with resource-intensive apps
+# For resource-intensive apps, prefer a 64-bit prefix (WINEARCH=win64) so the
+# application can address more memory than a 32-bit prefix allows, and disable
+# debug output for performance: WINEDEBUG=-all wine app.exe
 
 # For gaming, ensure you have Vulkan support
 sudo apt install mesa-vulkan-drivers vulkan-tools -y
