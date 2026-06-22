@@ -277,6 +277,9 @@ networks:
 docker network inspect ingress
 
 # Create custom ingress network
+# Only one ingress network can exist; stop services that publish ports first
+docker network rm ingress
+
 docker network create \
   --driver overlay \
   --ingress \
@@ -394,11 +397,10 @@ docker run --rm --net container:<container-id> nicolaka/netshoot tcpdump -i eth0
 
 | Feature | Overlay | Macvlan |
 |---------|---------|---------|
-| Multi-host | Yes | No |
+| Multi-host | Yes | Limited (same L2 / swarm scope) |
 | Encryption | Optional | No |
 | Service Discovery | Built-in | No |
 | Load Balancing | Built-in | No |
-| External LAN access | Via ingress | Direct |
+| External LAN access | Via published ports/ingress | Direct |
 
 Overlay networks are essential for multi-host Docker deployments. They provide built-in service discovery, load balancing, and optional encryption. For direct LAN access, see our post on [Docker Macvlan Networks](https://oneuptime.com/blog/post/2026-01-16-docker-macvlan-networks/view).
-
