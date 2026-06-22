@@ -13,8 +13,6 @@ The `depends_on` directive in Docker Compose controls startup order, but by defa
 ## The Problem with Basic depends_on
 
 ```yaml
-version: '3.8'
-
 services:
   app:
     image: my-app
@@ -32,11 +30,9 @@ This starts the database container before the app, but:
 
 ## depends_on with Conditions
 
-Docker Compose 2.1+ supports conditions that wait for health checks.
+The current Docker Compose Specification supports conditions that wait for health checks.
 
 ```yaml
-version: '3.8'
-
 services:
   app:
     image: my-app
@@ -81,8 +77,6 @@ Now the app waits until both database and redis health checks pass.
 Useful for init containers or migrations.
 
 ```yaml
-version: '3.8'
-
 services:
   migrate:
     image: my-app
@@ -270,8 +264,6 @@ app:
 ## Complete Example: Full Stack Application
 
 ```yaml
-version: '3.8'
-
 services:
   # Database layer
   postgres:
@@ -359,7 +351,7 @@ volumes:
 
 ## Disabling Health Checks
 
-You can disable health checks from the Dockerfile.
+You can disable health checks inherited from the image or Dockerfile.
 
 ```yaml
 services:
@@ -375,26 +367,26 @@ services:
 
 ```bash
 # See health status of all containers
-docker-compose ps
+docker compose ps
 
 # Detailed health info
 docker inspect --format='{{json .State.Health}}' container_name | jq
 
 # Watch health changes
-watch 'docker-compose ps'
+watch 'docker compose ps'
 ```
 
 ### Debug Failing Health Checks
 
 ```bash
 # Run health check command manually
-docker-compose exec postgres pg_isready -U postgres
+docker compose exec postgres pg_isready -U postgres
 
 # Check container logs
-docker-compose logs postgres
+docker compose logs postgres
 
 # Get into container to debug
-docker-compose exec postgres bash
+docker compose exec postgres bash
 ```
 
 ### Common Issues
@@ -409,8 +401,8 @@ docker-compose exec postgres bash
 ### Health Check Not Working
 
 ```yaml
-# Make sure you're using compose version 2.1+
-version: '3.8'  # or just remove version for latest behavior
+# Make sure you're using a current Docker Compose release.
+# The top-level version key is obsolete; remove it for latest behavior.
 
 # Use long-form depends_on
 depends_on:
