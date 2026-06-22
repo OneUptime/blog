@@ -36,7 +36,7 @@ A service worker is a JavaScript file that runs separately from the main browser
 - Cannot directly access the DOM
 - Can intercept and modify network requests
 - Can cache responses for offline use
-- Support push notifications and background sync
+- Support push notifications and, in supporting browsers, background sync
 
 ### Key Characteristics
 
@@ -101,8 +101,6 @@ const CACHE_NAME = 'my-app-cache-v1';
 const urlsToCache = [
   '/',
   '/index.html',
-  '/static/js/main.js',
-  '/static/css/main.css',
   '/offline.html'
 ];
 
@@ -151,20 +149,21 @@ Registration -> Installation -> Waiting -> Activation -> Idle <-> Fetch/Message
 
 ## Setting Up Your React Project
 
-Let's set up a new React project with service worker support. If you're using Create React App (CRA), you already have a basic service worker setup.
+Let's set up a new React project with service worker support. If you're using Create React App (CRA), service worker support is opt-in; use one of the PWA templates or add a service worker yourself.
 
 ### Creating a New Project
 
 ```bash
-# Using Create React App with TypeScript
+# Using Create React App with TypeScript and PWA support
 
-npx create-react-app my-offline-app --template typescript
+npx create-react-app my-offline-app --template cra-template-pwa-typescript
 
 # Navigate to the project
 cd my-offline-app
 
-# Install Workbox
-npm install workbox-webpack-plugin workbox-window workbox-precaching workbox-routing workbox-strategies workbox-expiration
+# Install Workbox packages used in this guide
+npm install workbox-core workbox-window workbox-precaching workbox-routing workbox-strategies workbox-expiration workbox-cacheable-response workbox-background-sync
+npm install workbox-webpack-plugin react-app-rewired --save-dev
 ```
 
 ### Project Structure
@@ -177,10 +176,10 @@ my-offline-app/
 │   └── offline.html
 ├── src/
 │   ├── components/
-│   ├── service-worker/
-│   │   ├── sw.ts
-│   │   └── registerSW.ts
+│   │   └── UpdateNotification.tsx
 │   ├── App.tsx
+│   ├── service-worker.ts
+│   ├── sw-registration.ts
 │   └── index.tsx
 ├── config-overrides.js
 └── package.json
@@ -236,8 +235,6 @@ const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/offline.html',
-  '/static/js/main.js',
-  '/static/css/main.css',
   '/manifest.json'
 ];
 
@@ -464,10 +461,10 @@ Workbox is a set of libraries from Google that simplifies service worker develop
 
 ```bash
 # Core Workbox packages
-npm install workbox-precaching workbox-routing workbox-strategies workbox-expiration workbox-cacheable-response workbox-window
+npm install workbox-core workbox-precaching workbox-routing workbox-strategies workbox-expiration workbox-cacheable-response workbox-background-sync workbox-window
 
-# Webpack plugin for build integration
-npm install workbox-webpack-plugin --save-dev
+# Webpack plugin and CRA override tool for build integration
+npm install workbox-webpack-plugin react-app-rewired --save-dev
 ```
 
 ### Workbox Core Modules
@@ -481,6 +478,7 @@ npm install workbox-webpack-plugin --save-dev
 | `workbox-cacheable-response` | Define what responses to cache |
 | `workbox-background-sync` | Queue failed requests for retry |
 | `workbox-window` | Client-side service worker management |
+| `workbox-core` | Shared Workbox utilities such as `clientsClaim()` |
 
 ## Caching Strategies
 
@@ -566,7 +564,7 @@ registerRoute(
 
 ### 4. Network Only
 
-Best for: Non-cacheable requests (POST requests, real-time data)
+Best for: Non-cacheable requests (real-time data, authentication checks)
 
 ```typescript
 import { NetworkOnly } from 'workbox-strategies';
@@ -620,7 +618,7 @@ Create `src/service-worker.ts`:
 
 import { clientsClaim } from 'workbox-core';
 import { precacheAndRoute, createHandlerBoundToURL } from 'workbox-precaching';
-import { registerRoute, NavigationRoute } from 'workbox-routing';
+import { registerRoute } from 'workbox-routing';
 import {
   CacheFirst,
   NetworkFirst,
@@ -629,7 +627,9 @@ import {
 import { ExpirationPlugin } from 'workbox-expiration';
 import { CacheableResponsePlugin } from 'workbox-cacheable-response';
 
-declare const self: ServiceWorkerGlobalScope;
+declare const self: ServiceWorkerGlobalScope & {
+  __WB_MANIFEST: Array<{ url: string; revision: string | null }>;
+};
 
 // Take control immediately
 clientsClaim();
@@ -767,7 +767,7 @@ self.addEventListener('fetch', (event) => {
 
 ### Step 2: Configure Webpack for Workbox
 
-If you're using Create React App, you'll need to customize the build configuration. Create `config-overrides.js`:
+If you're using Create React App and want to override the built-in PWA template behavior, you can customize the build configuration. First install `react-app-rewired`, then create `config-overrides.js`:
 
 ```javascript
 const { InjectManifest } = require('workbox-webpack-plugin');
@@ -895,7 +895,6 @@ Create `src/components/UpdateNotification.tsx`:
 
 ```typescript
 import React, { useState, useEffect } from 'react';
-import { Workbox } from 'workbox-window';
 import { registerServiceWorker, promptForUpdate } from '../sw-registration';
 
 interface UpdateNotificationProps {
@@ -1129,7 +1128,6 @@ Create a custom handler for complex caching logic:
 
 ```typescript
 import { Strategy, StrategyHandler } from 'workbox-strategies';
-import { Request, Response } from 'workbox-routing';
 
 class CustomApiStrategy extends Strategy {
   async _handle(
@@ -1142,8 +1140,7 @@ class CustomApiStrategy extends Strategy {
 
       // If successful, cache and return
       if (networkResponse.ok) {
-        const cache = await handler.cacheWrapper.open();
-        await cache.put(request, networkResponse.clone());
+        await handler.cachePut(request, networkResponse.clone());
         return networkResponse;
       }
 
@@ -1685,7 +1682,7 @@ Remember that offline support is not just about caching. It's about providing a 
 
 ## Further Resources
 
-- [Workbox Documentation](https://developers.google.com/web/tools/workbox)
+- [Workbox Documentation](https://developer.chrome.com/docs/workbox)
 - [Service Worker API - MDN](https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API)
-- [Web App Manifest - MDN](https://developer.mozilla.org/en-US/docs/Web/Manifest)
+- [Web App Manifest - MDN](https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Manifest)
 - [Progressive Web Apps - web.dev](https://web.dev/progressive-web-apps/)
