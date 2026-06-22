@@ -22,7 +22,7 @@ HTTPS is no longer optional-browsers mark HTTP sites as insecure, and search eng
 
 Let's Encrypt is a free, automated Certificate Authority that provides:
 - **Domain Validated (DV) certificates**: Verifies you control the domain
-- **90-day validity**: Certificates must be renewed regularly (automated)
+- **90-day default validity**: Certificates must be renewed regularly (automated)
 - **Rate limits**: 50 certificates per domain per week
 - **Wildcard support**: Requires DNS validation
 
@@ -74,7 +74,7 @@ sudo certbot --nginx -d example.com -d www.example.com
 ### Interactive Prompts
 
 During setup, you'll be asked:
-- **Email address**: For renewal notifications
+- **Email address**: For account contact; Let's Encrypt no longer sends certificate expiration emails
 - **Terms of Service**: Must agree to continue
 - **Share email with EFF**: Optional
 - **Redirect HTTP to HTTPS**: Recommended (option 2)
@@ -232,7 +232,7 @@ sudo systemctl restart nginx
 
 ## Automatic Renewal
 
-Let's Encrypt certificates expire after 90 days. Certbot sets up automatic renewal.
+Default Let's Encrypt certificates expire after 90 days. Certbot sets up automatic renewal.
 
 ### Test Renewal
 
@@ -295,6 +295,8 @@ sudo certbot certonly --manual --preferred-challenges dns -d "*.example.com" -d 
 ```
 
 You'll be prompted to create DNS TXT records. Add them through your DNS provider, then continue.
+
+Certificates created with `--manual` do not support automatic renewal unless you also provide authentication hook scripts. For automated wildcard renewal, use a DNS plugin.
 
 ### Automated DNS Challenge
 
@@ -414,7 +416,7 @@ dig +short example.com
 
 ```bash
 # Find what's using port 80
-sudo netstat -tlpn | grep :80
+sudo ss -tlpn 'sport = :80'
 
 # Stop conflicting service temporarily
 sudo systemctl stop nginx
@@ -450,9 +452,12 @@ sudo certbot renew --force-renewal
 ### Permission Issues
 
 ```bash
-# Fix permissions on Let's Encrypt directories
-sudo chmod -R 755 /etc/letsencrypt/live
-sudo chmod -R 755 /etc/letsencrypt/archive
+# Make live/archive directories traversable if your web server needs it
+sudo chmod 0755 /etc/letsencrypt/live /etc/letsencrypt/archive
+
+# If the server does not read keys as root, grant its group read access
+sudo chgrp www-data /etc/letsencrypt/live/example.com/privkey.pem
+sudo chmod 0640 /etc/letsencrypt/live/example.com/privkey.pem
 ```
 
 ## Security Best Practices
