@@ -8,15 +8,15 @@ Description: Learn how to implement graceful shutdown in Docker containers, hand
 
 ---
 
-When Docker stops a container, it sends SIGTERM, waits for a grace period, then sends SIGKILL. If your application doesn't handle SIGTERM properly, it gets forcefully terminated, potentially losing in-flight requests, corrupting data, or leaving resources in a bad state. Proper signal handling is essential for production containers.
+When Docker stops a container, it sends SIGTERM by default, waits for a grace period, then sends SIGKILL. If your application doesn't handle SIGTERM properly, it gets forcefully terminated, potentially losing in-flight requests, corrupting data, or leaving resources in a bad state. Proper signal handling is essential for production containers.
 
 ## How Docker Stops Containers
 
 ```text
-1. Docker sends SIGTERM to PID 1
+1. Docker sends SIGTERM to PID 1 by default
 2. Docker waits for stop timeout (default 10 seconds)
 3. Docker sends SIGKILL (cannot be caught)
-4. Container is removed
+4. Container exits
 ```
 
 The stop timeout can be configured:
@@ -111,7 +111,7 @@ process.on('SIGINT', () => shutdown('SIGINT'));  // Ctrl+C
 # server.py
 import signal
 import sys
-import time
+import threading
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 
 server = None
@@ -120,12 +120,8 @@ def shutdown_handler(signum, frame):
     print(f"Received signal {signum}, shutting down...")
 
     if server:
-        server.shutdown()
-
-    # Clean up resources
-    # db.close()
-
-    sys.exit(0)
+        # shutdown() must run from a different thread than serve_forever()
+        threading.Thread(target=server.shutdown, daemon=True).start()
 
 signal.signal(signal.SIGTERM, shutdown_handler)
 signal.signal(signal.SIGINT, shutdown_handler)
@@ -133,7 +129,13 @@ signal.signal(signal.SIGINT, shutdown_handler)
 if __name__ == '__main__':
     server = HTTPServer(('0.0.0.0', 8000), SimpleHTTPRequestHandler)
     print('Server started on port 8000')
-    server.serve_forever()
+    try:
+        server.serve_forever()
+    finally:
+        # Clean up resources
+        # db.close()
+        server.server_close()
+        sys.exit(0)
 ```
 
 ### Go
@@ -267,7 +269,7 @@ Or with dumb-init:
 ```dockerfile
 FROM python:3.11-slim
 
-RUN pip install dumb-init
+RUN apt-get update && apt-get install -y dumb-init && rm -rf /var/lib/apt/lists/*
 
 ENTRYPOINT ["dumb-init", "--"]
 CMD ["python", "server.py"]
@@ -280,12 +282,21 @@ Kubernetes sends SIGTERM when terminating pods, with configurable grace period.
 ```yaml
 apiVersion: apps/v1
 kind: Deployment
+metadata:
+  name: app
 spec:
+  selector:
+    matchLabels:
+      app: app
   template:
+    metadata:
+      labels:
+        app: app
     spec:
       terminationGracePeriodSeconds: 60  # Default is 30
       containers:
         - name: app
+          image: my-app
           lifecycle:
             preStop:
               exec:
@@ -306,8 +317,7 @@ lifecycle:
         - |
           # Sleep to allow load balancer to update
           sleep 5
-          # Then trigger graceful shutdown
-          kill -TERM 1
+          # Kubernetes sends SIGTERM after the preStop hook completes
 ```
 
 ## Testing Graceful Shutdown
@@ -316,7 +326,7 @@ lifecycle:
 
 ```bash
 # Start container
-docker run -d --name test my-app
+docker run -d --name test -p 8080:8080 my-app
 
 # Send SIGTERM
 docker stop test
@@ -380,16 +390,7 @@ CMD ["npm", "start"]
 # GOOD: Run node directly
 CMD ["node", "server.js"]
 
-# Or use npm with proper signal handling in package.json
-```
-
-In package.json:
-```json
-{
-  "scripts": {
-    "start": "exec node server.js"
-  }
-}
+# If you must use npm, test signal handling for your npm and Node.js versions.
 ```
 
 ### Pitfall 2: Using Shell Form
