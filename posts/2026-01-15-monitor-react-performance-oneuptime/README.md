@@ -55,17 +55,20 @@ import { ZoneContextManager } from '@opentelemetry/context-zone';
 import { registerInstrumentations } from '@opentelemetry/instrumentation';
 import { FetchInstrumentation } from '@opentelemetry/instrumentation-fetch';
 import { XMLHttpRequestInstrumentation } from '@opentelemetry/instrumentation-xml-http-request';
-import { Resource } from '@opentelemetry/resources';
-import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import {
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+} from '@opentelemetry/semantic-conventions';
 
-const resource = new Resource({
-  [SemanticResourceAttributes.SERVICE_NAME]: 'react-frontend',
-  [SemanticResourceAttributes.SERVICE_VERSION]: process.env.REACT_APP_VERSION || '1.0.0',
-  [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV,
+const resource = resourceFromAttributes({
+  [ATTR_SERVICE_NAME]: 'react-frontend',
+  [ATTR_SERVICE_VERSION]: process.env.REACT_APP_VERSION || '1.0.0',
+  'deployment.environment.name': process.env.NODE_ENV,
 });
 
 const exporter = new OTLPTraceExporter({
-  url: process.env.REACT_APP_OTLP_ENDPOINT || 'https://otlp.oneuptime.com/v1/traces',
+  url: process.env.REACT_APP_OTLP_ENDPOINT || 'https://oneuptime.com/otlp/v1/traces',
   headers: {
     'x-oneuptime-token': process.env.REACT_APP_ONEUPTIME_TOKEN || '',
   },
@@ -73,14 +76,15 @@ const exporter = new OTLPTraceExporter({
 
 const provider = new WebTracerProvider({
   resource,
+  spanProcessors: [
+    new BatchSpanProcessor(exporter, {
+      maxQueueSize: 100,
+      maxExportBatchSize: 10,
+      scheduledDelayMillis: 500,
+      exportTimeoutMillis: 30000,
+    }),
+  ],
 });
-
-provider.addSpanProcessor(new BatchSpanProcessor(exporter, {
-  maxQueueSize: 100,
-  maxExportBatchSize: 10,
-  scheduledDelayMillis: 500,
-  exportTimeoutMillis: 30000,
-}));
 
 provider.register({
   contextManager: new ZoneContextManager(),
@@ -130,13 +134,13 @@ root.render(
 
 ## Core Web Vitals Monitoring
 
-Core Web Vitals are Google's metrics for user experience: Largest Contentful Paint (LCP), First Input Delay (FID), and Cumulative Layout Shift (CLS). These directly impact SEO and user satisfaction.
+Core Web Vitals are Google's metrics for user experience: Largest Contentful Paint (LCP), Interaction to Next Paint (INP), and Cumulative Layout Shift (CLS). INP replaced First Input Delay (FID) as a Core Web Vital in March 2024, and the `web-vitals` library dropped `onFID` in v4. These directly impact SEO and user satisfaction.
 
 ### Capturing Web Vitals
 
 ```typescript
 // src/telemetry/webVitals.ts
-import { onCLS, onFID, onLCP, onFCP, onTTFB, onINP, Metric } from 'web-vitals';
+import { onCLS, onLCP, onFCP, onTTFB, onINP, Metric } from 'web-vitals';
 import { tracer } from './tracing';
 import { SpanStatusCode } from '@opentelemetry/api';
 
@@ -147,7 +151,6 @@ interface VitalThresholds {
 
 const thresholds: Record<string, VitalThresholds> = {
   CLS: { good: 0.1, needsImprovement: 0.25 },
-  FID: { good: 100, needsImprovement: 300 },
   LCP: { good: 2500, needsImprovement: 4000 },
   FCP: { good: 1800, needsImprovement: 3000 },
   TTFB: { good: 800, needsImprovement: 1800 },
@@ -197,7 +200,6 @@ function sendVitalToOneUptime(metric: Metric): void {
 
 export function initWebVitalsMonitoring(): void {
   onCLS(sendVitalToOneUptime);
-  onFID(sendVitalToOneUptime);
   onLCP(sendVitalToOneUptime);
   onFCP(sendVitalToOneUptime);
   onTTFB(sendVitalToOneUptime);
@@ -976,7 +978,7 @@ Once telemetry is flowing, configure OneUptime to visualize and alert on your Re
 ```bash
 # .env.production
 
-REACT_APP_OTLP_ENDPOINT=https://otlp.oneuptime.com/v1/traces
+REACT_APP_OTLP_ENDPOINT=https://oneuptime.com/otlp/v1/traces
 REACT_APP_ONEUPTIME_TOKEN=your-service-token-here
 REACT_APP_VERSION=1.0.0
 ```
