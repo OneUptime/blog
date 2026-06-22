@@ -114,18 +114,33 @@ done
 
 ```bash
 # Source host
-docker-compose down
-docker save $(docker-compose config --images) | gzip > images.tar.gz
-tar czf volumes.tar.gz /var/lib/docker/volumes/project_*
+docker compose stop
+docker save $(docker compose config --images) | gzip > images.tar.gz
+
+for vol in $(docker compose config --volumes); do
+    docker run --rm \
+        -v "$(basename "$(pwd)")_${vol}:/source:ro" \
+        -v "$(pwd):/backup" \
+        alpine tar czf "/backup/vol_${vol}.tar.gz" -C /source .
+done
 
 # Transfer
-scp images.tar.gz volumes.tar.gz docker-compose.yml user@target:/app/
+scp images.tar.gz vol_*.tar.gz docker-compose.yml user@target:/app/
 
 # Target host
 cd /app
 docker load < images.tar.gz
-tar xzf volumes.tar.gz -C /var/lib/docker/
-docker-compose up -d
+
+for vol_file in vol_*.tar.gz; do
+    vol_name=$(basename "$vol_file" .tar.gz | sed 's/^vol_//')
+    docker volume create "$(basename "$(pwd)")_${vol_name}"
+    docker run --rm \
+        -v "$(basename "$(pwd)")_${vol_name}:/target" \
+        -v "$(pwd):/backup:ro" \
+        alpine tar xzf "/backup/${vol_file}" -C /target
+done
+
+docker compose up -d
 ```
 
 ## Complete Migration Script
@@ -139,40 +154,45 @@ TARGET_HOST=$2
 COMPOSE_DIR=$3
 
 # On source: export
-ssh $SOURCE_HOST << 'EOF'
-cd $COMPOSE_DIR
-docker-compose stop
-docker save $(docker-compose config --images) | gzip > /tmp/images.tar.gz
+ssh $SOURCE_HOST "COMPOSE_DIR='$COMPOSE_DIR' bash -s" << 'EOF'
+cd "$COMPOSE_DIR"
+PROJECT=$(basename "$PWD")
+docker compose stop
+docker save $(docker compose config --images) | gzip > /tmp/images.tar.gz
 
-for vol in $(docker volume ls -q | grep $(basename $(pwd))); do
-    docker run --rm -v $vol:/source:ro -v /tmp:/backup alpine \
-        tar czf /backup/${vol}.tar.gz -C /source .
+for vol in $(docker compose config --volumes); do
+    volume_name="${PROJECT}_${vol}"
+    docker run --rm -v "$volume_name:/source:ro" -v /tmp:/backup alpine \
+        tar czf "/backup/vol_${vol}.tar.gz" -C /source .
 done
 EOF
 
 # Transfer
 scp ${SOURCE_HOST}:/tmp/images.tar.gz /tmp/
-scp ${SOURCE_HOST}:/tmp/*.tar.gz /tmp/
+scp ${SOURCE_HOST}:/tmp/vol_*.tar.gz /tmp/
 scp -r ${SOURCE_HOST}:${COMPOSE_DIR} /tmp/project
 
 # To target
 scp /tmp/images.tar.gz ${TARGET_HOST}:/tmp/
-scp /tmp/*.tar.gz ${TARGET_HOST}:/tmp/
+scp /tmp/vol_*.tar.gz ${TARGET_HOST}:/tmp/
 scp -r /tmp/project ${TARGET_HOST}:/app/
 
 # On target: import
 ssh $TARGET_HOST << 'EOF'
 docker load < /tmp/images.tar.gz
 
-for vol_file in /tmp/*.tar.gz; do
-    vol_name=$(basename $vol_file .tar.gz)
-    docker volume create $vol_name
-    docker run --rm -v $vol_name:/target -v /tmp:/backup alpine \
-        tar xzf /backup/$(basename $vol_file) -C /target
+cd /app/project
+PROJECT=$(basename "$PWD")
+
+for vol_file in /tmp/vol_*.tar.gz; do
+    vol_name=$(basename "$vol_file" .tar.gz | sed 's/^vol_//')
+    volume_name="${PROJECT}_${vol_name}"
+    docker volume create "$volume_name"
+    docker run --rm -v "$volume_name:/target" -v /tmp:/backup:ro alpine \
+        tar xzf "/backup/$(basename "$vol_file")" -C /target
 done
 
-cd /app/project
-docker-compose up -d
+docker compose up -d
 EOF
 ```
 
@@ -185,4 +205,3 @@ EOF
 | Full Migration | Slowest | Highest | High |
 
 Choose the migration method based on your requirements. Registry-based is best for production, while full migration preserves complete state. For live migration with state preservation, see our post on [Docker Checkpoint and Restore](https://oneuptime.com/blog/post/2026-01-16-docker-checkpoint-restore/view).
-
