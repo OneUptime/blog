@@ -153,10 +153,10 @@ DOMAIN="example.com"
 echo "=== DNSSEC Status Assessment for $DOMAIN ==="
 echo ""
 
-# Get current DNSKEY records
+# Get current DNSKEY records and calculate key tags
 echo "Current DNSKEY records:"
 dig +short $DOMAIN DNSKEY | while read flags proto algo key; do
-    keytag=$(echo "$flags $proto $algo $key" | dnssec-dsfromkey -f - $DOMAIN 2>/dev/null | awk '{print $4}')
+    keytag=$(printf "%s. IN DNSKEY %s %s %s %s\n" "$DOMAIN" "$flags" "$proto" "$algo" "$key" | dnssec-dsfromkey -2 - 2>/dev/null | awk '{print $4}')
     echo "  Key Tag: $keytag | Flags: $flags | Algorithm: $algo"
 done
 
@@ -170,7 +170,7 @@ dig +short $DOMAIN SOA | awk '{print $3}'
 
 echo ""
 echo "RRSIG validity:"
-dig +dnssec $DOMAIN SOA | grep RRSIG | awk '{print "Expires: "$9}'
+dig +dnssec $DOMAIN SOA | awk '$4 == "RRSIG" && $5 == "SOA" {print "Expires: "$9}'
 ```
 
 Document:
@@ -194,8 +194,10 @@ EVIDENCE_DIR="incident_evidence_$TIMESTAMP"
 
 mkdir -p $EVIDENCE_DIR
 
-# Capture current DNS state
-dig +dnssec +multi $DOMAIN ANY > "$EVIDENCE_DIR/dns_any_record.txt"
+# Capture current DNS state. ANY responses are often minimized, so query key types explicitly.
+for rrtype in SOA NS A AAAA MX TXT DNSKEY DS; do
+    dig +dnssec +multi "$DOMAIN" "$rrtype" > "$EVIDENCE_DIR/dns_${rrtype,,}_record.txt"
+done
 dig +dnssec $DOMAIN DNSKEY > "$EVIDENCE_DIR/dnskey_records.txt"
 dig $DOMAIN DS > "$EVIDENCE_DIR/ds_records.txt"
 
@@ -212,9 +214,9 @@ find $EVIDENCE_DIR -type f -exec sha256sum {} \; > "$EVIDENCE_DIR/checksums.sha2
 echo "Evidence preserved in $EVIDENCE_DIR"
 ```
 
-### Step 4: Revoke Compromised Keys (If Supported)
+### Step 4: Revoke Trust Anchor Keys (If Applicable)
 
-DNSSEC includes a key revocation mechanism. If your compromised key is a KSK with the REVOKE bit support:
+RFC 5011 includes a DNSKEY revocation mechanism for keys that validators use as trust anchors. If your compromised key is configured as a trust anchor outside the normal parent-DS chain, and your validator population supports RFC 5011:
 
 ```bash
 # Using BIND dnssec-settime to set revoke time
@@ -224,7 +226,7 @@ dnssec-settime -R now Kexample.com.+008+12345.key
 # This signals to resolvers that this key should no longer be trusted
 ```
 
-**Important**: Key revocation is not universally supported and should be used alongside, not instead of, a proper key rollover.
+**Important**: The RFC 5011 revocation bit is not a general replacement for changing DS records at the parent zone. For ordinary delegated zones, remove or replace the compromised DS record through the registrar or parent zone operator.
 
 ### Step 5: Notify Your Registrar
 
@@ -265,7 +267,7 @@ This is the more manageable scenario since it does not require parent zone chang
 # Calculate safe rollover timing
 # You need: current signatures to remain valid until new signatures propagate
 
-CURRENT_RRSIG_EXPIRY=$(dig +short example.com SOA | head -1)
+CURRENT_RRSIG_EXPIRY=$(dig @1.1.1.1 +dnssec example.com SOA | awk '$4 == "RRSIG" && $5 == "SOA" {print $9; exit}')
 ZONE_TTL=3600  # Your zone's maximum TTL
 PROPAGATION_TIME=1800  # Conservative propagation estimate
 
@@ -296,8 +298,9 @@ cat $NEW_ZSK >> $ZONE_FILE.keys
 
 # Step 3: Re-sign zone with BOTH keys
 dnssec-signzone -o $DOMAIN -k $KSK_FILE -f $ZONE_FILE.signed \
-    -e +2592000 \  # 30 day signature validity
+    -e +2592000 \
     $ZONE_FILE $OLD_ZSK_FILE $NEW_ZSK
+# -e +2592000 sets 30 day signature validity.
 
 # Step 4: Reload zone
 rndc reload $DOMAIN
@@ -329,7 +332,7 @@ delv $DOMAIN SOA +rtrace
 echo ""
 echo "Testing validation from public resolvers:"
 for resolver in 8.8.8.8 1.1.1.1 9.9.9.9; do
-    result=$(dig @$resolver +dnssec $DOMAIN A | grep -c "ad")
+    result=$(dig @$resolver +dnssec $DOMAIN A | awk '/^;; flags:/ && / ad[ ;]/ {found=1} END {print found+0}')
     echo "  $resolver: AD flag present: $result"
 done
 ```
@@ -375,35 +378,30 @@ echo "  Digest: $(cat new_ds_record.txt | awk '{print $7}')"
 
 **Registrar DS record submission examples:**
 
-For Cloudflare:
+For Cloudflare authoritative DNS:
 
 ```bash
-# Using Cloudflare API
-curl -X POST "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dnssec" \
-    -H "Authorization: Bearer $API_TOKEN" \
-    -H "Content-Type: application/json" \
-    --data '{
-        "ds_record": {
-            "key_tag": '"$NEW_KSK_ID"',
-            "algorithm": 13,
-            "digest_type": 2,
-            "digest": "'"$DS_DIGEST"'"
-        }
-    }'
+# Enable DNSSEC signing or retrieve Cloudflare-generated DS values.
+# Submit the DS values shown by Cloudflare to your registrar if Cloudflare is not your registrar.
+curl "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dnssec" \
+    --request PATCH \
+    --header "Authorization: Bearer $API_TOKEN" \
+    --json '{"status":"active"}'
+
+curl "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dnssec" \
+    --request GET \
+    --header "Authorization: Bearer $API_TOKEN"
 ```
 
-For AWS Route 53:
+For AWS Route 53 registered domains:
 
 ```bash
-# AWS CLI for DS record
-aws route53domains update-domain-nameservers-and-dnssec \
+# AWS CLI creates the DS record at the registry from DNSKEY attributes.
+PUBLIC_KEY=$(awk '$4 == "DNSKEY" {print $7; exit}' "$NEW_KSK")
+
+aws route53domains associate-delegation-signer-to-domain \
     --domain-name example.com \
-    --add-ds-records '[{
-        "KeyTag": '"$NEW_KSK_ID"',
-        "Algorithm": 13,
-        "DigestType": 2,
-        "Digest": "'"$DS_DIGEST"'"
-    }]'
+    --signing-attributes Algorithm=13,Flags=257,PublicKey="$PUBLIC_KEY"
 ```
 
 **Monitor DS propagation:**
@@ -532,7 +530,7 @@ echo ""
 for resolver in "${TEST_RESOLVERS[@]}"; do
     result=$(dig @$resolver +dnssec $DOMAIN A 2>/dev/null)
 
-    if echo "$result" | grep -q "ad"; then
+    if echo "$result" | awk '/^;; flags:/ && / ad[ ;]/ {found=1} END {exit !found}'; then
         status="PASS (AD flag set)"
     elif echo "$result" | grep -q "SERVFAIL"; then
         status="FAIL (SERVFAIL - validation failure)"
@@ -584,8 +582,10 @@ DOMAIN="example.com"
 echo "RRSIG Expiration Report for $DOMAIN"
 echo "==================================="
 
-dig +dnssec $DOMAIN ANY | grep RRSIG | while read line; do
-    rtype=$(echo $line | awk '{print $1}')
+for rrtype in SOA NS A AAAA MX TXT DNSKEY; do
+    dig @1.1.1.1 +dnssec $DOMAIN $rrtype
+done | awk '$4 == "RRSIG"' | while read line; do
+    rtype=$(echo $line | awk '{print $5}')
     expiry=$(echo $line | awk '{print $9}')
 
     # Convert expiry to human readable
@@ -809,15 +809,15 @@ options {
     dnssec-policy "hsm-policy";
 };
 
+key-store "hsm" {
+    directory "/opt/hsm";
+    pkcs11-uri "pkcs11:token=dnssec;object=example-ksk";
+};
+
 dnssec-policy "hsm-policy" {
     keys {
         ksk key-store "hsm" lifetime unlimited algorithm ecdsap384sha384;
         zsk key-store "hsm" lifetime P90D algorithm ecdsap256sha256;
-    };
-
-    key-store "hsm" {
-        directory "/opt/hsm";
-        pkcs11-uri "pkcs11:token=dnssec;object=example-ksk";
     };
 };
 ```
@@ -869,7 +869,7 @@ DOMAIN="example.com"
 ALERT_EMAIL="security@example.com"
 
 # Check RRSIG expiration
-expiry=$(dig +short $DOMAIN SOA | head -1)
+expiry=$(dig @1.1.1.1 +dnssec $DOMAIN SOA | awk '$4 == "RRSIG" && $5 == "SOA" {print $9; exit}')
 days_to_expiry=$(( ($(date -d "$expiry" +%s) - $(date +%s)) / 86400 ))
 
 if [ $days_to_expiry -lt 7 ]; then
