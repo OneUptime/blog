@@ -167,12 +167,13 @@ export const createLDContext = (user: User): LDContext => ({
   key: user.id,
   email: user.email,
   name: user.name,
-  custom: {
-    subscriptionTier: user.subscriptionTier,
-    accountAge: user.accountAgeDays,
-    platform: Platform.OS,
-    appVersion: getAppVersion(),
-  },
+  // In the context-based SDK, custom attributes are set as top-level
+  // key/value pairs on the context (the nested `custom` object belonged to
+  // the legacy user schema).
+  subscriptionTier: user.subscriptionTier,
+  accountAge: user.accountAgeDays,
+  platform: Platform.OS,
+  appVersion: getAppVersion(),
 });
 
 const ldClientInstance = new ReactNativeLDClient(
@@ -985,7 +986,19 @@ Implement percentage-based rollouts to safely release features:
 
 ```typescript
 // src/utils/rolloutUtils.ts
-import { createHash } from 'crypto';
+
+// React Native's JS runtime does not include Node's `crypto` module, so we use
+// a small, dependency-free deterministic string hash (FNV-1a) instead of
+// createHash('md5'). If you need a real cryptographic hash, add a polyfill such
+// as react-native-quick-crypto.
+const hashString = (input: string): number => {
+  let hash = 0x811c9dc5; // FNV-1a 32-bit offset basis
+  for (let i = 0; i < input.length; i++) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193); // multiply by the FNV prime
+  }
+  return hash >>> 0; // coerce to an unsigned 32-bit integer
+};
 
 export const isUserInRollout = (
   userId: string,
@@ -994,11 +1007,9 @@ export const isUserInRollout = (
 ): boolean => {
   // Create a deterministic hash based on user ID and flag key
   // This ensures the same user always gets the same result for a given flag
-  const hashInput = `${userId}:${flagKey}`;
-  const hash = createHash('md5').update(hashInput).digest('hex');
+  const hashValue = hashString(`${userId}:${flagKey}`);
 
-  // Convert first 8 characters of hash to a number between 0-100
-  const hashValue = parseInt(hash.substring(0, 8), 16);
+  // Normalize the hash to a number between 0-100
   const normalizedValue = (hashValue % 10000) / 100;
 
   return normalizedValue < percentage;
