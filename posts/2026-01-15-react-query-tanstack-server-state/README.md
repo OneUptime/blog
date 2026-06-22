@@ -120,7 +120,7 @@ function UserProfile({ userId }) {
 
 ### Query Keys
 
-Query keys uniquely identify cached data. They can be strings or arrays with complex objects:
+Query keys uniquely identify cached data. In TanStack Query v5, query keys must be arrays at the top level and can include strings, numbers, and serializable objects:
 
 ```jsx
 // Simple key
@@ -183,11 +183,11 @@ function DataDisplay() {
   const {
     data,           // The resolved data
     error,          // Error object if query failed
-    isLoading,      // True on first load (no cached data)
+    isLoading,      // True while the first fetch is in progress
     isFetching,     // True whenever fetching (including background)
     isError,        // True if query is in error state
     isSuccess,      // True if query succeeded
-    isPending,      // True if no cached data and no query attempt
+    isPending,      // True if there is no cached data and no query attempt has finished yet
     isStale,        // True if data is considered stale
     refetch,        // Function to manually refetch
     status,         // 'pending' | 'error' | 'success'
@@ -339,20 +339,20 @@ const mutation = useMutation({
     // Return context for rollback
     return { previousTodos };
   },
-  onError: (error, variables, context) => {
+  onError: (error, variables, onMutateResult) => {
     // Called if mutation fails
     console.error('Mutation failed:', error);
 
     // Rollback to previous value
-    if (context?.previousTodos) {
-      queryClient.setQueryData(['todos'], context.previousTodos);
+    if (onMutateResult?.previousTodos) {
+      queryClient.setQueryData(['todos'], onMutateResult.previousTodos);
     }
   },
-  onSuccess: (data, variables, context) => {
+  onSuccess: (data, variables, onMutateResult) => {
     // Called if mutation succeeds
     console.log('Mutation succeeded:', data);
   },
-  onSettled: (data, error, variables, context) => {
+  onSettled: (data, error, variables, onMutateResult) => {
     // Called regardless of success or failure
     // Always refetch to ensure consistency
     queryClient.invalidateQueries({ queryKey: ['todos'] });
@@ -389,9 +389,9 @@ function TodoItem({ todo }) {
 
       return { previousTodos };
     },
-    onError: (err, todoId, context) => {
+    onError: (err, todoId, onMutateResult) => {
       // Rollback on error
-      queryClient.setQueryData(['todos'], context.previousTodos);
+      queryClient.setQueryData(['todos'], onMutateResult.previousTodos);
     },
     onSettled: () => {
       // Sync with server
@@ -778,6 +778,8 @@ useQuery({
 ### Global Error Handling
 
 ```jsx
+import { QueryCache, QueryClient, MutationCache } from '@tanstack/react-query';
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -801,7 +803,7 @@ const queryClient = new QueryClient({
     },
   }),
   mutationCache: new MutationCache({
-    onError: (error, variables, context, mutation) => {
+    onError: (error, variables, onMutateResult, mutation) => {
       console.error('Mutation error:', error);
     },
   }),
@@ -921,18 +923,25 @@ import CreateTodo from './CreateTodo';
 
 describe('CreateTodo', () => {
   it('creates a new todo on submit', async () => {
-    const mockCreate = jest.fn().mockResolvedValue({ id: 1, title: 'New todo' });
-    require('./api').createTodo = mockCreate;
+    global.fetch = jest.fn().mockResolvedValue({
+      json: async () => ({ id: 1, title: 'New todo' }),
+    });
 
     renderWithClient(<CreateTodo />);
 
-    fireEvent.change(screen.getByPlaceholderText(/title/i), {
+    fireEvent.change(screen.getByPlaceholderText(/new todo/i), {
       target: { value: 'New todo' },
     });
     fireEvent.click(screen.getByRole('button', { name: /add/i }));
 
     await waitFor(() => {
-      expect(mockCreate).toHaveBeenCalledWith({ title: 'New todo' });
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/todos',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ title: 'New todo', completed: false }),
+        })
+      );
     });
   });
 });
@@ -945,7 +954,7 @@ describe('CreateTodo', () => {
 Organize query keys for consistency:
 
 ```jsx
-// query-keys.js
+// query-keys.ts
 export const queryKeys = {
   all: ['todos'] as const,
   lists: () => [...queryKeys.all, 'list'] as const,
