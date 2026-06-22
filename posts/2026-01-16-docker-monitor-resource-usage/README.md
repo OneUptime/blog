@@ -100,10 +100,10 @@ Build Cache     45        0         3.2GB     3.2GB (100%)
 
 ## Inspect Container Details
 
-Get detailed resource configuration and usage for a specific container.
+Get detailed resource configuration and state for a specific container.
 
 ```bash
-# Memory limit and usage
+# Memory limit
 docker inspect --format='{{.HostConfig.Memory}}' my-container
 
 # All resource limits
@@ -127,12 +127,14 @@ cAdvisor (Container Advisor) provides detailed resource monitoring with a web UI
 docker run -d \
   --name cadvisor \
   --privileged \
+  --device=/dev/kmsg \
   -p 8080:8080 \
   -v /:/rootfs:ro \
   -v /var/run:/var/run:ro \
   -v /sys:/sys:ro \
   -v /var/lib/docker/:/var/lib/docker:ro \
-  gcr.io/cadvisor/cadvisor:latest
+  -v /dev/disk/:/dev/disk:ro \
+  ghcr.io/google/cadvisor:latest
 ```
 
 Access the web UI at `http://localhost:8080` to see:
@@ -143,12 +145,12 @@ Access the web UI at `http://localhost:8080` to see:
 ### cAdvisor with Docker Compose
 
 ```yaml
-version: '3.8'
-
 services:
   cadvisor:
-    image: gcr.io/cadvisor/cadvisor:latest
+    image: ghcr.io/google/cadvisor:latest
     privileged: true
+    devices:
+      - /dev/kmsg
     ports:
       - "8080:8080"
     volumes:
@@ -156,6 +158,7 @@ services:
       - /var/run:/var/run:ro
       - /sys:/sys:ro
       - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
     restart: unless-stopped
 ```
 
@@ -169,12 +172,12 @@ Configure the Docker daemon to expose metrics.
 
 ```json
 {
-  "metrics-addr": "127.0.0.1:9323",
-  "experimental": true
+  "metrics-addr": "0.0.0.0:9323"
 }
 ```
 
 Add this to `/etc/docker/daemon.json` and restart Docker.
+Binding to `0.0.0.0` lets Prometheus running in a container reach the endpoint; restrict access with a firewall or bind to a specific host address in production.
 
 ### Prometheus Configuration
 
@@ -189,7 +192,7 @@ scrape_configs:
   # Docker daemon metrics
   - job_name: 'docker'
     static_configs:
-      - targets: ['localhost:9323']
+      - targets: ['host.docker.internal:9323']
 
   # cAdvisor metrics
   - job_name: 'cadvisor'
@@ -200,13 +203,13 @@ scrape_configs:
 ### Complete Monitoring Stack with Docker Compose
 
 ```yaml
-version: '3.8'
-
 services:
   prometheus:
     image: prom/prometheus
     ports:
       - "9090:9090"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
       - prometheus_data:/prometheus
@@ -224,8 +227,10 @@ services:
       - GF_SECURITY_ADMIN_PASSWORD=admin
 
   cadvisor:
-    image: gcr.io/cadvisor/cadvisor:latest
+    image: ghcr.io/google/cadvisor:latest
     privileged: true
+    devices:
+      - /dev/kmsg
     ports:
       - "8080:8080"
     volumes:
@@ -233,6 +238,7 @@ services:
       - /var/run:/var/run:ro
       - /sys:/sys:ro
       - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
 
 volumes:
   prometheus_data:
@@ -283,7 +289,7 @@ done
 
 OUTPUT_FILE="docker-stats-$(date +%Y%m%d-%H%M%S).csv"
 
-echo "timestamp,container,cpu,memory,mem_percent,net_in,net_out" > "$OUTPUT_FILE"
+echo "timestamp,container,cpu,memory,mem_percent,net_io" > "$OUTPUT_FILE"
 
 for i in {1..60}; do
   TIMESTAMP=$(date +%Y-%m-%d_%H:%M:%S)
