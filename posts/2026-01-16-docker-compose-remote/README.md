@@ -97,8 +97,6 @@ docker --context production compose up -d
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   web:
     image: ${REGISTRY}/myapp:${VERSION:-latest}
@@ -106,10 +104,7 @@ services:
       - "80:80"
     environment:
       DATABASE_URL: ${DATABASE_URL}
-    deploy:
-      replicas: 2
-      restart_policy:
-        condition: on-failure
+    restart: on-failure
 
   postgres:
     image: postgres:15
@@ -151,7 +146,7 @@ docker context use $ENVIRONMENT
 # Pull latest images
 docker compose pull
 
-# Deploy with zero downtime
+# Deploy in detached mode
 docker compose up -d --remove-orphans
 
 # Cleanup old images
@@ -297,6 +292,11 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
+          cat >> ~/.ssh/config <<EOF
+          Host ${{ secrets.DEPLOY_HOST }}
+            User deploy
+            IdentityFile ~/.ssh/deploy_key
+          EOF
           ssh-keyscan ${{ secrets.DEPLOY_HOST }} >> ~/.ssh/known_hosts
 
       - name: Create Docker context
@@ -368,8 +368,6 @@ docker --context production stack rm myapp
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   traefik:
     image: traefik:v2.10
@@ -378,7 +376,9 @@ services:
       - "--entrypoints.web.address=:80"
       - "--entrypoints.websecure.address=:443"
       - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
       - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
     ports:
       - "80:80"
       - "443:443"
@@ -391,6 +391,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.web.rule=Host(`${DOMAIN}`)"
+      - "traefik.http.routers.web.entrypoints=websecure"
       - "traefik.http.routers.web.tls.certresolver=letsencrypt"
     environment:
       DATABASE_URL: postgres://${DB_USER}:${DB_PASSWORD}@postgres:5432/${DB_NAME}
@@ -444,4 +445,3 @@ echo "Deployment successful"
 | Swarm Stack | Production orchestration |
 
 Docker contexts and SSH enable deploying compose stacks directly to remote hosts. Use contexts for multi-environment management and automate with CI/CD. For live development, see our post on [Docker Compose Watch](https://oneuptime.com/blog/post/2026-01-16-docker-compose-watch/view).
-
