@@ -167,7 +167,7 @@ notificationController:
       memory: 256Mi
 
 # Image reflector controller
-imageReflectorController:
+imageReflectionController:
   create: true
   resources:
     requests:
@@ -195,7 +195,6 @@ multitenancy:
 
 # Metrics
 prometheus:
-  enabled: true
   podMonitor:
     create: true
 ```
@@ -308,6 +307,9 @@ metadata:
 spec:
   interval: 5m
   url: oci://ghcr.io/stefanprodan/charts/podinfo
+  layerSelector:
+    mediaType: "application/vnd.cncf.helm.chart.content.v1.tar+gzip"
+    operation: copy
   ref:
     semver: ">=6.0.0"
 ```
@@ -385,7 +387,7 @@ spec:
       name: myapp-secrets
       valuesKey: secrets.yaml
       
-  # Inline values (lowest priority)
+  # Inline values (highest priority)
   values:
     replicaCount: 3
     resources:
@@ -710,7 +712,7 @@ spec:
 
 ```yaml
 # notifications/providers.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack
@@ -726,7 +728,7 @@ spec:
 
 ```yaml
 # notifications/alerts.yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: deployment-alerts
