@@ -1344,7 +1344,7 @@ Implement offline-first capabilities for your React Native app.
 
 ```typescript
 // src/apollo/offlineSupport.ts
-import { ApolloClient, NormalizedCacheObject, gql } from '@apollo/client';
+import { ApolloClient, gql } from '@apollo/client';
 import { RetryLink } from '@apollo/client/link/retry';
 import NetInfo, { NetInfoState } from '@react-native-community/netinfo';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -1376,7 +1376,7 @@ export const retryLink = new RetryLink({
 
 // Network status monitoring
 export function setupNetworkStatusListener(
-  client: ApolloClient<NormalizedCacheObject>
+  client: ApolloClient
 ): () => void {
   let isOnline = true;
 
@@ -1423,7 +1423,7 @@ export async function persistOfflineMutation(
 
 // Replay offline mutations on app start
 export async function replayOfflineMutations(
-  client: ApolloClient<NormalizedCacheObject>
+  client: ApolloClient
 ): Promise<void> {
   try {
     const stored = await AsyncStorage.getItem(OFFLINE_MUTATIONS_KEY);
