@@ -103,7 +103,7 @@ unbound -V
 systemctl status unbound
 ```
 
-Expected output should show Unbound version 1.x.x and service status (likely inactive until configured).
+Expected output should show the installed Unbound version and the service status. Depending on the Ubuntu release and package defaults, the service may already be active with the default configuration.
 
 ---
 
@@ -205,7 +205,7 @@ server:
     # Aggressive NSEC uses cached NSEC records to synthesize NXDOMAIN
     aggressive-nsec: yes
 
-    # Do not query the following private address ranges
+    # Do not return private addresses for public Internet names
     private-address: 10.0.0.0/8
     private-address: 172.16.0.0/12
     private-address: 192.168.0.0/16
@@ -500,11 +500,11 @@ DNS-over-HTTPS provides encrypted DNS resolution over HTTPS, often on port 443, 
 
 ### Installing DoH Proxy
 
-Unbound does not natively support DoH, so we use a proxy. Install `dnsproxy`:
+Modern Unbound can serve DoH when it is built with HTTP/2 support, but a small proxy is still a common way to expose DoH in front of a local Unbound resolver. Install `dnsproxy`:
 
 ```bash
 # Download dnsproxy
-DNSPROXY_VERSION="0.72.0"
+DNSPROXY_VERSION="0.81.4"
 wget https://github.com/AdguardTeam/dnsproxy/releases/download/v${DNSPROXY_VERSION}/dnsproxy-linux-amd64-v${DNSPROXY_VERSION}.tar.gz
 
 # Extract and install
@@ -545,7 +545,7 @@ Group=nogroup
 # Forwards to local Unbound on port 5335
 ExecStart=/usr/local/bin/dnsproxy \
     --listen=0.0.0.0 \
-    --port=443 \
+    --port=0 \
     --https-port=443 \
     --tls-crt=/etc/unbound/certs/unbound-cert.pem \
     --tls-key=/etc/unbound/certs/unbound-key.pem \
@@ -586,13 +586,14 @@ Test DoH resolution:
 
 ```bash
 # Test using curl
-curl -H "accept: application/dns-json" \
-    "https://localhost/dns-query?name=example.com&type=A" \
-    --insecure
+curl --doh-url https://localhost/dns-query \
+    --doh-insecure \
+    https://example.com \
+    --verbose
 
-# Test using dog (modern DNS client)
-# Install: cargo install dog
-dog example.com --https @https://localhost/dns-query --insecure
+# Test using dig with DoH support
+dig @127.0.0.1 +https +tls-ca=/etc/unbound/certs/unbound-cert.pem \
+    +tls-hostname=unbound.local example.com
 ```
 
 ---
@@ -1230,8 +1231,8 @@ sudo unbound-control reload
 # View local zones
 sudo unbound-control list_local_zones
 
-# Check DNSSEC trust anchors
-sudo unbound-control list_auth_zones
+# Check DNSSEC trust anchor file
+sudo cat /var/lib/unbound/root.key
 ```
 
 ### Creating a Log Analysis Script
@@ -1362,7 +1363,7 @@ dig @127.0.0.1 -p 5335 +cd example.com  # CD flag disables validation
 drill -S example.com
 
 # Check trust anchor
-sudo unbound-control list_auth_zones
+sudo cat /var/lib/unbound/root.key
 ```
 
 **Solutions**:
