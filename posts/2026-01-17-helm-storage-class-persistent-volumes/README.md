@@ -76,119 +76,10 @@ helm repo update
 ### IAM Configuration
 
 ```bash
-# Create IAM policy
-
-cat <<EOF > ebs-csi-policy.json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": [
-        "ec2:CreateSnapshot",
-        "ec2:AttachVolume",
-        "ec2:DetachVolume",
-        "ec2:ModifyVolume",
-        "ec2:DescribeAvailabilityZones",
-        "ec2:DescribeInstances",
-        "ec2:DescribeSnapshots",
-        "ec2:DescribeTags",
-        "ec2:DescribeVolumes",
-        "ec2:DescribeVolumesModifications"
-      ],
-      "Resource": "*"
-    },
-    {
-      "Effect": "Allow",
-      "Action": [
-        "ec2:CreateTags"
-      ],
-      "Resource": [
-        "arn:aws:ec2:*:*:volume/*",
-        "arn:aws:ec2:*:*:snapshot/*"
-      ],
-      "Condition": {
-        "StringEquals": {
-          "ec2:CreateAction": [
-            "CreateVolume",
-            "CreateSnapshot"
-          ]
-        }
-      }
-    },
-    {
-      "Effect": "Allow",
-      "Action": [
-        "ec2:DeleteTags"
-      ],
-      "Resource": [
-        "arn:aws:ec2:*:*:volume/*",
-        "arn:aws:ec2:*:*:snapshot/*"
-      ]
-    },
-    {
-      "Effect": "Allow",
-      "Action": [
-        "ec2:CreateVolume"
-      ],
-      "Resource": "*",
-      "Condition": {
-        "StringLike": {
-          "aws:RequestTag/ebs.csi.aws.com/cluster": "true"
-        }
-      }
-    },
-    {
-      "Effect": "Allow",
-      "Action": [
-        "ec2:CreateVolume"
-      ],
-      "Resource": "*",
-      "Condition": {
-        "StringLike": {
-          "aws:RequestTag/CSIVolumeName": "*"
-        }
-      }
-    },
-    {
-      "Effect": "Allow",
-      "Action": [
-        "ec2:DeleteVolume"
-      ],
-      "Resource": "*",
-      "Condition": {
-        "StringLike": {
-          "ec2:ResourceTag/ebs.csi.aws.com/cluster": "true"
-        }
-      }
-    },
-    {
-      "Effect": "Allow",
-      "Action": [
-        "ec2:DeleteVolume"
-      ],
-      "Resource": "*",
-      "Condition": {
-        "StringLike": {
-          "ec2:ResourceTag/CSIVolumeName": "*"
-        }
-      }
-    },
-    {
-      "Effect": "Allow",
-      "Action": [
-        "ec2:DeleteSnapshot"
-      ],
-      "Resource": "*",
-      "Condition": {
-        "StringLike": {
-          "ec2:ResourceTag/CSIVolumeSnapshotName": "*"
-        }
-      }
-    }
-  ]
-}
-EOF
+# Attach the AWS managed policy to the IAM role used by the EBS CSI controller
+aws iam attach-role-policy \
+  --role-name AmazonEKS_EBS_CSI_DriverRole \
+  --policy-arn arn:aws:iam::aws:policy/AmazonEBSCSIDriverPolicyV2
 ```
 
 ### Install EBS CSI Driver
@@ -293,25 +184,64 @@ helm repo update
 controller:
   replicas: 2
   resources:
-    limits:
-      memory: 200Mi
-    requests:
-      cpu: 10m
-      memory: 20Mi
+    csiProvisioner:
+      limits:
+        memory: 400Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
+    csiResizer:
+      limits:
+        memory: 400Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
+    csiSnapshotter:
+      limits:
+        memory: 200Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
+    livenessProbe:
+      limits:
+        memory: 100Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
+    nfs:
+      limits:
+        memory: 200Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
 
 node:
   resources:
-    limits:
-      memory: 200Mi
-    requests:
-      cpu: 10m
-      memory: 20Mi
+    livenessProbe:
+      limits:
+        memory: 100Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
+    nodeDriverRegistrar:
+      limits:
+        memory: 100Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
+    nfs:
+      limits:
+        memory: 300Mi
+      requests:
+        cpu: 10m
+        memory: 20Mi
 
 storageClass:
   create: true
   name: nfs-csi
-  server: nfs-server.example.com
-  share: /exported/path
+  parameters:
+    server: nfs-server.example.com
+    share: /exported/path
   reclaimPolicy: Delete
   volumeBindingMode: Immediate
   mountOptions:
@@ -435,19 +365,9 @@ resources:
     memory: 128Mi
 
 csi:
-  enableRbdDriver: true
-  enableCephfsDriver: true
-  enableGrpcMetrics: true
-  
-  csiRBDProvisionerResource: |
-    - name: csi-provisioner
-      resource:
-        requests:
-          cpu: 100m
-          memory: 128Mi
-        limits:
-          cpu: 500m
-          memory: 256Mi
+  installCsiOperator: true
+  serviceMonitor:
+    enabled: true
 
 enableDiscoveryDaemon: true
 ```
@@ -470,7 +390,7 @@ metadata:
   namespace: rook-ceph
 spec:
   cephVersion:
-    image: quay.io/ceph/ceph:v18.2.0
+    image: quay.io/ceph/ceph:v20.2.2
   dataDirHostPath: /var/lib/rook
   mon:
     count: 3
@@ -508,6 +428,18 @@ spec:
 
 ```yaml
 # ceph-storage-classes.yaml
+apiVersion: ceph.rook.io/v1
+kind: CephBlockPool
+metadata:
+  name: replicapool
+  namespace: rook-ceph
+spec:
+  failureDomain: host
+  replicated:
+    size: 3
+    requireSafeReplicaSize: true
+
+---
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
@@ -529,6 +461,28 @@ allowVolumeExpansion: true
 reclaimPolicy: Delete
 
 ---
+apiVersion: ceph.rook.io/v1
+kind: CephFilesystem
+metadata:
+  name: myfs
+  namespace: rook-ceph
+spec:
+  metadataPool:
+    replicated:
+      size: 3
+      requireSafeReplicaSize: true
+  dataPools:
+    - name: replicated
+      failureDomain: host
+      replicated:
+        size: 3
+        requireSafeReplicaSize: true
+  preserveFilesystemOnDelete: true
+  metadataServer:
+    activeCount: 1
+    activeStandby: true
+
+---
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
@@ -536,12 +490,14 @@ metadata:
 provisioner: rook-ceph.cephfs.csi.ceph.com
 parameters:
   clusterID: rook-ceph
-  fsName: cephfs
-  pool: cephfs-data
+  fsName: myfs
+  pool: myfs-replicated
   csi.storage.k8s.io/provisioner-secret-name: rook-csi-cephfs-provisioner
   csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
   csi.storage.k8s.io/controller-expand-secret-name: rook-csi-cephfs-provisioner
   csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
+  csi.storage.k8s.io/controller-publish-secret-name: rook-csi-cephfs-provisioner
+  csi.storage.k8s.io/controller-publish-secret-namespace: rook-ceph
   csi.storage.k8s.io/node-stage-secret-name: rook-csi-cephfs-node
   csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
 allowVolumeExpansion: true
@@ -560,10 +516,10 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: {{ .name }}
+  {{- if .default }}
   annotations:
-    {{- if .default }}
     storageclass.kubernetes.io/is-default-class: "true"
-    {{- end }}
+  {{- end }}
 provisioner: {{ .provisioner }}
 {{- with .parameters }}
 parameters:
@@ -571,7 +527,7 @@ parameters:
 {{- end }}
 reclaimPolicy: {{ .reclaimPolicy | default "Delete" }}
 volumeBindingMode: {{ .volumeBindingMode | default "WaitForFirstConsumer" }}
-allowVolumeExpansion: {{ .allowVolumeExpansion | default true }}
+allowVolumeExpansion: {{ if hasKey . "allowVolumeExpansion" }}{{ .allowVolumeExpansion }}{{ else }}true{{ end }}
 {{- with .mountOptions }}
 mountOptions:
   {{- toYaml . | nindent 2 }}
@@ -624,17 +580,12 @@ storageClasses:
 
 ### Install Snapshot Controller
 
-```yaml
-# snapshot-controller-values.yaml
-controller:
-  replicas: 2
-  resources:
-    limits:
-      cpu: 100m
-      memory: 128Mi
-    requests:
-      cpu: 10m
-      memory: 32Mi
+```bash
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/v8.5.0/client/config/crd/snapshot.storage.k8s.io_volumesnapshotclasses.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/v8.5.0/client/config/crd/snapshot.storage.k8s.io_volumesnapshotcontents.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/v8.5.0/client/config/crd/snapshot.storage.k8s.io_volumesnapshots.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/v8.5.0/deploy/kubernetes/snapshot-controller/rbac-snapshot-controller.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/v8.5.0/deploy/kubernetes/snapshot-controller/setup-snapshot-controller.yaml
 ```
 
 ### VolumeSnapshotClass
@@ -731,13 +682,13 @@ spec:
           annotations:
             summary: PersistentVolume has errors
             
-        - alert: CSIDriverNotReady
-          expr: csi_plugin_count == 0
+        - alert: EBSCSIDriverControllerUnavailable
+          expr: kube_deployment_status_replicas_available{namespace="kube-system", deployment="ebs-csi-controller"} == 0
           for: 5m
           labels:
             severity: critical
           annotations:
-            summary: CSI driver is not ready
+            summary: EBS CSI controller has no available replicas
 ```
 
 ## Troubleshooting
@@ -762,7 +713,7 @@ kubectl describe pvc <pvc-name>
 kubectl get volumeattachment
 
 # Debug provisioning
-kubectl logs -n kube-system deployment/csi-controller -c csi-provisioner -f
+kubectl logs -n kube-system deployment/ebs-csi-controller -c csi-provisioner -f
 ```
 
 ## Wrap-up
