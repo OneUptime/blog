@@ -8,7 +8,7 @@ Description: Learn how to implement WebSocket connections in React Native for re
 
 ---
 
-Real-time features are essential for modern mobile apps. Chat applications, live sports scores, stock tickers, collaborative editing, and push notifications all require instant data updates. WebSockets provide a persistent, bidirectional communication channel between your React Native app and the server, enabling these features without the overhead of constant HTTP polling.
+Real-time features are essential for modern mobile apps. Chat applications, live sports scores, stock tickers, collaborative editing, and in-app notifications all require instant data updates. WebSockets provide a persistent, bidirectional communication channel between your React Native app and the server, enabling these features without the overhead of constant HTTP polling.
 
 ## WebSockets vs HTTP Polling
 
@@ -101,7 +101,7 @@ function useWebSocketData(url: string) {
 }
 
 // WebSocket advantages:
-// 1. Instant updates (sub-millisecond latency)
+// 1. Low-latency updates
 // 2. Lower bandwidth (no repeated headers)
 // 3. Reduced server load
 // 4. Better battery life
@@ -461,7 +461,7 @@ class SocketIOService {
     }
 
     this.socket = io(this.config.url, {
-      transports: ['websocket'],  // Prefer WebSocket over polling
+      transports: ['websocket', 'polling'],  // Try WebSocket first, then fall back to polling
       reconnection: true,
       reconnectionAttempts: 10,
       reconnectionDelay: 1000,
@@ -577,7 +577,7 @@ export function SocketProvider({ url, options, children }: SocketProviderProps) 
 
   useEffect(() => {
     const socket = io(url, {
-      transports: ['websocket'],
+      transports: ['websocket', 'polling'],
       ...options,
     });
 
@@ -663,6 +663,8 @@ class ConnectionManager {
   private config: ConnectionManagerConfig;
   private appState: AppStateStatus = 'active';
   private hasNetwork: boolean = true;
+  private appStateSubscription: { remove: () => void } | null = null;
+  private netInfoUnsubscribe: (() => void) | null = null;
 
   constructor(config: ConnectionManagerConfig) {
     this.config = config;
@@ -671,10 +673,10 @@ class ConnectionManager {
 
   private setupListeners(): void {
     // Monitor app state changes
-    AppState.addEventListener('change', this.handleAppStateChange);
+    this.appStateSubscription = AppState.addEventListener('change', this.handleAppStateChange);
 
     // Monitor network connectivity
-    NetInfo.addEventListener(this.handleNetworkChange);
+    this.netInfoUnsubscribe = NetInfo.addEventListener(this.handleNetworkChange);
   }
 
   private handleAppStateChange = (nextAppState: AppStateStatus): void => {
@@ -749,7 +751,8 @@ class ConnectionManager {
 
   cleanup(): void {
     // Remove listeners when no longer needed
-    AppState.addEventListener('change', this.handleAppStateChange);
+    this.appStateSubscription?.remove();
+    this.netInfoUnsubscribe?.();
   }
 }
 
@@ -773,7 +776,7 @@ interface ReconnectionConfig {
 class ReconnectionManager {
   private config: ReconnectionConfig;
   private attempts: number = 0;
-  private timeoutId: NodeJS.Timeout | null = null;
+  private timeoutId: ReturnType<typeof setTimeout> | null = null;
   private onReconnect: () => void;
 
   constructor(onReconnect: () => void, config?: Partial<ReconnectionConfig>) {
@@ -1127,7 +1130,7 @@ class AuthenticatedSocket {
     }
 
     this.socket = io(this.config.url, {
-      transports: ['websocket'],
+      transports: ['websocket', 'polling'],
       auth: {
         token,  // Sent with handshake
       },
@@ -1465,13 +1468,14 @@ React Native apps need special handling for WebSocket connections when in backgr
 
 ```typescript
 // src/services/backgroundSocket.ts
-import { AppState, AppStateStatus } from 'react-native';
+import { AppState, AppStateStatus, Platform } from 'react-native';
 import BackgroundTimer from 'react-native-background-timer';
 
 class BackgroundSocket {
   private ws: WebSocket | null = null;
   private url: string;
   private heartbeatInterval: number | null = null;
+  private appStateSubscription: { remove: () => void } | null = null;
   private isInBackground: boolean = false;
   private keepAliveInBackground: boolean;
 
@@ -1482,7 +1486,7 @@ class BackgroundSocket {
   }
 
   private setupAppStateListener(): void {
-    AppState.addEventListener('change', this.handleAppStateChange);
+    this.appStateSubscription = AppState.addEventListener('change', this.handleAppStateChange);
   }
 
   private handleAppStateChange = (nextAppState: AppStateStatus): void => {
@@ -1517,19 +1521,30 @@ class BackgroundSocket {
   }
 
   private startBackgroundHeartbeat(): void {
-    // Use background timer to keep connection alive
-    this.heartbeatInterval = BackgroundTimer.setInterval(() => {
+    const sendHeartbeat = () => {
       if (this.ws?.readyState === WebSocket.OPEN) {
         // Send ping to keep connection alive
         this.ws.send(JSON.stringify({ type: 'ping' }));
       }
-    }, 25000);  // Every 25 seconds
+    };
+
+    // Use background timer to keep connection alive.
+    if (Platform.OS === 'ios') {
+      BackgroundTimer.runBackgroundTimer(sendHeartbeat, 25000);
+      return;
+    }
+
+    this.heartbeatInterval = BackgroundTimer.setInterval(sendHeartbeat, 25000);  // Every 25 seconds
   }
 
   private stopBackgroundHeartbeat(): void {
     if (this.heartbeatInterval) {
       BackgroundTimer.clearInterval(this.heartbeatInterval);
       this.heartbeatInterval = null;
+    }
+
+    if (Platform.OS === 'ios') {
+      BackgroundTimer.stopBackgroundTimer();
     }
   }
 
@@ -1558,6 +1573,7 @@ class BackgroundSocket {
   }
 
   cleanup(): void {
+    this.appStateSubscription?.remove();
     this.stopBackgroundHeartbeat();
     this.disconnect();
   }
@@ -1572,21 +1588,19 @@ Optimize WebSocket performance for mobile devices.
 
 ```typescript
 // src/services/optimizedSocket.ts
-import { InteractionManager } from 'react-native';
-
 interface PerformanceConfig {
   batchMessages: boolean;
   batchInterval: number;
   throttleUpdates: boolean;
   throttleInterval: number;
-  deferProcessingDuringInteraction: boolean;
+  deferProcessingUntilIdle: boolean;
 }
 
 class OptimizedSocket {
   private ws: WebSocket | null = null;
   private config: PerformanceConfig;
   private messageBuffer: any[] = [];
-  private batchTimeout: NodeJS.Timeout | null = null;
+  private batchTimeout: ReturnType<typeof setTimeout> | null = null;
   private lastUpdateTime: number = 0;
   private messageHandlers: Set<(data: any) => void> = new Set();
 
@@ -1596,7 +1610,7 @@ class OptimizedSocket {
       batchInterval: 100,       // Batch outgoing messages every 100ms
       throttleUpdates: true,
       throttleInterval: 16,     // ~60fps throttle for UI updates
-      deferProcessingDuringInteraction: true,
+      deferProcessingUntilIdle: true,
       ...config,
     };
 
@@ -1611,7 +1625,7 @@ class OptimizedSocket {
 
       if (this.config.throttleUpdates) {
         this.throttledProcess(data);
-      } else if (this.config.deferProcessingDuringInteraction) {
+      } else if (this.config.deferProcessingUntilIdle) {
         this.deferredProcess(data);
       } else {
         this.processMessage(data);
@@ -1630,11 +1644,14 @@ class OptimizedSocket {
     this.processMessage(data);
   }
 
-  // Defer processing until interactions complete (smoother animations)
+  // Defer processing until the main thread is idle (smoother animations)
   private deferredProcess(data: any): void {
-    InteractionManager.runAfterInteractions(() => {
-      this.processMessage(data);
-    });
+    if (typeof requestIdleCallback === 'function') {
+      requestIdleCallback(() => this.processMessage(data));
+      return;
+    }
+
+    setTimeout(() => this.processMessage(data), 0);
   }
 
   private processMessage(data: any): void {
@@ -1763,6 +1780,10 @@ import { useWebSocket } from '../src/hooks/useWebSocket';
 // Mock WebSocket
 class MockWebSocket {
   static instances: MockWebSocket[] = [];
+  static CONNECTING = 0;
+  static OPEN = 1;
+  static CLOSING = 2;
+  static CLOSED = 3;
 
   url: string;
   readyState: number = WebSocket.CONNECTING;
@@ -1892,7 +1913,7 @@ describe('WebSocket Integration', () => {
   beforeAll((done) => {
     // Connect to test server
     socket = io('http://localhost:3001', {
-      transports: ['websocket'],
+      transports: ['websocket', 'polling'],
     });
 
     socket.on('connect', done);
