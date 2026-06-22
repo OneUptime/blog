@@ -60,8 +60,6 @@ services:
       - ./rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf
       - ./definitions.json:/etc/rabbitmq/definitions.json
       - rabbitmq_data:/var/lib/rabbitmq
-    environment:
-      RABBITMQ_CONFIG_FILE: /etc/rabbitmq/rabbitmq
 ```
 
 ### rabbitmq.conf
@@ -85,7 +83,8 @@ log.console = true
 log.console.level = info
 
 # Load definitions on startup
-load_definitions = /etc/rabbitmq/definitions.json
+definitions.import_backend = local_filesystem
+definitions.local.path = /etc/rabbitmq/definitions.json
 ```
 
 ### definitions.json (Pre-configured Resources)
@@ -95,13 +94,17 @@ load_definitions = /etc/rabbitmq/definitions.json
   "users": [
     {
       "name": "admin",
-      "password_hash": "...",
-      "tags": "administrator"
+      "password_hash": "AQIDBAPLchNyjAVOe07Xcq7wMO+PJAo1ExKbHBk58F0PCdix",
+      "hashing_algorithm": "rabbit_password_hashing_sha256",
+      "tags": "administrator",
+      "limits": {}
     },
     {
       "name": "app",
-      "password_hash": "...",
-      "tags": ""
+      "password_hash": "BQYHCMBZ+xKrvXKcJJ2MhrwH7HguZ2GbUbP2PN7WIcmhtDxR",
+      "hashing_algorithm": "rabbit_password_hashing_sha256",
+      "tags": "",
+      "limits": {}
     }
   ],
   "vhosts": [
@@ -139,7 +142,9 @@ load_definitions = /etc/rabbitmq/definitions.json
       "vhost": "production",
       "type": "topic",
       "durable": true,
-      "auto_delete": false
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
     }
   ],
   "bindings": [
@@ -148,7 +153,8 @@ load_definitions = /etc/rabbitmq/definitions.json
       "vhost": "production",
       "destination": "tasks",
       "destination_type": "queue",
-      "routing_key": "task.*"
+      "routing_key": "task.*",
+      "arguments": {}
     }
   ]
 }
@@ -251,7 +257,6 @@ services:
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
-      RABBITMQ_VM_MEMORY_HIGH_WATERMARK: 0.7
     volumes:
       - ./rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
       - rabbitmq_data:/var/lib/rabbitmq
@@ -308,4 +313,3 @@ volumes:
 | 4369 | EPMD peer discovery |
 
 RabbitMQ in Docker provides reliable message queuing for microservices. Use the management image for the web UI, configure proper users and permissions, and implement health checks for production deployments.
-
