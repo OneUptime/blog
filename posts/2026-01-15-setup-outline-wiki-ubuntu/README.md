@@ -181,18 +181,20 @@ Slack authentication is the simplest option if your team already uses Slack.
 
 ### Option B: Google Authentication
 
-For Google authentication:
+For Google authentication, use a Google Workspace account:
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com/)
 2. Create a new project or select an existing one
-3. Navigate to "APIs & Services" > "Credentials"
-4. Click "Create Credentials" > "OAuth client ID"
-5. Select "Web application"
-6. Add authorized redirect URI:
+3. Navigate to "APIs & Services" and enable the Google+ API
+4. Configure the OAuth consent screen as an internal application for your Workspace domain
+5. Navigate to "APIs & Services" > "Credentials"
+6. Click "Create Credentials" > "OAuth client ID"
+7. Select "Web application"
+8. Add authorized redirect URI:
    ```text
    https://your-domain.com/auth/google.callback
    ```
-7. Copy the Client ID and Client Secret
+9. Copy the Client ID and Client Secret
 
 ### Option C: OpenID Connect (OIDC)
 
@@ -242,6 +244,7 @@ UTILS_SECRET=your_utils_secret_here
 
 # PostgreSQL connection string
 DATABASE_URL=postgres://outline:your_postgres_password@postgres:5432/outline
+POSTGRES_PASSWORD=your_postgres_password
 DATABASE_CONNECTION_POOL_MIN=2
 DATABASE_CONNECTION_POOL_MAX=10
 
@@ -263,6 +266,7 @@ PORT=3000
 # -----------------------------------------------------------------------------
 
 # S3-compatible storage configuration
+FILE_STORAGE=s3
 AWS_ACCESS_KEY_ID=outline_minio_access_key
 AWS_SECRET_ACCESS_KEY=your_minio_secret_key
 AWS_REGION=us-east-1
@@ -329,9 +333,6 @@ WEB_CONCURRENCY=2
 # Default interface language
 DEFAULT_LANGUAGE=en_US
 
-# Enable/disable new user signups
-ENABLE_UPDATES=true
-
 # Logging level (debug, info, warn, error)
 LOG_LEVEL=info
 
@@ -348,7 +349,7 @@ FILE_STORAGE_UPLOAD_MAX_SIZE=26214400
 # Telemetry (Optional)
 # -----------------------------------------------------------------------------
 
-# Disable anonymous telemetry
+# Disable update checks and anonymous statistics
 ENABLE_UPDATES=false
 ```
 
@@ -403,7 +404,7 @@ services:
       # Override environment variables if needed
       - PGSSLMODE=disable
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/_health"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/_health | grep -q OK"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -493,7 +494,7 @@ services:
       # MinIO Console (optional, for management)
       - "9001:9001"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      test: ["CMD", "mc", "ready", "local"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -516,9 +517,8 @@ services:
     entrypoint: >
       /bin/sh -c "
       sleep 10;
-      /usr/bin/mc alias set myminio http://minio:9000 outline_minio_access_key your_minio_secret_key;
+      /usr/bin/mc alias set myminio http://minio:9000 ${AWS_ACCESS_KEY_ID:-outline_minio_access_key} ${AWS_SECRET_ACCESS_KEY:-your_minio_secret_key};
       /usr/bin/mc mb myminio/outline-data --ignore-existing;
-      /usr/bin/mc anonymous set download myminio/outline-data/public;
       exit 0;
       "
 
@@ -667,9 +667,10 @@ server {
         proxy_set_header Connection "upgrade";
     }
 
-    # MinIO S3 API endpoint for file uploads
-    location /s3/ {
-        proxy_pass http://127.0.0.1:9000/;
+    # MinIO S3 API endpoint for file uploads.
+    # This path must match AWS_S3_UPLOAD_BUCKET_NAME when using path-style URLs.
+    location /outline-data/ {
+        proxy_pass http://127.0.0.1:9000;
 
         # Required for MinIO
         proxy_set_header Host $host;
@@ -803,7 +804,7 @@ After successful startup, access Outline at `https://wiki.yourdomain.com`.
 Outline supports several customization options through environment variables:
 
 ```bash
-# Custom team name (shown in header)
+# Default interface language
 DEFAULT_LANGUAGE=en_US
 
 # Restrict signups to specific email domains
