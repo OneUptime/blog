@@ -19,7 +19,7 @@ Docker Desktop Alternatives
 ├──────────────────────────────────────────────────────────────┤
 │  License        │ MIT    │ Apache 2.0      │ Apache 2.0     │
 │  GUI            │ No     │ Yes             │ Yes            │
-│  Kubernetes     │ Yes    │ Yes             │ No             │
+│  Kubernetes     │ Yes    │ Yes             │ Integration    │
 │  Docker CLI     │ Yes    │ Yes             │ Alias needed   │
 │  macOS          │ Yes    │ Yes             │ Yes            │
 │  Windows        │ No     │ Yes             │ Yes            │
@@ -52,11 +52,11 @@ sudo install colima-Linux-x86_64 /usr/local/bin/colima
 colima start
 
 # Start with custom resources
-colima start --cpu 4 --memory 8 --disk 60
+colima start --cpus 4 --memory 8 --disk 60
 
 # Start with Apple Silicon optimizations
 colima start \
-  --cpu 4 \
+  --cpus 4 \
   --memory 8 \
   --disk 60 \
   --vm-type vz \
@@ -79,13 +79,11 @@ memory: 8
 disk: 60
 
 # Virtual machine type (vz recommended for Apple Silicon)
-vm:
-  type: vz  # or qemu
-  rosetta: true  # For AMD64 compatibility on Apple Silicon
+vmType: vz  # or qemu
+rosetta: true  # For AMD64 compatibility on Apple Silicon
 
 # Mount type (virtiofs is fastest)
-mount:
-  type: virtiofs  # or 9p, sshfs
+mountType: virtiofs  # or 9p, sshfs
 
 # Docker configuration
 docker:
@@ -127,15 +125,15 @@ kubectl get pods -A
 
 ```bash
 # Create profile for development
-colima start --profile dev --cpu 2 --memory 4
+colima start dev --cpus 2 --memory 4
 
 # Create profile for testing
-colima start --profile test --cpu 4 --memory 8 --kubernetes
+colima start test --cpus 4 --memory 8 --kubernetes
 
 # Switch between profiles
-colima start --profile dev
-colima stop --profile dev
-colima start --profile test
+colima start dev
+colima stop dev
+colima start test
 
 # List profiles
 colima list
@@ -191,14 +189,15 @@ rdctl set --kubernetes.enabled=true
 rdctl set --kubernetes.version=1.28.0
 
 # Set resources
-rdctl set --virtualMachine.memoryInGB=8
-rdctl set --virtualMachine.numberCPUs=4
+rdctl set --virtual-machine.memory-in-gb=8
+rdctl set --virtual-machine.number-cpus=4
 ```
 
 ### Configuration File
 
+`~/Library/Application Support/rancher-desktop/settings.json` (macOS):
+
 ```json
-// ~/Library/Application Support/rancher-desktop/settings.json (macOS)
 {
   "version": 6,
   "containerEngine": {
@@ -275,9 +274,9 @@ docker-compose up -d  # with DOCKER_HOST set
 ### Docker Socket Compatibility
 
 ```bash
-# Enable Docker socket for compatibility
+# Optionally switch the machine API socket to rootful containers
 podman machine stop
-podman machine set --rootful
+podman machine set --rootful=true
 podman machine start
 
 # Set DOCKER_HOST
@@ -350,7 +349,7 @@ brew install colima docker docker-compose docker-buildx
 
 # Start Colima with optimal settings
 colima start \
-  --cpu 4 \
+  --cpus 4 \
   --memory 8 \
   --disk 60 \
   --vm-type vz \
@@ -381,9 +380,9 @@ podman machine init \
 
 podman machine start
 
-# Enable Docker compatibility
+# Optionally switch the machine API socket to rootful containers
 podman machine stop
-podman machine set --rootful
+podman machine set --rootful=true
 podman machine start
 
 # Set Docker host
@@ -433,8 +432,8 @@ podman system connection list
 # Docker socket not found
 export DOCKER_HOST="unix://${HOME}/.colima/default/docker.sock"
 
-# Permission denied
-sudo chmod 666 /var/run/docker.sock
+# Podman Desktop Docker compatibility on macOS
+# Enable Settings > Docker Compatibility in Podman Desktop
 
 # Buildx not working
 docker buildx create --use
@@ -449,4 +448,3 @@ docker buildx create --use
 | Podman Desktop | Docker-free environments, rootless containers |
 
 All three alternatives provide Docker-compatible container runtimes without Docker Desktop licensing requirements. Choose Colima for minimal overhead, Rancher Desktop for full-featured GUI with Kubernetes, or Podman Desktop for a Docker-free approach. For migrating to Podman specifically, see our post on [Migrating from Docker Desktop to Podman](https://oneuptime.com/blog/post/2026-01-16-docker-to-podman-migration/view).
-
