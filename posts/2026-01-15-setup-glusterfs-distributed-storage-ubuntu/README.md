@@ -152,11 +152,11 @@ Ubuntu includes GlusterFS in its default repositories:
 sudo apt install glusterfs-server -y
 ```
 
-For the latest version, you can add the official GlusterFS PPA:
+If you need a version newer than the Ubuntu archive package, use a GlusterFS community PPA that supports your Ubuntu release. For example, on Ubuntu releases supported by the GlusterFS 11 PPA:
 
 ```bash
-# Add the GlusterFS PPA for the latest stable release
-sudo add-apt-repository ppa:gluster/glusterfs-10 -y
+# Add a GlusterFS community PPA for a supported release
+sudo add-apt-repository ppa:gluster/glusterfs-11 -y
 sudo apt update
 sudo apt install glusterfs-server -y
 ```
@@ -189,15 +189,18 @@ If you are using UFW, allow GlusterFS traffic:
 ```bash
 # Allow GlusterFS daemon port
 sudo ufw allow 24007/tcp
+sudo ufw allow 24007/udp
 
-# Allow brick ports (default range)
+# Allow GlusterFS management port
 sudo ufw allow 24008/tcp
+sudo ufw allow 24008/udp
 
 # Allow port mapper
 sudo ufw allow 111/tcp
 sudo ufw allow 111/udp
 
-# Allow brick communication ports (adjust range based on number of bricks)
+# Allow brick communication ports (GlusterFS 10+ assigns brick ports randomly
+# within the configured base-port/max-port range; adjust this range as needed)
 sudo ufw allow 49152:49251/tcp
 
 # Reload firewall
@@ -458,9 +461,9 @@ The mount options explained:
 # backupvolfile-server=gluster2 - Fallback server if gluster1 is unavailable
 ```
 
-### NFS Mount (Alternative Method)
+### NFS Mount (Deprecated Alternative Method)
 
-GlusterFS can also export volumes via NFS:
+GlusterFS's built-in NFS server is deprecated in favor of NFS-Ganesha. Use native GlusterFS mounts where possible, or deploy NFS-Ganesha for new NFS-based deployments. On older clusters that still use Gluster-NFS:
 
 ```bash
 # Enable NFS on the volume
@@ -573,7 +576,7 @@ On the master node:
 ssh-keygen -t rsa -b 4096 -N "" -f ~/.ssh/id_rsa
 
 # Create geo-replication SSH keys
-sudo gluster system:: execute gsec_create
+sudo gluster-georep-sshkey generate
 
 # Push the keys to the slave cluster
 sudo gluster volume geo-replication repl-vol slave-cluster::slave-vol create push-pem
@@ -599,11 +602,13 @@ sudo gluster volume geo-replication repl-vol slave-gluster1::slave-vol status
 # Set checkpoint for tracking sync progress
 sudo gluster volume geo-replication repl-vol slave-gluster1::slave-vol config checkpoint now
 
-# Configure sync interval (default is 5 seconds)
+# Configure the number of concurrent sync jobs
 sudo gluster volume geo-replication repl-vol slave-gluster1::slave-vol config sync-jobs 3
 
-# Enable changelog for efficient sync
-sudo gluster volume geo-replication repl-vol slave-gluster1::slave-vol config use-changelog true
+# Use the shared meta volume for reliable active/passive worker coordination
+# This requires a replica 3 volume named gluster_shared_storage mounted at
+# /var/run/gluster/shared_storage on the primary nodes.
+sudo gluster volume geo-replication repl-vol slave-gluster1::slave-vol config use-meta-volume true
 ```
 
 ### Step 4: Monitor Geo-Replication
@@ -671,7 +676,7 @@ sudo gluster volume set repl-vol performance.cache-refresh-timeout 2
 ### Network Tuning
 
 ```bash
-# Enable TCP cork for better network efficiency
+# Set the server TCP user timeout in seconds
 sudo gluster volume set repl-vol server.tcp-user-timeout 42
 
 # Set ping timeout (for detecting dead connections)
@@ -698,10 +703,10 @@ For small files (metadata-heavy workloads):
 
 ```bash
 # Optimize for small file operations
+sudo gluster volume set repl-vol group nl-cache
 sudo gluster volume set repl-vol performance.stat-prefetch on
 sudo gluster volume set repl-vol performance.md-cache-timeout 600
-sudo gluster volume set repl-vol performance.nl-cache-positive-entry on
-sudo gluster volume set repl-vol performance.nl-cache-negative-entry on
+sudo gluster volume set repl-vol nl-cache-positive-entry on
 ```
 
 For large files (sequential I/O workloads):
@@ -758,11 +763,11 @@ sudo gluster volume status repl-vol mem
 # Check heal information for replicated volumes
 sudo gluster volume heal repl-vol info
 
-# Check files pending heal
+# Check files that were self-healed
 sudo gluster volume heal repl-vol info healed
 
-# Check files being healed
-sudo gluster volume heal repl-vol info heal-failed
+# Check files where self-heal failed
+sudo gluster volume heal repl-vol info failed
 
 # Check split-brain files
 sudo gluster volume heal repl-vol info split-brain
@@ -774,7 +779,7 @@ sudo gluster volume heal repl-vol info split-brain
 # Start full heal operation
 sudo gluster volume heal repl-vol full
 
-# Start heal on specific brick
+# Enable self-heal if it has been disabled
 sudo gluster volume heal repl-vol enable
 
 # Check heal statistics
@@ -835,13 +840,13 @@ sudo gluster volume profile repl-vol stop
 ps aux | grep glusterfsd
 
 # Check for port conflicts
-sudo netstat -tlnp | grep 49152
+sudo ss -tlnp | grep 49152
 
 # Verify brick directory permissions
 ls -la /data/brick1/
 
-# Check for stale pid files
-sudo rm /var/run/gluster/brick-path.pid
+# Check for stale pid files before removing any of them
+sudo find /var/run/gluster -name '*.pid' -ls
 sudo gluster volume start repl-vol force
 ```
 
@@ -868,7 +873,7 @@ ping gluster2
 sudo ufw status
 
 # Check if glusterd is listening
-sudo netstat -tlnp | grep 24007
+sudo ss -tlnp | grep 24007
 
 # Force peer probe
 sudo gluster peer probe gluster2 force
@@ -893,7 +898,7 @@ gluster volume status $VOLUME_NAME
 
 # Check for heal pending
 echo "=== Heal Status ==="
-HEAL_COUNT=$(gluster volume heal $VOLUME_NAME info | grep "Number of entries" | awk '{sum += $NF} END {print sum}')
+HEAL_COUNT=$(gluster volume heal $VOLUME_NAME info | grep "Number of entries" | awk '{sum += $NF} END {print sum+0}')
 if [ "$HEAL_COUNT" -gt 0 ]; then
     echo "WARNING: $HEAL_COUNT files pending heal"
 fi
@@ -961,7 +966,9 @@ echo "*/15 * * * * /usr/local/bin/gluster-health-check.sh >> /var/log/gluster-he
    ```bash
    sudo gluster snapshot create snap1 repl-vol
    sudo gluster snapshot list
+   sudo gluster volume stop repl-vol
    sudo gluster snapshot restore snap1
+   sudo gluster volume start repl-vol
    ```
 
 2. **Backup volume configuration**:
