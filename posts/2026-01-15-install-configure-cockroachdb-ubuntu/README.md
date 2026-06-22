@@ -517,7 +517,7 @@ SHOW RANGES FROM TABLE users;
 -- View all settings
 SHOW ALL CLUSTER SETTINGS;
 
--- Set timezone
+-- Time before an unresponsive store is considered dead
 SET CLUSTER SETTING server.time_until_store_dead = '5m';
 
 -- Enable enterprise features (with license)
