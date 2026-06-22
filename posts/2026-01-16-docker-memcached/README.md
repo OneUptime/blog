@@ -21,8 +21,6 @@ docker run -d --name memcached -p 11211:11211 memcached
 ### Docker Compose
 
 ```yaml
-version: '3.8'
-
 services:
   memcached:
     image: memcached:1.6-alpine
@@ -57,8 +55,6 @@ services:
 ### Production Configuration
 
 ```yaml
-version: '3.8'
-
 services:
   memcached:
     image: memcached:1.6-alpine
@@ -88,8 +84,6 @@ services:
 ## Multiple Instances
 
 ```yaml
-version: '3.8'
-
 services:
   memcached1:
     image: memcached:1.6-alpine
@@ -111,8 +105,6 @@ services:
 ## Complete Application Stack
 
 ```yaml
-version: '3.8'
-
 services:
   nginx:
     image: nginx:alpine
@@ -189,5 +181,4 @@ echo "get mykey" | nc localhost 11211
 | -I | 1m | Max item size |
 | -p | 11211 | TCP port |
 
-Memcached provides simple, high-performance caching. Use appropriate memory limits and multiple instances for high availability. For persistent caching needs, consider Redis instead as described in our post on [Running Redis in Docker](https://oneuptime.com/blog/post/2026-01-15-setup-private-docker-registry-ubuntu/view).
-
+Memcached provides simple, high-performance caching. Use appropriate memory limits and multiple instances for capacity and client-side redundancy. For persistent caching needs, consider Redis instead as described in our post on [Running Redis in Docker](https://oneuptime.com/blog/post/2026-01-21-redis-docker-compose/view).
