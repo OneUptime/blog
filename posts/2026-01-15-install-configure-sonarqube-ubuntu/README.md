@@ -255,7 +255,7 @@ sonar.test.exclusions=**/test/**
 # Run scanner
 cd /path/to/project
 sonar-scanner \
-  -Dsonar.login=your-token \
+  -Dsonar.token=your-token \
   -Dsonar.host.url=http://localhost:9000
 ```
 
@@ -349,7 +349,7 @@ sonarqube-check:
     - sonar-scanner
         -Dsonar.projectKey=$CI_PROJECT_PATH_SLUG
         -Dsonar.host.url=$SONAR_HOST_URL
-        -Dsonar.login=$SONAR_TOKEN
+        -Dsonar.token=$SONAR_TOKEN
   allow_failure: true
   only:
     - merge_requests
