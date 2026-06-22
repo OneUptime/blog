@@ -133,8 +133,6 @@ CPU pinning helps with:
 Here's a complete example with both CPU and memory limits.
 
 ```yaml
-version: '3.8'
-
 services:
   web:
     image: nginx
@@ -167,11 +165,9 @@ services:
           memory: 512M
 ```
 
-Note: The `deploy` section requires `docker-compose` version 3+ and is primarily for Swarm mode. For standalone Docker Compose, use the older syntax:
+Note: The top-level `version` key is obsolete in modern Docker Compose. The `deploy.resources` section is the Compose Specification syntax and is also used by Swarm-oriented deployments. For standalone Docker Compose, you can also use service-level resource options:
 
 ```yaml
-version: '2.4'
-
 services:
   app:
     image: my-app
