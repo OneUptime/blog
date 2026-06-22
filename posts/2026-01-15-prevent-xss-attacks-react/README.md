@@ -572,7 +572,8 @@ DOMPurify is the gold standard for HTML sanitization. Here is how to use it effe
 
 ```bash
 npm install dompurify
-npm install --save-dev @types/dompurify  # For TypeScript
+# DOMPurify 3.2+ ships its own TypeScript types, so no separate
+# @types/dompurify package is needed (it is now deprecated).
 ```
 
 ### Configuration Options
@@ -681,8 +682,11 @@ const securityHeaders = [
     value: 'DENY'
   },
   {
+    // The legacy XSS Auditor is deprecated and can introduce its own
+    // vulnerabilities. OWASP recommends disabling it with `0` and relying
+    // on Content-Security-Policy instead.
     key: 'X-XSS-Protection',
-    value: '1; mode=block'
+    value: '0'
   }
 ];
 
