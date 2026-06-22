@@ -69,6 +69,8 @@ For production, use cloud storage for persistence. This configuration uses AWS S
 # chartmuseum-values.yaml
 env:
   open:
+    # Required when using IAM Roles for Service Accounts on EKS
+    AWS_SDK_LOAD_CONFIG: true
     # Enable the API for chart uploads
     DISABLE_API: false
     # Use S3 storage backend
@@ -94,10 +96,8 @@ ingress:
   hosts:
     - name: charts.mycompany.com
       path: /
-  tls:
-    - secretName: chartmuseum-tls
-      hosts:
-        - charts.mycompany.com
+      tls: true
+      tlsSecret: chartmuseum-tls
 ```
 
 Install with production values:
@@ -120,7 +120,7 @@ helm plugin install https://github.com/chartmuseum/helm-push
 helm package ./my-chart
 
 # Push to ChartMuseum using the plugin
-helm cm-push my-chart-1.0.0.tgz chartmuseum
+helm cm-push my-chart-1.0.0.tgz https://charts.mycompany.com
 
 # Or use curl directly
 curl --data-binary "@my-chart-1.0.0.tgz" https://charts.mycompany.com/api/charts
@@ -259,8 +259,12 @@ helm package ./my-chart
 aws s3 cp my-chart-1.0.0.tgz s3://my-helm-charts/
 
 # Generate the index (download existing first if updating)
-aws s3 cp s3://my-helm-charts/index.yaml . 2>/dev/null || true
-helm repo index . --url https://my-helm-charts.s3.amazonaws.com --merge index.yaml
+aws s3 cp s3://my-helm-charts/index.yaml ./existing-index.yaml 2>/dev/null || true
+if [ -f ./existing-index.yaml ]; then
+  helm repo index . --url https://my-helm-charts.s3.amazonaws.com --merge ./existing-index.yaml
+else
+  helm repo index . --url https://my-helm-charts.s3.amazonaws.com
+fi
 
 # Upload the updated index
 aws s3 cp index.yaml s3://my-helm-charts/
@@ -282,8 +286,7 @@ REPO_URL="https://${BUCKET}.s3.amazonaws.com"
 
 # Package the chart
 echo "Packaging chart..."
-helm package "$CHART_DIR"
-CHART_FILE=$(ls *.tgz | head -1)
+CHART_FILE=$(helm package "$CHART_DIR" | awk -F': ' '{print $2}')
 
 # Download existing index
 echo "Downloading existing index..."
