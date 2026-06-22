@@ -25,8 +25,8 @@ export DOCKER_BUILDKIT=1
 
 ### Docker Daemon Configuration
 
+`/etc/docker/daemon.json`:
 ```json
-// /etc/docker/daemon.json
 {
   "features": {
     "buildkit": true
@@ -47,7 +47,7 @@ services:
       # BuildKit-specific options
 ```
 
-Or set environment:
+With legacy Docker Compose V1, set environment:
 ```bash
 COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker-compose build
 ```
@@ -72,9 +72,13 @@ RUN --mount=type=cache,target=/path/to/cache command
 # syntax=docker/dockerfile:1.4
 FROM ubuntu:22.04
 
+# Keep downloaded packages so the cache mount is useful
+RUN rm -f /etc/apt/apt.conf.d/docker-clean && \
+    echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache
+
 # Cache APT packages
-RUN --mount=type=cache,target=/var/cache/apt \
-    --mount=type=cache,target=/var/lib/apt \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update && apt-get install -y \
     curl \
     git \
@@ -211,7 +215,7 @@ Secrets allow you to use sensitive data during build without embedding it in the
 
 ```dockerfile
 # syntax=docker/dockerfile:1.4
-FROM alpine:3.19
+FROM node:20-alpine
 
 # Use secret during build
 RUN --mount=type=secret,id=mytoken \
@@ -261,8 +265,10 @@ docker build --secret id=npmrc,src=$HOME/.npmrc -t myapp .
 FROM alpine:3.19
 
 RUN apk add --no-cache git openssh-client
+RUN mkdir -p /root/.ssh && \
+    ssh-keyscan github.com >> /root/.ssh/known_hosts
 
-# Mount SSH key for private repo
+# Mount SSH agent for private repo
 RUN --mount=type=ssh \
     git clone git@github.com:org/private-repo.git
 
@@ -320,7 +326,7 @@ docker build --ssh default -t myimage .
 
 ## Bind Mounts
 
-Mount host directories during build.
+Mount files or directories from the build context during build.
 
 ```dockerfile
 # syntax=docker/dockerfile:1.4
@@ -545,4 +551,3 @@ trivy image myimage
 | Tmpfs mount | `--mount=type=tmpfs` | Temporary storage |
 
 BuildKit's advanced features significantly improve build performance and security. Cache mounts can reduce build times by 10x or more for dependency installation. Secrets ensure credentials never appear in image layers. Combined with multi-stage builds, these features enable efficient, secure container image builds.
-
