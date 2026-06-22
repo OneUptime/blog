@@ -256,11 +256,7 @@ If your entry file is `src/index.js`, rename it to `src/index.jsx`:
 mv src/index.js src/index.jsx
 ```
 
-For TypeScript projects:
-
-```bash
-mv src/index.tsx src/index.tsx  # Usually already correct
-```
+For TypeScript projects, the entry point is usually already `src/index.tsx`, so no rename is needed.
 
 Vite requires explicit file extensions for JSX files. Update all `.js` files containing JSX to `.jsx`.
 
