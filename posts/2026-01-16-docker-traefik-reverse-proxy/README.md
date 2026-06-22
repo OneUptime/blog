@@ -34,8 +34,6 @@ flowchart TB
 ```yaml
 # docker-compose.yml
 
-version: '3.8'
-
 services:
   traefik:
     image: traefik:v3.0
@@ -76,8 +74,6 @@ services:
 ### Production SSL Configuration
 
 ```yaml
-version: '3.8'
-
 services:
   traefik:
     image: traefik:v3.0
@@ -159,24 +155,40 @@ services:
 services:
   api-v1:
     image: myapi:v1
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.api.rule=Host(`api.example.com`)"
-      - "traefik.http.services.api-v1.loadbalancer.server.port=3000"
 
   api-v2:
     image: myapi:v2
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.services.api-v2.loadbalancer.server.port=3000"
 
   # Weighted routing (90% v1, 10% v2)
   traefik:
-    labels:
-      - "traefik.http.services.api-weighted.weighted.services[0].name=api-v1"
-      - "traefik.http.services.api-weighted.weighted.services[0].weight=90"
-      - "traefik.http.services.api-weighted.weighted.services[1].name=api-v2"
-      - "traefik.http.services.api-weighted.weighted.services[1].weight=10"
+    command:
+      - "--providers.file.filename=/etc/traefik/dynamic.yml"
+    volumes:
+      - ./dynamic.yml:/etc/traefik/dynamic.yml:ro
+
+# dynamic.yml
+http:
+  routers:
+    api:
+      rule: "Host(`api.example.com`)"
+      service: api-weighted
+
+  services:
+    api-weighted:
+      weighted:
+        services:
+          - name: api-v1
+            weight: 90
+          - name: api-v2
+            weight: 10
+    api-v1:
+      loadBalancer:
+        servers:
+          - url: "http://api-v1:3000"
+    api-v2:
+      loadBalancer:
+        servers:
+          - url: "http://api-v2:3000"
 ```
 
 ### Health Checks
@@ -230,14 +242,14 @@ services:
       - "traefik.http.middlewares.security-headers.headers.browserXssFilter=true"
 ```
 
-### IP Whitelist
+### IP Allow List
 
 ```yaml
 services:
   admin:
     labels:
-      - "traefik.http.routers.admin.middlewares=whitelist"
-      - "traefik.http.middlewares.whitelist.ipwhitelist.sourcerange=192.168.1.0/24,10.0.0.0/8"
+      - "traefik.http.routers.admin.middlewares=allowlist"
+      - "traefik.http.middlewares.allowlist.ipallowlist.sourcerange=192.168.1.0/24,10.0.0.0/8"
 ```
 
 ### Compression
@@ -270,8 +282,6 @@ services:
 ## Complete Production Example
 
 ```yaml
-version: '3.8'
-
 services:
   traefik:
     image: traefik:v3.0
@@ -406,4 +416,3 @@ http:
 | Redirect | entrypoint redirections |
 
 Traefik simplifies reverse proxy configuration for Docker with automatic service discovery and Let's Encrypt integration. Use labels to configure routing, middleware for security features, and the dashboard for monitoring. For alternative reverse proxy setup, see our post on [Docker with Nginx Reverse Proxy](https://oneuptime.com/blog/post/2026-01-16-docker-nginx-reverse-proxy/view).
-
