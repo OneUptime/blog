@@ -66,14 +66,14 @@ helm install keycloak bitnami/keycloak \
 
 # Global settings
 global:
-  storageClass: "standard"
+  defaultStorageClass: "standard"
 
 # Keycloak configuration
 auth:
   adminUser: admin
   # Use existing secret for admin password
   existingSecret: keycloak-admin-secret
-  existingSecretKey: admin-password
+  passwordSecretKey: admin-password
 
 # Replicas for high availability
 replicaCount: 3
@@ -109,13 +109,15 @@ containerSecurityContext:
 production: true
 
 # Proxy settings
-proxy: edge
+proxyHeaders: xforwarded
 
 # Hostname configuration
 httpRelativePath: "/"
 
-# Enable health endpoints
-health:
+# Enable health probes
+livenessProbe:
+  enabled: true
+readinessProbe:
   enabled: true
 
 # Metrics endpoint for Prometheus
@@ -187,12 +189,9 @@ postgresql:
 cache:
   enabled: true
   # Stack for cluster communication
-  stack: kubernetes
+  stack: jdbc-ping
 
-# JGroups configuration for clustering
 extraEnvVars:
-  - name: JAVA_OPTS_APPEND
-    value: "-Djgroups.dns.query=keycloak-headless.keycloak.svc.cluster.local"
   - name: KC_LOG_LEVEL
     value: "INFO"
   - name: KC_TRANSACTION_XA_ENABLED
@@ -228,11 +227,12 @@ pdb:
 
 # Autoscaling
 autoscaling:
-  enabled: true
-  minReplicas: 3
-  maxReplicas: 10
-  targetCPU: 70
-  targetMemory: 70
+  hpa:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 10
+    targetCPU: 70
+    targetMemory: 70
 
 # Init containers for database readiness
 initContainers:
@@ -385,7 +385,10 @@ data:
           "clientId": "myapp-api",
           "enabled": true,
           "publicClient": false,
-          "bearerOnly": true
+          "standardFlowEnabled": false,
+          "implicitFlowEnabled": false,
+          "directAccessGrantsEnabled": false,
+          "serviceAccountsEnabled": false
         }
       ],
       "roles": {
@@ -411,7 +414,10 @@ extraVolumeMounts:
     mountPath: /opt/bitnami/keycloak/data/import
     readOnly: true
 
-extraStartupArgs: "--import-realm"
+extraStartupArgs: >-
+  --import-realm
+  --spi-theme-static-max-age=-1
+  --spi-theme-cache-themes=false
 ```
 
 ## LDAP Integration
@@ -460,12 +466,12 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/name: keycloak
+      app.kubernetes.io/component: metrics
   namespaceSelector:
     matchNames:
       - keycloak
   endpoints:
-    - port: http
+    - port: tcp-metrics
       path: /metrics
       interval: 30s
 ```
@@ -478,29 +484,29 @@ spec:
     "title": "Keycloak Metrics",
     "panels": [
       {
-        "title": "Login Attempts",
+        "title": "Authentication Requests",
         "targets": [
           {
-            "expr": "increase(keycloak_logins_total[5m])",
-            "legendFormat": "{{realm}} - {{provider}}"
+            "expr": "sum(rate(http_server_requests_seconds_count{uri=~\"/realms/{realm}/protocol/{protocol}.*|/realms/{realm}/login-actions.*\"}[5m]))",
+            "legendFormat": "auth requests"
           }
         ]
       },
       {
-        "title": "Failed Logins",
+        "title": "Server Errors",
         "targets": [
           {
-            "expr": "increase(keycloak_failed_login_attempts_total[5m])",
-            "legendFormat": "{{realm}} - {{error}}"
+            "expr": "sum(rate(http_server_requests_seconds_count{uri=~\"/realms/{realm}/protocol/{protocol}.*|/realms/{realm}/login-actions.*\",outcome=\"SERVER_ERROR\"}[5m]))",
+            "legendFormat": "server errors"
           }
         ]
       },
       {
-        "title": "Active Sessions",
+        "title": "Database Connections",
         "targets": [
           {
-            "expr": "keycloak_sessions",
-            "legendFormat": "{{realm}}"
+            "expr": "agroal_active_count{datasource=\"default\"}",
+            "legendFormat": "{{pod}}"
           }
         ]
       }
@@ -520,24 +526,7 @@ replicaCount: 3
 # Distributed cache
 cache:
   enabled: true
-  stack: kubernetes
-
-# JGroups configuration
-extraEnvVars:
-  - name: JAVA_OPTS_APPEND
-    value: >-
-      -Djgroups.dns.query=keycloak-headless.keycloak.svc.cluster.local
-      -Djboss.site.name=site1
-  - name: KC_CACHE
-    value: "ispn"
-  - name: KC_CACHE_STACK
-    value: "kubernetes"
-
-# Headless service for cluster discovery
-service:
-  headless:
-    annotations:
-      service.alpha.kubernetes.io/tolerate-unready-endpoints: "true"
+  stack: jdbc-ping
 
 # Session affinity for stickiness
 service:
@@ -567,18 +556,17 @@ pdb:
 
 ```bash
 # Check pod logs
-kubectl logs -f deployment/keycloak -n keycloak
+kubectl logs -f statefulset/keycloak -n keycloak
 
 # Verify database connectivity
 kubectl exec -it keycloak-0 -n keycloak -- \
   nc -zv keycloak-postgresql 5432
 
 # Check cluster formation
-kubectl exec -it keycloak-0 -n keycloak -- \
-  cat /opt/bitnami/keycloak/standalone/log/server.log | grep -i "infinispan"
+kubectl logs keycloak-0 -n keycloak | grep -i "infinispan"
 
 # Restart pods
-kubectl rollout restart deployment/keycloak -n keycloak
+kubectl rollout restart statefulset/keycloak -n keycloak
 
 # Access admin console
 kubectl port-forward svc/keycloak 8080:80 -n keycloak
