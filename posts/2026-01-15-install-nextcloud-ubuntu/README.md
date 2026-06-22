@@ -1653,8 +1653,8 @@ sudo chown -R www-data:www-data /var/nextcloud-data
 Run the built-in security check:
 
 ```bash
-# Check security status
-sudo -u www-data php /var/www/nextcloud/occ security:scan
+# For an external, comprehensive security scan, use the online tool:
+# https://scan.nextcloud.com
 
 # Check for missing indexes
 sudo -u www-data php /var/www/nextcloud/occ db:add-missing-indices
