@@ -105,8 +105,10 @@ helm install myapp charts/myapp
 
 # Order of operations:
 # 1. CRDs from crds/ directory are applied
-# 2. Templates are rendered and applied
-# 3. Hooks are executed
+# 2. Templates are rendered
+# 3. Pre-install hooks are executed
+# 4. Rendered resources are applied
+# 5. Post-install hooks are executed
 ```
 
 ### Skip CRD Installation
@@ -145,8 +147,8 @@ helm template myapp charts/myapp --include-crds | kubectl apply -f - --dry-run=s
 # Apply CRDs manually before upgrade
 kubectl apply -f charts/myapp/crds/
 
-# Then upgrade without CRDs
-helm upgrade myapp charts/myapp --skip-crds
+# Then upgrade or install without Helm applying CRDs
+helm upgrade --install myapp charts/myapp --skip-crds
 ```
 
 ### Pre-upgrade Hook for CRDs
@@ -195,11 +197,25 @@ type: application
 ```
 
 ```yaml
-# charts/myapp-crds/templates/crds.yaml
-{{- range $path, $_ := .Files.Glob "crds/*.yaml" }}
----
-{{ $.Files.Get $path }}
-{{- end }}
+# charts/myapp-crds/crds/myresource-crd.yaml
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: myresources.myorg.io
+spec:
+  group: myorg.io
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+  scope: Namespaced
+  names:
+    plural: myresources
+    singular: myresource
+    kind: MyResource
 ```
 
 ```bash
@@ -269,15 +285,16 @@ kind: CustomResourceDefinition
 metadata:
   name: myresources.myorg.io
 spec:
+  # Other required CRD fields omitted for brevity
   conversion:
     strategy: Webhook
     webhook:
       clientConfig:
         service:
           name: myapp-webhook
-          namespace: {{ .Release.Namespace }}
+          namespace: myapp
           path: /convert
-        caBundle: {{ .Values.webhook.caBundle }}
+        caBundle: "Ci0tLS0tQk...<base64-encoded PEM bundle>...tLS0K"
       conversionReviewVersions:
         - v1
 ```
@@ -287,13 +304,13 @@ spec:
 ### Preserve CRDs on Uninstall
 
 ```yaml
-# crds/myresource-crd.yaml
+# templates/myresource-crd.yaml
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   name: myresources.myorg.io
   annotations:
-    # This annotation keeps CRDs when chart is uninstalled
+    # This annotation keeps templated CRDs when chart is uninstalled
     helm.sh/resource-policy: keep
 ```
 
@@ -492,7 +509,7 @@ webhooks:
 | Practice | Description |
 |----------|-------------|
 | Separate CRD Chart | Manage CRDs in dedicated chart |
-| Resource Policy Keep | Preserve CRDs on uninstall |
+| Resource Policy Keep | Preserve templated CRDs on uninstall |
 | Manual Updates | Apply CRD changes manually before upgrade |
 | Version Compatibility | Maintain backward compatibility |
 | Schema Validation | Define strict OpenAPI schemas |
@@ -519,4 +536,4 @@ kubectl apply -f crds/myresource-crd.yaml --server-side --force-conflicts
 
 ## Wrap-up
 
-CRD management in Helm requires careful planning and execution. Use a separate CRD chart or manage CRDs manually to ensure reliable upgrades. Always preserve CRDs on uninstall with the `helm.sh/resource-policy: keep` annotation, and implement proper schema validation to maintain data integrity across versions.
+CRD management in Helm requires careful planning and execution. Use a separate CRD chart for installation ordering, or manage CRDs manually to ensure reliable upgrades. Preserve templated CRDs on uninstall with the `helm.sh/resource-policy: keep` annotation, and implement proper schema validation to maintain data integrity across versions.
