@@ -12,7 +12,7 @@ Description: Learn how to implement IPsec with IPv6 to create secure, encrypted 
 
 As organizations increasingly adopt IPv6 to address the exhaustion of IPv4 addresses, securing network communications becomes paramount. Internet Protocol Security (IPsec) provides a robust framework for encrypting and authenticating network traffic at the IP layer. This guide explores how to implement IPsec with IPv6 to establish secure, encrypted communication channels.
 
-IPsec was actually designed as a mandatory component of IPv6, unlike IPv4 where it was an optional add-on. This native integration makes IPv6 and IPsec a natural pairing for secure network communications.
+IPsec was originally specified as mandatory-to-implement for IPv6, unlike IPv4 where it was an optional add-on. Current IPv6 node requirements make support for the IPsec architecture a SHOULD rather than a MUST, but IPv6 and IPsec remain a natural pairing for secure network communications.
 
 ## Understanding IPsec Architecture
 
@@ -57,7 +57,7 @@ flowchart LR
 
     IPv6 --- ESP --- Encrypted --- Trailer
 
-    subgraph EncAuth["Encrypted and Authenticated"]
+    subgraph EncAuth["Authenticated"]
         ESP
         Encrypted
         Trailer
@@ -184,9 +184,6 @@ network:
         - "2001:db8:1::10/64"    # Primary IPv6 address
         - "fd00:1234:5678::1/64" # Unique Local Address (ULA)
 
-      # IPv6 gateway
-      gateway6: "2001:db8:1::1"
-
       # IPv6 DNS servers
       nameservers:
         addresses:
@@ -195,6 +192,8 @@ network:
 
       # IPv6 routing
       routes:
+        - to: "default"
+          via: "2001:db8:1::1"
         - to: "2001:db8:2::/64"
           via: "2001:db8:1::1"
 ```
@@ -269,7 +268,7 @@ flowchart LR
 
 ```conf
 # /etc/ipsec.conf - strongSwan IPsec configuration for Host A
-# This configuration establishes an encrypted tunnel to Host B
+# This configuration establishes an encrypted transport connection to Host B
 
 # Global configuration settings
 config setup
@@ -319,9 +318,6 @@ conn hostA-to-hostB
     lifetime=8h                    # IPsec SA lifetime
     margintime=10m                 # Rekey margin time
 
-    # Enable IPv6 transport selector
-    leftprotoport=any              # Allow all protocols
-    rightprotoport=any             # Allow all protocols
 ```
 
 **/etc/ipsec.secrets on Host A:**
@@ -379,8 +375,6 @@ conn hostB-to-hostA
     lifetime=8h
     margintime=10m
 
-    leftprotoport=any
-    rightprotoport=any
 ```
 
 **/etc/ipsec.secrets on Host B:**
@@ -434,12 +428,12 @@ For connecting entire networks, use tunnel mode to encrypt all traffic between s
 flowchart LR
     subgraph SiteA["Site A"]
         NetA["Internal Net<br/>fd00:a::/64"]
-        GwA["Gateway A<br/>2001:db8::1::1"]
+        GwA["Gateway A<br/>2001:db8:1::1"]
         NetA --- GwA
     end
 
     subgraph SiteB["Site B"]
-        GwB["Gateway B<br/>2001:db8::2::1"]
+        GwB["Gateway B<br/>2001:db8:2::1"]
         NetB["Internal Net<br/>fd00:b::/64"]
         GwB --- NetB
     end
@@ -497,8 +491,7 @@ conn site-a-to-site-b
     compress=no
 
     # Forwarding settings
-    leftfirewall=yes              # Install firewall rules automatically
-    rightfirewall=yes
+    leftfirewall=yes              # Install local firewall rules automatically
 ```
 
 ### Gateway B Configuration
@@ -543,7 +536,6 @@ conn site-b-to-site-a
 
     compress=no
     leftfirewall=yes
-    rightfirewall=yes
 ```
 
 ### IPv6 Firewall Configuration
@@ -612,14 +604,14 @@ cd /etc/ipsec.d
 
 # Generate CA private key (4096-bit RSA)
 sudo ipsec pki --gen --type rsa --size 4096 \
-    --outform pem > private/ca-key.pem
+    --outform pem | sudo tee private/ca-key.pem > /dev/null
 
 # Create self-signed CA certificate
 sudo ipsec pki --self --ca --lifetime 3650 \
     --in private/ca-key.pem \
     --type rsa \
     --dn "CN=IPsec CA, O=Example Corp, C=US" \
-    --outform pem > cacerts/ca-cert.pem
+    --outform pem | sudo tee cacerts/ca-cert.pem > /dev/null
 
 # Display CA certificate
 echo "[INFO] CA Certificate created:"
@@ -646,7 +638,7 @@ cd /etc/ipsec.d
 
 # Generate host private key
 sudo ipsec pki --gen --type rsa --size 4096 \
-    --outform pem > private/${HOSTNAME}-key.pem
+    --outform pem | sudo tee private/${HOSTNAME}-key.pem > /dev/null
 
 # Create Certificate Signing Request (CSR)
 sudo ipsec pki --pub --in private/${HOSTNAME}-key.pem \
@@ -657,7 +649,7 @@ sudo ipsec pki --pub --in private/${HOSTNAME}-key.pem \
     --san @${HOSTNAME}.example.com \
     --san ${IPV6_ADDR} \
     --flag serverAuth --flag ikeIntermediate \
-    --outform pem > certs/${HOSTNAME}-cert.pem
+    --outform pem | sudo tee certs/${HOSTNAME}-cert.pem > /dev/null
 
 # Set proper permissions
 sudo chmod 600 private/${HOSTNAME}-key.pem
@@ -830,7 +822,7 @@ connections {
 pools {
     ipv6_pool {
         # IPv6 address pool for clients
-        addrs = fd00:vpn::/112
+        addrs = fd00:1234:abcd:1::/112
 
         # DNS servers for clients
         dns = 2001:4860:4860::8888, 2606:4700:4700::1111
@@ -970,7 +962,7 @@ fi
 
 # Check 2: Verify ESP protocol
 echo -e "\n[CHECK 2] Checking for ESP traffic capability..."
-if [ -f /proc/sys/net/ipv4/ip_forward ]; then
+if [ -f /proc/sys/net/ipv6/conf/all/forwarding ]; then
     echo "  IP forwarding enabled: $(cat /proc/sys/net/ipv6/conf/all/forwarding)"
 fi
 
