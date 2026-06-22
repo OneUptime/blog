@@ -275,26 +275,26 @@ pipeline {
     stages {
         stage('Start Services') {
             steps {
-                sh 'docker-compose up -d'
+                sh 'docker compose up -d'
             }
         }
 
         stage('Run Tests') {
             steps {
-                sh 'docker-compose exec -T app npm test'
+                sh 'docker compose exec -T app npm test'
             }
         }
 
         stage('Cleanup') {
             steps {
-                sh 'docker-compose down -v'
+                sh 'docker compose down -v'
             }
         }
     }
 
     post {
         always {
-            sh 'docker-compose down -v || true'
+            sh 'docker compose down -v || true'
         }
     }
 }
@@ -315,8 +315,8 @@ pipeline {
         stage('Integration Tests') {
             steps {
                 sh '''
-                    docker-compose -f docker-compose.test.yml up -d db
-                    docker-compose -f docker-compose.test.yml run --rm app npm run test:integration
+                    docker compose -f docker-compose.test.yml up -d db
+                    docker compose -f docker-compose.test.yml run --rm app npm run test:integration
                 '''
             }
         }
@@ -324,7 +324,7 @@ pipeline {
 
     post {
         always {
-            sh 'docker-compose -f docker-compose.test.yml down -v || true'
+            sh 'docker compose -f docker-compose.test.yml down -v || true'
         }
     }
 }
@@ -450,8 +450,6 @@ pipeline {
 
 ```yaml
 # docker-compose.jenkins.yml
-version: '3.8'
-
 services:
   jenkins:
     image: jenkins/jenkins:lts
@@ -796,4 +794,3 @@ post {
 | Socket binding | Better performance | Medium |
 
 Jenkins Docker integration provides flexible CI/CD pipelines for containerized applications. Use Docker agents for isolated builds, the docker.build() method for image creation, and proper credential management for registry authentication. For layer caching strategies, see our post on [Docker Layer Caching in CI/CD](https://oneuptime.com/blog/post/2026-01-16-docker-layer-caching-cicd/view).
-
