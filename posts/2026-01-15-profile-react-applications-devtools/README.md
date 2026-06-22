@@ -202,7 +202,7 @@ The component chart helps you understand:
 A "commit" is when React applies changes to the DOM. Each commit in the profiler represents a batch of updates.
 
 ```javascript
-// This code would cause multiple commits
+// React batches these state updates into a single commit
 function Counter() {
   const [count, setCount] = useState(0);
   const [lastUpdated, setLastUpdated] = useState(null);
@@ -378,12 +378,11 @@ import { Profiler } from 'react';
 
 function onRenderCallback(
   id,                   // the "id" prop of the Profiler tree
-  phase,                // "mount" or "update"
+  phase,                // "mount", "update", or "nested-update"
   actualDuration,       // time spent rendering the committed update
   baseDuration,         // estimated time to render without memoization
   startTime,            // when React began rendering this update
-  commitTime,           // when React committed this update
-  interactions          // Set of interactions belonging to this update
+  commitTime            // when React committed this update
 ) {
   // Log or send this data to analytics
   console.log({
