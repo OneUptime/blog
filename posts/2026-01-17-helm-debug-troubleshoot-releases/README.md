@@ -117,7 +117,7 @@ Failed hooks often cause release failures. Inspect them specifically.
 # Get hooks (pre-install, post-upgrade, etc.)
 helm get hooks my-app -n production
 
-# Hooks run as Jobs - check their status
+# Hook resources are often Jobs - check their status
 kubectl get jobs -n production -l app.kubernetes.io/managed-by=Helm
 ```
 
@@ -138,8 +138,8 @@ Render templates locally to catch errors before they hit the cluster.
 # Render templates without installing (catches template errors)
 helm template my-app ./my-chart -f values.yaml
 
-# Render and validate against Kubernetes API
-helm template my-app ./my-chart -f values.yaml | kubectl apply --dry-run=client -f -
+# Render and validate against the Kubernetes API server
+helm template my-app ./my-chart -f values.yaml | kubectl apply --dry-run=server -f -
 
 # Debug mode shows more details
 helm template my-app ./my-chart -f values.yaml --debug
@@ -202,7 +202,7 @@ kubectl logs job/my-app-pre-upgrade -n production
 kubectl delete job my-app-pre-upgrade -n production
 
 # Retry the upgrade
-helm upgrade my-app ./my-chart -f values.yaml
+helm upgrade my-app ./my-chart -f values.yaml -n production
 ```
 
 ### Scenario 3: "Another Operation in Progress"
@@ -233,8 +233,8 @@ For `pending-upgrade`:
 # Rollback to the last successful revision
 helm rollback my-app -n production
 
-# Or force the upgrade to overwrite the pending state
-helm upgrade my-app ./my-chart -f values.yaml --force
+# After the rollback clears the pending state, retry the upgrade
+helm upgrade my-app ./my-chart -f values.yaml -n production
 ```
 
 For stuck states that won't respond:
@@ -249,9 +249,9 @@ kubectl get secrets -n production | grep sh.helm.release.v1.my-app
 kubectl edit secret sh.helm.release.v1.my-app.v3 -n production
 ```
 
-### Scenario 4: Resource Already Exists
+### Scenario 4: Release Name or Resource Already Exists
 
-**Symptoms:** `Error: INSTALLATION FAILED: cannot re-use a name that is still in use`
+**Symptoms:** `Error: INSTALLATION FAILED: cannot re-use a name that is still in use` or `rendered manifests contain a resource that already exists`
 
 ```bash
 # Check if the release exists in any state
@@ -265,7 +265,7 @@ kubectl get all -n production -l app.kubernetes.io/instance=my-app
 
 ```bash
 # If release exists, upgrade instead of install
-helm upgrade --install my-app ./my-chart -f values.yaml
+helm upgrade --install my-app ./my-chart -f values.yaml -n production
 
 # If you need a clean slate, uninstall first
 helm uninstall my-app -n production
@@ -282,11 +282,11 @@ helm install my-app ./my-chart -f values.yaml -n production
 
 ```bash
 # Option 1: Force resource recreation (causes downtime)
-helm upgrade my-app ./my-chart -f values.yaml --force
+helm upgrade my-app ./my-chart -f values.yaml -n production --force-replace
 
 # Option 2: Delete the offending resource manually
 kubectl delete deployment my-app -n production
-helm upgrade my-app ./my-chart -f values.yaml
+helm upgrade my-app ./my-chart -f values.yaml -n production
 
 # Option 3: Uninstall and reinstall (most drastic)
 helm uninstall my-app -n production
@@ -343,7 +343,7 @@ kubectl get events -n production --sort-by='.lastTimestamp'
 # === Recovery Commands ===
 helm rollback my-app -n production
 helm rollback my-app 2 -n production
-helm upgrade my-app ./my-chart -f values.yaml --force
+helm upgrade my-app ./my-chart -f values.yaml -n production --force-replace
 helm uninstall my-app -n production
 ```
 
@@ -355,7 +355,7 @@ Always preview changes before applying them to production.
 
 ```bash
 # Dry run shows what would happen without actually doing it
-helm upgrade my-app ./my-chart -f values.yaml --dry-run --debug
+helm upgrade my-app ./my-chart -f values.yaml -n production --dry-run=server --debug
 ```
 
 ### Lint Your Charts
