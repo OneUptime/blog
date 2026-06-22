@@ -50,7 +50,7 @@ df -h /
 
 ### Terraform Cloud Requirements
 
-- A Terraform Cloud account (Business or Enterprise tier for self-hosted agents)
+- A Terraform Cloud (HCP Terraform) account — cloud agents are available across HCP Terraform tiers (the Free tier includes a limited number of agents, and paid tiers or Terraform Enterprise provide more)
 - Organization admin or owner permissions
 - Access to create agent pools and generate tokens
 
@@ -172,15 +172,16 @@ sudo chmod +x /opt/tfc-agent/tfc-agent-core
 /opt/tfc-agent/tfc-agent --version
 ```
 
-### Method 2: Using HashiCorp Repository
+### Method 2: Docker Image or Kubernetes Operator
+
+The agent is **not** distributed through the HashiCorp APT repository, so `apt-get install tfc-agent` will not work. Apart from the binary download shown above, HashiCorp officially distributes the agent only as the `hashicorp/tfc-agent` Docker image and via the HCP Terraform Operator for Kubernetes. The Docker workflow is covered in detail in the [Docker Deployment](#docker-deployment) section below.
 
 ```bash
-# If you added the HashiCorp repository earlier, you can install via apt
-sudo apt-get update
-sudo apt-get install -y tfc-agent
+# Pull the official HashiCorp agent image
+docker pull hashicorp/tfc-agent:latest
 
-# The agent will be installed to /usr/bin/tfc-agent
-tfc-agent --version
+# Print the agent version from the image
+docker run --rm hashicorp/tfc-agent:latest --version
 ```
 
 ### Running the Agent Manually (Testing)
@@ -461,17 +462,20 @@ FROM hashicorp/tfc-agent:latest
 USER root
 
 # Install additional tools your Terraform configs might need
-RUN apk add --no-cache \
-    aws-cli \
+# The official tfc-agent image is Debian/Ubuntu-based, so use apt-get (not apk)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    awscli \
     jq \
     curl \
     git \
     openssh-client \
     python3 \
-    py3-pip
+    python3-pip \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install additional Python packages if needed
-RUN pip3 install --no-cache-dir \
+# --break-system-packages is required on PEP 668 (externally-managed) Python installs
+RUN pip3 install --no-cache-dir --break-system-packages \
     boto3 \
     azure-cli
 
@@ -525,7 +529,10 @@ sudo cp /etc/systemd/system/tfc-agent.service /etc/systemd/system/tfc-agent-02.s
 
 # Edit the service file to use the new environment file
 sudo sed -i 's/tfc-agent.env/tfc-agent-02.env/g' /etc/systemd/system/tfc-agent-02.service
-sudo sed -i 's/tfc-agent-02/tfc-agent-02/g' /etc/systemd/system/tfc-agent-02.service
+
+# Grant the second agent write access to its own data directory
+# (ProtectSystem=strict means it can only write to paths in ReadWritePaths)
+sudo sed -i 's#ReadWritePaths=/var/lib/tfc-agent #ReadWritePaths=/var/lib/tfc-agent-02 #' /etc/systemd/system/tfc-agent-02.service
 
 # Enable and start second agent
 sudo systemctl daemon-reload
