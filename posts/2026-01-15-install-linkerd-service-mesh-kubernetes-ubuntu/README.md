@@ -84,7 +84,8 @@ Linkerd requires a functioning Kubernetes cluster. Verify your cluster meets the
 
 ```bash
 # Check Kubernetes version (1.21+ required)
-kubectl version --short
+# Note: the --short flag was removed in kubectl v1.28+
+kubectl version
 
 # Verify cluster nodes are ready
 kubectl get nodes
@@ -201,7 +202,7 @@ Address common issues that the pre-check might reveal.
 ```bash
 # Issue: Kubernetes version too old
 # Solution: Upgrade your cluster
-kubectl version --short
+kubectl version
 # Minimum required: v1.21.0
 
 # Issue: Insufficient RBAC permissions
@@ -314,12 +315,12 @@ linkerd install \
   --proxy-cpu-limit=1 \
   --proxy-memory-limit=256Mi \
   --controller-replicas=3 \
-  --enable-high-availability \
+  --ha \
   | kubectl apply -f -
 
 # Or generate manifests to a file for review
 linkerd install \
-  --enable-high-availability \
+  --ha \
   > linkerd-install.yaml
 
 # Review and apply
@@ -470,8 +471,23 @@ proxy:
   # Enable protocol detection timeout
   waitBeforeExitSeconds: 0
 
-# Controller resource limits
-controllerResources:
+# Control plane component resource limits
+# Each component has its own *Resources key
+destinationResources:
+  cpu:
+    request: 100m
+    limit: 1000m
+  memory:
+    request: 128Mi
+    limit: 512Mi
+identityResources:
+  cpu:
+    request: 100m
+    limit: 1000m
+  memory:
+    request: 128Mi
+    limit: 512Mi
+proxyInjectorResources:
   cpu:
     request: 100m
     limit: 1000m
@@ -490,10 +506,10 @@ identity:
 # Webhook failure policy
 webhookFailurePolicy: Fail
 
-# Pod disruption budgets
-podDisruptionBudget:
-  enabled: true
-  minAvailable: 1
+# Pod disruption budget for control plane components
+controller:
+  podDisruptionBudget:
+    maxUnavailable: 1
 
 # Node selector for control plane components
 nodeSelector:
@@ -501,9 +517,6 @@ nodeSelector:
 
 # Tolerations for control plane
 tolerations: []
-
-# Enable debug container in control plane pods
-enablePodDebugContainer: false
 ```
 
 ```bash
@@ -804,8 +817,8 @@ linkerd profile --open-api my-app-openapi.yaml my-app > my-app-profile.yaml
 # Generate from protobuf for gRPC services
 linkerd profile --proto my-service.proto my-service > my-service-profile.yaml
 
-# Generate profile by watching live traffic (requires tap permission)
-linkerd profile --tap deploy/my-app --tap-duration 30s my-app > my-app-profile.yaml
+# Generate an empty service profile template to fill in manually
+linkerd profile --template my-app > my-app-profile.yaml
 
 # Apply the service profile
 kubectl apply -f my-app-profile.yaml
@@ -929,7 +942,7 @@ Check metrics for individual routes defined in service profiles.
 
 ```bash
 # View per-route metrics for a deployment
-linkerd routes deploy/my-app
+linkerd viz routes deploy/my-app
 
 # Example output:
 # ROUTE                     SERVICE   SUCCESS   RPS    LATENCY_P50   LATENCY_P95   LATENCY_P99
@@ -938,10 +951,10 @@ linkerd routes deploy/my-app
 # [DEFAULT]                my-app     98.00%   2.1    15ms          45ms          78ms
 
 # Watch routes in real-time
-linkerd routes deploy/my-app --watch
+linkerd viz routes deploy/my-app --watch
 
 # Get routes for a specific service
-linkerd routes svc/my-app
+linkerd viz routes svc/my-app
 ```
 
 ## mTLS (Automatic)
@@ -978,7 +991,7 @@ Check that mTLS is active between services.
 
 ```bash
 # Check mTLS status for all meshed pods
-linkerd edges deployment
+linkerd viz edges deployment
 
 # Example output:
 # SRC          DST          SRC_NS     DST_NS     SECURED
@@ -987,7 +1000,7 @@ linkerd edges deployment
 # api          cache        default    default    true
 
 # View detailed mTLS information for a deployment
-linkerd tap deploy/my-app --to deploy/api-service | head -20
+linkerd viz tap deploy/my-app --to deploy/api-service | head -20
 # Look for "tls=true" in the output
 
 # Check identity of a specific pod
@@ -1001,7 +1014,7 @@ Understand how Linkerd manages certificates.
 
 ```bash
 # View the trust anchor (root CA)
-kubectl get secret -n linkerd linkerd-identity-trust-roots -o jsonpath='{.data.ca-bundle\.crt}' | base64 -d | openssl x509 -text -noout
+kubectl get configmap -n linkerd linkerd-identity-trust-roots -o jsonpath='{.data.ca-bundle\.crt}' | openssl x509 -text -noout
 
 # View the issuer certificate
 kubectl get secret -n linkerd linkerd-identity-issuer -o jsonpath='{.data.crt\.pem}' | base64 -d | openssl x509 -text -noout
@@ -1030,7 +1043,7 @@ kubectl logs -n linkerd deploy/linkerd-identity -f | grep -i rotation
 kubectl rollout restart deployment/linkerd-identity -n linkerd
 
 # Verify proxies get new certificates (monitor tap output)
-linkerd tap deploy/my-app --to deploy/api-service
+linkerd viz tap deploy/my-app --to deploy/api-service
 ```
 
 ### Policy-Based Authorization
@@ -1488,8 +1501,8 @@ Ensure clusters are properly configured for multi-cluster setup.
 # Use the same ca.crt when installing Linkerd on each cluster
 
 # Verify trust anchor matches across clusters
-kubectl --context=cluster-east get secret -n linkerd linkerd-identity-trust-roots -o jsonpath='{.data.ca-bundle\.crt}' | base64 -d | openssl x509 -noout -fingerprint
-kubectl --context=cluster-west get secret -n linkerd linkerd-identity-trust-roots -o jsonpath='{.data.ca-bundle\.crt}' | base64 -d | openssl x509 -noout -fingerprint
+kubectl --context=cluster-east get configmap -n linkerd linkerd-identity-trust-roots -o jsonpath='{.data.ca-bundle\.crt}' | openssl x509 -noout -fingerprint
+kubectl --context=cluster-west get configmap -n linkerd linkerd-identity-trust-roots -o jsonpath='{.data.ca-bundle\.crt}' | openssl x509 -noout -fingerprint
 
 # Install multi-cluster extension on both clusters
 linkerd --context=cluster-east multicluster install | kubectl --context=cluster-east apply -f -
