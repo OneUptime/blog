@@ -82,21 +82,19 @@ helm install istio-base istio/base \
 
 ```yaml
 # istiod-values.yaml
-pilot:
-  autoscaleEnabled: true
-  autoscaleMin: 2
-  autoscaleMax: 5
-  
-  resources:
-    requests:
-      cpu: 500m
-      memory: 2048Mi
-    limits:
-      cpu: 2000m
-      memory: 4096Mi
-  
-  # Enable access logging
-  traceSampling: 100.0
+autoscaleEnabled: true
+autoscaleMin: 2
+autoscaleMax: 5
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 2048Mi
+  limits:
+    cpu: 2000m
+    memory: 4096Mi
+
+traceSampling: 100.0
 
 global:
   # Mesh-wide settings
@@ -108,18 +106,8 @@ global:
       limits:
         cpu: 500m
         memory: 512Mi
-    
-    # Access log settings
-    accessLogFile: /dev/stdout
-    accessLogFormat: |
-      [%START_TIME%] "%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%"
-      %RESPONSE_CODE% %RESPONSE_FLAGS% %BYTES_RECEIVED% %BYTES_SENT%
-      %DURATION% "%REQ(X-FORWARDED-FOR)%" "%REQ(USER-AGENT)%"
-      "%REQ(X-REQUEST-ID)%" "%REQ(:AUTHORITY)%" "%UPSTREAM_HOST%"
-  
-  # mTLS settings
-  mtls:
-    enabled: true
+
+    tracer: zipkin
   
   # Tracing
   tracer:
@@ -129,7 +117,15 @@ global:
 meshConfig:
   # Enable access logging
   accessLogFile: /dev/stdout
-  
+  accessLogFormat: |
+    [%START_TIME%] "%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%"
+    %RESPONSE_CODE% %RESPONSE_FLAGS% %BYTES_RECEIVED% %BYTES_SENT%
+    %DURATION% "%REQ(X-FORWARDED-FOR)%" "%REQ(USER-AGENT)%"
+    "%REQ(X-REQUEST-ID)%" "%REQ(:AUTHORITY)%" "%UPSTREAM_HOST%"
+
+  # Enable tracing
+  enableTracing: true
+
   # Default mTLS mode
   defaultConfig:
     proxyMetadata:
@@ -163,11 +159,16 @@ service:
       targetPort: 15021
       name: status-port
     - port: 80
-      targetPort: 8080
+      targetPort: 80
       name: http2
     - port: 443
-      targetPort: 8443
+      targetPort: 443
       name: https
+  annotations:
+    # AWS NLB
+    service.beta.kubernetes.io/aws-load-balancer-type: nlb
+    # GCP
+    # cloud.google.com/load-balancer-type: "External"
 
 autoscaling:
   enabled: true
@@ -196,12 +197,6 @@ affinity:
             app: istio-ingressgateway
         topologyKey: kubernetes.io/hostname
 
-# Service annotations for cloud providers
-serviceAnnotations:
-  # AWS NLB
-  service.beta.kubernetes.io/aws-load-balancer-type: nlb
-  # GCP
-  # cloud.google.com/load-balancer-type: "External"
 ```
 
 ```bash
@@ -248,8 +243,8 @@ kubectl get deployment istiod -n istio-system
 # Check gateways
 kubectl get svc -n istio-system
 
-# Verify installation
-istioctl verify-install
+# Analyze Istio configuration
+istioctl analyze
 ```
 
 ## Enable Sidecar Injection
@@ -285,7 +280,7 @@ spec:
 
 ```yaml
 # gateway.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: my-gateway
@@ -315,7 +310,7 @@ spec:
 
 ```yaml
 # virtualservice.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -348,7 +343,7 @@ spec:
 
 ```yaml
 # virtualservice-canary.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -367,7 +362,7 @@ spec:
           weight: 10
 
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-app
@@ -386,7 +381,7 @@ spec:
 
 ```yaml
 # destination-rule-circuit-breaker.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-app
@@ -413,7 +408,7 @@ spec:
 
 ```yaml
 # peer-authentication.yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -427,7 +422,7 @@ spec:
 
 ```yaml
 # authorization-policy.yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: allow-frontend-to-api
@@ -452,7 +447,7 @@ spec:
 
 ```yaml
 # request-authentication.yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: RequestAuthentication
 metadata:
   name: jwt-auth
@@ -474,7 +469,7 @@ spec:
 
 ```bash
 # Install Kiali
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/kiali.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/kiali.yaml
 
 # Access Kiali
 kubectl port-forward svc/kiali -n istio-system 20001:20001
@@ -484,10 +479,10 @@ kubectl port-forward svc/kiali -n istio-system 20001:20001
 
 ```bash
 # Prometheus
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/prometheus.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/prometheus.yaml
 
 # Grafana
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/grafana.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/grafana.yaml
 
 # Access Grafana
 kubectl port-forward svc/grafana -n istio-system 3000:3000
@@ -496,7 +491,7 @@ kubectl port-forward svc/grafana -n istio-system 3000:3000
 ### Install Jaeger (Tracing)
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/jaeger.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/jaeger.yaml
 
 # Access Jaeger
 kubectl port-forward svc/tracing -n istio-system 16686:80
@@ -508,6 +503,21 @@ kubectl port-forward svc/tracing -n istio-system 16686:80
 
 ```yaml
 # istio-production-values.yaml
+autoscaleEnabled: true
+autoscaleMin: 2
+autoscaleMax: 5
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 2Gi
+  limits:
+    cpu: 2000m
+    memory: 4Gi
+
+cpu:
+  targetAverageUtilization: 80
+
 global:
   proxy:
     resources:
@@ -517,36 +527,6 @@ global:
       limits:
         cpu: 1000m
         memory: 1Gi
-    
-    # Production logging
-    accessLogFile: /dev/stdout
-    
-  # Enable proxy protocol
-  proxy:
-    protocolDetectionTimeout: 100ms
-
-pilot:
-  autoscaleEnabled: true
-  autoscaleMin: 2
-  autoscaleMax: 5
-  
-  resources:
-    requests:
-      cpu: 500m
-      memory: 2Gi
-    limits:
-      cpu: 2000m
-      memory: 4Gi
-  
-  # Horizontal pod autoscaler
-  hpaSpec:
-    minReplicas: 2
-    maxReplicas: 5
-    metrics:
-      - type: Resource
-        resource:
-          name: cpu
-          targetAverageUtilization: 80
 
 meshConfig:
   accessLogFile: /dev/stdout
