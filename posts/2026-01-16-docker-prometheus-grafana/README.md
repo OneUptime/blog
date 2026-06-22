@@ -14,9 +14,10 @@ Prometheus and Grafana provide a powerful monitoring stack for Docker environmen
 
 ```mermaid
 flowchart LR
-    subgraph Monitoring Architecture
+    subgraph Monitoring["Monitoring Architecture"]
         cAdvisor["cAdvisor<br/>(metrics)"] --> Prometheus["Prometheus<br/>(scraping)"]
         Prometheus --> Grafana["Grafana<br/>Dashboards"]
+        DockerDaemon["Docker Daemon<br/>(engine metrics)"] --> Prometheus
         
         subgraph Containers["Docker Containers"]
             app1[app1]
@@ -25,8 +26,7 @@ flowchart LR
             cache[cache]
         end
         
-        cAdvisor --> Containers
-        Prometheus --> Containers
+        Containers --> cAdvisor
     end
 ```
 
@@ -35,8 +35,6 @@ flowchart LR
 ### Docker Compose Stack
 
 ```yaml
-version: '3.8'
-
 services:
   prometheus:
     image: prom/prometheus:v2.47.0
@@ -49,6 +47,8 @@ services:
       - '--web.enable-lifecycle'
     ports:
       - "9090:9090"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   grafana:
     image: grafana/grafana:10.2.0
@@ -119,12 +119,12 @@ scrape_configs:
 ### Enable Docker Metrics
 
 ```json
-// /etc/docker/daemon.json
 {
-  "metrics-addr": "0.0.0.0:9323",
-  "experimental": true
+  "metrics-addr": "0.0.0.0:9323"
 }
 ```
+
+This exposes Docker daemon metrics on port 9323. Bind it to `127.0.0.1:9323` instead if Prometheus runs directly on the host; use `0.0.0.0:9323` only when the Prometheus container must reach the endpoint through the host gateway.
 
 ```yaml
 # prometheus.yml
@@ -176,6 +176,7 @@ services:
     image: prom/alertmanager:v0.26.0
     volumes:
       - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml
+      - ./slack-webhook-url:/etc/alertmanager/slack-webhook-url:ro
     ports:
       - "9093:9093"
 ```
@@ -192,8 +193,19 @@ route:
 receivers:
   - name: 'slack'
     slack_configs:
-      - api_url: '${SLACK_WEBHOOK_URL}'
+      - api_url_file: /etc/alertmanager/slack-webhook-url
         channel: '#alerts'
+```
+
+```yaml
+# prometheus.yml
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['alertmanager:9093']
 ```
 
 ## Grafana Dashboards
@@ -233,8 +245,6 @@ providers:
 ## Complete Production Setup
 
 ```yaml
-version: '3.8'
-
 services:
   prometheus:
     image: prom/prometheus:v2.47.0
@@ -250,6 +260,8 @@ services:
       - '--web.enable-lifecycle'
     ports:
       - "9090:9090"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - monitoring
 
@@ -261,7 +273,6 @@ services:
       - ./grafana/provisioning:/etc/grafana/provisioning
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
-      - GF_INSTALL_PLUGINS=grafana-piechart-panel
     ports:
       - "3000:3000"
     depends_on:
@@ -299,6 +310,7 @@ services:
     restart: unless-stopped
     volumes:
       - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml
+      - ./alertmanager/slack-webhook-url:/etc/alertmanager/slack-webhook-url:ro
     ports:
       - "9093:9093"
     networks:
@@ -323,4 +335,3 @@ volumes:
 | container_fs_usage_bytes | Disk usage |
 
 Prometheus and Grafana provide comprehensive Docker monitoring. Use cAdvisor for container metrics, node-exporter for host metrics, and Alertmanager for notifications. For log aggregation, see our post on [Docker Logging Drivers](https://oneuptime.com/blog/post/2026-01-16-docker-logging-drivers/view).
-
