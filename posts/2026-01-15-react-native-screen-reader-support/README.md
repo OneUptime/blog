@@ -328,10 +328,12 @@ Screen readers traverse elements in the order they appear in the accessibility t
   <Text>Second visually but first in DOM</Text>
 </View>
 
-// Solution: Adjust component order or use accessibility order
+// Solution: The accessibility tree follows component (source) order, not
+// visual order. Place elements in the order you want them read, then use
+// flexbox (e.g. row-reverse) only to control the visual layout.
 <View style={{ flexDirection: 'row-reverse' }}>
-  <Text accessibilityOrder={2}>First visually</Text>
-  <Text accessibilityOrder={1}>Second visually</Text>
+  <Text>Read first (rendered on the right by row-reverse)</Text>
+  <Text>Read second (rendered on the left by row-reverse)</Text>
 </View>
 ```
 
@@ -545,9 +547,6 @@ const FormField: React.FC<FormFieldProps> = ({
         accessible={true}
         accessibilityLabel={accessibilityLabel}
         accessibilityLabelledBy={`${label}-label`}
-        accessibilityState={{
-          invalid: !!error,
-        }}
         value={value}
         onChangeText={onChangeText}
         secureTextEntry={secureTextEntry}
@@ -830,7 +829,6 @@ const AccessibleModal: React.FC<AccessibleModalProps> = ({
     >
       <View
         accessible={true}
-        accessibilityRole="dialog"
         accessibilityLabel={title}
       >
         <View style={styles.header}>
@@ -1124,7 +1122,7 @@ const AccessibilityChecklist: React.FC = () => {
         <View
           key={index}
           accessible={true}
-          accessibilityRole="listitem"
+          role="listitem"
           accessibilityLabel={check}
         >
           <Text>{check}</Text>
@@ -1290,7 +1288,7 @@ const AccessibilityFeedbackForm: React.FC<FeedbackFormProps> = ({ onSubmit }) =>
   });
 
   return (
-    <View accessible={true} accessibilityRole="form">
+    <View accessible={true}>
       <Text accessibilityRole="header">Accessibility Feedback</Text>
 
       <View accessible={true} accessibilityLabel="Rate your experience">
