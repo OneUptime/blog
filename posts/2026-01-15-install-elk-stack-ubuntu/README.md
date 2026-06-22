@@ -250,7 +250,7 @@ input {
   # Beats input (for Filebeat, Metricbeat, etc.)
   beats {
     port => 5044
-    ssl => false
+    ssl_enabled => false
   }
 
   # Syslog input
@@ -307,8 +307,8 @@ output {
     hosts => ["https://localhost:9200"]
     user => "elastic"
     password => "YOUR_ELASTIC_PASSWORD"
-    ssl => true
-    cacert => "/etc/logstash/certs/http_ca.crt"
+    ssl_enabled => true
+    ssl_certificate_authorities => ["/etc/logstash/certs/http_ca.crt"]
     index => "%{[@metadata][index_prefix]}-%{+YYYY.MM.dd}"
   }
 
@@ -468,7 +468,7 @@ elasticsearch.hosts: ["http://localhost:9200"]
 ### Logstash
 
 ```ruby
-# Remove ssl, user, password, and cacert from elasticsearch output
+# Remove ssl_enabled, user, password, and ssl_certificate_authorities from elasticsearch output
 output {
   elasticsearch {
     hosts => ["http://localhost:9200"]
@@ -559,10 +559,21 @@ sudo mkdir -p /mnt/backups/elasticsearch
 sudo chown elasticsearch:elasticsearch /mnt/backups/elasticsearch
 ```
 
+Register the backup path with Elasticsearch by adding it to `path.repo` in `/etc/elasticsearch/elasticsearch.yml`, then restart the service (the registration API fails otherwise):
+
+```yaml
+# /etc/elasticsearch/elasticsearch.yml
+path.repo: ["/mnt/backups/elasticsearch"]
+```
+
+```bash
+sudo systemctl restart elasticsearch
+```
+
 Register repository in Kibana or via API:
 
 ```bash
-curl -X PUT "https://localhost:9200/_snapshot/my_backup" -H 'Content-Type: application/json' -d'
+curl -k -u elastic:YOUR_PASSWORD -X PUT "https://localhost:9200/_snapshot/my_backup" -H 'Content-Type: application/json' -d'
 {
   "type": "fs",
   "settings": {
@@ -574,7 +585,7 @@ curl -X PUT "https://localhost:9200/_snapshot/my_backup" -H 'Content-Type: appli
 ### Create Snapshot
 
 ```bash
-curl -X PUT "https://localhost:9200/_snapshot/my_backup/snapshot_1?wait_for_completion=true"
+curl -k -u elastic:YOUR_PASSWORD -X PUT "https://localhost:9200/_snapshot/my_backup/snapshot_1?wait_for_completion=true"
 ```
 
 ---
