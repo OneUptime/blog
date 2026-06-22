@@ -93,8 +93,8 @@ sudo apt install -y picom
 # Application launcher (alternative to dmenu)
 sudo apt install -y rofi
 
-# Network manager applet
-sudo apt install -y nm-applet
+# Network manager applet (provides the nm-applet binary)
+sudo apt install -y network-manager-gnome
 
 # Volume control
 sudo apt install -y pavucontrol pulseaudio-utils
@@ -514,7 +514,7 @@ exec --no-startup-id nm-applet
 exec --no-startup-id dunst
 
 # PolicyKit authentication agent
-exec --no-startup-id /usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1
+exec --no-startup-id /usr/lib/policykit-1-gnome/polkit-gnome-authentication-agent-1
 
 # Clipboard manager
 exec --no-startup-id clipit
@@ -1236,7 +1236,7 @@ exec --no-startup-id clipit
 exec --no-startup-id parcellite
 
 # Authentication agent
-exec --no-startup-id /usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1
+exec --no-startup-id /usr/lib/policykit-1-gnome/polkit-gnome-authentication-agent-1
 
 # Screen locker
 exec --no-startup-id xss-lock -- i3lock -c 2E3440
@@ -1892,7 +1892,7 @@ exec --no-startup-id blueman-applet
 exec --no-startup-id dunst
 
 # Authentication
-exec --no-startup-id /usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1
+exec --no-startup-id /usr/lib/policykit-1-gnome/polkit-gnome-authentication-agent-1
 
 # Screen lock
 exec --no-startup-id xss-lock -- ~/.config/i3/scripts/lock.sh
