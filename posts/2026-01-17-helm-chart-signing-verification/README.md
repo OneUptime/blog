@@ -32,12 +32,12 @@ flowchart LR
 
 ## Signing Methods
 
-Helm supports two signing methods:
+Two common signing methods for Helm charts are:
 
 | Method | Description | Best For |
 | --- | --- | --- |
-| PGP (Traditional) | GPG/PGP keys, .prov files | Traditional workflows |
-| Sigstore Cosign | Keyless or key-based, OCI artifacts | Modern workflows |
+| PGP (Traditional) | Helm's built-in GPG/PGP provenance files | Traditional chart repository workflows |
+| Sigstore Cosign | Keyless or key-based signatures for OCI artifacts | Modern OCI registry workflows |
 
 ## PGP Signing with Helm
 
@@ -73,6 +73,9 @@ Share your public key so users can verify signatures.
 # Export public key
 gpg --armor --export ABCD1234EFGH5678 > pubkey.asc
 
+# Export a binary keyring for Helm verification
+gpg --export ABCD1234EFGH5678 > pubring.gpg
+
 # Upload to keyserver (optional)
 gpg --keyserver keyserver.ubuntu.com --send-keys ABCD1234EFGH5678
 
@@ -85,12 +88,10 @@ Use `helm package --sign` to create a signed chart.
 
 ```bash
 # Package and sign in one step
-# Note: GPG 2.1+ does NOT create secring.gpg by default. Export first:
+# Note: GPG 2.1+ does NOT create legacy keyring files by default. Export first:
+# gpg --export > ~/.gnupg/pubring.gpg
 # gpg --export-secret-keys > ~/.gnupg/secring.gpg
 helm package ./my-chart --sign --key "Your Name" --keyring ~/.gnupg/secring.gpg
-
-# For GPG 2.1+, use the pubring.kbx format (no export needed)
-helm package ./my-chart --sign --key "email@example.com" --keyring ~/.gnupg/pubring.kbx
 
 # This creates:
 # my-chart-1.0.0.tgz      # The chart archive
@@ -131,7 +132,7 @@ Users verify charts before installation.
 helm verify ./my-chart-1.0.0.tgz
 
 # Verify with specific keyring
-helm verify ./my-chart-1.0.0.tgz --keyring ./pubkey.asc
+helm verify ./my-chart-1.0.0.tgz --keyring ./pubring.gpg
 
 # Successful output:
 # Signed by: Your Name <email@example.com>
@@ -143,11 +144,11 @@ helm verify ./my-chart-1.0.0.tgz --keyring ./pubkey.asc
 
 ```bash
 # Install and verify in one step
-helm install my-release ./my-chart-1.0.0.tgz --verify --keyring ./pubkey.asc
+helm install my-release ./my-chart-1.0.0.tgz --verify --keyring ./pubring.gpg
 
 # Or download and verify from repository
 helm repo add myrepo https://charts.example.com
-helm install my-release myrepo/my-chart --verify --keyring ./pubkey.asc
+helm install my-release myrepo/my-chart --verify --keyring ./pubring.gpg
 ```
 
 ## Sigstore Cosign Signing
@@ -255,23 +256,28 @@ jobs:
       - name: Import GPG key
         run: |
           echo "${{ secrets.GPG_PRIVATE_KEY }}" | gpg --import
+          gpg --export-secret-keys > ~/.gnupg/secring.gpg
           
       - name: Package and sign chart
         run: |
           helm package ./charts/my-chart \
             --sign \
             --key "${{ secrets.GPG_KEY_NAME }}" \
-            --keyring ~/.gnupg/pubring.kbx
+            --keyring ~/.gnupg/secring.gpg
             
       - name: Upload to chart repository
         run: |
           # Upload both .tgz and .prov files
-          curl -u "${{ secrets.CHART_REPO_USER }}:${{ secrets.CHART_REPO_PASS }}" \
-            --data-binary "@my-chart-*.tgz" \
-            https://charts.example.com/api/charts
-          curl -u "${{ secrets.CHART_REPO_USER }}:${{ secrets.CHART_REPO_PASS }}" \
-            --data-binary "@my-chart-*.tgz.prov" \
-            https://charts.example.com/api/prov
+          for chart in my-chart-*.tgz; do
+            curl -u "${{ secrets.CHART_REPO_USER }}:${{ secrets.CHART_REPO_PASS }}" \
+              --data-binary @"$chart" \
+              https://charts.example.com/api/charts
+          done
+          for prov in my-chart-*.tgz.prov; do
+            curl -u "${{ secrets.CHART_REPO_USER }}:${{ secrets.CHART_REPO_PASS }}" \
+              --data-binary @"$prov" \
+              https://charts.example.com/api/prov
+          done
 ```
 
 ### GitHub Actions with Cosign
@@ -373,7 +379,7 @@ Create a script to verify charts before installation.
 CHART=$1
 RELEASE=$2
 NAMESPACE=$3
-KEYRING=${4:-"./pubkey.asc"}
+KEYRING=${4:-"./pubring.gpg"}
 
 # Verify the chart signature
 echo "Verifying chart signature..."
@@ -388,23 +394,25 @@ helm install "$RELEASE" "$CHART" --namespace "$NAMESPACE" --create-namespace
 
 ### ArgoCD with Verification
 
-Configure ArgoCD to verify charts (requires custom configuration).
+Configure ArgoCD to verify charts with a config management plugin (requires custom configuration).
 
 ```yaml
-# ConfigMap for ArgoCD repo server
-apiVersion: v1
-kind: ConfigMap
+# Plugin configuration mounted into the ArgoCD repo server sidecar
+apiVersion: argoproj.io/v1alpha1
+kind: ConfigManagementPlugin
 metadata:
-  name: argocd-cm
-  namespace: argocd
-data:
-  # Custom helm binary wrapper for verification
-  helm.path: /custom-tools/helm-verify-wrapper.sh
+  name: helm-verify
+spec:
+  generate:
+    command: [sh, -c]
+    args:
+      - helm dependency build . &&
+        helm template "$ARGOCD_APP_NAME" . --verify --keyring /helm-keys/pubring.gpg
 ```
 
 ### Policy Enforcement with OPA/Gatekeeper
 
-Enforce signed charts with OPA policies.
+Enforce a verified-chart annotation added by your deployment pipeline with OPA policies.
 
 ```yaml
 # ConstraintTemplate
@@ -489,13 +497,13 @@ syft dir:./charts/my-chart -o spdx-json > sbom.json
 # Attach SBOM as attestation
 cosign attest --key cosign.key \
   --predicate sbom.json \
-  --type spdx \
+  --type https://spdx.dev/Document \
   ghcr.io/myorg/charts/my-chart:1.0.0
 
 # Verify attestation
 cosign verify-attestation \
   --key cosign.pub \
-  --type spdx \
+  --type https://spdx.dev/Document \
   ghcr.io/myorg/charts/my-chart:1.0.0
 ```
 
@@ -509,8 +517,9 @@ cosign verify-attestation \
 ls -la my-chart-1.0.0.tgz*
 
 # Error: key not found
-# Solution: Import the signing key
+# Solution: Import the signing key and export a Helm keyring
 gpg --import pubkey.asc
+gpg --export ABCD1234EFGH5678 > pubring.gpg
 
 # Error: Bad signature
 # Solution: Chart may have been tampered with
@@ -527,6 +536,7 @@ cosign triangulate ghcr.io/myorg/charts/my-chart:1.0.0
 # Error: certificate identity mismatch
 # Solution: Check the expected signer identity
 cosign verify --certificate-identity-regexp '.*' \
+  --certificate-oidc-issuer-regexp '.*' \
   ghcr.io/myorg/charts/my-chart:1.0.0
 
 # See who signed it, then use correct identity
