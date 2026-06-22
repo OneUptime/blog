@@ -171,7 +171,7 @@ import _ from 'lodash';
 const result = _.debounce(myFunction, 300);
 ```
 
-Bundle impact: ~70KB gzipped
+Bundle impact: ~24KB gzipped (~70KB minified)
 
 **Good** (imports only what you need):
 
@@ -219,7 +219,7 @@ import moment from 'moment';
 const formatted = moment().format('MMMM Do YYYY');
 ```
 
-Bundle impact: ~280KB gzipped (with all locales)
+Bundle impact: ~72KB gzipped (~280KB minified, with all locales)
 
 **Good** (date-fns with tree shaking):
 
@@ -405,7 +405,7 @@ const SpecificComponent = lazy(() =>
 Improve perceived performance by preloading components before they are needed:
 
 ```javascript
-import React, { Suspense, lazy, useEffect } from 'react';
+import React, { Suspense, lazy, useEffect, useState } from 'react';
 
 const HeavyModal = lazy(() => import('./HeavyModal'));
 
