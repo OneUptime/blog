@@ -175,15 +175,23 @@ sudo cryptsetup luksFormat /dev/sdb1
 # Then enter and verify your passphrase
 
 # For more control over encryption parameters:
+# --type luks2          Use LUKS2 format
+# --cipher              Cipher specification
+# --key-size 512        512 bits for XTS (256-bit AES)
+# --hash sha256         Hash algorithm for PBKDF
+# --iter-time 5000      PBKDF iteration time in ms
+# --pbkdf argon2id      Use Argon2id for key derivation
+# --pbkdf-memory        1GB memory for Argon2 (value in KiB)
+# --pbkdf-parallel 4    4 parallel threads
 sudo cryptsetup luksFormat \
-    --type luks2 \                    # Use LUKS2 format
-    --cipher aes-xts-plain64 \        # Cipher specification
-    --key-size 512 \                  # 512 bits for XTS (256-bit AES)
-    --hash sha256 \                   # Hash algorithm for PBKDF
-    --iter-time 5000 \                # PBKDF iteration time in ms
-    --pbkdf argon2id \                # Use Argon2id for key derivation
-    --pbkdf-memory 1048576 \          # 1GB memory for Argon2
-    --pbkdf-parallel 4 \              # 4 parallel threads
+    --type luks2 \
+    --cipher aes-xts-plain64 \
+    --key-size 512 \
+    --hash sha256 \
+    --iter-time 5000 \
+    --pbkdf argon2id \
+    --pbkdf-memory 1048576 \
+    --pbkdf-parallel 4 \
     /dev/sdb1
 
 # Verify the LUKS header
