@@ -405,20 +405,20 @@ sudo tail -f /var/log/squid/access.log
 sudo tail -f /var/log/squid/cache.log
 
 # Parse logs with squidclient
-squidclient -h localhost cache_object://localhost/info
+squidclient -h localhost mgr:info
 ```
 
 ### Cache Statistics
 
 ```bash
 # View cache statistics
-squidclient -h localhost cache_object://localhost/counters
+squidclient -h localhost mgr:counters
 
 # Memory usage
-squidclient -h localhost cache_object://localhost/mem
+squidclient -h localhost mgr:mem
 
 # Active connections
-squidclient -h localhost cache_object://localhost/active_requests
+squidclient -h localhost mgr:active_requests
 ```
 
 ## Client Configuration
@@ -515,7 +515,7 @@ sudo squid -z
 
 ```bash
 # Check memory usage
-squidclient -h localhost cache_object://localhost/mem
+squidclient -h localhost mgr:mem
 
 # Reduce cache_mem if needed in squid.conf
 ```
