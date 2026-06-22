@@ -567,10 +567,9 @@ frontend http_with_acls
     bind 0.0.0.0:80
     bind :::80
 
-    # IPv6 network ACLs
-    acl is_internal_v6 src 2001:db8:100::/48
-    acl is_internal_v4 src 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16
-    acl is_internal or is_internal_v4 is_internal_v6
+    # IPv6 network ACLs (declaring the same ACL name twice ORs the conditions)
+    acl is_internal src 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16
+    acl is_internal src 2001:db8:100::/48
 
     # Specific IPv6 address ACL
     acl is_monitoring_server src 2001:db8:100::53
@@ -600,19 +599,14 @@ frontend http_geo_routing
     bind :::80
 
     # Load IPv6 networks from files for geographic routing
-    acl is_north_america_v6 src -f /etc/haproxy/geo/north_america_v6.lst
-    acl is_europe_v6 src -f /etc/haproxy/geo/europe_v6.lst
-    acl is_asia_v6 src -f /etc/haproxy/geo/asia_v6.lst
+    acl is_north_america src -f /etc/haproxy/geo/north_america_v6.lst
+    acl is_europe src -f /etc/haproxy/geo/europe_v6.lst
+    acl is_asia src -f /etc/haproxy/geo/asia_v6.lst
 
-    # IPv4 counterparts
-    acl is_north_america_v4 src -f /etc/haproxy/geo/north_america_v4.lst
-    acl is_europe_v4 src -f /etc/haproxy/geo/europe_v4.lst
-    acl is_asia_v4 src -f /etc/haproxy/geo/asia_v4.lst
-
-    # Combined ACLs
-    acl is_north_america or is_north_america_v4 is_north_america_v6
-    acl is_europe or is_europe_v4 is_europe_v6
-    acl is_asia or is_asia_v4 is_asia_v6
+    # IPv4 counterparts (reusing the same ACL name ORs them with the IPv6 entries)
+    acl is_north_america src -f /etc/haproxy/geo/north_america_v4.lst
+    acl is_europe src -f /etc/haproxy/geo/europe_v4.lst
+    acl is_asia src -f /etc/haproxy/geo/asia_v4.lst
 
     # Route to regional backends
     use_backend na_servers if is_north_america
@@ -1013,7 +1007,7 @@ frontend debug_front
     capture request header X-Forwarded-For len 128
 
     # Return debug information
-    http-request return status 200 content-type text/plain string "Client IP: %[src]\nIP Version: %[src,ipv6,iif(ipv6,ipv4)]\nServer Address: %[dst]\nServer Port: %[dst_port]\n" if { path /debug }
+    http-request return status 200 content-type text/plain lf-string "Client IP: %[src]\nIP Version: %[src,ipv6,iif(ipv6,ipv4)]\nServer Address: %[dst]\nServer Port: %[dst_port]\n" if { path /debug }
 
     default_backend web_servers
 ```
