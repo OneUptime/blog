@@ -92,6 +92,11 @@ kubectl port-forward svc/prometheus-kube-prometheus-prometheus 9090:9090 -n moni
 ```yaml
 # prometheus-values.yaml
 prometheus:
+  # Pod disruption budget
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+
   prometheusSpec:
     # Resource limits
     resources:
@@ -123,11 +128,6 @@ prometheus:
     # Enable admin API
     enableAdminAPI: true
     
-    # Pod disruption budget
-    podDisruptionBudget:
-      enabled: true
-      minAvailable: 1
-
     # Affinity and tolerations
     affinity:
       nodeAffinity:
@@ -272,15 +272,15 @@ alertmanager:
       repeat_interval: 4h
       receiver: 'default-receiver'
       routes:
-        - match:
-            severity: critical
+        - matchers:
+            - severity="critical"
           receiver: 'pagerduty'
           continue: true
-        - match:
-            severity: warning
+        - matchers:
+            - severity="warning"
           receiver: 'slack-warnings'
-        - match_re:
-            service: ^(api|web)$
+        - matchers:
+            - service=~"^(api|web)$"
           receiver: 'team-backend'
 
     receivers:
@@ -297,7 +297,7 @@ alertmanager:
       
       - name: 'pagerduty'
         pagerduty_configs:
-          - service_key: 'your-pagerduty-service-key'
+          - routing_key: 'your-pagerduty-routing-key'
             severity: '{{ .CommonLabels.severity }}'
       
       - name: 'team-backend'
@@ -306,10 +306,10 @@ alertmanager:
             send_resolved: true
 
     inhibit_rules:
-      - source_match:
-          severity: 'critical'
-        target_match:
-          severity: 'warning'
+      - source_matchers:
+          - severity="critical"
+        target_matchers:
+          - severity="warning"
         equal: ['alertname', 'cluster', 'service']
 ```
 
@@ -332,9 +332,11 @@ spec:
       rules:
         - alert: HighErrorRate
           expr: |
-            sum(rate(http_requests_total{status=~"5.."}[5m])) 
-            / 
-            sum(rate(http_requests_total[5m])) > 0.05
+            (
+              sum(rate(http_requests_total{status=~"5.."}[5m]))
+              /
+              sum(rate(http_requests_total[5m]))
+            ) * 100 > 5
           for: 5m
           labels:
             severity: critical
@@ -366,9 +368,13 @@ spec:
 
         - alert: HighMemoryUsage
           expr: |
-            container_memory_usage_bytes{container!=""} 
-            / 
-            container_spec_memory_limit_bytes{container!=""} > 0.9
+            (
+              container_memory_usage_bytes{container!=""}
+              /
+              container_spec_memory_limit_bytes{container!=""}
+            ) > 0.9
+            and on(namespace, pod, container)
+            container_spec_memory_limit_bytes{container!=""} > 0
           for: 5m
           labels:
             severity: warning
@@ -447,21 +453,23 @@ metadata:
 data:
   my-dashboard.json: |
     {
-      "dashboard": {
-        "title": "My Application Dashboard",
-        "panels": [
-          {
-            "title": "Request Rate",
-            "type": "graph",
-            "targets": [
-              {
-                "expr": "rate(http_requests_total[5m])",
-                "legendFormat": "{{method}} {{path}}"
-              }
-            ]
-          }
-        ]
-      }
+      "uid": "my-application",
+      "title": "My Application Dashboard",
+      "schemaVersion": 39,
+      "version": 1,
+      "panels": [
+        {
+          "title": "Request Rate",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+          "targets": [
+            {
+              "expr": "rate(http_requests_total[5m])",
+              "legendFormat": "{{method}} {{path}}"
+            }
+          ]
+        }
+      ]
     }
 ```
 
@@ -511,7 +519,8 @@ prometheus:
     
     # Enable Thanos sidecar for HA
     thanos:
-      image: quay.io/thanos/thanos:v0.32.0
+      image: quay.io/thanos/thanos:v0.41.0
+      version: v0.41.0
       objectStorageConfig:
         key: thanos.yaml
         name: thanos-objstore-secret
