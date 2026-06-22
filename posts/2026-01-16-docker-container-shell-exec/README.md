@@ -316,10 +316,10 @@ docker run -it --rm \
 # Now you can debug networking, processes, etc.
 ```
 
-### Check Logs (Always Works)
+### Check Logs and Copy Files
 
 ```bash
-# Logs work even without shell
+# Logs work even without a shell when the container uses a readable logging driver
 docker logs my-container
 
 # Copy files out for inspection
@@ -330,17 +330,17 @@ docker cp my-container:/app/data ./local-copy
 
 ```bash
 # Exec into compose service
-docker-compose exec api bash
+docker compose exec api bash
 
 # Run one-off command
-docker-compose exec api npm run migrate
+docker compose exec api npm run migrate
 
 # View logs
-docker-compose logs api
-docker-compose logs -f api worker
+docker compose logs api
+docker compose logs -f api worker
 
 # View all service logs
-docker-compose logs -f
+docker compose logs -f
 ```
 
 ## Summary
