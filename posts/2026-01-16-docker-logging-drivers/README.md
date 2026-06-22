@@ -73,12 +73,15 @@ services:
 | `max-file` | Number of log files to keep | 1 |
 | `compress` | Compress rotated logs | disabled |
 | `labels` | Include container labels | - |
+| `labels-regex` | Include labels matching a regex | - |
 | `env` | Include environment variables | - |
+| `env-regex` | Include environment variables matching a regex | - |
 
 ### Daemon-Wide Configuration
 
+`/etc/docker/daemon.json`:
+
 ```json
-// /etc/docker/daemon.json
 {
   "log-driver": "json-file",
   "log-opts": {
@@ -114,6 +117,7 @@ services:
 - More efficient storage format
 - Faster writes
 - Less human-readable (binary format)
+- Rotates by default (5 files of 20 MB each) and compresses by default
 - Still accessible via `docker logs`
 
 ## syslog Driver
@@ -149,11 +153,13 @@ services:
 
 | Option | Description |
 |--------|-------------|
-| `syslog-address` | Syslog server address (tcp/udp/unix) |
+| `syslog-address` | Syslog server address (tcp/udp/tcp+tls/unix/unixgram) |
+| `syslog-tls-ca-cert` | TLS CA certificate path |
 | `syslog-facility` | Syslog facility (daemon, local0-7, etc.) |
 | `syslog-tls-cert` | TLS certificate path |
 | `syslog-tls-key` | TLS key path |
-| `syslog-format` | Message format (rfc3164, rfc5424) |
+| `syslog-tls-skip-verify` | Skip TLS verification |
+| `syslog-format` | Message format (rfc3164, rfc5424, rfc5424micro) |
 | `tag` | Log tag template |
 
 ### Tag Templates
@@ -162,11 +168,12 @@ services:
 logging:
   options:
     # Available template variables:
-    tag: "{{.Name}}"           # Container name
-    tag: "{{.ID}}"             # Full container ID
-    tag: "{{.ImageName}}"      # Image name
-    tag: "{{.DaemonName}}"     # Docker daemon name
-    tag: "docker/{{.Name}}"    # Custom prefix
+    # {{.Name}}        Container name
+    # {{.ID}}          First 12 characters of the container ID
+    # {{.FullID}}      Full container ID
+    # {{.ImageName}}   Image name
+    # {{.DaemonName}}  Docker daemon name
+    tag: "docker/{{.Name}}"
 ```
 
 ## fluentd Driver
@@ -231,13 +238,13 @@ services:
   </buffer>
 </match>
 
-# Or forward to Elasticsearch
+# Or replace the file output with Elasticsearch.
+# Requires fluent-plugin-elasticsearch in the Fluentd image.
 <match docker.**>
   @type elasticsearch
   host elasticsearch
   port 9200
   index_name docker-logs
-  type_name _doc
 </match>
 ```
 
@@ -247,10 +254,10 @@ services:
 |--------|-------------|---------|
 | `fluentd-address` | Fluentd address | localhost:24224 |
 | `fluentd-async` | Async logging | false |
-| `fluentd-buffer-limit` | Buffer size | 1MB |
+| `fluentd-buffer-limit` | Number of events buffered in memory | 1048576 |
 | `fluentd-retry-wait` | Retry interval | 1s |
-| `fluentd-max-retries` | Max retries | unlimited |
-| `tag` | Log tag | container ID |
+| `fluentd-max-retries` | Max retries | 4294967295 |
+| `tag` | Log tag | first 12 characters of container ID |
 
 ## journald Driver
 
@@ -289,7 +296,7 @@ services:
       options:
         awslogs-region: "us-east-1"
         awslogs-group: "my-app-logs"
-        awslogs-stream: "{{.Name}}"
+        tag: "{{.Name}}"
         awslogs-create-group: "true"
 ```
 
@@ -309,7 +316,7 @@ services:
 
 ## Dual Logging (Local + Remote)
 
-Docker doesn't natively support multiple log drivers per container. Use these workarounds:
+Docker doesn't natively support sending one container to multiple arbitrary log drivers. Docker Engine does provide a dual logging cache for remote drivers by default, so `docker logs` can read a local cache unless `cache-disabled` is set to `true`. Use these workarounds when you need to ship application logs to multiple destinations you control:
 
 ### Method 1: Sidecar Container
 
@@ -317,6 +324,7 @@ Docker doesn't natively support multiple log drivers per container. Use these wo
 services:
   app:
     image: myapp
+    # This only ships logs if the app writes files under /var/log/app.
     logging:
       driver: json-file
       options:
@@ -341,24 +349,37 @@ volumes:
 Configure your application to write to both stdout and a log aggregator.
 
 ```javascript
-// Node.js example with winston
-const winston = require('winston');
-const FluentTransport = require('fluent-logger').support.winstonTransport();
+// Node.js example with @fluent-org/logger
+const { FluentClient } = require('@fluent-org/logger');
 
-const logger = winston.createLogger({
-  transports: [
-    new winston.transports.Console(),  // Docker captures this
-    new FluentTransport('app', { host: 'fluentd', port: 24224 })
-  ]
+const fluent = new FluentClient('app', {
+  socket: {
+    host: 'fluentd',
+    port: 24224,
+    timeout: 3000
+  }
 });
+
+async function logInfo(message, fields = {}) {
+  const record = {
+    timestamp: new Date().toISOString(),
+    level: 'info',
+    message,
+    ...fields
+  };
+
+  console.log(JSON.stringify(record)); // Docker captures this
+  await fluent.emit('info', record);
+}
 ```
 
 ## Log Management Best Practices
 
 ### 1. Always Set Size Limits
 
+`/etc/docker/daemon.json`:
+
 ```json
-// /etc/docker/daemon.json
 {
   "log-driver": "json-file",
   "log-opts": {
@@ -405,7 +426,7 @@ services:
       driver: fluentd
       options:
         fluentd-async: "true"
-        fluentd-buffer-limit: "4MB"
+        fluentd-buffer-limit: "4096"
 ```
 
 ## Troubleshooting
@@ -427,8 +448,9 @@ docker info --format '{{.LoggingDriver}}'
 docker logs mycontainer
 # Error: logs not available for driver X
 
-# Some drivers don't support docker logs command
-# Use the driver's native tools instead
+# Remote drivers are readable through docker logs when Docker's
+# dual logging cache is enabled. If cache-disabled=true, use the
+# driver's native tools instead.
 ```
 
 ### Disk Space Issues
@@ -437,10 +459,13 @@ docker logs mycontainer
 # Find large log files
 sudo du -sh /var/lib/docker/containers/*/*-json.log | sort -h
 
-# Truncate specific log
+# Emergency truncate for json-file logs only; stop the container first
+# because direct edits can interfere with Docker's logging system.
+docker stop <id>
 sudo truncate -s 0 /var/lib/docker/containers/<id>/<id>-json.log
+docker start <id>
 
-# Clean up with prune
+# Remove unused objects (does not rotate logs for running containers)
 docker system prune
 ```
 
@@ -483,13 +508,13 @@ services:
       options:
         max-size: "5m"
 
-  # Optional: forward everything to fluentd
-  log-forwarder:
+  # Optional: run a service that logs directly to fluentd
+  fluentd-app:
     image: myapi
     logging:
       driver: fluentd
       options:
-        fluentd-address: "fluentd:24224"
+        fluentd-address: "localhost:24224"
         tag: "docker.api"
         fluentd-async: "true"
 ```
@@ -500,11 +525,10 @@ services:
 |--------|---------------|----------|
 | json-file | Yes | Development, simple production |
 | local | Yes | Production single-host |
-| syslog | No | Unix/Linux infrastructure |
-| journald | Via journalctl | systemd systems |
-| fluentd | No | Centralized logging |
-| awslogs | No | AWS deployments |
+| syslog | Via dual logging cache by default | Unix/Linux infrastructure |
+| journald | Yes, and via journalctl | systemd systems |
+| fluentd | Via dual logging cache by default | Centralized logging |
+| awslogs | Via dual logging cache by default | AWS deployments |
 | none | N/A | Disable logging |
 
 Choose `json-file` or `local` with size limits for most use cases. Use `fluentd` or cloud-native drivers when you need centralized log aggregation. Always configure log rotation to prevent disk exhaustion.
-
