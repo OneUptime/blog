@@ -81,7 +81,7 @@ Held packages can block upgrades:
 # List any packages marked as held
 apt-mark showhold
 
-# If packages are held, consider unholdling them temporarily
+# If packages are held, consider unholding them temporarily
 # sudo apt-mark unhold package_name
 ```
 
@@ -141,7 +141,7 @@ sudo do-release-upgrade
 - Start an additional SSH daemon on port 1022 as a backup
 - Prompt you to confirm before proceeding
 
-### Method 2: Force LTS Upgrade
+### Method 2: Check LTS Upgrade Settings
 
 If `do-release-upgrade` doesn't find a new version, you may need to modify settings:
 
@@ -161,9 +161,11 @@ For normal releases (not just LTS), use `Prompt=normal`.
 Then run:
 
 ```bash
-# Force check for new LTS release
+# Check for the new LTS release
 sudo do-release-upgrade
 ```
+
+If you are upgrading before LTS upgrades are officially enabled for your release, you can use `sudo do-release-upgrade -d`, but this is not recommended for production systems.
 
 ## During the Upgrade
 
@@ -238,6 +240,8 @@ ls /etc/apt/sources.list.d/*.distUpgrade
 # Re-enable a repository by renaming back
 # First verify the PPA supports Ubuntu 24.04
 sudo mv /etc/apt/sources.list.d/someppa.list.distUpgrade /etc/apt/sources.list.d/someppa.list
+# For deb822-style sources, use the .sources extension
+sudo mv /etc/apt/sources.list.d/someppa.sources.distUpgrade /etc/apt/sources.list.d/someppa.sources
 
 # Update after re-enabling
 sudo apt update
@@ -303,6 +307,7 @@ sudo mount /dev/sda1 /mnt
 sudo mount --bind /dev /mnt/dev
 sudo mount --bind /proc /mnt/proc
 sudo mount --bind /sys /mnt/sys
+sudo mount --bind /run /mnt/run
 
 # Chroot into the mounted system
 sudo chroot /mnt
