@@ -92,7 +92,7 @@ config:
           - job_name: 'otel-collector'
             scrape_interval: 30s
             static_configs:
-              - targets: ['0.0.0.0:8888']
+              - targets: ['${env:MY_POD_IP}:8888']
 
   processors:
     batch:
@@ -126,41 +126,50 @@ config:
       const_labels:
         source: otel-collector
     
-    logging:
-      loglevel: info
+    debug:
+      verbosity: basic
 
   service:
     pipelines:
       traces:
         receivers: [otlp]
-        processors: [memory_limiter, batch]
-        exporters: [otlp, logging]
+        processors: [memory_limiter, resource, batch]
+        exporters: [otlp, debug]
       
       metrics:
         receivers: [otlp, prometheus]
-        processors: [memory_limiter, batch]
+        processors: [memory_limiter, resource, batch]
         exporters: [prometheus, otlp]
       
       logs:
         receivers: [otlp]
-        processors: [memory_limiter, batch]
-        exporters: [otlp, logging]
+        processors: [memory_limiter, resource, batch]
+        exporters: [otlp, debug]
 
 service:
   type: ClusterIP
-  ports:
-    - name: otlp-grpc
-      port: 4317
-      targetPort: 4317
-      protocol: TCP
-    - name: otlp-http
-      port: 4318
-      targetPort: 4318
-      protocol: TCP
-    - name: prometheus
-      port: 8889
-      targetPort: 8889
-      protocol: TCP
+ports:
+  otlp:
+    enabled: true
+    containerPort: 4317
+    servicePort: 4317
+    protocol: TCP
+    appProtocol: grpc
+  otlp-http:
+    enabled: true
+    containerPort: 4318
+    servicePort: 4318
+    protocol: TCP
+  metrics:
+    enabled: true
+    containerPort: 8888
+    servicePort: 8888
+    protocol: TCP
+  prometheus:
+    enabled: true
+    containerPort: 8889
+    servicePort: 8889
+    protocol: TCP
 ```
 
 ### Mode 2: DaemonSet (Agent)
@@ -192,7 +201,7 @@ config:
     kubeletstats:
       collection_interval: 30s
       auth_type: serviceAccount
-      endpoint: "https://${env:K8S_NODE_NAME}:10250"
+      endpoint: "https://${env:OTEL_K8S_NODE_NAME}:10250"
       insecure_skip_verify: true
       metric_groups:
         - node
@@ -201,6 +210,7 @@ config:
     
     # Host metrics
     hostmetrics:
+      root_path: /hostfs
       collection_interval: 30s
       scrapers:
         cpu:
@@ -225,61 +235,8 @@ config:
       include_file_path: true
       include_file_name: false
       operators:
-        - type: router
-          id: get-format
-          routes:
-            - output: parser-docker
-              expr: 'body matches "^\\{"'
-            - output: parser-crio
-              expr: 'body matches "^[^ Z]+ "'
-            - output: parser-containerd
-              expr: 'body matches "^[^ Z]+Z"'
-        
-        - type: json_parser
-          id: parser-docker
-          output: extract_metadata
-          timestamp:
-            parse_from: attributes.time
-            layout: '%Y-%m-%dT%H:%M:%S.%LZ'
-        
-        - type: regex_parser
-          id: parser-crio
-          regex: '^(?P<time>[^ Z]+) (?P<stream>stdout|stderr) (?P<logtag>[^ ]*) ?(?P<log>.*)$'
-          output: extract_metadata
-          timestamp:
-            parse_from: attributes.time
-            layout_type: gotime
-            layout: '2006-01-02T15:04:05.999999999Z07:00'
-        
-        - type: regex_parser
-          id: parser-containerd
-          regex: '^(?P<time>[^ ^Z]+Z) (?P<stream>stdout|stderr) (?P<logtag>[^ ]*) ?(?P<log>.*)$'
-          output: extract_metadata
-          timestamp:
-            parse_from: attributes.time
-            layout: '%Y-%m-%dT%H:%M:%S.%LZ'
-        
-        - type: move
-          id: extract_metadata
-          from: attributes.log
-          to: body
-        
-        - type: regex_parser
-          id: extract_metadata_from_filepath
-          regex: '^.*\/(?P<namespace>[^_]+)_(?P<pod_name>[^_]+)_(?P<uid>[a-f0-9\-]{36})\/(?P<container_name>[^\._]+)\/(?P<restart_count>\d+)\.log$'
-          parse_from: attributes["log.file.path"]
-        
-        - type: move
-          from: attributes.namespace
-          to: resource["k8s.namespace.name"]
-        
-        - type: move
-          from: attributes.pod_name
-          to: resource["k8s.pod.name"]
-        
-        - type: move
-          from: attributes.container_name
-          to: resource["k8s.container.name"]
+        - type: container
+          id: container-parser
 
   processors:
     batch:
@@ -325,7 +282,7 @@ config:
 
   exporters:
     otlp:
-      endpoint: "otel-collector-gateway.observability.svc:4317"
+      endpoint: "otel-gateway-opentelemetry-collector.observability.svc:4317"
       tls:
         insecure: true
 
@@ -348,6 +305,9 @@ config:
 
 # Additional volumes for log collection
 extraVolumes:
+  - name: hostfs
+    hostPath:
+      path: /
   - name: varlogpods
     hostPath:
       path: /var/log/pods
@@ -356,6 +316,10 @@ extraVolumes:
       path: /var/lib/docker/containers
 
 extraVolumeMounts:
+  - name: hostfs
+    mountPath: /hostfs
+    readOnly: true
+    mountPropagation: HostToContainer
   - name: varlogpods
     mountPath: /var/log/pods
     readOnly: true
@@ -370,6 +334,9 @@ serviceAccount:
 clusterRole:
   create: true
   rules:
+    - apiGroups: [""]
+      resources: ["nodes/stats"]
+      verbs: ["get"]
     - apiGroups: [""]
       resources: ["pods", "namespaces", "nodes"]
       verbs: ["get", "list", "watch"]
@@ -440,7 +407,7 @@ config:
         - name: http.method
           default: GET
         - name: http.status_code
-      dimensions_cache_size: 1000
+      aggregation_cardinality_limit: 1000
       aggregation_temporality: "AGGREGATION_TEMPORALITY_CUMULATIVE"
       metrics_flush_interval: 15s
 
