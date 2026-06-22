@@ -56,7 +56,7 @@ Sample output: `Archived and active journals take up 2.3G in the file system.`
 For more detailed information about journal files, examine the storage directory directly.
 
 ```bash
-# List journal files with sizes, sorted by modification time
+# List journal files with sizes
 # The machine-id subdirectory contains your system's journals
 ls -lh /var/log/journal/*/
 
@@ -119,8 +119,8 @@ SystemKeepFree=1G
 # Smaller values mean more frequent rotation
 SystemMaxFileSize=50M
 
-# Maximum disk space all journal files can use
-# Alternative to SystemMaxUse for more explicit control
+# Maximum number of individual journal files to keep
+# Once exceeded, the oldest journal files are deleted
 SystemMaxFiles=100
 ```
 
@@ -411,9 +411,10 @@ Proactive monitoring helps catch issues before they cause outages. Set up these 
 #!/bin/bash
 # journal-health-check.sh
 
-# Get journal size in bytes
-JOURNAL_SIZE=$(journalctl --disk-usage | grep -oP '[\d.]+[GMK]?(?=\s)')
-JOURNAL_BYTES=$(journalctl --disk-usage --output=json 2>/dev/null | jq '.size' 2>/dev/null || echo "0")
+# Get journal size (--disk-usage only prints a human-readable line,
+# so parse the value and convert it to bytes with numfmt)
+JOURNAL_SIZE=$(journalctl --disk-usage | grep -oP '[\d.]+[GMKT]?(?=B?\s)')
+JOURNAL_BYTES=$(echo "$JOURNAL_SIZE" | numfmt --from=iec 2>/dev/null || echo "0")
 
 # Check for corruption
 VERIFY_OUTPUT=$(journalctl --verify 2>&1)
