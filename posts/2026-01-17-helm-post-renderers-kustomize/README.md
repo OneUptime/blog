@@ -46,12 +46,17 @@ flowchart TB
 #!/bin/bash
 # kustomize-post-renderer.sh
 
-# Read stdin (Helm output) into a temporary file
+set -e
 
-cat > /tmp/helm-output.yaml
+# Create a temporary workspace
+TEMP_DIR=$(mktemp -d)
+trap "rm -rf $TEMP_DIR" EXIT
+
+# Read stdin (Helm output) into a temporary file
+cat > "$TEMP_DIR/helm-output.yaml"
 
 # Create kustomization that uses Helm output as a resource
-cat > /tmp/kustomization.yaml <<EOF
+cat > "$TEMP_DIR/kustomization.yaml" <<EOF
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
@@ -59,7 +64,7 @@ resources:
 EOF
 
 # Run kustomize and output to stdout
-cd /tmp && kustomize build .
+kustomize build "$TEMP_DIR"
 ```
 
 ```bash
@@ -74,13 +79,21 @@ helm install myapp charts/myapp \
 ### Using Kustomize Directly
 
 ```bash
-# Simple kustomize post-renderer
-helm template myapp charts/myapp | kustomize build -
+# Preview Helm output through Kustomize
+TEMP_DIR=$(mktemp -d)
+helm template myapp charts/myapp > "$TEMP_DIR/helm-output.yaml"
+cat > "$TEMP_DIR/kustomization.yaml" <<EOF
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - helm-output.yaml
+EOF
+kustomize build "$TEMP_DIR"
+rm -rf "$TEMP_DIR"
 
-# With Helm install
+# With Helm install, use an executable post-renderer script
 helm install myapp charts/myapp \
-  --post-renderer-args "--enable-helm" \
-  --post-renderer kustomize
+  --post-renderer ./kustomize-post-renderer.sh
 ```
 
 ## Advanced Post-Renderer Setup
@@ -137,14 +150,18 @@ elif [ -d "$KUSTOMIZE_DIR/base" ]; then
   cp -r "$KUSTOMIZE_DIR/base"/* "$TEMP_DIR/"
 fi
 
-# Add Helm output as resource
-cat >> "$TEMP_DIR/kustomization.yaml" <<EOF
-resources:
-  - helm-output.yaml
+# Add Helm output as a resource
+cd "$TEMP_DIR"
+if [ ! -f kustomization.yaml ]; then
+  cat > kustomization.yaml <<EOF
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
 EOF
+fi
+kustomize edit add resource helm-output.yaml
 
 # Build and output
-kustomize build "$TEMP_DIR"
+kustomize build .
 ```
 
 ```bash
@@ -181,7 +198,7 @@ namespace: myapp
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-# Inherit from base
+# Apply development-specific changes to Helm output
 resources: []
 
 # Development-specific labels
@@ -253,14 +270,16 @@ commonLabels:
 # Production patches
 patches:
   - path: patches/deployment-prod.yaml
-  - path: patches/pdb.yaml
-  - path: patches/network-policy.yaml
+
+# Additional production resources
+resources:
+  - patches/pdb.yaml
+  - patches/network-policy.yaml
 
 # Image transformer for production
 images:
   - name: myorg/myapp
     newTag: v1.2.3-prod
-    digest: sha256:abc123...
 
 # Replica count transformer
 replicas:
@@ -327,7 +346,7 @@ spec:
     - from:
         - namespaceSelector:
             matchLabels:
-              name: ingress-nginx
+              kubernetes.io/metadata.name: ingress-nginx
       ports:
         - protocol: TCP
           port: 8080
@@ -335,7 +354,7 @@ spec:
     - to:
         - namespaceSelector:
             matchLabels:
-              name: database
+              kubernetes.io/metadata.name: database
       ports:
         - protocol: TCP
           port: 5432
@@ -386,7 +405,7 @@ patches:
 
 ## ArgoCD Integration
 
-### Application with Post-Renderer
+### Application with Kustomize Source
 
 ```yaml
 # argocd-application.yaml
@@ -395,15 +414,14 @@ kind: Application
 metadata:
   name: myapp
 spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: myapp
   source:
     repoURL: https://github.com/org/charts.git
-    path: charts/myapp
+    path: kustomize/overlays/production
     targetRevision: main
-    helm:
-      releaseName: myapp
-      valueFiles:
-        - values.yaml
-    # Kustomize post-rendering
     kustomize:
       images:
         - myorg/myapp:v1.2.3
@@ -433,11 +451,14 @@ spec:
     metadata:
       name: 'myapp-{{environment}}'
     spec:
+      project: default
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: 'myapp-{{environment}}'
       source:
         repoURL: https://github.com/org/charts.git
-        path: charts/myapp
-        helm:
-          releaseName: myapp
+        path: 'kustomize/overlays/{{overlay}}'
+        targetRevision: main
         kustomize:
           images:
             - myorg/myapp=myorg/myapp:{{environment}}
@@ -465,13 +486,13 @@ jobs:
       - uses: actions/checkout@v4
       
       - name: Setup Helm
-        uses: azure/setup-helm@v3
+        uses: azure/setup-helm@v5.0.0
         
       - name: Setup Kustomize
-        uses: imranismail/setup-kustomize@v2
+        uses: imranismail/setup-kustomize@v3.0.0
         
       - name: Configure Kubernetes
-        uses: azure/k8s-set-context@v3
+        uses: azure/k8s-set-context@v5.0.0
         with:
           kubeconfig: ${{ secrets.KUBECONFIG }}
           
@@ -554,12 +575,15 @@ helm template myapp charts/myapp \
   --debug 2>&1 | head -100
 
 # Test kustomize build separately
-helm template myapp charts/myapp > /tmp/helm.yaml
-cd kustomize/overlays/production
-kustomize build . --load-restrictor LoadRestrictionsNone
+TEMP_DIR=$(mktemp -d)
+helm template myapp charts/myapp > "$TEMP_DIR/helm-output.yaml"
+cp -r kustomize/overlays/production/* "$TEMP_DIR/"
+cd "$TEMP_DIR"
+kustomize edit add resource helm-output.yaml
+kustomize build .
 
 # Verify patches apply correctly
-kustomize build kustomize/overlays/production --enable-alpha-plugins
+kustomize build "$TEMP_DIR"
 ```
 
 ## Wrap-up
