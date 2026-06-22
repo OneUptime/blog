@@ -16,11 +16,11 @@ Before diving into configuration, let's understand what each protocol does:
 
 ### SPF (Sender Policy Framework)
 
-SPF allows domain owners to specify which mail servers are authorized to send emails on behalf of their domain. When a receiving server gets an email, it checks the SPF record to verify if the sending server is authorized.
+SPF allows domain owners to specify which mail servers are authorized to use their domain in the SMTP `MAIL FROM` or `HELO` identity. When a receiving server gets an email, it checks the SPF record to verify if the sending server is authorized for that identity.
 
 ### DKIM (DomainKeys Identified Mail)
 
-DKIM adds a digital signature to outgoing emails. The receiving server can verify this signature against the public key published in your DNS records, confirming the email wasn't altered in transit and truly originated from your domain.
+DKIM adds a digital signature to outgoing emails. The receiving server can verify this signature against the public key published in your DNS records, confirming the signed parts of the email weren't altered in transit and that the signing domain takes responsibility for the message.
 
 ### DMARC (Domain-based Message Authentication, Reporting, and Conformance)
 
@@ -158,29 +158,27 @@ sudo chmod 750 /etc/opendkim/keys
 ### Create the Key Pair
 
 ```bash
-# Navigate to your domain's key directory
-cd /etc/opendkim/keys/yourdomain.com
-
 # Generate a 2048-bit RSA key pair
+# -D: directory where the key files should be created
 # -s: selector name (use date-based for easy rotation)
 # -d: domain name
 # -b: key size (2048 is recommended minimum)
-sudo opendkim-genkey -s mail -d yourdomain.com -b 2048
+sudo opendkim-genkey -D /etc/opendkim/keys/yourdomain.com -s mail -d yourdomain.com -b 2048
 
 # This creates two files:
 # mail.private - Your private key (keep secret!)
 # mail.txt - DNS record containing public key
 
 # Set proper ownership and permissions
-sudo chown opendkim:opendkim mail.private mail.txt
-sudo chmod 600 mail.private
+sudo chown opendkim:opendkim /etc/opendkim/keys/yourdomain.com/mail.private /etc/opendkim/keys/yourdomain.com/mail.txt
+sudo chmod 600 /etc/opendkim/keys/yourdomain.com/mail.private
 ```
 
 ### View Your Public Key
 
 ```bash
 # Display the DNS record you need to add
-cat /etc/opendkim/keys/yourdomain.com/mail.txt
+sudo cat /etc/opendkim/keys/yourdomain.com/mail.txt
 ```
 
 The output will look something like:
@@ -198,7 +196,7 @@ For easier key rotation, use date-based selectors:
 ```bash
 # Generate key with date-based selector
 # Format: YYYYMM for monthly rotation capability
-sudo opendkim-genkey -s 202601 -d yourdomain.com -b 2048
+sudo opendkim-genkey -D /etc/opendkim/keys/yourdomain.com -s 202601 -d yourdomain.com -b 2048
 
 # This creates 202601.private and 202601.txt
 ```
@@ -224,9 +222,9 @@ Replace the contents with this comprehensive configuration:
 # Logging
 # Log to syslog for centralized logging
 Syslog                  yes
-# Log successful operations (useful for debugging)
+# Log why messages are signed or not signed (useful for debugging)
 LogWhy                  yes
-# Set log level (higher = more verbose)
+# Log successful signing and verification operations
 SyslogSuccess           yes
 
 # Signing and Verification
@@ -264,7 +262,7 @@ UMask                   002
 # Auto-restart on failure
 AutoRestart             yes
 AutoRestartRate         10/1h
-# Don't modify headers (prevent information leakage)
+# Remove existing DKIM signatures before signing
 RemoveOldSignatures     yes
 # PID file location
 PidFile                 /run/opendkim/opendkim.pid
@@ -302,7 +300,7 @@ sudo nano /etc/opendkim/SigningTable
 ```conf
 # /etc/opendkim/SigningTable
 # Format: pattern key-name
-# Uses regex patterns to match sender addresses
+# Uses wildcard patterns to match sender addresses
 
 # Sign all mail from yourdomain.com with its key
 *@yourdomain.com mail._domainkey.yourdomain.com
@@ -511,7 +509,7 @@ _dmarc.yourdomain.com.    IN    TXT    "v=DMARC1; p=none; sp=none; rua=mailto:dm
 ; fo=1              - Forensic report options (0=both fail, 1=either fails)
 ; adkim=r           - DKIM alignment (r=relaxed, s=strict)
 ; aspf=r            - SPF alignment (r=relaxed, s=strict)
-; pct=100           - Percentage of messages to apply policy (1-100)
+; pct=100           - Percentage of messages to apply policy (0-100)
 ; ri=86400          - Reporting interval in seconds (86400=daily)
 ```
 
@@ -560,7 +558,7 @@ dig TXT yourdomain.com +noall +answer
 dig +short TXT mail._domainkey.yourdomain.com
 
 # Verify DKIM key format
-sudo opendkim-testkey -d yourdomain.com -s mail -vvv
+sudo opendkim-testkey -d yourdomain.com -s mail -v
 
 # Expected output for success:
 # opendkim-testkey: key OK
@@ -629,7 +627,7 @@ DKIM=$(dig +short TXT ${SELECTOR}._domainkey.${DOMAIN})
 if [ -n "$DKIM" ]; then
     echo "   DKIM Record Found: ${DKIM:0:50}..."
     echo "   Running opendkim-testkey..."
-    sudo opendkim-testkey -d $DOMAIN -s $SELECTOR -vvv 2>&1 | tail -1
+    sudo opendkim-testkey -d "$DOMAIN" -s "$SELECTOR" -v 2>&1 | tail -1
 else
     echo "   WARNING: No DKIM record found!"
 fi
@@ -776,10 +774,10 @@ sudo netstat -tlnp | grep opendkim
 ls -la /var/spool/postfix/opendkim/
 
 # Test key validity
-sudo opendkim-testkey -d yourdomain.com -s mail -vvv
+sudo opendkim-testkey -d yourdomain.com -s mail -v
 
 # Check TrustedHosts includes your sending IP
-cat /etc/opendkim/TrustedHosts
+sudo cat /etc/opendkim/TrustedHosts
 ```
 
 #### DNS Record Not Found
@@ -814,7 +812,7 @@ curl -4 ifconfig.me
 ```bash
 # Some older systems have issues with 2048-bit keys
 # If having problems, try regenerating with 1024-bit (less secure)
-sudo opendkim-genkey -s mail -d yourdomain.com -b 1024
+sudo opendkim-genkey -D /etc/opendkim/keys/yourdomain.com -s mail -d yourdomain.com -b 1024
 
 # However, 2048-bit is strongly recommended
 # Instead, check if DNS provider supports long TXT records
@@ -855,14 +853,14 @@ echo "Debug test" | mail -s "Debug Test" test@example.com
 
 ```bash
 # 1. Use strong key sizes (2048-bit minimum, 4096-bit ideal)
-sudo opendkim-genkey -s mail -d yourdomain.com -b 2048
+sudo opendkim-genkey -D /etc/opendkim/keys/yourdomain.com -s mail -d yourdomain.com -b 2048
 
 # 2. Rotate DKIM keys regularly (every 6-12 months)
 # Generate new key with new selector
-sudo opendkim-genkey -s $(date +%Y%m) -d yourdomain.com -b 2048
+sudo opendkim-genkey -D /etc/opendkim/keys/yourdomain.com -s $(date +%Y%m) -d yourdomain.com -b 2048
 
 # 3. Keep private keys secure
-sudo chmod 600 /etc/opendkim/keys/*/
+sudo find /etc/opendkim/keys -type f -name "*.private" -exec chmod 600 {} \;
 sudo chown -R opendkim:opendkim /etc/opendkim/keys/
 
 # 4. Monitor authentication results
@@ -907,15 +905,15 @@ echo "=== DKIM Key Rotation Script ==="
 
 # Step 1: Generate new key
 echo "Generating new key with selector: $NEW_SELECTOR"
-cd /etc/opendkim/keys/$DOMAIN
-sudo opendkim-genkey -s $NEW_SELECTOR -d $DOMAIN -b 2048
-sudo chown opendkim:opendkim ${NEW_SELECTOR}.private ${NEW_SELECTOR}.txt
-sudo chmod 600 ${NEW_SELECTOR}.private
+KEY_DIR="/etc/opendkim/keys/$DOMAIN"
+sudo opendkim-genkey -D "$KEY_DIR" -s "$NEW_SELECTOR" -d "$DOMAIN" -b 2048
+sudo chown opendkim:opendkim "$KEY_DIR/${NEW_SELECTOR}.private" "$KEY_DIR/${NEW_SELECTOR}.txt"
+sudo chmod 600 "$KEY_DIR/${NEW_SELECTOR}.private"
 
 # Step 2: Display new DNS record
 echo ""
 echo "Add this DNS record:"
-cat ${NEW_SELECTOR}.txt
+sudo cat "$KEY_DIR/${NEW_SELECTOR}.txt"
 echo ""
 
 # Step 3: Instructions
@@ -923,7 +921,7 @@ echo "After adding DNS record and waiting for propagation:"
 echo "1. Update /etc/opendkim.conf with new selector"
 echo "2. Update /etc/opendkim/KeyTable if using multi-domain"
 echo "3. Restart OpenDKIM: sudo systemctl restart opendkim"
-echo "4. Test: sudo opendkim-testkey -d $DOMAIN -s $NEW_SELECTOR -vvv"
+echo "4. Test: sudo opendkim-testkey -d $DOMAIN -s $NEW_SELECTOR -v"
 echo "5. After verification, remove old DNS record"
 ```
 
@@ -954,7 +952,7 @@ Use this checklist to verify your setup:
 - [ ] OpenDKIM installed and configured
 - [ ] DKIM keys generated with adequate key size (2048-bit+)
 - [ ] DKIM DNS record published and verified
-- [ ] OpenDKIM testkey passes: `sudo opendkim-testkey -d yourdomain.com -s mail -vvv`
+- [ ] OpenDKIM testkey passes: `sudo opendkim-testkey -d yourdomain.com -s mail -v`
 - [ ] Postfix configured with milter settings
 - [ ] OpenDKIM service running: `sudo systemctl status opendkim`
 - [ ] DMARC record published starting with `p=none`
