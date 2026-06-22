@@ -749,7 +749,7 @@ apksigner verify --verbose app/build/outputs/apk/release/app-release.apk
 java -jar bundletool.jar build-apks \
     --bundle=app/build/outputs/bundle/release/app-release.aab \
     --output=app-release.apks \
-    --ks=~/android-keystore/release.jks \
+    --ks=$HOME/android-keystore/release.jks \
     --ks-pass=pass:your_store_password \
     --ks-key-alias=release-key \
     --key-pass=pass:your_key_password
@@ -789,7 +789,7 @@ adb devices -l
 # Create udev rules for Android devices
 # This allows non-root users to access Android devices
 
-sudo cat > /etc/udev/rules.d/51-android.rules << 'EOF'
+sudo tee /etc/udev/rules.d/51-android.rules > /dev/null << 'EOF'
 # Google
 SUBSYSTEM=="usb", ATTR{idVendor}=="18d1", MODE="0666", GROUP="plugdev"
 # Samsung
@@ -981,9 +981,6 @@ org.gradle.caching=true
 # Enable configuration caching (Gradle 7.0+)
 org.gradle.configuration-cache=true
 
-# Use build cache
-android.enableBuildCache=true
-
 # Optimize Kotlin incremental compilation
 kotlin.incremental=true
 kotlin.incremental.java=true
@@ -1009,10 +1006,13 @@ emulator -avd Pixel_7_API_34 -gpu swiftshader_indirect
 emulator -avd Pixel_7_API_34 -memory 2048
 
 # Disable unnecessary features
+# -no-boot-anim: Disable boot animation
+# -no-audio: Disable audio
+# -no-snapshot-save: Don't save snapshot on exit
 emulator -avd Pixel_7_API_34 \
-    -no-boot-anim \    # Disable boot animation
-    -no-audio \        # Disable audio
-    -no-snapshot-save  # Don't save snapshot on exit
+    -no-boot-anim \
+    -no-audio \
+    -no-snapshot-save
 
 # Run headless emulator (for CI/testing)
 emulator -avd Pixel_7_API_34 -no-window -no-audio
