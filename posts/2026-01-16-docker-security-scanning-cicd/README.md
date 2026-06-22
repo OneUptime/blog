@@ -50,6 +50,10 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+  security-events: write
+
 jobs:
   scan:
     runs-on: ubuntu-latest
@@ -219,6 +223,10 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+  security-events: write
+
 jobs:
   snyk:
     runs-on: ubuntu-latest
@@ -229,12 +237,13 @@ jobs:
         run: docker build -t myapp .
 
       - name: Run Snyk to check for vulnerabilities
+        continue-on-error: true
         uses: snyk/actions/docker@master
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         with:
           image: myapp
-          args: --severity-threshold=high
+          args: --file=Dockerfile --severity-threshold=high
 
       - name: Upload Snyk Report
         uses: github/codeql-action/upload-sarif@v4
@@ -286,6 +295,10 @@ name: Grype Vulnerability Scan
 
 on: push
 
+permissions:
+  contents: read
+  security-events: write
+
 jobs:
   scan:
     runs-on: ubuntu-latest
@@ -296,7 +309,7 @@ jobs:
         run: docker build -t myapp .
 
       - name: Scan with Grype
-        uses: anchore/scan-action@v3
+        uses: anchore/scan-action@v7
         id: scan
         with:
           image: myapp
@@ -339,7 +352,7 @@ jobs:
           path: sbom.spdx.json
 
       - name: Scan SBOM with Grype
-        uses: anchore/scan-action@v3
+        uses: anchore/scan-action@v7
         with:
           sbom: sbom.spdx.json
           fail-build: true
@@ -416,7 +429,7 @@ jobs:
 
       - name: Grype Scan
         if: matrix.scanner == 'grype'
-        uses: anchore/scan-action@v3
+        uses: anchore/scan-action@v7
         with:
           image: ${{ needs.build.outputs.image }}
           fail-build: true
@@ -436,10 +449,16 @@ jobs:
 ### Trivy Configuration
 
 ```yaml
-# .trivy.yaml
+# trivy.yaml
 severity:
   - CRITICAL
   - HIGH
+
+scan:
+  scanners:
+    - vuln
+    - secret
+    - misconfig
 
 vulnerability:
   ignore-unfixed: true
@@ -447,10 +466,12 @@ vulnerability:
 secret:
   config: trivy-secret.yaml
 
+ignorefile: ".trivyignore.yaml"
+
 misconfiguration:
-  config-data:
-    DS002:
-      severity: HIGH
+  scanners:
+    - dockerfile
+    - terraform
 ```
 
 ### Ignore File
@@ -460,7 +481,7 @@ misconfiguration:
 vulnerabilities:
   - id: CVE-2023-12345
     statement: "Not exploitable in our configuration"
-    expires: 2024-12-31
+    expired_at: 2024-12-31
 
   - id: CVE-2023-67890
     statement: "Vendor patch pending"
@@ -502,23 +523,17 @@ jobs:
 
       - name: Notify Slack
         if: steps.scan.outputs.critical > 0 || steps.scan.outputs.high > 0
-        uses: slackapi/slack-github-action@v1.24.0
+        uses: slackapi/slack-github-action@v3.0.3
         with:
+          webhook: ${{ secrets.SLACK_WEBHOOK }}
+          webhook-type: incoming-webhook
           payload: |
-            {
-              "text": "Security Scan Alert",
-              "blocks": [
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": "*Security Vulnerabilities Found*\n• Critical: ${{ steps.scan.outputs.critical }}\n• High: ${{ steps.scan.outputs.high }}"
-                  }
-                }
-              ]
-            }
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
+            text: "Security Scan Alert"
+            blocks:
+              - type: "section"
+                text:
+                  type: "mrkdwn"
+                  text: "*Security Vulnerabilities Found*\n* Critical: ${{ steps.scan.outputs.critical }}\n* High: ${{ steps.scan.outputs.high }}"
 ```
 
 ### Generate HTML Report
@@ -553,15 +568,22 @@ on:
   schedule:
     - cron: '0 6 * * *'  # Daily at 6 AM
 
+permissions:
+  contents: read
+  issues: write
+
 jobs:
   scan-registry:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        image:
-          - myregistry/app1:latest
-          - myregistry/app2:latest
-          - myregistry/app3:latest
+        include:
+          - image: myregistry/app1:latest
+            report: trivy-app1.sarif
+          - image: myregistry/app2:latest
+            report: trivy-app2.sarif
+          - image: myregistry/app3:latest
+            report: trivy-app3.sarif
     steps:
       - name: Login to Registry
         uses: docker/login-action@v3
@@ -575,7 +597,9 @@ jobs:
         with:
           image-ref: ${{ matrix.image }}
           format: 'sarif'
-          output: 'trivy-${{ matrix.image }}.sarif'
+          output: ${{ matrix.report }}
+          exit-code: '1'
+          severity: 'CRITICAL'
 
       - name: Create Issue on Critical
         if: failure()
@@ -601,4 +625,3 @@ jobs:
 | Anchore | Policy enforcement | Yes | Yes |
 
 Implement security scanning early in your CI/CD pipeline to catch vulnerabilities before they reach production. Use multiple tools for comprehensive coverage, configure appropriate severity thresholds, and set up notifications for critical findings. For more on vulnerability scanning, see our detailed post on [Scanning Docker Images with Trivy](https://oneuptime.com/blog/post/2026-01-16-docker-scan-images-trivy/view).
-
