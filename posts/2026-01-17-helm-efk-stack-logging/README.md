@@ -107,22 +107,6 @@ antiAffinity: "hard"
 nodeSelector:
   node-type: logging
 
-# Elasticsearch configuration
-esConfig:
-  elasticsearch.yml: |
-    cluster.name: logging
-    network.host: 0.0.0.0
-    
-    # Security settings
-    xpack.security.enabled: true
-    xpack.security.transport.ssl.enabled: true
-    xpack.security.transport.ssl.verification_mode: certificate
-    xpack.security.transport.ssl.keystore.path: /usr/share/elasticsearch/config/certs/elastic-certificates.p12
-    xpack.security.transport.ssl.truststore.path: /usr/share/elasticsearch/config/certs/elastic-certificates.p12
-    
-    # Index lifecycle management
-    xpack.ilm.enabled: true
-
 # Enable security
 secret:
   enabled: true
@@ -393,26 +377,16 @@ tolerations:
     effect: NoSchedule
 
 # Volume mounts for log collection
+mountVarLogDirectory: true
+mountDockerContainersDirectory: true
+
 volumes:
-  - name: varlog
-    hostPath:
-      path: /var/log
-  - name: varlibdockercontainers
-    hostPath:
-      path: /var/lib/docker/containers
-  - name: config-volume
-    configMap:
-      name: fluentd-config
+  - name: fluentd-buffer
+    emptyDir: {}
 
 volumeMounts:
-  - name: varlog
-    mountPath: /var/log
-    readOnly: true
-  - name: varlibdockercontainers
-    mountPath: /var/lib/docker/containers
-    readOnly: true
-  - name: config-volume
-    mountPath: /fluentd/etc/conf.d
+  - name: fluentd-buffer
+    mountPath: /buffers
 
 # Fluentd configuration
 fileConfigs:
@@ -425,9 +399,18 @@ fileConfigs:
       tag kubernetes.*
       read_from_head true
       <parse>
-        @type json
-        time_key time
-        time_format %Y-%m-%dT%H:%M:%S.%NZ
+        @type multi_format
+        <pattern>
+          format json
+          time_key time
+          time_type string
+          time_format %Y-%m-%dT%H:%M:%S.%NZ
+        </pattern>
+        <pattern>
+          format regexp
+          expression /^(?<time>.+) (?<stream>stdout|stderr)( (?<logtag>.))? (?<log>.*)$/
+          time_format %Y-%m-%dT%H:%M:%S.%NZ
+        </pattern>
       </parse>
     </source>
 
@@ -466,7 +449,7 @@ fileConfigs:
       
       <buffer>
         @type file
-        path /var/log/fluentd-buffers/kubernetes.buffer
+        path /buffers/kubernetes.buffer
         flush_mode interval
         retry_type exponential_backoff
         flush_interval 5s
@@ -496,8 +479,7 @@ Fluent Bit is more lightweight than Fluentd:
 kind: DaemonSet
 
 image:
-  repository: fluent/fluent-bit
-  tag: 2.2.0
+  repository: cr.fluentbit.io/fluent/fluent-bit
 
 resources:
   requests:
@@ -522,7 +504,7 @@ config:
     [INPUT]
         Name tail
         Path /var/log/containers/*.log
-        Parser docker
+        multiline.parser docker, cri
         Tag kube.*
         Mem_Buf_Limit 5MB
         Skip_Long_Lines On
@@ -576,7 +558,7 @@ kubectl exec -it elasticsearch-master-0 -n logging -- curl -k -u elastic:your-el
         "actions": {
           "rollover": {
             "max_age": "1d",
-            "max_size": "50gb"
+            "max_primary_shard_size": "50gb"
           },
           "set_priority": {
             "priority": 100
@@ -600,7 +582,6 @@ kubectl exec -it elasticsearch-master-0 -n logging -- curl -k -u elastic:your-el
       "cold": {
         "min_age": "30d",
         "actions": {
-          "freeze": {},
           "set_priority": {
             "priority": 0
           }
@@ -624,19 +605,18 @@ kubectl exec -it elasticsearch-master-0 -n logging -- curl -k -u elastic:your-el
     "settings": {
       "number_of_shards": 2,
       "number_of_replicas": 1,
-      "index.lifecycle.name": "kubernetes-logs",
-      "index.lifecycle.rollover_alias": "kubernetes"
+      "index.lifecycle.name": "kubernetes-logs"
     }
   }
 }'
 ```
 
-## Kibana Index Patterns
+## Kibana Data Views
 
-Create index patterns in Kibana:
+Create a data view in Kibana:
 
-1. Go to Stack Management → Index Patterns
-2. Create pattern: `kubernetes-*`
+1. Go to Stack Management → Data Views
+2. Create data view: `kubernetes-*`
 3. Select `@timestamp` as time field
 
 Resource Sizing Guide
@@ -652,15 +632,7 @@ Resource Sizing Guide
 
 ### Prometheus Metrics
 
-Enable Elasticsearch metrics exporter:
-
-```yaml
-# In elasticsearch-values.yaml
-metrics:
-  enabled: true
-  serviceMonitor:
-    enabled: true
-```
+The archived `elastic/elasticsearch` chart does not include a built-in Prometheus metrics exporter. Deploy a separate Elasticsearch exporter, or use the ECK Helm charts if you want Elastic-managed Kubernetes resources and operator-based monitoring.
 
 ### Useful Elasticsearch Queries
 
@@ -697,7 +669,7 @@ kubectl logs -n logging elasticsearch-master-0
 **Fluentd not sending logs:**
 ```bash
 # Check Fluentd buffer
-kubectl exec -it -n logging ds/fluentd -- ls -la /var/log/fluentd-buffers/
+kubectl exec -it -n logging ds/fluentd -- ls -la /buffers/
 ```
 
 **Elasticsearch cluster red:**
@@ -708,4 +680,4 @@ curl -k -u elastic:password https://elasticsearch:9200/_cat/shards?v | grep UNAS
 
 ## Wrap-up
 
-The EFK stack provides comprehensive logging for Kubernetes. Deploy Elasticsearch with appropriate resources and multi-node setup for production, use Fluentd or Fluent Bit for log collection, and Kibana for visualization. Configure Index Lifecycle Management for automatic data retention, and monitor the stack with Prometheus metrics. Always secure Elasticsearch with authentication and TLS in production environments.
+The EFK stack provides comprehensive logging for Kubernetes. Deploy Elasticsearch with appropriate resources and multi-node setup for production, use Fluentd or Fluent Bit for log collection, and Kibana for visualization. Configure Index Lifecycle Management for automatic data retention, and monitor the stack with appropriate metrics exporters. Always secure Elasticsearch with authentication and TLS in production environments.
