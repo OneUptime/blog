@@ -175,7 +175,7 @@ To replicate Cloudflare's global edge network, deploy Varnish or Nginx nodes in 
 
 ## 2. DDoS Protection: HAProxy + fail2ban + Crowdsec
 
-DDoS protection is where Cloudflare's scale genuinely shines. Replicating their 100+ Tbps capacity is unrealistic for most organizations, but you can still build meaningful protection.
+DDoS protection is where Cloudflare's scale genuinely shines. Replicating their 500+ Tbps capacity is unrealistic for most organizations, but you can still build meaningful protection.
 
 ### HAProxy Rate Limiting
 
@@ -219,7 +219,7 @@ frontend http_front
     
     # Add rate limit headers for legitimate clients
     http-response set-header X-RateLimit-Limit 100
-    http-response set-header X-RateLimit-Remaining %[sc_http_req_rate(0),sub(100)]
+    http-response set-header X-RateLimit-Used %[sc_http_req_rate(0)]
     
     default_backend servers
 
@@ -330,43 +330,44 @@ domains:
     records:
       # Root record with geographic responses
       example.com:
-        - soa: &soa
-            content: ns1.example.com. admin.example.com. 2024010101 3600 900 604800 300
+        - soa:
+            content: ns1.example.com admin.example.com 2024010101 3600 900 604800 300
             ttl: 86400
         - ns:
-            content: ns1.example.com.
+            content: ns1.example.com
             ttl: 86400
         - ns:
-            content: ns2.example.com.
+            content: ns2.example.com
             ttl: 86400
       
-      # www subdomain with geographic A records
-      www.example.com:
-        - a: &www_default
+      # Geo-specific targets selected through the service below
+      default.geo.example.com:
+        - a:
             content: 203.0.113.10  # Default/fallback server
             ttl: 300
+      us-na.geo.example.com:
         - a:
             content: 198.51.100.10  # US East server
             ttl: 300
-            filters:
-              - continent: NA
-                country: US
-                region: "NY,NJ,PA,MA"
+      eu.geo.example.com:
         - a:
             content: 192.0.2.10  # EU server
             ttl: 300
-            filters:
-              - continent: EU
+      asia.geo.example.com:
         - a:
             content: 203.0.113.20  # APAC server
             ttl: 300
-            filters:
-              - continent: AS
-              - continent: OC
-
-services:
-  geoip:
-    database: /usr/share/GeoIP/GeoLite2-City.mmdb
+      
+    services:
+      # Try a mapped regional target first, then default
+      www.example.com:
+        default: [ '%mp.geo.example.com', 'default.geo.example.com' ]
+    mapping_lookup_formats: [ '%cc-%cn', '%cn' ]
+    custom_mapping:
+      us-na: us-na
+      eu: eu
+      as: asia
+      oc: asia
 ```
 
 ### Authoritative DNS with BIND
@@ -539,6 +540,10 @@ example.com {
         
         # Custom directives
         directives `
+            Include @coraza.conf-recommended
+            Include @crs-setup.conf.example
+            Include @owasp_crs/*.conf
+            
             # Enable the engine
             SecRuleEngine On
             
@@ -565,7 +570,7 @@ ModSecurity is the battle-tested option:
 
 ```nginx
 # /etc/nginx/nginx.conf with ModSecurity
-# Requires nginx-module-modsecurity
+# Requires the ModSecurity-nginx connector or a distribution package that provides it
 
 load_module modules/ngx_http_modsecurity_module.so;
 
@@ -714,7 +719,9 @@ services:
       # Dashboard routing
       - "traefik.enable=true"
       - "traefik.http.routers.dashboard.rule=Host(`traefik.example.com`)"
+      - "traefik.http.routers.dashboard.entrypoints=websecure"
       - "traefik.http.routers.dashboard.service=api@internal"
+      - "traefik.http.routers.dashboard.tls=true"
       - "traefik.http.routers.dashboard.tls.certresolver=letsencrypt"
 
   # Example application service
@@ -722,9 +729,10 @@ services:
     image: my-api:latest
     labels:
       - "traefik.enable=true"
-      # HTTP router with automatic HTTPS redirect
+      # HTTPS router with automatic certificates
       - "traefik.http.routers.api.rule=Host(`api.example.com`)"
       - "traefik.http.routers.api.entrypoints=websecure"
+      - "traefik.http.routers.api.tls=true"
       - "traefik.http.routers.api.tls.certresolver=letsencrypt"
       # Health check
       - "traefik.http.services.api.loadbalancer.healthcheck.path=/health"
@@ -739,13 +747,13 @@ Cloudflare Workers let you run code at the edge. Alternatives include:
 
 | Service | Open Source? | Self-Hostable? | Notes |
 |---------|--------------|----------------|-------|
-| **Deno Deploy** | Runtime is open source | No | V8 isolates, TypeScript-first |
+| **Deno Deploy** | Runtime is open source | Yes | V8 isolates, TypeScript-first |
 | **Fastly Compute** | No | No | WASM-based, very fast cold starts |
 | **Fly.io** | No | No | Run full containers at the edge |
 | **OpenFaaS** | Yes | Yes | Kubernetes-native serverless |
-| **Cloudflare Workers** | No | No | The incumbent |
+| **Cloudflare Workers** | Runtime is open source | Runtime only | The incumbent, powered by workerd |
 
-For true self-hosting, **OpenFaaS** on Kubernetes gives you serverless functions you control:
+For true self-hosting, **OpenFaaS** on Kubernetes with the Function CRD/operator enabled gives you serverless functions you control:
 
 ```yaml
 # openfaas-function.yaml
