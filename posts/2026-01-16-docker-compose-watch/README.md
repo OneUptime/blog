@@ -14,7 +14,7 @@ Docker Compose Watch automatically updates running containers when source files 
 
 ```mermaid
 flowchart LR
-    subgraph actions["Compose Watch Actions"]
+    subgraph actions["Common Compose Watch Actions"]
         sync["**sync**<br/>Copy changed files to container"]
         rebuild["**rebuild**<br/>Rebuild image and recreate container"]
         syncrestart["**sync+restart**<br/>Sync files and restart container"]
@@ -24,8 +24,6 @@ flowchart LR
 ## Basic Watch Configuration
 
 ```yaml
-version: '3.8'
-
 services:
   api:
     build: .
@@ -52,7 +50,7 @@ docker compose watch
 docker compose up --watch
 ```
 
-## Watch Actions
+## Common Watch Actions
 
 ### Sync Action
 
@@ -114,8 +112,6 @@ services:
 ## Node.js Development Setup
 
 ```yaml
-version: '3.8'
-
 services:
   api:
     build:
@@ -167,8 +163,6 @@ CMD ["npm", "run", "dev"]
 ## Python Development Setup
 
 ```yaml
-version: '3.8'
-
 services:
   api:
     build:
@@ -208,8 +202,6 @@ services:
 ## Go Development Setup
 
 ```yaml
-version: '3.8'
-
 services:
   api:
     build:
@@ -220,7 +212,8 @@ services:
     develop:
       watch:
         # Go files need rebuild (compiled language)
-        - path: ./*.go
+        - path: .
+          include: "*.go"
           action: rebuild
 
         - path: ./cmd
@@ -253,8 +246,6 @@ services:
 ## Frontend Development (React/Vue)
 
 ```yaml
-version: '3.8'
-
 services:
   frontend:
     build:
@@ -314,8 +305,6 @@ services:
 ## Multi-Service Development
 
 ```yaml
-version: '3.8'
-
 services:
   frontend:
     build: ./frontend
@@ -363,8 +352,6 @@ services:
 ## Complete Development Setup
 
 ```yaml
-version: '3.8'
-
 services:
   api:
     build:
@@ -461,7 +448,7 @@ CMD ["npm", "run", "dev"]
 
 FROM base AS production
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 COPY . .
 RUN npm run build
 CMD ["npm", "start"]
@@ -475,7 +462,7 @@ services:
     build: .
     develop:
       watch:
-        # 1. Order matters - more specific paths first
+        # 1. Use narrower paths for files that need special handling
         - path: ./src/config
           action: sync+restart
           target: /app/src/config
@@ -483,6 +470,8 @@ services:
         - path: ./src
           action: sync
           target: /app/src
+          ignore:
+            - config/
 
         # 2. Use ignore for large directories
         - path: .
@@ -512,4 +501,3 @@ services:
 | sync+restart | Config files | Medium |
 
 Docker Compose Watch streamlines development by automatically handling file changes. Use sync for source code with hot reload support, rebuild for dependencies, and sync+restart for configuration changes. For remote deployments, see our post on [Docker Compose Remote Deployment](https://oneuptime.com/blog/post/2026-01-16-docker-compose-remote/view).
-
