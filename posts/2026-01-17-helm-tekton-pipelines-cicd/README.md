@@ -58,13 +58,18 @@ flowchart TB
 ```bash
 # Install Tekton Pipelines
 
-kubectl apply --filename https://storage.googleapis.com/tekton-releases/pipeline/latest/release.yaml
+kubectl apply --filename https://infra.tekton.dev/tekton-releases/pipeline/latest/release.yaml
 
 # Install Tekton Triggers
 kubectl apply --filename https://storage.googleapis.com/tekton-releases/triggers/latest/release.yaml
+kubectl apply --filename https://storage.googleapis.com/tekton-releases/triggers/latest/interceptors.yaml
 
 # Install Tekton Dashboard
-kubectl apply --filename https://storage.googleapis.com/tekton-releases/dashboard/latest/release.yaml
+kubectl apply --filename https://infra.tekton.dev/tekton-releases/dashboard/latest/release.yaml
+
+# Install the git-clone catalog Task used by the pipeline
+kubectl apply -n tekton-pipelines \
+  -f https://github.com/tektoncd-catalog/git-clone/raw/v1.7.0/task/git-clone/git-clone.yaml
 
 # Verify installation
 kubectl get pods -n tekton-pipelines
@@ -73,10 +78,10 @@ kubectl get pods -n tekton-pipelines
 ### Install with Helm
 
 ```bash
-helm repo add tekton https://tekton-releases.storage.googleapis.com/charts
+helm repo add cdf https://cdfoundation.github.io/tekton-helm-chart/
 helm repo update
 
-helm install tekton-pipelines tekton/tekton-pipeline \
+helm install tekton-pipelines cdf/tekton-pipeline \
   --namespace tekton-pipelines \
   --create-namespace
 ```
@@ -88,9 +93,9 @@ helm install tekton-pipelines tekton/tekton-pipeline \
 brew install tektoncd-cli
 
 # Linux
-curl -LO https://github.com/tektoncd/cli/releases/download/v0.33.0/tkn_0.33.0_Linux_x86_64.tar.gz
-tar xvzf tkn_0.33.0_Linux_x86_64.tar.gz
-mv tkn /usr/local/bin/
+curl -LO https://github.com/tektoncd/cli/releases/download/v0.45.0/tkn_0.45.0_Linux_x86_64.tar.gz
+tar xvzf tkn_0.45.0_Linux_x86_64.tar.gz
+sudo mv tkn /usr/local/bin/
 ```
 
 ## Helm Tasks
@@ -99,7 +104,7 @@ mv tkn /usr/local/bin/
 
 ```yaml
 # helm-lint-task.yaml
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: Task
 metadata:
   name: helm-lint
@@ -147,7 +152,7 @@ spec:
 
 ```yaml
 # helm-test-task.yaml
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: Task
 metadata:
   name: helm-test
@@ -198,7 +203,7 @@ spec:
 
 ```yaml
 # helm-package-task.yaml
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: Task
 metadata:
   name: helm-package
@@ -279,7 +284,7 @@ spec:
 
 ```yaml
 # helm-push-task.yaml
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: Task
 metadata:
   name: helm-push
@@ -334,7 +339,7 @@ spec:
 
 ```yaml
 # helm-deploy-task.yaml
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: Task
 metadata:
   name: helm-deploy
@@ -395,6 +400,10 @@ spec:
         fi
         
         if [ -n "$(params.values-file)" ]; then
+          if [ "$(workspaces.source.bound)" != "true" ]; then
+            echo "values-file requires the source workspace to be bound"
+            exit 1
+          fi
           CMD="$CMD -f $(workspaces.source.path)/$(params.values-file)"
         fi
         
@@ -417,7 +426,7 @@ spec:
 
 ```yaml
 # helm-rollback-task.yaml
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: Task
 metadata:
   name: helm-rollback
@@ -462,7 +471,7 @@ spec:
 
 ```yaml
 # helm-cicd-pipeline.yaml
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: Pipeline
 metadata:
   name: helm-cicd-pipeline
@@ -498,7 +507,6 @@ spec:
     - name: git-clone
       taskRef:
         name: git-clone
-        kind: ClusterTask
       params:
         - name: url
           value: $(params.git-url)
@@ -578,7 +586,7 @@ spec:
 
 ```yaml
 # helm-cicd-pipelinerun.yaml
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: PipelineRun
 metadata:
   generateName: helm-cicd-
@@ -586,6 +594,9 @@ metadata:
 spec:
   pipelineRef:
     name: helm-cicd-pipeline
+  podTemplate:
+    securityContext:
+      fsGroup: 65532
     
   params:
     - name: git-url
@@ -620,7 +631,7 @@ spec:
 
 ```yaml
 # helm-multienv-pipeline.yaml
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: Pipeline
 metadata:
   name: helm-multienv-pipeline
@@ -630,6 +641,9 @@ spec:
     - name: chart-name
     - name: chart-version
     - name: registry
+
+  workspaces:
+    - name: shared-workspace
       
   tasks:
     - name: deploy-dev
@@ -646,6 +660,9 @@ spec:
           value: dev
         - name: values-file
           value: environments/dev/values.yaml
+      workspaces:
+        - name: source
+          workspace: shared-workspace
           
     - name: test-dev
       taskRef:
@@ -670,6 +687,9 @@ spec:
           value: staging
         - name: values-file
           value: environments/staging/values.yaml
+      workspaces:
+        - name: source
+          workspace: shared-workspace
           
     - name: test-staging
       taskRef:
@@ -699,6 +719,9 @@ spec:
           value: production
         - name: values-file
           value: environments/production/values.yaml
+      workspaces:
+        - name: source
+          workspace: shared-workspace
 ```
 
 ## Triggers
@@ -734,13 +757,16 @@ spec:
     - name: git-branch
       
   resourcetemplates:
-    - apiVersion: tekton.dev/v1beta1
+    - apiVersion: tekton.dev/v1
       kind: PipelineRun
       metadata:
         generateName: helm-cicd-
       spec:
         pipelineRef:
           name: helm-cicd-pipeline
+        podTemplate:
+          securityContext:
+            fsGroup: 65532
         params:
           - name: git-url
             value: $(tt.params.git-url)
