@@ -985,7 +985,8 @@ echo "nameserver 2001:4860:4860::8888" | sudo tee -a /etc/resolv.conf
 # Edit /etc/resolv.conf to use IPv4 DNS servers
 
 # Solution 3: Check /etc/gai.conf for address preference
-# Ensure IPv6 is preferred:
+# IPv6 is preferred over IPv4 by default. If IPv6 is unreliable,
+# you can prefer IPv4 as a workaround (this is what the line below does):
 echo "precedence ::ffff:0:0/96 100" | sudo tee /etc/gai.conf
 ```
 
@@ -1161,10 +1162,12 @@ sysctl net.ipv4.tcp_congestion_control
 
 ```bash
 # Increase socket buffer sizes for better throughput
+# Note: the TCP stack is shared between IPv4 and IPv6, so these
+# net.ipv4.* settings apply to IPv6 connections as well.
 sudo sysctl -w net.core.rmem_max=16777216
 sudo sysctl -w net.core.wmem_max=16777216
-sudo sysctl -w net.ipv6.tcp_rmem="4096 87380 16777216"
-sudo sysctl -w net.ipv6.tcp_wmem="4096 65536 16777216"
+sudo sysctl -w net.ipv4.tcp_rmem="4096 87380 16777216"
+sudo sysctl -w net.ipv4.tcp_wmem="4096 65536 16777216"
 ```
 
 ### 4. Choose the Nearest Tunnel Server
