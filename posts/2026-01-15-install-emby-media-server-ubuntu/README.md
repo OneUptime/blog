@@ -62,13 +62,15 @@ Emby provides official packages for Ubuntu. Using the official repository ensure
 First, download and add the Emby GPG key to verify package authenticity, then add the official repository.
 
 ```bash
-# Download the Emby GPG signing key and add it to apt keyring
+# Create the keyrings directory and download the Emby GPG signing key
 # This ensures packages are verified as authentic
-wget -qO - https://download.emby.media/linux/gpg/keys/emby.gpg | sudo gpg --dearmor -o /usr/share/keyrings/emby-archive-keyring.gpg
+sudo install -d -m 0755 /etc/apt/keyrings
+sudo curl -fsSL https://pkg.emby.media/keys/emby-public.gpg -o /etc/apt/keyrings/emby-public.gpg
+sudo chmod 0644 /etc/apt/keyrings/emby-public.gpg
 
-# Add the Emby repository to your apt sources
-# Uses the keyring we just added for verification
-echo "deb [signed-by=/usr/share/keyrings/emby-archive-keyring.gpg] https://download.emby.media/linux/repos/apt/ubuntu $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/emby-server.list
+# Add the official Emby repository to your apt sources
+# The repository is distribution-agnostic and uses the "stable" suite
+sudo curl -fsSL https://pkg.emby.media/apt/emby.sources -o /etc/apt/sources.list.d/emby.sources
 ```
 
 ### Step 2: Install Emby Server
@@ -304,7 +306,9 @@ sudo apt install -y nvidia-driver-535
 
 # Install NVIDIA container toolkit for Docker deployments (optional)
 # Required if running Emby in Docker with GPU passthrough
-sudo apt install -y nvidia-cuda-toolkit
+# Note: this package comes from NVIDIA's own repository, which must be
+# added first (see NVIDIA's container-toolkit install guide)
+sudo apt install -y nvidia-container-toolkit
 
 # Verify NVIDIA driver is loaded and GPU is detected
 nvidia-smi
@@ -384,7 +388,7 @@ Emby provides granular parental controls for family-friendly access.
 sudo cp -r /var/lib/emby/data /var/lib/emby/data.backup
 
 # View Emby logs for user activity monitoring
-sudo tail -f /var/log/emby-server.log | grep -i user
+sudo tail -f /var/lib/emby/logs/embyserver.txt | grep -i user
 ```
 
 ## Live TV and DVR Setup
@@ -478,7 +482,7 @@ Emby's plugin system extends functionality with additional features.
 ls -la /var/lib/emby/plugins/
 
 # Check Emby logs for plugin-related issues
-sudo grep -i plugin /var/log/emby-server.log
+sudo grep -i plugin /var/lib/emby/logs/embyserver.txt
 
 # Restart Emby after plugin changes
 sudo systemctl restart emby-server
@@ -695,7 +699,7 @@ sudo systemctl status emby-server -l
 sudo journalctl -u emby-server -n 100 --no-pager
 
 # Check Emby's own log file for detailed errors
-sudo tail -100 /var/log/emby-server.log
+sudo tail -100 /var/lib/emby/logs/embyserver.txt
 
 # Verify Emby data directory exists and has correct permissions
 ls -la /var/lib/emby/
@@ -766,7 +770,7 @@ groups emby
 # Should include: video, render
 
 # Check Emby transcoding logs for errors
-sudo grep -i "transcode\|hardware\|vaapi\|nvenc" /var/log/emby-server.log
+sudo grep -i "transcode\|hardware\|vaapi\|nvenc" /var/lib/emby/logs/embyserver.txt
 
 # Test hardware encoding manually
 ffmpeg -vaapi_device /dev/dri/renderD128 -i input.mp4 -c:v h264_vaapi output.mp4
