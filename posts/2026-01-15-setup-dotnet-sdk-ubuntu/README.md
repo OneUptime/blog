@@ -29,29 +29,21 @@ Description: Complete guide to installing .NET SDK and developing .NET applicati
 
 ## Installing .NET SDK
 
-### Method 1: Using Microsoft's Package Repository (Recommended)
+### Method 1: Using Ubuntu's Package Repository (Recommended for Ubuntu 22.04+)
 
-The recommended approach is to use Microsoft's official package repository, which provides the latest stable releases and automatic updates.
+For Ubuntu 22.04 and later, the recommended approach is to use Ubuntu's built-in package repository, which provides supported .NET packages and automatic updates.
 
 ```bash
-# Download and install the Microsoft package signing key
+# Update the package index
 
-# This ensures packages are verified and secure
-wget https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/packages-microsoft-prod.deb -O packages-microsoft-prod.deb
-
-# Install the package that adds Microsoft's repository
-sudo dpkg -i packages-microsoft-prod.deb
-
-# Clean up the downloaded file
-rm packages-microsoft-prod.deb
-
-# Update the package index to include packages from the new repository
 sudo apt-get update
 
-# Install the .NET 8 SDK (Long Term Support version)
+# Install the .NET 8 SDK (Long Term Support version, supported through November 2026)
 # This includes the runtime, libraries, and command-line tools
 sudo apt-get install -y dotnet-sdk-8.0
 ```
+
+For Ubuntu 20.04 or other distributions that don't include the package you need in the built-in feed, follow Microsoft's Ubuntu package repository instructions for your exact Ubuntu version before running `apt-get install`.
 
 ### Method 2: Using the dotnet-install Script
 
@@ -65,9 +57,9 @@ curl -sSL https://dot.net/v1/dotnet-install.sh -o dotnet-install.sh
 # Make the script executable
 chmod +x dotnet-install.sh
 
-# Install the latest LTS version to a custom location
+# Install .NET 8 LTS to a custom location
 # The --install-dir flag specifies where .NET will be installed
-./dotnet-install.sh --channel LTS --install-dir $HOME/.dotnet
+./dotnet-install.sh --channel 8.0 --install-dir $HOME/.dotnet
 
 # Add .NET to your PATH permanently by adding to .bashrc
 # This ensures dotnet commands are available in all terminal sessions
@@ -80,7 +72,7 @@ source ~/.bashrc
 
 ### Method 3: Using Snap Package
 
-Snap packages provide automatic updates and sandboxed installation.
+Snap packages provide automatic updates. Because the .NET SDK snap uses classic confinement, it isn't strictly sandboxed.
 
 ```bash
 # Install the .NET SDK via Snap
@@ -121,16 +113,16 @@ In professional development environments, you often need multiple .NET SDK versi
 ### Installing Multiple Versions
 
 ```bash
-# Install multiple SDK versions side by side
+# Install multiple supported SDK versions side by side
 # Each version can coexist without conflicts
-sudo apt-get install -y dotnet-sdk-6.0   # .NET 6 LTS
-sudo apt-get install -y dotnet-sdk-7.0   # .NET 7 STS
-sudo apt-get install -y dotnet-sdk-8.0   # .NET 8 LTS (Current)
+sudo apt-get install -y dotnet-sdk-8.0    # .NET 8 LTS
+sudo apt-get install -y dotnet-sdk-9.0    # .NET 9 STS
+sudo apt-get install -y dotnet-sdk-10.0   # .NET 10 LTS
 
-# Or using the install script for specific versions
-./dotnet-install.sh --version 6.0.400
-./dotnet-install.sh --version 7.0.400
-./dotnet-install.sh --version 8.0.300
+# Or using the install script for supported release channels
+./dotnet-install.sh --channel 8.0
+./dotnet-install.sh --channel 9.0
+./dotnet-install.sh --channel 10.0
 ```
 
 ### Using global.json for Version Pinning
@@ -140,21 +132,21 @@ Create a `global.json` file to lock a project to a specific SDK version. This en
 ```bash
 # Create a global.json file in your project root
 # This file tells the dotnet CLI which SDK version to use
-dotnet new globaljson --sdk-version 8.0.300
+dotnet new globaljson --sdk-version 8.0.400 --roll-forward latestFeature
 ```
 
-The generated `global.json` file:
+The generated `global.json` file includes the SDK version and roll-forward policy. You can add `allowPrerelease` manually if your project needs it:
 
 ```json
 {
   "sdk": {
     // Specify the exact SDK version for this project
     // All team members must have this version installed
-    "version": "8.0.300",
+    "version": "8.0.400",
 
     // Roll-forward policy determines behavior when exact version is unavailable
-    // "latestMinor" allows using newer minor versions if exact match isn't found
-    "rollForward": "latestMinor",
+    // "latestFeature" allows using newer feature bands if exact match isn't found
+    "rollForward": "latestFeature",
 
     // Allow using prerelease versions (useful during beta testing)
     "allowPrerelease": false
@@ -167,13 +159,13 @@ The generated `global.json` file:
 ```json
 {
   "sdk": {
-    "version": "8.0.300",
+    "version": "8.0.400",
     // Available roll-forward policies:
     // "disable"      - Exact version required, fail if not found
-    // "patch"        - Allow patch version updates (8.0.300 -> 8.0.301)
-    // "feature"      - Allow feature band updates (8.0.300 -> 8.0.400)
-    // "minor"        - Allow minor version updates (8.0.x -> 8.1.x)
-    // "major"        - Allow major version updates (8.x -> 9.x)
+    // "patch"        - Allow patch version updates within the same SDK feature band
+    // "feature"      - Allow feature band updates within the same minor version
+    // "minor"        - Allow minor version updates within the same major version
+    // "major"        - Allow major version updates
     // "latestPatch"  - Use latest patch of specified feature band
     // "latestFeature"- Use latest feature of specified minor version
     // "latestMinor"  - Use latest minor of specified major version
@@ -576,6 +568,9 @@ Create a streamlined API using minimal APIs (introduced in .NET 6):
 ```bash
 dotnet new web -n MyMinimalApi
 cd MyMinimalApi
+
+# Add Swagger/OpenAPI middleware used by the example below
+dotnet add package Swashbuckle.AspNetCore
 ```
 
 Edit `Program.cs`:
@@ -884,6 +879,7 @@ dotnet add package Swashbuckle.AspNetCore
 
 # Logging
 dotnet add package Serilog.AspNetCore
+dotnet add package Serilog.Enrichers.Environment
 dotnet add package Serilog.Sinks.Console
 dotnet add package Serilog.Sinks.File
 
@@ -898,6 +894,8 @@ dotnet add package Microsoft.Extensions.Caching.StackExchangeRedis
 
 # Health Checks
 dotnet add package AspNetCore.HealthChecks.UI
+dotnet add package AspNetCore.HealthChecks.Npgsql
+dotnet add package AspNetCore.HealthChecks.Redis
 dotnet add package AspNetCore.HealthChecks.SqlServer
 ```
 
@@ -2023,8 +2021,8 @@ dotnet test --filter "Name~WhenProductExists"
 # Run tests and generate test results file (for CI/CD)
 dotnet test --logger "trx;LogFileName=test-results.trx"
 
-# Run tests in parallel (default) or sequentially
-dotnet test --parallel
+# Control xUnit test parallelization
+dotnet test -- xunit.parallelizeAssembly=true
 dotnet test -- xunit.parallelizeAssembly=false
 ```
 
@@ -2442,21 +2440,15 @@ RUN dotnet restore "MyWebApi.csproj"
 # Copy all source files
 COPY . .
 
-# Build the application in Release mode
-RUN dotnet build "MyWebApi.csproj" -c Release -o /app/build
-
 # =============================================================================
 # Stage 2: Publish stage
 # Creates the optimized publish output
 # =============================================================================
 FROM build AS publish
 
-# Publish the application
+# Publish the application without restoring again
 RUN dotnet publish "MyWebApi.csproj" -c Release -o /app/publish \
-    # Don't restore again (already done)
-    --no-restore \
-    # Don't build again (already done)
-    --no-build
+    --no-restore
 
 # =============================================================================
 # Stage 3: Runtime stage
@@ -2470,6 +2462,10 @@ WORKDIR /app
 # Create a non-root user for security
 # Running as non-root prevents container escape attacks
 RUN adduser --disabled-password --gecos '' appuser
+
+# Install curl for the health check
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy published files from the publish stage
 COPY --from=publish /app/publish .
@@ -2523,19 +2519,14 @@ COPY . .
 # Run tests (fail build if tests fail)
 RUN dotnet test --no-restore --verbosity normal
 
-# Publish optimized build
+# Publish optimized build as a self-contained Linux single-file executable
 RUN dotnet publish "src/MyWebApi/MyWebApi.csproj" \
     -c Release \
     -o /app/publish \
-    # Self-contained for distroless image
     --self-contained true \
-    # Target Linux runtime
     -r linux-x64 \
-    # Single file deployment
     -p:PublishSingleFile=true \
-    # Trim unused code
     -p:PublishTrimmed=true \
-    # ReadyToRun compilation for faster startup
     -p:PublishReadyToRun=true
 
 # =============================================================================
