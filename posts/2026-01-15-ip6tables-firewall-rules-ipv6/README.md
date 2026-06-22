@@ -77,7 +77,7 @@ sudo ip6tables -L -n -v --line-numbers
 # List rules in a specific chain
 sudo ip6tables -L INPUT -n -v --line-numbers
 
-# List rules in nat table (if applicable)
+# List rules in the mangle table (if applicable)
 sudo ip6tables -t mangle -L -n -v
 ```
 
@@ -323,7 +323,7 @@ sudo ip6tables -A INPUT -p tcp -s 2001:db8:1::10 --dport 5432 -j ACCEPT
 sudo ip6tables -A INPUT -p tcp -s 2001:db8:1::11 --dport 5432 -j ACCEPT
 
 # MongoDB (port 27017) - Allow from application subnet
-sudo ip6tables -A INPUT -p tcp -s 2001:db8:app::/48 --dport 27017 -j ACCEPT
+sudo ip6tables -A INPUT -p tcp -s 2001:db8:abc::/48 --dport 27017 -j ACCEPT
 
 # Redis (port 6379) - Allow only from localhost and specific hosts
 sudo ip6tables -A INPUT -p tcp -s ::1 --dport 6379 -j ACCEPT
@@ -336,7 +336,8 @@ sudo ip6tables -A INPUT -p tcp -s 2001:db8:1::20 --dport 6379 -j ACCEPT
 
 ```bash
 # Limit incoming connections to prevent DoS attacks
-# Allow only 25 new connections per minute per source
+# Allow only 25 new connections per minute (this is a global rate limit
+# for the rule, not per source; use the hashlimit match for per-source limits)
 
 sudo ip6tables -A INPUT -p tcp --dport 80 -m conntrack --ctstate NEW \
     -m limit --limit 25/minute --limit-burst 100 -j ACCEPT
