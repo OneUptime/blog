@@ -54,7 +54,7 @@ Before configuring IPv6, ensure your environment supports it:
 kubectl get nodes -o jsonpath='{.items[*].status.addresses}' | jq .
 
 # Verify Kubernetes version (1.23+ recommended for stable dual-stack)
-kubectl version --short
+kubectl version
 
 # Check if your CNI supports IPv6
 kubectl get pods -n kube-system -l k8s-app=calico-node -o wide
@@ -92,8 +92,8 @@ spec:
     - name: kube-apiserver
       command:
         - kube-apiserver
-        # Enable dual-stack feature gate (default in 1.23+)
-        - --feature-gates=IPv6DualStack=true
+        # Dual-stack is GA and on by default since 1.23 (the IPv6DualStack
+        # feature gate was removed in 1.23, so do not set it)
         # Define service CIDR for both families
         - --service-cluster-ip-range=10.96.0.0/12,fd00:10:96::/112
 ```
@@ -110,7 +110,6 @@ spec:
     - name: kube-controller-manager
       command:
         - kube-controller-manager
-        - --feature-gates=IPv6DualStack=true
         - --service-cluster-ip-range=10.96.0.0/12,fd00:10:96::/112
         # Node CIDR allocation for pods
         - --cluster-cidr=10.244.0.0/16,fd00:10:244::/56
@@ -146,7 +145,7 @@ controller:
     compute-full-forwarded-for: "true"
     # Proxy protocol for preserving client IPs
     use-proxy-protocol: "false"
-    # Enable IPv6 resolver
+    # Enable NGINX real IP module (resolves the real client IP)
     enable-real-ip: "true"
     # Log format with IPv6 support
     log-format-upstream: >-
@@ -177,11 +176,6 @@ controller:
 
   # Pod configuration
   hostNetwork: false
-
-  # Enable IPv6 in the pod
-  extraArgs:
-    # Enable IPv6 for upstream connections
-    enable-ssl-chain-completion: "true"
 
   # Resource limits
   resources:
@@ -291,9 +285,6 @@ metadata:
   labels:
     app.kubernetes.io/name: ingress-nginx
     app.kubernetes.io/component: controller
-  annotations:
-    # Preserve client IP addresses
-    service.beta.kubernetes.io/external-traffic: OnlyLocal
 spec:
   # Dual-stack IP family policy
   # Options: SingleStack, PreferDualStack, RequireDualStack
@@ -487,9 +478,6 @@ metadata:
     nginx.ingress.kubernetes.io/proxy-connect-timeout: "15"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
-
-    # Enable client IP preservation
-    nginx.ingress.kubernetes.io/use-forwarded-headers: "true"
 
 spec:
   ingressClassName: nginx
@@ -1147,7 +1135,7 @@ metadata:
     nginx.ingress.kubernetes.io/limit-rps: "10"
     nginx.ingress.kubernetes.io/limit-connections: "5"
     # Use X-Forwarded-For for rate limiting (important for IPv6 behind proxy)
-    nginx.ingress.kubernetes.io/limit-whitelist: "2001:db8:trusted::/48"
+    nginx.ingress.kubernetes.io/limit-whitelist: "2001:db8:1::/48"
 spec:
   ingressClassName: nginx
   rules:
