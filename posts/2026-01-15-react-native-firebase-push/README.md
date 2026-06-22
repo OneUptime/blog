@@ -892,14 +892,16 @@ export default App;
 
 ```json
 {
-  "to": "<FCM_TOKEN>",
-  "notification": {
-    "title": "Your order has shipped!",
-    "body": "Track your package now"
-  },
-  "data": {
-    "deepLink": "myapp://order/12345",
-    "orderId": "12345"
+  "message": {
+    "token": "<FCM_TOKEN>",
+    "notification": {
+      "title": "Your order has shipped!",
+      "body": "Track your package now"
+    },
+    "data": {
+      "deepLink": "myapp://order/12345",
+      "orderId": "12345"
+    }
   }
 }
 ```
@@ -916,6 +918,7 @@ FCM tokens are essential for targeting specific devices. They can change, so pro
 // src/services/notifications/tokenManager.ts
 import messaging from '@react-native-firebase/messaging';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 
 const TOKEN_STORAGE_KEY = '@fcm_token';
 
@@ -1112,35 +1115,40 @@ export async function setupDefaultTopics(): Promise<void> {
 
 ### Method 2: Using cURL
 
+The legacy FCM HTTP API (`https://fcm.googleapis.com/fcm/send` with a `key=SERVER_KEY` header) was shut down in 2024. Use the FCM HTTP v1 API, which authenticates with a short-lived OAuth 2.0 access token and targets your project's `messages:send` endpoint. The example below uses `gcloud` to mint an access token from your service account credentials:
+
 ```bash
 # Send to a specific device
-
 curl -X POST \
-  https://fcm.googleapis.com/fcm/send \
-  -H 'Authorization: key=YOUR_SERVER_KEY' \
+  https://fcm.googleapis.com/v1/projects/YOUR_PROJECT_ID/messages:send \
+  -H "Authorization: Bearer $(gcloud auth application-default print-access-token)" \
   -H 'Content-Type: application/json' \
   -d '{
-    "to": "DEVICE_FCM_TOKEN",
-    "notification": {
-      "title": "Test Notification",
-      "body": "This is a test notification"
-    },
-    "data": {
-      "type": "test",
-      "deepLink": "myapp://home"
+    "message": {
+      "token": "DEVICE_FCM_TOKEN",
+      "notification": {
+        "title": "Test Notification",
+        "body": "This is a test notification"
+      },
+      "data": {
+        "type": "test",
+        "deepLink": "myapp://home"
+      }
     }
   }'
 
 # Send to a topic
 curl -X POST \
-  https://fcm.googleapis.com/fcm/send \
-  -H 'Authorization: key=YOUR_SERVER_KEY' \
+  https://fcm.googleapis.com/v1/projects/YOUR_PROJECT_ID/messages:send \
+  -H "Authorization: Bearer $(gcloud auth application-default print-access-token)" \
   -H 'Content-Type: application/json' \
   -d '{
-    "to": "/topics/all_users",
-    "notification": {
-      "title": "Announcement",
-      "body": "New feature available!"
+    "message": {
+      "topic": "all_users",
+      "notification": {
+        "title": "Announcement",
+        "body": "New feature available!"
+      }
     }
   }'
 ```
@@ -1308,7 +1316,7 @@ const newToken = await messaging().getToken();
 
 **2. Messages not received:**
 - Check internet connectivity
-- Verify server key is correct
+- Verify your server credentials are correct (a valid service account for the FCM HTTP v1 API)
 - Ensure the token is valid and not stale
 
 ---
