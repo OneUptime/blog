@@ -38,13 +38,22 @@ brew install trivy
 # Debian/Ubuntu
 
 sudo apt-get install wget apt-transport-https gnupg lsb-release
-wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
-echo deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main | sudo tee -a /etc/apt/sources.list.d/trivy.list
+wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
+echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
 sudo apt-get update
 sudo apt-get install trivy
 
 # RHEL/CentOS
-sudo rpm -ivh https://github.com/aquasecurity/trivy/releases/download/v0.48.0/trivy_0.48.0_Linux-64bit.rpm
+sudo tee /etc/yum.repos.d/trivy.repo << 'EOF'
+[trivy]
+name=Trivy repository
+baseurl=https://aquasecurity.github.io/trivy-repo/rpm/releases/$basearch/
+gpgcheck=1
+enabled=1
+gpgkey=https://aquasecurity.github.io/trivy-repo/rpm/public.key
+EOF
+sudo yum -y update
+sudo yum -y install trivy
 ```
 
 ### Docker (No Installation Required)
@@ -154,7 +163,7 @@ trivy image --ignorefile .trivyignore nginx:latest
 trivy image -f json -o results.json nginx:latest
 
 # Process with jq
-trivy image -f json nginx:latest | jq '.Results[].Vulnerabilities[] | select(.Severity == "CRITICAL")'
+trivy image -f json nginx:latest | jq '.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")'
 ```
 
 ### SARIF (for GitHub Security)
@@ -192,6 +201,9 @@ on:
 jobs:
   trivy-scan:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -200,7 +212,7 @@ jobs:
         run: docker build -t myapp:${{ github.sha }} .
 
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: myapp:${{ github.sha }}
           format: 'sarif'
@@ -208,12 +220,12 @@ jobs:
           severity: 'CRITICAL,HIGH'
 
       - name: Upload Trivy scan results
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: 'trivy-results.sarif'
 
       - name: Fail on critical vulnerabilities
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: myapp:${{ github.sha }}
           exit-code: '1'
@@ -352,7 +364,7 @@ trivy image --severity HIGH,CRITICAL myapp:dev
 # Fail if critical vulnerabilities exist
 trivy image --exit-code 1 --severity CRITICAL myapp:v1.0
 
-# If exit code is 0, safe to deploy
+# If exit code is 0, no matching vulnerabilities were found
 # If exit code is 1, vulnerabilities found
 ```
 
@@ -382,12 +394,11 @@ RUN apt-get update && \
 
 ### Pin to Fixed Versions
 
-```dockerfile
-# package.json - pin to patched versions
+```json
 {
   "dependencies": {
-    "lodash": ">=4.17.21",
-    "axios": ">=1.6.0"
+    "lodash": "4.18.1",
+    "axios": "1.18.0"
   }
 }
 ```
