@@ -122,8 +122,6 @@ docker inspect --format='{{json .RestartCount}} restarts, last at {{.State.Start
 Set restart policies in your `docker-compose.yml`:
 
 ```yaml
-version: '3.8'
-
 services:
   web:
     image: nginx
@@ -146,17 +144,17 @@ services:
 
 Docker implements exponential backoff for restarts to prevent rapid restart loops:
 
-1. First restart: immediate
-2. Second restart: 100ms delay
-3. Third restart: 200ms delay
-4. Fourth restart: 400ms delay
+1. First restart: 100ms delay
+2. Second restart: 200ms delay
+3. Third restart: 400ms delay
+4. Fourth restart: 800ms delay
 5. And so on, doubling each time up to a maximum of 1 minute
 
 This prevents a crashing container from consuming excessive resources with rapid restart attempts.
 
-### Resetting Restart Count
+### Resetting Restart Backoff
 
-The restart count resets after the container runs successfully for 10 seconds. You can also manually reset it:
+The restart backoff delay resets after the container runs successfully for 10 seconds. You can also reset the container's restart count by recreating it:
 
 ```bash
 # Stop and remove, then recreate
