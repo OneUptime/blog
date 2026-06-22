@@ -8,7 +8,7 @@ Description: Learn how to use docker commit to create new images from running co
 
 ---
 
-Sometimes you need to capture the current state of a running container as a new image. Maybe you've manually installed software, configured settings, or debugged an issue and want to preserve those changes. The `docker commit` command creates a new image from a container's current filesystem state.
+Sometimes you need to capture the current state of a running container as a new image. Maybe you've manually installed software, configured settings, or debugged an issue and want to preserve those changes. The `docker commit` command creates a new image from a container's current filesystem state, excluding data in mounted volumes.
 
 ## Basic Usage
 
@@ -105,7 +105,9 @@ docker commit \
 | ENV | `--change 'ENV KEY=value'` |
 | EXPOSE | `--change 'EXPOSE 8080'` |
 | LABEL | `--change 'LABEL version=1.0'` |
+| ONBUILD | `--change 'ONBUILD RUN echo hello'` |
 | USER | `--change 'USER www-data'` |
+| VOLUME | `--change 'VOLUME /data'` |
 | WORKDIR | `--change 'WORKDIR /app'` |
 
 ## Debugging Workflow
@@ -145,10 +147,10 @@ By default, docker commit pauses the container during the commit to ensure files
 docker commit mycontainer myimage:latest
 
 # Skip pause (faster but may have inconsistent state)
-docker commit --pause=false mycontainer myimage:latest
+docker commit --no-pause mycontainer myimage:latest
 ```
 
-Use `--pause=false` only when:
+Use `--no-pause` only when:
 - The container is already stopped
 - You're certain no writes are occurring
 - Speed is more important than consistency
@@ -159,9 +161,9 @@ Use `--pause=false` only when:
 |---------|--------------|---------------------|
 | Preserves layers | Yes | No (flattens) |
 | Keeps history | Yes | No |
-| Image size | Larger | Smaller |
+| Image size | Keeps original layers plus changes | Depends on flattened filesystem contents |
 | Metadata | Preserved | Lost |
-| Use case | Capture changes | Create minimal image |
+| Use case | Capture changes | Flatten a container filesystem |
 
 ```bash
 # docker commit - preserves layers
@@ -369,8 +371,7 @@ docker commit container myapp:$(date +%Y%m%d-%H%M%S)
 | `docker commit container image` | Basic commit |
 | `docker commit -m "message"` | Add commit message |
 | `docker commit --change 'CMD [...]'` | Modify image config |
-| `docker commit --pause=false` | Skip pause during commit |
+| `docker commit --no-pause` | Skip pause during commit |
 | `docker history image` | View commit history |
 
 docker commit is useful for quick prototyping, debugging, and learning, but for production images, always use Dockerfiles to ensure reproducibility and maintainability. Think of docker commit as a snapshot tool, not a build system.
-
