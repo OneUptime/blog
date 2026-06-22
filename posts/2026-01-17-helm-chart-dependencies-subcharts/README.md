@@ -10,7 +10,7 @@ Description: Learn how to manage chart dependencies, work with subcharts, and st
 
 ## Understanding Dependencies
 
-Dependencies in Helm are subcharts that your main chart requires. When you install your chart, Helm automatically installs all dependencies.
+Dependencies in Helm are subcharts that your main chart requires. After you build or update the dependencies into `charts/`, Helm installs them as part of the same release as the parent chart.
 
 ```mermaid
 flowchart TD
@@ -135,12 +135,14 @@ helm dependency update ./my-app
 
 ### Build Dependencies
 
-Build dependencies from Chart.lock without updating.
+Build dependencies from Chart.lock without re-resolving versions.
 
 ```bash
 # Build from lock file (faster, reproducible)
 helm dependency build ./my-app
 ```
+
+If no lock file exists, `helm dependency build` behaves like `helm dependency update`.
 
 ### List Dependencies
 
@@ -325,7 +327,8 @@ Subcharts can export values for parent access.
 ```yaml
 # Subchart's values.yaml
 exports:
-  connectionString: "redis://{{ .Release.Name }}-redis:6379"
+  data:
+    connectionString: "redis://redis-master:6379"
 ```
 
 ```yaml
@@ -335,8 +338,10 @@ dependencies:
     version: 18.0.0
     repository: https://charts.bitnami.com/bitnami
     import-values:
-      - connectionString
+      - data
 ```
+
+This imports the exported `connectionString` into the parent's values.
 
 ## Aliasing Dependencies
 
@@ -528,24 +533,24 @@ metadata:
 data:
   config.yaml: |
     database:
-      {{- if .Values.postgresql.enabled }}
+      {{ if .Values.postgresql.enabled }}
       host: {{ .Release.Name }}-postgresql
       port: 5432
       name: {{ .Values.postgresql.auth.database }}
-      {{- else }}
+      {{ else }}
       host: {{ .Values.externalDatabase.host }}
       port: {{ .Values.externalDatabase.port }}
       name: {{ .Values.externalDatabase.database }}
-      {{- end }}
+      {{ end }}
     
     redis:
-      {{- if .Values.redis.enabled }}
+      {{ if .Values.redis.enabled }}
       host: {{ .Release.Name }}-redis-master
       port: 6379
-      {{- else }}
+      {{ else }}
       host: {{ .Values.externalRedis.host }}
       port: {{ .Values.externalRedis.port }}
-      {{- end }}
+      {{ end }}
 ```
 
 ## External Service Fallback
