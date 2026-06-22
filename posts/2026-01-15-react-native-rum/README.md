@@ -976,7 +976,7 @@ export class ErrorTracker {
     sessionId: '',
     viewId: '',
   };
-  private originalErrorHandler: ErrorUtils['getGlobalHandler'] extends () => infer R ? R : never = null;
+  private originalErrorHandler: ((error: Error, isFatal?: boolean) => void) | null = null;
   private originalPromiseRejectionHandler: ((error: unknown) => void) | null = null;
 
   constructor(onEvent?: (event: RUMEvent) => void) {
