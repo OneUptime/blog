@@ -87,9 +87,9 @@ docker system prune -a --volumes
 # What this removes:
 # - All stopped containers
 # - All networks not used by containers
-# - All dangling images
-# - All dangling build cache
-# - All unused volumes (with --volumes)
+# - All unused images (with -a)
+# - Unused build cache
+# - Anonymous volumes not used by containers (with --volumes)
 ```
 
 ### Selective Cleanup
@@ -98,17 +98,17 @@ docker system prune -a --volumes
 # Remove only stopped containers
 docker container prune
 
-# Remove only unused images
+# Remove only dangling images (untagged)
 docker image prune
 
-# Remove only dangling images (untagged)
+# Remove all unused images
 docker image prune -a
 
-# Remove only unused volumes
+# Remove only unused anonymous volumes
 docker volume prune
 
 # Remove only build cache
-docker builder prune
+docker buildx prune
 
 # Remove networks not used by containers
 docker network prune
@@ -146,13 +146,13 @@ docker container prune --filter "label=environment=dev"
 
 ```bash
 # Remove all build cache
-docker builder prune -a
+docker buildx prune -a
 
 # Remove cache older than 7 days
-docker builder prune --filter "until=168h"
+docker buildx prune --filter "until=168h"
 
-# Keep only 5GB of cache
-docker builder prune --keep-storage 5GB
+# Keep build cache usage under 5GB
+docker buildx prune --max-used-space 5GB
 ```
 
 ## Automated Cleanup
@@ -183,11 +183,11 @@ docker container prune -f
 echo -e "\nRemoving unused images..."
 docker image prune -af --filter "until=48h"
 
-echo -e "\nRemoving unused volumes..."
+echo -e "\nRemoving unused anonymous volumes..."
 docker volume prune -f
 
 echo -e "\nRemoving build cache..."
-docker builder prune -f --keep-storage 2GB
+docker buildx prune -f --max-used-space 2GB
 
 echo -e "\nDocker Disk Usage After Cleanup:"
 docker system df
@@ -210,8 +210,9 @@ docker compose down --remove-orphans
 
 ### Configure Docker Storage Limits
 
+`/etc/docker/daemon.json`:
+
 ```json
-// /etc/docker/daemon.json
 {
   "storage-driver": "overlay2",
   "storage-opts": [
@@ -224,6 +225,8 @@ docker compose down --remove-orphans
   }
 }
 ```
+
+The `overlay2.size` option only works when the backing filesystem is XFS mounted with project quotas (`pquota`).
 
 Restart Docker after changes:
 ```bash
@@ -320,8 +323,7 @@ sudo mv /var/lib/docker /new/location/docker
 # Create symlink
 sudo ln -s /new/location/docker /var/lib/docker
 
-# Or configure new location
-# /etc/docker/daemon.json
+# Or configure the new location in /etc/docker/daemon.json instead of using a symlink
 {
   "data-root": "/new/location/docker"
 }
@@ -339,7 +341,6 @@ sudo systemctl start docker
 # docker-space-monitor.sh
 
 THRESHOLD=80
-DOCKER_USAGE=$(docker system df --format '{{.Size}}' | head -1)
 DISK_USAGE=$(df /var/lib/docker | tail -1 | awk '{print $5}' | tr -d '%')
 
 if [ "$DISK_USAGE" -gt "$THRESHOLD" ]; then
@@ -390,14 +391,14 @@ sudo systemctl start docker
 
 | Command | What It Removes |
 |---------|-----------------|
-| `docker system prune` | Stopped containers, unused networks, dangling images |
+| `docker system prune` | Stopped containers, unused networks, dangling images, build cache |
 | `docker system prune -a` | Above + all unused images |
-| `docker system prune -a --volumes` | Above + unused volumes |
+| `docker system prune -a --volumes` | Above + unused anonymous volumes |
 | `docker container prune` | Stopped containers |
 | `docker image prune` | Dangling images |
 | `docker image prune -a` | All unused images |
-| `docker volume prune` | Unused volumes |
-| `docker builder prune` | Build cache |
+| `docker volume prune` | Unused anonymous volumes |
+| `docker buildx prune` | Build cache |
 
 ## Summary
 
@@ -411,4 +412,3 @@ sudo systemctl start docker
 | Monitor space | Script with df and alerts |
 
 Regularly clean up unused Docker resources to prevent disk space issues. Use multi-stage builds and smaller base images to reduce image sizes. Configure log rotation to prevent log files from growing unbounded. For production systems, set up monitoring and automated cleanup.
-
