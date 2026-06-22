@@ -15,7 +15,7 @@ InfluxDB is a high-performance time-series database designed for handling high w
 - Purpose-built for time-series data
 - High write throughput
 - Compression for efficient storage
-- SQL-like query language (Flux)
+- Functional data scripting and query language (Flux)
 - Built-in visualization (InfluxDB UI)
 - Native HTTP API
 
@@ -96,23 +96,20 @@ sudo nano /etc/influxdb/config.toml
 
 ```toml
 # InfluxDB configuration
+# InfluxDB 2.x uses flat top-level keys (no TOML tables)
 
 # Bind address
 http-bind-address = ":8086"
 
 # Storage engine
-[storage]
-  wal-fsync-delay = "0s"
+storage-wal-fsync-delay = "0s"
 
 # Query settings
-[query]
-  memory-bytes = 0
-  concurrency = 10
+query-memory-bytes = 0
+query-concurrency = 10
 
 # Logging
-[logging]
-  level = "info"
-  format = "auto"
+log-level = "info"
 ```
 
 ### Apply Configuration
@@ -470,14 +467,12 @@ graph LR
 
 ```toml
 # /etc/influxdb/config.toml
-[storage-engine]
-  # Cache settings
-  cache-max-memory-size = "1g"
-  cache-snapshot-memory-size = "25m"
+# Cache settings (values are in bytes)
+storage-cache-max-memory-size = 1073741824      # 1 GiB
+storage-cache-snapshot-memory-size = 26214400   # 25 MiB
 
-[query]
-  # Query memory limit
-  memory-bytes = 0  # 0 = unlimited
+# Query memory limit
+query-memory-bytes = 0  # 0 = unlimited
 ```
 
 ### Write Optimization
