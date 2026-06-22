@@ -16,10 +16,10 @@ If you are coming from an Apache background, you are probably familiar with virt
 
 | Feature | Apache Virtual Hosts | Nginx Server Blocks |
 |---------|---------------------|---------------------|
-| Configuration syntax | XML-like directives | C-like block syntax |
+| Configuration syntax | Directive and container syntax | C-like block syntax |
 | File location | `/etc/apache2/sites-available/` | `/etc/nginx/sites-available/` |
 | Enabling sites | `a2ensite` command | Manual symlinks |
-| Processing order | First match wins | Most specific match wins |
+| Name matching | Name-based virtual host rules | Exact, wildcard, regex, then default server |
 | Performance | Process-based | Event-driven, asynchronous |
 
 Nginx's event-driven architecture makes it particularly efficient at handling multiple server blocks, as it can serve thousands of concurrent connections with minimal memory overhead.
@@ -266,7 +266,7 @@ server {
     # Prevent MIME type sniffing
     add_header X-Content-Type-Options "nosniff" always;
 
-    # Enable XSS filter
+    # Legacy XSS filter for older browsers
     add_header X-XSS-Protection "1; mode=block" always;
 
     # =================================================================
@@ -471,6 +471,7 @@ server {
     location ~ \.php$ {
         # Matches URIs ending in .php (case-sensitive)
         include snippets/fastcgi-php.conf;
+        # Adjust this socket path to match your installed PHP-FPM version
         fastcgi_pass unix:/var/run/php/php8.1-fpm.sock;
     }
 
@@ -499,18 +500,16 @@ server {
 ### Nested Location Blocks
 
 ```nginx
-location /api/ {
-    # All API requests
+# Nested locations are allowed, but sibling locations are usually clearer
+# and easier to reason about:
+location /api/v1/ {
+    # API version 1 specific handling
+    proxy_pass http://api_v1_backend;
+}
 
-    location /api/v1/ {
-        # API version 1 specific handling
-        proxy_pass http://api_v1_backend;
-    }
-
-    location /api/v2/ {
-        # API version 2 specific handling
-        proxy_pass http://api_v2_backend;
-    }
+location /api/v2/ {
+    # API version 2 specific handling
+    proxy_pass http://api_v2_backend;
 }
 ```
 
@@ -542,15 +541,33 @@ server {
     server_name example.com;
     root /var/www/example.com/html;
 
+    # Choose one of these try_files patterns for your main location.
+
     # Basic try_files - serve file, then directory, then 404
     location / {
         try_files $uri $uri/ =404;
     }
+}
+```
+
+```nginx
+server {
+    listen 80;
+    server_name example.com;
+    root /var/www/example.com/html;
 
     # try_files with fallback to index.php (common for PHP frameworks)
     location / {
         try_files $uri $uri/ /index.php?$query_string;
     }
+}
+```
+
+```nginx
+server {
+    listen 80;
+    server_name example.com;
+    root /var/www/example.com/html;
 
     # try_files with named location fallback
     location / {
@@ -561,11 +578,27 @@ server {
     location @backend {
         proxy_pass http://127.0.0.1:8080;
     }
+}
+```
+
+```nginx
+server {
+    listen 80;
+    server_name example.com;
+    root /var/www/example.com/html;
 
     # try_files for single-page applications (SPA)
     location / {
         try_files $uri $uri/ /index.html;
     }
+}
+```
+
+```nginx
+server {
+    listen 80;
+    server_name example.com;
+    root /var/www/example.com/html;
 
     # try_files with maintenance page
     location / {
@@ -595,17 +628,6 @@ server {
         return 301 $scheme://$1$request_uri;
     }
 
-    # Remove trailing slash
-    rewrite ^/(.*)/$ /$1 permanent;
-
-    # Add trailing slash to directories
-    location / {
-        if (-d $request_filename) {
-            rewrite ^(.*)$ $1/ permanent;
-        }
-        try_files $uri $uri/ =404;
-    }
-
     # Clean URLs - /page to /page.html
     location / {
         try_files $uri $uri.html $uri/ =404;
@@ -622,6 +644,37 @@ server {
     # Redirect all HTTP to HTTPS
     if ($scheme != "https") {
         return 301 https://$server_name$request_uri;
+    }
+}
+```
+
+```nginx
+server {
+    listen 80;
+    server_name example.com;
+    root /var/www/example.com/html;
+
+    # Remove trailing slash
+    rewrite ^/(.*)/$ /$1 permanent;
+
+    location / {
+        try_files $uri $uri/ =404;
+    }
+}
+```
+
+```nginx
+server {
+    listen 80;
+    server_name example.com;
+    root /var/www/example.com/html;
+
+    # Add trailing slash to directories
+    location / {
+        if (-d $request_filename) {
+            rewrite ^(.*)$ $1/ permanent;
+        }
+        try_files $uri $uri/ =404;
     }
 }
 ```
@@ -679,9 +732,9 @@ server {
 # HTTPS server - main configuration
 server {
     # Listen on 443 with SSL and HTTP/2 support
-    listen 443 ssl;
-    listen [::]:443 ssl;
-    http2 on;
+    # Ubuntu 20.04, 22.04, and 24.04 packages use the listen http2 parameter
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
 
     server_name example.com www.example.com;
 
@@ -750,6 +803,7 @@ server {
     # Other security headers
     add_header X-Frame-Options "SAMEORIGIN" always;
     add_header X-Content-Type-Options "nosniff" always;
+    # Legacy XSS filter for older browsers
     add_header X-XSS-Protection "1; mode=block" always;
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
 
@@ -803,8 +857,7 @@ Then use it in your server blocks:
 
 ```nginx
 server {
-    listen 443 ssl;
-    http2 on;
+    listen 443 ssl http2;
     server_name example.com;
 
     ssl_certificate /etc/letsencrypt/live/example.com/fullchain.pem;
@@ -940,10 +993,10 @@ Define custom log formats in the main nginx.conf:
 # Add to /etc/nginx/nginx.conf inside the http block
 
 http {
-    # Standard combined format (Apache-compatible)
-    log_format combined '$remote_addr - $remote_user [$time_local] '
-                        '"$request" $status $body_bytes_sent '
-                        '"$http_referer" "$http_user_agent"';
+    # Custom combined-like format (Apache-compatible)
+    log_format custom_combined '$remote_addr - $remote_user [$time_local] '
+                               '"$request" $status $body_bytes_sent '
+                               '"$http_referer" "$http_user_agent"';
 
     # Extended format with timing information
     log_format detailed '$remote_addr - $remote_user [$time_local] '
@@ -965,6 +1018,12 @@ http {
         '"http_user_agent":"$http_user_agent",'
         '"http_x_forwarded_for":"$http_x_forwarded_for"'
     '}';
+
+    # Conditional logging variable: log only 4xx and 5xx responses
+    map $status $loggable {
+        ~^[1-3] 0;
+        default 1;
+    }
 
     # ... rest of http block
 }
@@ -1114,9 +1173,8 @@ server {
 # WWW REDIRECT - Canonical URL
 # =================================================================
 server {
-    listen 443 ssl;
-    listen [::]:443 ssl;
-    http2 on;
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
     server_name www.myapp.example.com;
 
     ssl_certificate /etc/letsencrypt/live/myapp.example.com/fullchain.pem;
@@ -1131,9 +1189,8 @@ server {
 # MAIN HTTPS SERVER
 # =================================================================
 server {
-    listen 443 ssl;
-    listen [::]:443 ssl;
-    http2 on;
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
 
     server_name myapp.example.com;
 
@@ -1153,7 +1210,7 @@ server {
     # ---------------------------------------------------------
     # Logging
     # ---------------------------------------------------------
-    access_log /var/log/nginx/myapp.example.com.access.log detailed;
+    access_log /var/log/nginx/myapp.example.com.access.log;
     error_log /var/log/nginx/myapp.example.com.error.log warn;
 
     # ---------------------------------------------------------
@@ -1161,6 +1218,7 @@ server {
     # ---------------------------------------------------------
     add_header X-Frame-Options "SAMEORIGIN" always;
     add_header X-Content-Type-Options "nosniff" always;
+    # Legacy XSS filter for older browsers
     add_header X-XSS-Protection "1; mode=block" always;
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
     add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline';" always;
