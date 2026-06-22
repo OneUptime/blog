@@ -18,9 +18,10 @@ flowchart TB
   end
   
   subgraph "Kyverno Components"
-    controller[Policy Controller]
+    admission[Admission Controller]
     background[Background Controller]
     reports[Reports Controller]
+    cleanup[Cleanup Controller]
   end
   
   subgraph "Policy Types"
@@ -38,12 +39,12 @@ flowchart TB
   end
   
   apiserver --> webhook
-  webhook --> controller
+  webhook --> admission
   
-  controller --> validate
-  controller --> mutate
-  controller --> generate
-  controller --> verify
+  admission --> validate
+  admission --> mutate
+  admission --> verify
+  background --> generate
   
   background --> reports
   
@@ -87,30 +88,35 @@ crds:
 admissionController:
   replicas: 3
   
-  resources:
-    limits:
-      cpu: 1000m
-      memory: 512Mi
-    requests:
-      cpu: 100m
-      memory: 128Mi
+  container:
+    resources:
+      limits:
+        cpu: 1000m
+        memory: 512Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
       
-  affinity:
-    podAntiAffinity:
-      preferredDuringSchedulingIgnoredDuringExecution:
-        - weight: 100
-          podAffinityTerm:
-            labelSelector:
-              matchExpressions:
-                - key: app.kubernetes.io/component
-                  operator: In
-                  values:
-                    - admission-controller
-            topologyKey: kubernetes.io/hostname
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/component
+                operator: In
+                values:
+                  - admission-controller
+          topologyKey: kubernetes.io/hostname
             
   podDisruptionBudget:
     enabled: true
     minAvailable: 1
+
+  serviceMonitor:
+    enabled: true
+    additionalLabels:
+      release: prometheus
 
 # Background controller
 backgroundController:
@@ -124,6 +130,11 @@ backgroundController:
       cpu: 100m
       memory: 64Mi
 
+  serviceMonitor:
+    enabled: true
+    additionalLabels:
+      release: prometheus
+
 # Reports controller
 reportsController:
   replicas: 2
@@ -135,6 +146,11 @@ reportsController:
     requests:
       cpu: 100m
       memory: 64Mi
+
+  serviceMonitor:
+    enabled: true
+    additionalLabels:
+      release: prometheus
 
 # Cleanup controller
 cleanupController:
@@ -148,13 +164,18 @@ cleanupController:
       cpu: 50m
       memory: 64Mi
 
+  serviceMonitor:
+    enabled: true
+    additionalLabels:
+      release: prometheus
+
 # Webhook configuration
 config:
   webhooks:
-    - objectSelector:
-        matchExpressions:
-          - key: kyverno.io/policy-validation
-            operator: DoesNotExist
+    objectSelector:
+      matchExpressions:
+        - key: kyverno.io/policy-validation
+          operator: DoesNotExist
             
   # Exclude namespaces
   excludeGroups:
@@ -167,21 +188,17 @@ config:
   # Resource filters
   resourceFilters:
     - "[Event,*,*]"
-    - "[*,kube-system,*]"
-    - "[*,kube-public,*]"
-    - "[*,kube-node-lease,*]"
-    - "[*,kyverno,*]"
+    - "[*/*,kube-system,*]"
+    - "[*/*,kube-public,*]"
+    - "[*/*,kube-node-lease,*]"
 
 # Metrics
 metricsConfig:
-  metricsExposure:
-    enabled: true
-
-# Service monitor
-serviceMonitor:
-  enabled: true
-  additionalLabels:
-    release: prometheus
+  namespaces:
+    exclude:
+      - kube-system
+      - kube-public
+      - kube-node-lease
 
 # Feature flags
 features:
@@ -223,7 +240,6 @@ metadata:
     policies.kyverno.io/description: >-
       Define labels to ensure proper resource management.
 spec:
-  validationFailureAction: Enforce  # or Audit
   background: true
   rules:
     - name: require-team-label
@@ -235,6 +251,7 @@ spec:
                 - StatefulSet
                 - DaemonSet
       validate:
+        failureAction: Enforce  # or Audit
         message: "Label 'team' is required"
         pattern:
           metadata:
@@ -254,6 +271,7 @@ spec:
               namespaces:
                 - kube-system
       validate:
+        failureAction: Enforce  # or Audit
         message: "Label 'environment' is required and must be dev, staging, or production"
         pattern:
           metadata:
@@ -273,7 +291,6 @@ metadata:
     policies.kyverno.io/title: Require Resource Limits
     policies.kyverno.io/severity: medium
 spec:
-  validationFailureAction: Enforce
   background: true
   rules:
     - name: require-cpu-limit
@@ -283,6 +300,7 @@ spec:
               kinds:
                 - Pod
       validate:
+        failureAction: Enforce
         message: "CPU limit is required for all containers"
         pattern:
           spec:
@@ -298,6 +316,7 @@ spec:
               kinds:
                 - Pod
       validate:
+        failureAction: Enforce
         message: "Memory limit is required for all containers"
         pattern:
           spec:
@@ -318,13 +337,14 @@ spec:
             operator: NotEquals
             value: ""
       validate:
+        failureAction: Enforce
         message: "Memory limit should not exceed 4x the memory request"
         foreach:
           - list: "request.object.spec.containers"
             deny:
               conditions:
                 all:
-                  - key: "{{ divide(`{{ element.resources.limits.memory }}`, `{{ element.resources.requests.memory }}`) }}"
+                  - key: "{{ divide('{{ element.resources.limits.memory || '0' }}', '{{ element.resources.requests.memory || '1m' }}') }}"
                     operator: GreaterThan
                     value: 4
 ```
@@ -341,7 +361,6 @@ metadata:
     policies.kyverno.io/title: Restrict Image Registries
     policies.kyverno.io/severity: high
 spec:
-  validationFailureAction: Enforce
   background: true
   rules:
     - name: validate-registries
@@ -351,6 +370,7 @@ spec:
               kinds:
                 - Pod
       validate:
+        failureAction: Enforce
         message: "Images must be from approved registries"
         pattern:
           spec:
@@ -372,7 +392,6 @@ metadata:
     policies.kyverno.io/title: Disallow Privileged Containers
     policies.kyverno.io/severity: high
 spec:
-  validationFailureAction: Enforce
   background: true
   rules:
     - name: deny-privileged
@@ -382,6 +401,7 @@ spec:
               kinds:
                 - Pod
       validate:
+        failureAction: Enforce
         message: "Privileged containers are not allowed"
         pattern:
           spec:
@@ -399,6 +419,7 @@ spec:
               kinds:
                 - Pod
       validate:
+        failureAction: Enforce
         message: "Privilege escalation is not allowed"
         pattern:
           spec:
@@ -419,7 +440,6 @@ metadata:
     policies.kyverno.io/title: Require Health Probes
     policies.kyverno.io/severity: medium
 spec:
-  validationFailureAction: Audit
   background: true
   rules:
     - name: require-readiness-probe
@@ -430,6 +450,7 @@ spec:
                 - Deployment
                 - StatefulSet
       validate:
+        failureAction: Audit
         message: "Readiness probe is required"
         pattern:
           spec:
@@ -449,6 +470,7 @@ spec:
                 - Deployment
                 - StatefulSet
       validate:
+        failureAction: Audit
         message: "Liveness probe is required"
         pattern:
           spec:
@@ -733,7 +755,7 @@ kyverno-policies/
 ```yaml
 # values.yaml
 global:
-  enforcementAction: Audit  # Audit or Enforce
+  failureAction: Audit  # Audit or Enforce
   excludedNamespaces:
     - kube-system
     - kube-public
@@ -793,7 +815,6 @@ metadata:
   labels:
     {{- include "kyverno-policies.labels" . | nindent 4 }}
 spec:
-  validationFailureAction: {{ .Values.global.enforcementAction }}
   background: true
   rules:
     {{- range .Values.validation.requireLabels.labels }}
@@ -810,6 +831,7 @@ spec:
               namespaces:
                 {{- toYaml $.Values.global.excludedNamespaces | nindent 16 }}
       validate:
+        failureAction: {{ $.Values.global.failureAction }}
         message: "Label '{{ . }}' is required"
         pattern:
           metadata:
@@ -838,7 +860,7 @@ spec:
     matchNames:
       - kyverno
   endpoints:
-    - port: metrics
+    - port: metrics-port
       interval: 30s
 ```
 
@@ -857,7 +879,7 @@ spec:
       rules:
         - alert: KyvernoPolicyViolation
           expr: |
-            sum(increase(kyverno_policy_results_total{rule_result="fail"}[1h])) > 0
+            sum(increase(kyverno_policy_results{rule_result="fail"}[1h])) > 0
           for: 5m
           labels:
             severity: warning
@@ -866,7 +888,7 @@ spec:
             
         - alert: KyvernoWebhookErrors
           expr: |
-            sum(rate(kyverno_admission_requests_total{admitted="false"}[5m])) > 0.1
+            sum(rate(kyverno_admission_requests_total{request_allowed="false"}[5m])) > 0.1
           for: 5m
           labels:
             severity: warning
@@ -894,7 +916,7 @@ kubectl get policyreport -A
 kubectl get clusterpolicyreport
 
 # View detailed report
-kubectl describe policyreport -n default
+kubectl describe policyreport -n default <report-name>
 
 # Test policy
 kubectl apply -f deployment.yaml --dry-run=server
@@ -911,7 +933,7 @@ kubectl get mutatingwebhookconfigurations
 
 | Practice | Recommendation |
 |----------|----------------|
-| **Start with Audit** | Use `validationFailureAction: Audit` before `Enforce` |
+| **Start with Audit** | Use `failureAction: Audit` before `Enforce` |
 | **Use policy reports** | Enable reporting to track violations |
 | **Exclude system namespaces** | Always exclude kube-system and kyverno |
 | **Test in dry-run** | Use `--dry-run=server` to test policies |
