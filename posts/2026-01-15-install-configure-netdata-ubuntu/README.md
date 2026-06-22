@@ -33,7 +33,7 @@ Netdata is a distributed, real-time performance and health monitoring system. It
 ```bash
 # Install Netdata using official script
 
-wget -O /tmp/netdata-kickstart.sh https://my-netdata.io/kickstart.sh && sh /tmp/netdata-kickstart.sh
+wget -O /tmp/netdata-kickstart.sh https://get.netdata.cloud/kickstart.sh && sh /tmp/netdata-kickstart.sh
 ```
 
 The script automatically:
@@ -46,7 +46,7 @@ The script automatically:
 
 ```bash
 # Add Netdata repository
-wget -O /tmp/netdata-kickstart.sh https://my-netdata.io/kickstart.sh && sh /tmp/netdata-kickstart.sh --stable-channel --no-updates
+wget -O /tmp/netdata-kickstart.sh https://get.netdata.cloud/kickstart.sh && sh /tmp/netdata-kickstart.sh --stable-channel --no-updates
 
 # Or use APT directly (may be older version)
 sudo apt update
@@ -98,7 +98,7 @@ sudo nano /etc/netdata/netdata.conf
     cache directory = /var/cache/netdata
 
     # History (in seconds, 3600 = 1 hour at 1s granularity)
-    history = 3996
+    history = 3600
 
     # Update frequency (default 1 second)
     update every = 1
@@ -138,24 +138,23 @@ sudo systemctl restart netdata
 
 ## Security Configuration
 
-### Enable Authentication
+### Restrict Dashboard Access
 
-```bash
-# Create user for web access
-sudo /usr/libexec/netdata/netdata-claim.sh --generate-api-key
-
-# Or create htpasswd file
-sudo apt install apache2-utils -y
-sudo htpasswd -c /etc/netdata/.htpasswd admin
-```
-
-Edit configuration:
+Netdata does not have built-in username/password authentication for its dashboard. Access control in `netdata.conf` is IP-based: you can limit which hosts may connect to the agent and which may use the management API.
 
 ```ini
 [web]
-    # Enable authentication
-    allow connections from = localhost *
+    # Restrict access by IP (space-separated patterns)
+    allow connections from = localhost 10.0.0.*
     allow management from = localhost
+```
+
+To add username/password (HTTP basic) authentication, put Netdata behind a reverse proxy such as nginx and use an htpasswd file there:
+
+```bash
+# Create an htpasswd file for the reverse proxy
+sudo apt install apache2-utils -y
+sudo htpasswd -c /etc/nginx/.htpasswd admin
 ```
 
 ### Configure Firewall
