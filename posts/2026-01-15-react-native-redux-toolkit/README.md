@@ -39,9 +39,9 @@ Traditional Redux required significant boilerplate code: action types, action cr
 Let's start by setting up a new React Native project with all necessary dependencies.
 
 ```bash
-# Create a new React Native project
+# Create a new React Native project (TypeScript is included by default)
 
-npx react-native init MyApp --template react-native-template-typescript
+npx @react-native-community/cli@latest init MyApp
 
 # Navigate to project directory
 cd MyApp
@@ -140,7 +140,7 @@ export const useAppSelector: TypedUseSelectorHook<RootState> = useSelector;
 import { useStore } from 'react-redux';
 import type { Store } from '@reduxjs/toolkit';
 
-export const useAppStore = () => useStore<Store<RootState>>();
+export const useAppStore = (): Store<RootState> => useStore<RootState>();
 ```
 
 ## Creating Slices with createSlice
@@ -1392,7 +1392,7 @@ const cartAdapter = createEntityAdapter<CartItem>({
   sortComparer: (a, b) => a.productId.localeCompare(b.productId),
 });
 
-interface CartState extends EntityState<CartItem> {
+interface CartState extends EntityState<CartItem, string> {
   lastUpdated: number | null;
 }
 
@@ -1688,24 +1688,22 @@ Create `src/store/__tests__/api.test.ts`:
 
 ```typescript
 import { setupServer } from 'msw/node';
-import { rest } from 'msw';
+import { http, HttpResponse } from 'msw';
 import { configureStore } from '@reduxjs/toolkit';
 import { apiSlice } from '../api/apiSlice';
 
 const server = setupServer(
-  rest.get('https://api.example.com/v1/products', (req, res, ctx) => {
-    return res(
-      ctx.json({
-        items: [
-          { id: '1', name: 'Product 1', price: 10 },
-          { id: '2', name: 'Product 2', price: 20 },
-        ],
-        total: 2,
-        page: 1,
-        pageSize: 20,
-        totalPages: 1,
-      })
-    );
+  http.get('https://api.example.com/v1/products', () => {
+    return HttpResponse.json({
+      items: [
+        { id: '1', name: 'Product 1', price: 10 },
+        { id: '2', name: 'Product 2', price: 20 },
+      ],
+      total: 2,
+      page: 1,
+      pageSize: 20,
+      totalPages: 1,
+    });
   })
 );
 
