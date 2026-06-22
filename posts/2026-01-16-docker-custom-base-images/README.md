@@ -39,7 +39,7 @@ Go can compile to static binaries that run without any dependencies.
 ```dockerfile
 # Build stage
 
-FROM golang:1.21-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 WORKDIR /app
 COPY go.mod go.sum ./
@@ -66,7 +66,7 @@ ENTRYPOINT ["/app"]
 
 ```dockerfile
 # Build stage
-FROM rust:1.74-alpine AS builder
+FROM rust:1.96-alpine AS builder
 
 RUN apk add --no-cache musl-dev
 
@@ -87,7 +87,7 @@ ENTRYPOINT ["/myapp"]
 ### C Static Binary
 
 ```dockerfile
-FROM alpine:3.19 AS builder
+FROM alpine:3.24 AS builder
 
 RUN apk add --no-cache gcc musl-dev
 
@@ -108,7 +108,7 @@ ENTRYPOINT ["/app"]
 
 ```dockerfile
 # Create a minimal base with only what you need
-FROM alpine:3.19 AS base
+FROM alpine:3.24 AS base
 
 # Remove unnecessary packages
 RUN apk --no-cache add \
@@ -177,14 +177,14 @@ sudo tar -C rootfs -c . | docker import - my-debian-base:latest
 #!/bin/bash
 # build-alpine-base.sh
 
-VERSION="3.19"
+VERSION="3.24.1"
 ARCH="x86_64"
 
 # Download Alpine minirootfs
-wget https://dl-cdn.alpinelinux.org/alpine/v${VERSION}/releases/${ARCH}/alpine-minirootfs-${VERSION}.0-${ARCH}.tar.gz
+wget https://dl-cdn.alpinelinux.org/alpine/v${VERSION%.*}/releases/${ARCH}/alpine-minirootfs-${VERSION}-${ARCH}.tar.gz
 
 # Import into Docker
-docker import alpine-minirootfs-${VERSION}.0-${ARCH}.tar.gz my-alpine-base:latest
+docker import alpine-minirootfs-${VERSION}-${ARCH}.tar.gz my-alpine-base:latest
 ```
 
 ### Dockerfile Using Imported Base
@@ -206,7 +206,7 @@ Google's distroless images contain only your application and its runtime depende
 
 ```dockerfile
 # Build stage
-FROM python:3.11-slim AS builder
+FROM python:3.13-slim-trixie AS builder
 
 WORKDIR /app
 COPY requirements.txt .
@@ -215,7 +215,7 @@ RUN pip install --no-cache-dir --target=/app/deps -r requirements.txt
 COPY . .
 
 # Final stage - distroless
-FROM gcr.io/distroless/python3-debian12
+FROM gcr.io/distroless/python3-debian13
 
 WORKDIR /app
 COPY --from=builder /app/deps /app/deps
@@ -228,15 +228,15 @@ CMD ["app.py"]
 ### Node.js Distroless
 
 ```dockerfile
-FROM node:20-slim AS builder
+FROM node:22-slim AS builder
 
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 COPY . .
 
-FROM gcr.io/distroless/nodejs20-debian12
+FROM gcr.io/distroless/nodejs22-debian13
 
 WORKDIR /app
 COPY --from=builder /app .
@@ -253,7 +253,7 @@ WORKDIR /app
 COPY . .
 RUN ./gradlew build -x test
 
-FROM gcr.io/distroless/java21-debian12
+FROM gcr.io/distroless/java21-debian13
 
 COPY --from=builder /app/build/libs/app.jar /app.jar
 
@@ -266,7 +266,7 @@ CMD ["app.jar"]
 
 ```dockerfile
 # Dockerfile.multiarch
-FROM --platform=$BUILDPLATFORM golang:1.21-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS builder
 
 ARG TARGETPLATFORM
 ARG BUILDPLATFORM
@@ -304,7 +304,7 @@ Create standardized base images for your organization.
 
 ```dockerfile
 # company-base/Dockerfile
-FROM alpine:3.19
+FROM alpine:3.24
 
 # Standard security configuration
 RUN apk add --no-cache \
@@ -373,7 +373,7 @@ ENV PIP_NO_CACHE_DIR=1
 ## Security-Hardened Base Image
 
 ```dockerfile
-FROM alpine:3.19 AS builder
+FROM alpine:3.24 AS builder
 
 # Security updates
 RUN apk upgrade --no-cache
@@ -395,7 +395,7 @@ FROM scratch
 COPY --from=builder /secure-root /
 
 # Your statically compiled application
-COPY --from=app-builder /app /app
+COPY app /app
 
 USER 10000:10000
 ENTRYPOINT ["/app"]
@@ -501,7 +501,7 @@ coverage/
 
 ```dockerfile
 # Good: Pinned version
-FROM alpine:3.19.0
+FROM alpine:3.24.1
 
 # Avoid: Latest or floating tag
 FROM alpine:latest
@@ -526,4 +526,3 @@ LABEL org.opencontainers.image.description="Custom base image"
 | Multi-architecture | docker buildx |
 
 Custom base images give you control over size, security, and standardization. Start with the smallest viable base for your use case, and add only what your application needs. For static binaries, scratch is ideal. For interpreted languages, distroless provides a good balance. For maximum flexibility, customize Alpine or Debian.
-
