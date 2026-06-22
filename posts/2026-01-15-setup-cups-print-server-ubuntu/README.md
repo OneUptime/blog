@@ -85,8 +85,8 @@ sudo systemctl status cups
 ### Verifying Installation
 
 ```bash
-# Check CUPS version
-cups-config --version
+# Check installed CUPS package version
+dpkg-query -W cups
 
 # List available backends
 ls -la /usr/lib/cups/backend/
@@ -186,31 +186,26 @@ WebInterface Yes
 #-----------------------------------------------------------------------
 
 <Policy default>
+  # Job submission operations
+  <Limit Create-Job Print-Job Print-URI Validate-Job>
+    Order deny,allow
+  </Limit>
+
   # Job-related operations
-  <Limit Send-Document Send-URI Hold-Job Release-Job Restart-Job
-         Purge-Jobs Set-Job-Attributes Create-Job-Subscription
-         Renew-Subscription Cancel-Subscription Get-Notifications
-         Reprocess-Job Cancel-Current-Job Suspend-Current-Job Resume-Job
-         Cancel-My-Jobs Close-Job CUPS-Move-Job CUPS-Get-Document>
+  <Limit Send-Document Send-URI Hold-Job Release-Job Restart-Job Purge-Jobs Set-Job-Attributes Create-Job-Subscription Renew-Subscription Cancel-Subscription Get-Notifications Reprocess-Job Cancel-Current-Job Suspend-Current-Job Resume-Job Cancel-My-Jobs Close-Job CUPS-Move-Job CUPS-Get-Document>
     Require user @OWNER @SYSTEM
     Order deny,allow
   </Limit>
 
   # All other operations require admin
-  <Limit CUPS-Add-Modify-Printer CUPS-Delete-Printer CUPS-Add-Modify-Class
-         CUPS-Delete-Class CUPS-Set-Default CUPS-Get-Devices CUPS-Get-PPDs
-         CUPS-Get-Drivers>
+  <Limit CUPS-Add-Modify-Printer CUPS-Delete-Printer CUPS-Add-Modify-Class CUPS-Delete-Class CUPS-Set-Default CUPS-Get-Devices CUPS-Get-PPDs>
     AuthType Default
     Require user @SYSTEM
     Order deny,allow
   </Limit>
 
   # All administration operations require authentication
-  <Limit Pause-Printer Resume-Printer Enable-Printer Disable-Printer
-         Pause-Printer-After-Current-Job Hold-New-Jobs Release-Held-New-Jobs
-         Deactivate-Printer Activate-Printer Restart-Printer Shutdown-Printer
-         Startup-Printer Promote-Job Schedule-Job-After Cancel-Jobs
-         CUPS-Accept-Jobs CUPS-Reject-Jobs>
+  <Limit Pause-Printer Resume-Printer Enable-Printer Disable-Printer Pause-Printer-After-Current-Job Hold-New-Jobs Release-Held-New-Jobs Deactivate-Printer Activate-Printer Restart-Printer Shutdown-Printer Startup-Printer Promote-Job Schedule-Job-After Cancel-Jobs CUPS-Accept-Jobs CUPS-Reject-Jobs>
     AuthType Default
     Require user @SYSTEM
     Order deny,allow
@@ -273,9 +268,9 @@ sudo usermod -aG lpadmin username
 Open your web browser and navigate to:
 
 - Local access: `http://localhost:631`
-- Remote access: `https://your-server-ip:631`
+- Remote access: `http://your-server-ip:631`
 
-Note: CUPS uses HTTPS for remote connections with a self-signed certificate. You may need to accept the certificate warning.
+Note: CUPS may require HTTPS for authenticated administration actions and use a self-signed certificate. You may need to accept the certificate warning when the browser switches to HTTPS.
 
 ## Adding Local Printers
 
@@ -444,9 +439,6 @@ Edit `/etc/cups/cupsd.conf`:
 Browsing On
 BrowseLocalProtocols dnssd
 
-# Specify which subnet can browse printers
-BrowseAddress @LOCAL
-
 # Allow printing from remote clients
 <Location /printers>
   Order allow,deny
@@ -502,39 +494,18 @@ lpstat -p "Restricted_Printer" -l
 
 ### Setting Up Print Quotas
 
-While CUPS doesn't have built-in quota support, you can implement basic controls:
+CUPS has basic per-user quota controls for printer queues:
 
 ```bash
-# Create a script to check quotas before printing
-sudo nano /usr/local/bin/print_quota_check.sh
-```
+# Limit each user to 100 pages per day on a printer
+sudo lpadmin -p "Restricted_Printer" \
+    -o job-quota-period=86400 \
+    -o job-page-limit=100
 
-```bash
-#!/bin/bash
-# /usr/local/bin/print_quota_check.sh
-# Simple print quota checking script
-
-USER=$1
-PRINTER=$2
-QUOTA_FILE="/var/cups/quotas/${USER}.quota"
-MAX_PAGES=100
-
-# Create quota directory if not exists
-mkdir -p /var/cups/quotas
-
-# Initialize quota file if not exists
-if [ ! -f "$QUOTA_FILE" ]; then
-    echo "0" > "$QUOTA_FILE"
-fi
-
-CURRENT_PAGES=$(cat "$QUOTA_FILE")
-
-if [ "$CURRENT_PAGES" -ge "$MAX_PAGES" ]; then
-    echo "Print quota exceeded for user $USER" | logger -t cups-quota
-    exit 1
-fi
-
-exit 0
+# Limit each user to 100 MB per day on a printer
+sudo lpadmin -p "Restricted_Printer" \
+    -o job-quota-period=86400 \
+    -o job-k-limit=102400
 ```
 
 For enterprise quota management, consider PyKota or PaperCut.
@@ -679,7 +650,7 @@ lpmove job-123 "Other_Printer"
 ### Printer State Management
 
 ```bash
-# Enable/disable a printer (accepting jobs)
+# Enable/disable a printer for processing jobs
 sudo cupsenable "HP_LaserJet_M404"
 sudo cupsdisable "HP_LaserJet_M404"
 
@@ -863,16 +834,13 @@ sudo nano /etc/cups/cups-browsed.conf
 # Configuration for automatic printer discovery
 
 # Which protocols to browse
-BrowseRemoteProtocols dnssd cups
+BrowseRemoteProtocols dnssd
 
-# Create local queues for discovered printers
-CreateIPPPrinterQueues All
+# Create local queues for driverless IPP printers
+CreateIPPPrinterQueues Driverless
 
 # Create remote CUPS queues
 CreateRemoteCUPSPrinterQueues Yes
-
-# Use driverless (IPP Everywhere) for discovered printers
-IPPPrinterQueueType Driverless
 
 # Filter discovered printers by subnet
 BrowseAllow 192.168.1.0/24
@@ -953,9 +921,9 @@ cancel -a
 sudo cupsdisable PrinterName
 sudo cupsenable PrinterName
 
-# Clear all jobs and restart
+# Clear queued job files and restart
 sudo systemctl stop cups
-sudo rm -rf /var/spool/cups/*
+sudo find /var/spool/cups -maxdepth 1 -type f -delete
 sudo systemctl start cups
 ```
 
@@ -1010,7 +978,7 @@ avahi-browse _ipp._tcp
 
 # Test CUPS web interface accessibility
 curl -I http://localhost:631
-curl -k -I https://print-server:631
+curl -I http://print-server:631
 ```
 
 ### Useful Diagnostic Commands
@@ -1023,8 +991,8 @@ lpstat -t                   # Complete status summary
 lpstat -s                   # Default and printer status
 cupsctl                     # Current server settings
 
-# Generate troubleshooting report
-sudo /usr/share/cups/cupsd.conf.default  # Default config reference
+# View the default config reference
+less /usr/share/cups/cupsd.conf.default
 
 # Check AppArmor (if enabled)
 sudo aa-status | grep cups
@@ -1066,11 +1034,9 @@ Here's a complete, production-ready cupsd.conf:
 
 ServerName print-server.example.com
 ServerAdmin admin@example.com
-ServerAlias *
+ServerAlias print-server print-server.local
 
-# Generate self-signed certificate if not present
-ServerCertificate /etc/cups/ssl/server.crt
-ServerKey /etc/cups/ssl/server.key
+# CUPS TLS certificates are managed through /etc/cups/ssl by default.
 
 #===========================================================================
 # Network Settings
@@ -1081,8 +1047,7 @@ Port 631
 Listen /run/cups/cups.sock
 
 # SSL/TLS settings
-DefaultEncryption IfRequested
-SSLListen *:443
+DefaultEncryption Required
 SSLPort 443
 
 #===========================================================================
@@ -1125,10 +1090,9 @@ MaxJobsPerUser 100
 
 # Use PAM for authentication
 DefaultAuthType Basic
-DefaultEncryption IfRequested
+DefaultEncryption Required
 
-# System group for admin access
-SystemGroup lpadmin sys root
+# @SYSTEM group membership is configured in /etc/cups/cups-files.conf.
 
 #===========================================================================
 # Access Control Rules
@@ -1202,29 +1166,20 @@ SystemGroup lpadmin sys root
   </Limit>
 
   # Job management - owner or admin
-  <Limit Send-Document Send-URI Hold-Job Release-Job Restart-Job
-         Purge-Jobs Set-Job-Attributes Create-Job-Subscription
-         Renew-Subscription Cancel-Subscription Get-Notifications
-         Reprocess-Job Cancel-Current-Job Suspend-Current-Job Resume-Job
-         Cancel-My-Jobs Close-Job CUPS-Move-Job CUPS-Get-Document>
+  <Limit Send-Document Send-URI Hold-Job Release-Job Restart-Job Purge-Jobs Set-Job-Attributes Create-Job-Subscription Renew-Subscription Cancel-Subscription Get-Notifications Reprocess-Job Cancel-Current-Job Suspend-Current-Job Resume-Job Cancel-My-Jobs Close-Job CUPS-Move-Job CUPS-Get-Document>
     Require user @OWNER @SYSTEM
     Order deny,allow
   </Limit>
 
   # Printer administration - system admins only
-  <Limit CUPS-Add-Modify-Printer CUPS-Delete-Printer
-         CUPS-Add-Modify-Class CUPS-Delete-Class CUPS-Set-Default>
+  <Limit CUPS-Add-Modify-Printer CUPS-Delete-Printer CUPS-Add-Modify-Class CUPS-Delete-Class CUPS-Set-Default>
     AuthType Default
     Require user @SYSTEM
     Order deny,allow
   </Limit>
 
   # Printer state management
-  <Limit Pause-Printer Resume-Printer Enable-Printer Disable-Printer
-         Pause-Printer-After-Current-Job Hold-New-Jobs Release-Held-New-Jobs
-         Deactivate-Printer Activate-Printer Restart-Printer Shutdown-Printer
-         Startup-Printer Promote-Job Schedule-Job-After Cancel-Jobs
-         CUPS-Accept-Jobs CUPS-Reject-Jobs>
+  <Limit Pause-Printer Resume-Printer Enable-Printer Disable-Printer Pause-Printer-After-Current-Job Hold-New-Jobs Release-Held-New-Jobs Deactivate-Printer Activate-Printer Restart-Printer Shutdown-Printer Startup-Printer Promote-Job Schedule-Job-After Cancel-Jobs CUPS-Accept-Jobs CUPS-Reject-Jobs>
     AuthType Default
     Require user @SYSTEM
     Order deny,allow
@@ -1249,28 +1204,19 @@ SystemGroup lpadmin sys root
     Order deny,allow
   </Limit>
 
-  <Limit Send-Document Send-URI Hold-Job Release-Job Restart-Job
-         Purge-Jobs Set-Job-Attributes Create-Job-Subscription
-         Renew-Subscription Cancel-Subscription Get-Notifications
-         Reprocess-Job Cancel-Current-Job Suspend-Current-Job Resume-Job
-         Cancel-My-Jobs Close-Job CUPS-Move-Job CUPS-Get-Document>
+  <Limit Send-Document Send-URI Hold-Job Release-Job Restart-Job Purge-Jobs Set-Job-Attributes Create-Job-Subscription Renew-Subscription Cancel-Subscription Get-Notifications Reprocess-Job Cancel-Current-Job Suspend-Current-Job Resume-Job Cancel-My-Jobs Close-Job CUPS-Move-Job CUPS-Get-Document>
     AuthType Default
     Require user @OWNER @SYSTEM
     Order deny,allow
   </Limit>
 
-  <Limit CUPS-Add-Modify-Printer CUPS-Delete-Printer
-         CUPS-Add-Modify-Class CUPS-Delete-Class CUPS-Set-Default>
+  <Limit CUPS-Add-Modify-Printer CUPS-Delete-Printer CUPS-Add-Modify-Class CUPS-Delete-Class CUPS-Set-Default>
     AuthType Default
     Require user @SYSTEM
     Order deny,allow
   </Limit>
 
-  <Limit Pause-Printer Resume-Printer Enable-Printer Disable-Printer
-         Pause-Printer-After-Current-Job Hold-New-Jobs Release-Held-New-Jobs
-         Deactivate-Printer Activate-Printer Restart-Printer Shutdown-Printer
-         Startup-Printer Promote-Job Schedule-Job-After Cancel-Jobs
-         CUPS-Accept-Jobs CUPS-Reject-Jobs>
+  <Limit Pause-Printer Resume-Printer Enable-Printer Disable-Printer Pause-Printer-After-Current-Job Hold-New-Jobs Release-Held-New-Jobs Deactivate-Printer Activate-Printer Restart-Printer Shutdown-Printer Startup-Printer Promote-Job Schedule-Job-After Cancel-Jobs CUPS-Accept-Jobs CUPS-Reject-Jobs>
     AuthType Default
     Require user @SYSTEM
     Order deny,allow
@@ -1293,7 +1239,6 @@ SystemGroup lpadmin sys root
 
 # Timeout settings
 Timeout 300
-BrowseTimeout 300
 
 # Job management
 MaxCopies 9999
@@ -1306,7 +1251,7 @@ MaxJobTime 28800
 # Multi-processing
 MaxClients 100
 MaxClientsPerHost 10
-MaxRequestSize 0
+LimitRequestBody 0
 FilterLimit 0
 ```
 
