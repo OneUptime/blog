@@ -260,10 +260,10 @@ external: eth0
 ### Bandwidth Limiting
 
 ```conf
-# In socks pass rule
+# In socks pass rule (requires Dante's bandwidth module)
 socks pass {
     from: 0.0.0.0/0 to: 0.0.0.0/0
-    bandwidth: 10000000  # 10 Mbps
+    bandwidth: 1250000  # 10 Mbps, in bytes per second
 }
 ```
 
@@ -317,6 +317,10 @@ curl --socks5-hostname server_ip:1080 https://ifconfig.me
 ```
 
 ### Using Python
+
+```bash
+python -m pip install 'requests[socks]'
+```
 
 ```python
 import requests
@@ -442,6 +446,8 @@ connect = 127.0.0.1:1080
 cert = /etc/stunnel/stunnel.pem
 ```
 
+Clients must connect through a matching stunnel client, then point SOCKS applications at the local stunnel port.
+
 ## Troubleshooting
 
 ### Service Won't Start
@@ -476,8 +482,8 @@ sudo ufw status
 # Verify user exists
 id proxyuser
 
-# Test password
-su - proxyuser
+# Test proxy credentials
+curl --socks5 proxyuser:password@server_ip:1080 https://ifconfig.me
 
 # Check PAM configuration
 cat /etc/pam.d/sockd
