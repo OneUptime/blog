@@ -29,12 +29,12 @@ Setting up a React Native project for production goes far beyond running `npx re
 
 ## Creating a New React Native Project with TypeScript
 
-The React Native CLI now includes excellent TypeScript support out of the box. Let's start by creating a new project with the TypeScript template:
+The React Native CLI now includes excellent TypeScript support out of the box. Let's start by creating a new project:
 
 ```bash
-# Using the React Native CLI with TypeScript template
+# Using the React Native Community CLI
 
-npx react-native@latest init MyProductionApp --template react-native-template-typescript
+npx @react-native-community/cli@latest init MyProductionApp
 
 # Navigate to your project
 cd MyProductionApp
@@ -44,7 +44,7 @@ Alternatively, if you prefer Expo for managed workflow:
 
 ```bash
 # Using Expo with TypeScript
-npx create-expo-app@latest MyProductionApp --template expo-template-blank-typescript
+npx create-expo-app@latest MyProductionApp --template blank-typescript
 
 cd MyProductionApp
 ```
@@ -112,7 +112,7 @@ export default App;
 
 A proper `tsconfig.json` is crucial for a production React Native app. Here's an optimized configuration:
 
-```json
+```jsonc
 {
   "compilerOptions": {
     // Target and Module
@@ -250,10 +250,11 @@ A robust linting setup ensures code quality and consistency across your team.
 ### Install Dependencies
 
 ```bash
-npm install -D eslint @typescript-eslint/parser @typescript-eslint/eslint-plugin \
+npm install -D eslint@^8 @typescript-eslint/parser @typescript-eslint/eslint-plugin \
   eslint-plugin-react eslint-plugin-react-hooks eslint-plugin-react-native \
-  eslint-plugin-import eslint-plugin-prettier eslint-config-prettier \
-  prettier @trivago/prettier-plugin-sort-imports
+  eslint-plugin-import eslint-import-resolver-typescript \
+  eslint-plugin-prettier eslint-config-prettier prettier \
+  @trivago/prettier-plugin-sort-imports
 ```
 
 ### ESLint Configuration
@@ -645,9 +646,6 @@ export const config: AppConfig = {
   isProduction: ENV === 'production',
 };
 
-// Validate required environment variables
-const requiredEnvVars = ['API_URL', 'API_KEY', 'ENV'] as const;
-
 export const validateEnv = (): void => {
   const missing: string[] = [];
 
@@ -838,6 +836,7 @@ export const Button: React.FC<ButtonProps> = memo(
           <ActivityIndicator
             color={variant === 'primary' ? '#ffffff' : '#007AFF'}
             size="small"
+            testID="activity-indicator"
           />
         ) : (
           <>
@@ -956,13 +955,13 @@ export { Button } from './Button';
 
 ## Setting Up Debugging Tools
 
-### Install Flipper and Reactotron
+### Install Reactotron
 
 ```bash
-# Flipper is built into React Native CLI apps
-# For Reactotron:
 npm install -D reactotron-react-native reactotron-redux
 ```
+
+React Native's built-in debugging tools have replaced Flipper as the default JavaScript debugging experience in current projects. Flipper can still be added manually for native debugging if your team needs it.
 
 ### Configure Reactotron
 
@@ -1188,8 +1187,7 @@ React Native comes with Jest pre-configured, but we need to enhance it for produ
 ### Install Additional Testing Dependencies
 
 ```bash
-npm install -D @testing-library/react-native @testing-library/jest-native \
-  jest-expo @types/jest ts-jest msw
+npm install -D @testing-library/react-native @types/jest msw
 ```
 
 ### Jest Configuration
@@ -1201,7 +1199,7 @@ Create `jest.config.js`:
 module.exports = {
   preset: 'react-native',
   setupFilesAfterEnv: [
-    '@testing-library/jest-native/extend-expect',
+    '@testing-library/react-native/extend-expect',
     '<rootDir>/__tests__/setup.ts',
   ],
   transformIgnorePatterns: [
@@ -1242,11 +1240,6 @@ module.exports = {
     },
   },
   testEnvironment: 'node',
-  globals: {
-    'ts-jest': {
-      tsconfig: 'tsconfig.json',
-    },
-  },
 };
 ```
 
@@ -1254,7 +1247,7 @@ module.exports = {
 
 ```typescript
 // __tests__/setup.ts
-import '@testing-library/jest-native/extend-expect';
+import '@testing-library/react-native/extend-expect';
 
 // Mock react-native-reanimated
 jest.mock('react-native-reanimated', () => {
@@ -1582,15 +1575,22 @@ const priorityMap: Record<string, Priority> = {
 
 export const OptimizedImage: React.FC<OptimizedImageProps> = memo(
   ({ priority = 'normal', ...props }) => {
+    const source =
+      props.source &&
+      typeof props.source === 'object' &&
+      !Array.isArray(props.source)
+        ? {
+            ...props.source,
+            priority: priorityMap[priority],
+            cache: FastImage.cacheControl.immutable,
+          }
+        : props.source;
+
     return (
       <FastImage
         {...props}
         resizeMode={FastImage.resizeMode.cover}
-        source={{
-          ...props.source,
-          priority: priorityMap[priority],
-          cache: FastImage.cacheControl.immutable,
-        }}
+        source={source}
       />
     );
   },
@@ -1678,14 +1678,26 @@ export function OptimizedList<T>({
 }
 ```
 
-### Enable RAM Bundle for Android
+### Enable Inline Requires
 
-```gradle
-// android/app/build.gradle
-project.ext.react = [
-    enableHermes: true,
-    bundleCommand: "ram-bundle",
-]
+```javascript
+// metro.config.js
+const { getDefaultConfig, mergeConfig } = require('@react-native/metro-config');
+
+const defaultConfig = getDefaultConfig(__dirname);
+
+const config = {
+  transformer: {
+    getTransformOptions: async () => ({
+      transform: {
+        experimentalImportSupport: false,
+        inlineRequires: true,
+      },
+    }),
+  },
+};
+
+module.exports = mergeConfig(defaultConfig, config);
 ```
 
 ---
@@ -1694,7 +1706,7 @@ project.ext.react = [
 
 Here's a curated list of production-ready dependencies:
 
-```json
+```jsonc
 {
   "dependencies": {
     // Navigation
@@ -1740,7 +1752,6 @@ Here's a curated list of production-ready dependencies:
     // TypeScript
     "typescript": "^5.x",
     "@types/react": "^18.x",
-    "@types/react-native": "^0.73.x",
 
     // Linting & Formatting
     "eslint": "^8.x",
@@ -1750,8 +1761,7 @@ Here's a curated list of production-ready dependencies:
 
     // Testing
     "jest": "^29.x",
-    "@testing-library/react-native": "^12.x",
-    "@testing-library/jest-native": "^5.x",
+    "@testing-library/react-native": "^13.x",
 
     // Build Tools
     "babel-plugin-module-resolver": "^5.x",
