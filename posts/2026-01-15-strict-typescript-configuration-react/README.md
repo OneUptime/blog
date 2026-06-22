@@ -69,7 +69,7 @@ Let's start by creating a new React project with TypeScript or adding TypeScript
 
 npm create vite@latest my-app -- --template react-ts
 
-# Using Create React App
+# Using Create React App (deprecated for new apps; prefer Vite or a React framework)
 npx create-react-app my-app --template typescript
 
 # Using Next.js
@@ -130,11 +130,8 @@ Here's a complete strict TypeScript configuration for React projects:
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
 
-    // Emit
+    // Type Checking Only
     "noEmit": true,
-    "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true,
 
     // Path Mapping
     "baseUrl": ".",
@@ -240,15 +237,15 @@ function UserProfile() {
 Enables stricter checking of function types, particularly for contravariance in parameter types.
 
 ```typescript
-type Handler = (event: MouseEvent) => void;
+type Handler = (event: Event) => void;
 
 // Without strictFunctionTypes, this is allowed (dangerous!)
-const handleClick: Handler = (event: Event) => {
-  console.log(event.clientX); // Runtime error - Event doesn't have clientX
+const handleClick: Handler = (event: MouseEvent) => {
+  console.log(event.clientX);
 };
 
 // With strictFunctionTypes, TypeScript catches this
-// Error: Type '(event: Event) => void' is not assignable to type 'Handler'
+// Error: Type '(event: MouseEvent) => void' is not assignable to type 'Handler'
 ```
 
 **React Example:**
@@ -1116,7 +1113,7 @@ npm install --save-dev eslint @typescript-eslint/parser @typescript-eslint/eslin
   "extends": [
     "eslint:recommended",
     "plugin:@typescript-eslint/recommended",
-    "plugin:@typescript-eslint/recommended-requiring-type-checking",
+    "plugin:@typescript-eslint/recommended-type-checked",
     "plugin:@typescript-eslint/strict",
     "plugin:react/recommended",
     "plugin:react-hooks/recommended"
@@ -1174,7 +1171,7 @@ Here's a comprehensive table of all the strict and recommended TypeScript compil
 | `forceConsistentCasingInFileNames` | Module | `false` | `true` | Ensures consistent file name casing |
 | `skipLibCheck` | Performance | `false` | `true` | Skips type checking of declaration files |
 | `noEmit` | Emit | `false` | `true` | Disables emitting files (when using bundler) |
-| `sourceMap` | Emit | `false` | `true` | Generates source map files |
+| `sourceMap` | Emit | `false` | optional | Generates source map files when TypeScript emits JavaScript |
 
 ## Conclusion
 
