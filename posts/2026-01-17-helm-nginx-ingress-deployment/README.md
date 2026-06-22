@@ -6,7 +6,7 @@ Tags: Helm, Kubernetes, DevOps, Nginx, Ingresses, Load Balancing
 
 Description: Complete guide to deploying and configuring NGINX Ingress Controller on Kubernetes using Helm for production traffic management.
 
-> NGINX Ingress Controller is the most popular ingress solution for Kubernetes, providing load balancing, SSL termination, and advanced routing. This guide covers installation, configuration, and production best practices using Helm.
+> NGINX Ingress Controller has been a popular ingress solution for Kubernetes, providing load balancing, SSL termination, and advanced routing. As of March 24, 2026, the Kubernetes project has retired ingress-nginx; existing artifacts remain available, but new production deployments should evaluate Gateway API implementations or another maintained ingress controller. This guide covers installation, configuration, and production best practices using Helm for existing ingress-nginx environments.
 
 ## Architecture Overview
 
@@ -108,9 +108,8 @@ controller:
     targetMemoryUtilizationPercentage: 80
   
   # Pod disruption budget
-  podDisruptionBudget:
-    enabled: true
-    minAvailable: 2
+  # The Helm chart creates a PDB automatically for Deployment installs with more than one replica
+  minAvailable: 2
   
   # Pod anti-affinity for HA
   affinity:
@@ -141,10 +140,10 @@ controller:
     type: LoadBalancer
     annotations:
       # AWS annotations
-      service.beta.kubernetes.io/aws-load-balancer-type: nlb
-      service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+      service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
+      service.beta.kubernetes.io/aws-load-balancer-attributes: load_balancing.cross_zone.enabled=true
       # GCP annotations
-      # cloud.google.com/load-balancer-type: "External"
+      # cloud.google.com/l4-rbs: "enabled"
     externalTrafficPolicy: Local
   
   # Metrics for Prometheus
@@ -170,11 +169,11 @@ controller:
     
     # Buffer sizes
     proxy-buffer-size: "16k"
-    proxy-buffers: "4 16k"
+    proxy-buffers-number: "4"
     
     # Client body size
     client-body-buffer-size: "16k"
-    client-max-body-size: "100m"
+    proxy-body-size: "100m"
     
     # Keepalive
     keep-alive: "75"
@@ -498,10 +497,10 @@ spec:
 controller:
   service:
     type: LoadBalancer
+    loadBalancerClass: eks.amazonaws.com/nlb
     annotations:
-      service.beta.kubernetes.io/aws-load-balancer-type: nlb
-      service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
-      service.beta.kubernetes.io/aws-load-balancer-backend-protocol: tcp
+      service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
+      service.beta.kubernetes.io/aws-load-balancer-attributes: load_balancing.cross_zone.enabled=true
       service.beta.kubernetes.io/aws-load-balancer-ssl-ports: "443"
       service.beta.kubernetes.io/aws-load-balancer-ssl-cert: arn:aws:acm:region:account:certificate/xxx
 ```
@@ -513,10 +512,11 @@ controller:
 controller:
   service:
     type: LoadBalancer
+    loadBalancerClass: "networking.gke.io/l4-regional-external"
     annotations:
-      cloud.google.com/load-balancer-type: "External"
+      cloud.google.com/l4-rbs: "enabled"
       # For internal load balancer
-      # cloud.google.com/load-balancer-type: "Internal"
+      # networking.gke.io/load-balancer-type: "Internal"
 ```
 
 ### Azure
@@ -540,8 +540,8 @@ controller:
   service:
     type: LoadBalancer
     annotations:
-      metallb.universe.tf/address-pool: production
-    loadBalancerIP: 192.168.1.100
+      metallb.io/address-pool: production
+      metallb.io/loadBalancerIPs: "192.168.1.100"
 ```
 
 ## Monitoring
@@ -615,4 +615,4 @@ kubectl exec -n ingress-nginx deploy/ingress-nginx-controller -- curl -v http://
 
 ## Wrap-up
 
-NGINX Ingress Controller provides robust traffic management for Kubernetes. Configure production values with appropriate replicas, resources, and autoscaling. Use annotations for SSL, rate limiting, authentication, and routing. Enable metrics for monitoring with Prometheus and Grafana. Customize configurations for your cloud provider and use the troubleshooting commands to debug issues.
+NGINX Ingress Controller provides robust traffic management for Kubernetes, but it is now retired and should primarily be maintained for existing deployments while you plan a migration. Configure production values with appropriate replicas, resources, and autoscaling. Use annotations for SSL, rate limiting, authentication, and routing. Enable metrics for monitoring with Prometheus and Grafana. Customize configurations for your cloud provider and use the troubleshooting commands to debug issues.
