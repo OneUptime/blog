@@ -23,7 +23,7 @@ gRPC-Web uses Protocol Buffers (protobuf) for serialization, which offers severa
 - **Smaller payload sizes**: Binary encoding is 3-10x smaller than JSON
 - **Faster serialization/deserialization**: Protobuf parsing is significantly faster
 - **Strong typing**: Compile-time type safety catches errors early
-- **Bi-directional streaming**: Server-side streaming for real-time updates
+- **Server-side streaming**: Stream responses from the server for real-time updates
 
 ### REST vs gRPC-Web Comparison
 
@@ -101,12 +101,12 @@ The gRPC-Web plugin for protoc generates browser-compatible client code:
 
 ```bash
 # Download the plugin (macOS example)
-curl -sSL https://github.com/nickygerritsen/protoc-gen-grpc-web/releases/download/1.5.0/protoc-gen-grpc-web-1.5.0-darwin-x86_64 \
+curl -sSL https://github.com/grpc/grpc-web/releases/download/1.5.0/protoc-gen-grpc-web-1.5.0-darwin-x86_64 \
   -o /usr/local/bin/protoc-gen-grpc-web
 chmod +x /usr/local/bin/protoc-gen-grpc-web
 
 # Linux alternative
-curl -sSL https://github.com/nickygerritsen/protoc-gen-grpc-web/releases/download/1.5.0/protoc-gen-grpc-web-1.5.0-linux-x86_64 \
+curl -sSL https://github.com/grpc/grpc-web/releases/download/1.5.0/protoc-gen-grpc-web-1.5.0-linux-x86_64 \
   -o /usr/local/bin/protoc-gen-grpc-web
 chmod +x /usr/local/bin/protoc-gen-grpc-web
 ```
@@ -397,7 +397,7 @@ export const getUserServiceClient = (): UserServiceClient => {
     const config = getConfig();
     userServiceClient = new UserServiceClient(config.url, null, {
       // Enable streaming
-      'grpc-web-text': 'true',
+      format: 'text',
     });
   }
   return userServiceClient;
@@ -531,7 +531,7 @@ export const createGrpcClient = (getToken: () => string | null): UserServiceClie
 
   return new UserServiceClient(baseUrl, null, {
     unaryInterceptors: interceptors,
-    'grpc-web-text': 'true',
+    format: 'text',
   });
 };
 ```
@@ -585,7 +585,7 @@ import {
   ListUsersRequest,
   User,
 } from '../generated/user_pb';
-import { grpc } from 'grpc-web';
+import { RpcError } from 'grpc-web';
 
 interface UseUserServiceResult {
   loading: boolean;
@@ -630,7 +630,7 @@ export const useUserService = (): UseUserServiceResult => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
-  const handleError = useCallback((err: grpc.RpcError): Error => {
+  const handleError = useCallback((err: RpcError): Error => {
     const message = `gRPC Error (${err.code}): ${err.message}`;
     const error = new Error(message);
     setError(error);
@@ -657,7 +657,7 @@ export const useUserService = (): UseUserServiceResult => {
 
       return response;
     } catch (err) {
-      handleError(err as grpc.RpcError);
+      handleError(err as RpcError);
       return null;
     } finally {
       setLoading(false);
@@ -694,7 +694,7 @@ export const useUserService = (): UseUserServiceResult => {
 
       return response;
     } catch (err) {
-      handleError(err as grpc.RpcError);
+      handleError(err as RpcError);
       return null;
     } finally {
       setLoading(false);
@@ -737,7 +737,7 @@ export const useUserService = (): UseUserServiceResult => {
 
       return response;
     } catch (err) {
-      handleError(err as grpc.RpcError);
+      handleError(err as RpcError);
       return null;
     } finally {
       setLoading(false);
@@ -764,7 +764,7 @@ export const useUserService = (): UseUserServiceResult => {
 
       return success;
     } catch (err) {
-      handleError(err as grpc.RpcError);
+      handleError(err as RpcError);
       return false;
     } finally {
       setLoading(false);
@@ -807,7 +807,7 @@ export const useUserService = (): UseUserServiceResult => {
 
       return result;
     } catch (err) {
-      handleError(err as grpc.RpcError);
+      handleError(err as RpcError);
       return { users: [], nextPageToken: '', totalCount: 0 };
     } finally {
       setLoading(false);
@@ -836,7 +836,7 @@ Create `src/hooks/useUserStream.ts`:
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useGrpcClient } from './useGrpcClient';
 import { WatchUsersRequest, UserEvent } from '../generated/user_pb';
-import { ClientReadableStream, grpc } from 'grpc-web';
+import { ClientReadableStream, RpcError, Status, StatusCode } from 'grpc-web';
 
 interface UseUserStreamOptions {
   userIds?: string[];
@@ -895,21 +895,21 @@ export const useUserStream = (
         onEvent?.(event);
       });
 
-      stream.on('status', (status: grpc.Status) => {
-        if (status.code === grpc.StatusCode.OK) {
+      stream.on('status', (status: Status) => {
+        if (status.code === StatusCode.OK) {
           setIsConnected(true);
           setError(null);
         }
       });
 
-      stream.on('error', (err: grpc.RpcError) => {
+      stream.on('error', (err: RpcError) => {
         const error = new Error(`Stream error: ${err.message}`);
         setError(error);
         setIsConnected(false);
         onError?.(error);
 
         // Auto-reconnect logic
-        if (autoReconnect && err.code !== grpc.StatusCode.CANCELLED) {
+        if (autoReconnect && err.code !== StatusCode.CANCELLED) {
           reconnectTimeoutRef.current = setTimeout(() => {
             console.log('[gRPC Stream] Reconnecting...');
             connect();
@@ -1331,7 +1331,7 @@ export const UserForm: React.FC<UserFormProps> = ({ onSuccess }) => {
 Create `src/utils/grpcErrorHandler.ts`:
 
 ```typescript
-import { grpc } from 'grpc-web';
+import { RpcError, StatusCode } from 'grpc-web';
 
 interface GrpcErrorInfo {
   code: number;
@@ -1342,43 +1342,43 @@ interface GrpcErrorInfo {
 }
 
 export const grpcStatusCodes: Record<number, string> = {
-  [grpc.StatusCode.OK]: 'OK',
-  [grpc.StatusCode.CANCELLED]: 'Cancelled',
-  [grpc.StatusCode.UNKNOWN]: 'Unknown',
-  [grpc.StatusCode.INVALID_ARGUMENT]: 'Invalid Argument',
-  [grpc.StatusCode.DEADLINE_EXCEEDED]: 'Deadline Exceeded',
-  [grpc.StatusCode.NOT_FOUND]: 'Not Found',
-  [grpc.StatusCode.ALREADY_EXISTS]: 'Already Exists',
-  [grpc.StatusCode.PERMISSION_DENIED]: 'Permission Denied',
-  [grpc.StatusCode.RESOURCE_EXHAUSTED]: 'Resource Exhausted',
-  [grpc.StatusCode.FAILED_PRECONDITION]: 'Failed Precondition',
-  [grpc.StatusCode.ABORTED]: 'Aborted',
-  [grpc.StatusCode.OUT_OF_RANGE]: 'Out of Range',
-  [grpc.StatusCode.UNIMPLEMENTED]: 'Unimplemented',
-  [grpc.StatusCode.INTERNAL]: 'Internal Error',
-  [grpc.StatusCode.UNAVAILABLE]: 'Unavailable',
-  [grpc.StatusCode.DATA_LOSS]: 'Data Loss',
-  [grpc.StatusCode.UNAUTHENTICATED]: 'Unauthenticated',
+  [StatusCode.OK]: 'OK',
+  [StatusCode.CANCELLED]: 'Cancelled',
+  [StatusCode.UNKNOWN]: 'Unknown',
+  [StatusCode.INVALID_ARGUMENT]: 'Invalid Argument',
+  [StatusCode.DEADLINE_EXCEEDED]: 'Deadline Exceeded',
+  [StatusCode.NOT_FOUND]: 'Not Found',
+  [StatusCode.ALREADY_EXISTS]: 'Already Exists',
+  [StatusCode.PERMISSION_DENIED]: 'Permission Denied',
+  [StatusCode.RESOURCE_EXHAUSTED]: 'Resource Exhausted',
+  [StatusCode.FAILED_PRECONDITION]: 'Failed Precondition',
+  [StatusCode.ABORTED]: 'Aborted',
+  [StatusCode.OUT_OF_RANGE]: 'Out of Range',
+  [StatusCode.UNIMPLEMENTED]: 'Unimplemented',
+  [StatusCode.INTERNAL]: 'Internal Error',
+  [StatusCode.UNAVAILABLE]: 'Unavailable',
+  [StatusCode.DATA_LOSS]: 'Data Loss',
+  [StatusCode.UNAUTHENTICATED]: 'Unauthenticated',
 };
 
 const retryableCodes = new Set([
-  grpc.StatusCode.UNAVAILABLE,
-  grpc.StatusCode.RESOURCE_EXHAUSTED,
-  grpc.StatusCode.ABORTED,
-  grpc.StatusCode.DEADLINE_EXCEEDED,
+  StatusCode.UNAVAILABLE,
+  StatusCode.RESOURCE_EXHAUSTED,
+  StatusCode.ABORTED,
+  StatusCode.DEADLINE_EXCEEDED,
 ]);
 
 const userMessages: Record<number, string> = {
-  [grpc.StatusCode.INVALID_ARGUMENT]: 'Please check your input and try again.',
-  [grpc.StatusCode.NOT_FOUND]: 'The requested resource was not found.',
-  [grpc.StatusCode.ALREADY_EXISTS]: 'This resource already exists.',
-  [grpc.StatusCode.PERMISSION_DENIED]: 'You do not have permission to perform this action.',
-  [grpc.StatusCode.UNAUTHENTICATED]: 'Please log in to continue.',
-  [grpc.StatusCode.UNAVAILABLE]: 'Service is temporarily unavailable. Please try again.',
-  [grpc.StatusCode.INTERNAL]: 'An unexpected error occurred. Please try again later.',
+  [StatusCode.INVALID_ARGUMENT]: 'Please check your input and try again.',
+  [StatusCode.NOT_FOUND]: 'The requested resource was not found.',
+  [StatusCode.ALREADY_EXISTS]: 'This resource already exists.',
+  [StatusCode.PERMISSION_DENIED]: 'You do not have permission to perform this action.',
+  [StatusCode.UNAUTHENTICATED]: 'Please log in to continue.',
+  [StatusCode.UNAVAILABLE]: 'Service is temporarily unavailable. Please try again.',
+  [StatusCode.INTERNAL]: 'An unexpected error occurred. Please try again later.',
 };
 
-export const parseGrpcError = (error: grpc.RpcError): GrpcErrorInfo => {
+export const parseGrpcError = (error: RpcError): GrpcErrorInfo => {
   return {
     code: error.code,
     message: error.message,
@@ -1388,7 +1388,7 @@ export const parseGrpcError = (error: grpc.RpcError): GrpcErrorInfo => {
   };
 };
 
-export const isGrpcError = (error: unknown): error is grpc.RpcError => {
+export const isGrpcError = (error: unknown): error is RpcError => {
   return (
     typeof error === 'object' &&
     error !== null &&
@@ -1414,11 +1414,11 @@ export const useGrpcErrorHandler = () => {
 
     // Handle specific error codes
     switch (error.code) {
-      case grpc.StatusCode.UNAUTHENTICATED:
+      case StatusCode.UNAUTHENTICATED:
         // Trigger logout or token refresh
         window.dispatchEvent(new CustomEvent('auth:expired'));
         break;
-      case grpc.StatusCode.UNAVAILABLE:
+      case StatusCode.UNAVAILABLE:
         // Log for monitoring
         console.error('[gRPC] Service unavailable:', error.message);
         break;
@@ -1680,12 +1680,12 @@ describe('gRPC-Web Integration', () => {
 Create `src/utils/batchRequests.ts`:
 
 ```typescript
-import { grpc } from 'grpc-web';
+import { RpcError } from 'grpc-web';
 
 interface BatchItem<TRequest, TResponse> {
   request: TRequest;
   resolve: (response: TResponse) => void;
-  reject: (error: grpc.RpcError) => void;
+  reject: (error: RpcError) => void;
 }
 
 export class RequestBatcher<TRequest, TResponse> {
@@ -1735,7 +1735,7 @@ export class RequestBatcher<TRequest, TResponse> {
       });
     } catch (error) {
       batch.forEach((item) => {
-        item.reject(error as grpc.RpcError);
+        item.reject(error as RpcError);
       });
     }
   }
@@ -1911,8 +1911,6 @@ export const getGrpcConfig = (): GrpcConfig => {
 Create `src/utils/grpcHealth.ts`:
 
 ```typescript
-import { grpc } from 'grpc-web';
-
 interface HealthStatus {
   isHealthy: boolean;
   latencyMs: number;
