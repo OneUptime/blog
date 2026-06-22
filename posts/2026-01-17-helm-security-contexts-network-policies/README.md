@@ -60,7 +60,7 @@ spec:
         fsGroup: {{ .Values.securityContext.fsGroup }}
         # Ensure volumes are owned by fsGroup
         fsGroupChangePolicy: OnRootMismatch
-        # Kernel parameters (requires privileged)
+        # Namespaced kernel parameters (unsafe sysctls must be enabled by cluster admins)
         sysctls: []
         # Supplemental groups
         supplementalGroups: []
@@ -210,7 +210,7 @@ metadata:
     # Enforce restricted profile
     pod-security.kubernetes.io/enforce: restricted
     pod-security.kubernetes.io/enforce-version: latest
-    # Warn on baseline violations
+    # Warn on restricted profile violations
     pod-security.kubernetes.io/warn: restricted
     pod-security.kubernetes.io/warn-version: latest
     # Audit all violations
@@ -221,7 +221,7 @@ metadata:
 
 ## Network Policies
 
-Network policies control pod-to-pod communication.
+Network policies control pod-to-pod and pod-to-external communication.
 
 ### Default Deny All
 
@@ -292,7 +292,9 @@ spec:
   egress:
     # Allow DNS
     - to:
-        - namespaceSelector: {}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
           podSelector:
             matchLabels:
               k8s-app: kube-dns
@@ -324,7 +326,7 @@ spec:
           port: 6379
     {{- end }}
     
-    # Allow external HTTPS
+    # Allow HTTPS destinations
     {{- if .Values.networkPolicy.allowExternalHTTPS }}
     - to:
         - ipBlock:
