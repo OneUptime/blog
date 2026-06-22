@@ -639,7 +639,7 @@ class RequestQueue {
   ): Promise<T> {
     return new Promise((resolve, reject) => {
       const request: QueuedRequest<T> = {
-        id: Math.random().toString(36).substr(2, 9),
+        id: Math.random().toString(36).substring(2, 11),
         execute,
         resolve: resolve as (value: unknown) => void,
         reject,
