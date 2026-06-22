@@ -17,7 +17,7 @@ VNC (Virtual Network Computing) provides graphical remote desktop access to your
 | TigerVNC | Modern, well-maintained, good performance |
 | TightVNC | Lightweight, wide compatibility |
 | x11vnc | Share existing X session (physical display) |
-| Vino | GNOME built-in (desktop sharing) |
+| Vino | Legacy GNOME desktop sharing (deprecated on newer Ubuntu releases) |
 
 This guide focuses on TigerVNC as it offers the best balance of features and performance.
 
@@ -173,18 +173,18 @@ After=syslog.target network.target
 
 [Service]
 Type=forking
-User=%i
-Group=%i
-WorkingDirectory=/home/%i
+User=username
+Group=username
+WorkingDirectory=/home/username
 
 # Clean up any existing locks
-ExecStartPre=/bin/sh -c '/usr/bin/vncserver -kill :%i > /dev/null 2>&1 || :'
+ExecStartPre=/bin/sh -c '/usr/bin/vncserver -kill %i > /dev/null 2>&1 || :'
 
 # Start VNC server
-ExecStart=/usr/bin/vncserver :%i -geometry 1920x1080 -depth 24 -localhost no
+ExecStart=/usr/bin/vncserver %i -geometry 1920x1080 -depth 24 -localhost no
 
 # Stop VNC server
-ExecStop=/usr/bin/vncserver -kill :%i
+ExecStop=/usr/bin/vncserver -kill %i
 
 # Restart on failure
 Restart=on-failure
@@ -200,14 +200,14 @@ WantedBy=multi-user.target
 # Reload systemd
 sudo systemctl daemon-reload
 
-# Enable for user 'myuser' on display :1
-sudo systemctl enable vncserver@myuser:1
+# Enable display :1
+sudo systemctl enable vncserver@:1
 
 # Start the service
-sudo systemctl start vncserver@myuser:1
+sudo systemctl start vncserver@:1
 
 # Check status
-sudo systemctl status vncserver@myuser:1
+sudo systemctl status vncserver@:1
 ```
 
 ## Securing VNC with SSH Tunnel
