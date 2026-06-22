@@ -139,6 +139,9 @@ helm:
 # Target-specific overrides
 targetCustomizations:
   - name: production
+    clusterSelector:
+      matchLabels:
+        env: production
     helm:
       values:
         replicaCount: 5
@@ -148,6 +151,9 @@ targetCustomizations:
             memory: 4Gi
   
   - name: staging
+    clusterSelector:
+      matchLabels:
+        env: staging
     helm:
       values:
         replicaCount: 2
@@ -362,12 +368,11 @@ defaultNamespace: myapp
 
 helm:
   # OCI registry
-  repo: oci://registry.example.com/charts
-  chart: myapp
+  repo: oci://registry.example.com/charts/myapp
   version: "1.2.3"
   releaseName: myapp
 
-# Authentication via ImagePullSecrets or Rancher secrets
+# Authentication via GitRepo helmSecretName or OCI registry credentials
 ```
 
 ## Bundle Lifecycle
@@ -429,9 +434,8 @@ diff:
     - apiVersion: apps/v1
       kind: Deployment
       name: myapp
-      operations:
-        - op: remove
-          path: /spec/replicas  # Ignore HPA-managed replicas
+      jsonPointers:
+        - /spec/replicas  # Ignore HPA-managed replicas
 ```
 
 ### Pausing Sync
@@ -443,12 +447,11 @@ kind: GitRepo
 metadata:
   name: helm-apps
   namespace: fleet-default
-  annotations:
-    # Pause this GitRepo
-    fleet.cattle.io/paused: "true"
 spec:
   repo: https://github.com/myorg/helm-charts
   branch: main
+  # Pause this GitRepo
+  paused: true
 ```
 
 ## Secrets Management
@@ -466,7 +469,6 @@ helm:
 # Depend on sealed-secrets being installed
 dependsOn:
   - name: sealed-secrets
-    namespace: kube-system
 ```
 
 ### External Secrets
@@ -483,27 +485,25 @@ helm:
     # Reference ExternalSecret
     database:
       existingSecret: myapp-db-credentials
+```
 
-# ExternalSecret in same bundle
-yaml:
-  overlays:
-    - name: external-secret
-      contents: |
-        apiVersion: external-secrets.io/v1beta1
-        kind: ExternalSecret
-        metadata:
-          name: myapp-db-credentials
-        spec:
-          secretStoreRef:
-            name: vault-backend
-            kind: ClusterSecretStore
-          target:
-            name: myapp-db-credentials
-          data:
-            - secretKey: password
-              remoteRef:
-                key: myapp/database
-                property: password
+```yaml
+# external-secret.yaml in the same bundle path
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: myapp-db-credentials
+spec:
+  secretStoreRef:
+    name: vault-backend
+    kind: ClusterSecretStore
+  target:
+    name: myapp-db-credentials
+  data:
+    - secretKey: password
+      remoteRef:
+        key: myapp/database
+        property: password
 ```
 
 ## Rollout Strategies
@@ -534,7 +534,7 @@ spec:
         matchLabels:
           env: staging
     
-    # Finally production (requires manual approval)
+    # Finally production
     - name: production
       clusterSelector:
         matchLabels:
@@ -552,14 +552,14 @@ helm:
   releaseName: myapp
 
 rolloutStrategy:
-  # Deploy to one cluster at a time
-  maxConcurrent: 1
+  # Allow only one unavailable cluster in each rollout partition
+  maxUnavailable: 1
   
-  # Wait between clusters
-  pauseBetweenBatches: 5m
+  # Automatically create one-cluster rollout partitions
+  autoPartitionSize: 1
   
-  # Auto-pause on errors
-  autoPromote: false
+  # Start partitioned rollout for smaller fleets
+  autoPartitionThreshold: 1
 ```
 
 ## Monitoring Fleet Deployments
@@ -586,13 +586,13 @@ spec:
 
 ```promql
 # Bundle deployment status
-sum by (state) (fleet_bundle_deployment_status)
+sum by (state) (fleet_bundledeployment_state)
 
 # GitRepo sync status
-fleet_gitrepo_status{status="ready"}
+fleet_gitrepo_ready_clusters
 
 # Deployment failures
-increase(fleet_bundle_deployment_errors_total[1h])
+fleet_bundle_err_applied
 ```
 
 ## Troubleshooting
@@ -613,15 +613,15 @@ kubectl describe bundledeployment <name> -n fleet-default
 kubectl get clusters.fleet.cattle.io -n fleet-default
 
 # Force re-sync
-kubectl annotate gitrepo helm-apps -n fleet-default \
-  fleet.cattle.io/force-sync-generation=$(date +%s) --overwrite
+kubectl patch gitrepo helm-apps -n fleet-default --type merge \
+  -p "{\"spec\":{\"forceSyncGeneration\":$(date +%s)}}"
 ```
 
 ### Debug Fleet.yaml
 
 ```bash
 # Validate fleet.yaml locally
-fleet apply --dry-run -b ./charts/myapp
+fleet apply myapp ./charts/myapp -o -
 
 # Test Helm rendering
 cd charts/myapp
@@ -645,7 +645,7 @@ helm template . -f values.yaml
 |---------|-------|--------|------|
 | Multi-cluster | Native | App-of-apps | Kustomization |
 | Helm Support | Built-in | Built-in | HelmRelease |
-| Scale | 1M+ clusters | 100s clusters | 100s clusters |
+| Scale | Thousands of clusters | 100s clusters | 100s clusters |
 | UI | Rancher | ArgoCD UI | Flux UI (3rd party) |
 | Learning Curve | Low | Medium | Medium |
 
