@@ -65,11 +65,11 @@ flowchart TB
 ```bash
 # Add Grafana Helm repository
 
-helm repo add grafana https://grafana.github.io/helm-charts
+helm repo add grafana-community https://grafana-community.github.io/helm-charts
 helm repo update
 
 # Search available versions
-helm search repo grafana/tempo --versions
+helm search repo grafana-community/tempo --versions
 ```
 
 ## Deployment Modes
@@ -88,7 +88,7 @@ helm search repo grafana/tempo --versions
 # tempo-monolithic-values.yaml
 tempo:
   repository: grafana/tempo
-  tag: 2.3.0
+  tag: 2.9.0
   
   # Storage configuration
   storage:
@@ -136,7 +136,7 @@ receivers:
 ```
 
 ```bash
-helm install tempo grafana/tempo \
+helm install tempo grafana-community/tempo \
   --namespace tempo \
   --create-namespace \
   -f tempo-monolithic-values.yaml
@@ -148,11 +148,16 @@ helm install tempo grafana/tempo \
 
 ```yaml
 # tempo-distributed-values.yaml
-global:
+tempo:
   image:
     registry: docker.io
     repository: grafana/tempo
-    tag: 2.3.0
+    tag: 2.9.0
+  structuredConfig:
+    query_frontend:
+      search:
+        max_duration: 0s  # Disable max duration
+        default_result_limit: 20
 
 # Storage configuration
 storage:
@@ -171,6 +176,21 @@ serviceAccount:
   create: true
   annotations:
     eks.amazonaws.com/role-arn: arn:aws:iam::123456789:role/tempo-s3-role
+
+# Receivers
+traces:
+  jaeger:
+    grpc:
+      enabled: true
+    thriftHttp:
+      enabled: true
+  zipkin:
+    enabled: true
+  otlp:
+    grpc:
+      enabled: true
+    http:
+      enabled: true
 
 # Distributor
 distributor:
@@ -205,7 +225,7 @@ ingester:
   persistence:
     enabled: true
     size: 50Gi
-    storageClassName: fast-ssd
+    storageClass: fast-ssd
     
   config:
     replication_factor: 3
@@ -246,10 +266,10 @@ queryFrontend:
       cpu: 500m
       memory: 512Mi
       
-  query:
+  config:
     search:
-      max_duration: 0s  # Disable max duration
-      default_result_limit: 20
+      concurrent_jobs: 1000
+      max_spans_per_span_set: 100
 
 # Compactor
 compactor:
@@ -283,6 +303,8 @@ metricsGenerator:
   config:
     storage:
       path: /var/tempo/wal
+      remote_write:
+        - url: http://prometheus.monitoring:9090/api/v1/write
     registry:
       external_labels:
         source: tempo
@@ -299,6 +321,13 @@ metricsGenerator:
           - service.name
           - http.method
           - http.status_code
+
+overrides:
+  defaults:
+    metrics_generator:
+      processors:
+        - service-graphs
+        - span-metrics
 
 # Gateway (optional nginx-based load balancer)
 gateway:
@@ -343,7 +372,7 @@ memcached:
 ```
 
 ```bash
-helm install tempo grafana/tempo-distributed \
+helm install tempo grafana-community/tempo-distributed \
   --namespace tempo \
   --create-namespace \
   -f tempo-distributed-values.yaml
@@ -364,6 +393,13 @@ serviceAccount:
   create: true
   annotations:
     iam.gke.io/gcp-service-account: tempo@project-id.iam.gserviceaccount.com
+
+traces:
+  otlp:
+    grpc:
+      enabled: true
+    http:
+      enabled: true
 ```
 
 ### With MinIO Backend
@@ -376,15 +412,28 @@ storage:
     s3:
       bucket: tempo
       endpoint: minio.minio.svc:9000
-      access_key: minioadmin
-      secret_key: minioadmin
+      access_key: grafana-tempo
+      secret_key: supersecret
       insecure: true
       
 minio:
   enabled: true
   mode: standalone
+  rootUser: grafana-tempo
+  rootPassword: supersecret
+  buckets:
+    - name: tempo
+      policy: none
+      purge: false
   persistence:
     size: 100Gi
+
+traces:
+  otlp:
+    grpc:
+      enabled: true
+    http:
+      enabled: true
 ```
 
 ## Tempo Configuration
@@ -481,7 +530,7 @@ distributor:
       enabled: true
       include_all_attributes: true
 
-overrides:
+per_tenant_overrides:
   # Per-tenant overrides
   tenant_a:
     ingestion:
@@ -618,7 +667,7 @@ data:
 { status = error }
 
 # Find slow traces
-{ duration > 1s }
+{ trace:duration > 1s }
 
 # Find traces with specific attribute
 { span.http.method = "GET" && span.http.status_code = 500 }
@@ -635,18 +684,13 @@ data:
 # tempo-metrics-generator.yaml
 metricsGenerator:
   enabled: true
-  
   config:
-    storage:
-      path: /var/tempo/wal
-      
     registry:
       external_labels:
         source: tempo
         
     processor:
       service_graphs:
-        enabled: true
         histogram_buckets: [0.1, 0.2, 0.4, 0.8, 1.6, 3.2, 6.4, 12.8]
         dimensions:
           - http.method
@@ -656,7 +700,6 @@ metricsGenerator:
           - messaging.destination
           
       span_metrics:
-        enabled: true
         histogram_buckets: [0.002, 0.004, 0.008, 0.016, 0.032, 0.064, 0.128, 0.256, 0.512, 1.024, 2.048, 4.096, 8.192, 16.384]
         dimensions:
           - service.name
@@ -664,8 +707,17 @@ metricsGenerator:
           - http.method
           - http.status_code
           
-    remote_write:
-      - url: http://prometheus.monitoring:9090/api/v1/write
+    storage:
+      path: /var/tempo/wal
+      remote_write:
+        - url: http://prometheus.monitoring:9090/api/v1/write
+
+overrides:
+  defaults:
+    metrics_generator:
+      processors:
+        - service-graphs
+        - span-metrics
 ```
 
 ### Prometheus Rules for Service Graph
@@ -793,7 +845,9 @@ kubectl exec -n tempo deploy/tempo-distributed-distributor -- wget -qO- http://l
 curl http://tempo.example.com/api/traces/<trace-id>
 
 # Search traces
-curl "http://tempo.example.com/api/search?q={service.name=\"frontend\"}&limit=10"
+curl -G "http://tempo.example.com/api/search" \
+  --data-urlencode 'q={resource.service.name="frontend"}' \
+  --data-urlencode 'limit=10'
 ```
 
 ## Wrap-up
