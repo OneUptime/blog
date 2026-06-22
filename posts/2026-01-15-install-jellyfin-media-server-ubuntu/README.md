@@ -59,7 +59,7 @@ Add the Jellyfin GPG signing key to verify package authenticity.
 
 ```bash
 # Download and install Jellyfin's official GPG key
-curl -fsSL https://repo.jellyfin.org/ubuntu/jellyfin_team.gpg.key | sudo gpg --dearmor -o /usr/share/keyrings/jellyfin.gpg
+curl -fsSL https://repo.jellyfin.org/jellyfin_team.gpg.key | sudo gpg --dearmor -o /usr/share/keyrings/jellyfin.gpg
 ```
 
 Add the official Jellyfin repository to your system sources.
