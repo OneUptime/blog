@@ -49,7 +49,7 @@ const loginSchema = z.object({
   email: z
     .string()
     .min(1, 'Email is required')
-    .email('Invalid email address'),
+    .check(z.email('Invalid email address')),
   password: z
     .string()
     .min(1, 'Password is required')
@@ -70,7 +70,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 
 const loginSchema = z.object({
-  email: z.string().min(1, 'Email is required').email('Invalid email address'),
+  email: z.string().min(1, 'Email is required').check(z.email('Invalid email address')),
   password: z.string().min(1, 'Password is required').min(8, 'Password must be at least 8 characters'),
   rememberMe: z.boolean().optional(),
 });
@@ -156,13 +156,13 @@ const userSchema = z.object({
     .regex(/^[a-zA-Z0-9_]+$/, 'Username can only contain letters, numbers, and underscores'),
 
   // Email validation
-  email: z.string().email('Invalid email format'),
+  email: z.email('Invalid email format'),
 
   // URL validation
-  website: z.string().url('Invalid URL').optional(),
+  website: z.url('Invalid URL').optional(),
 
   // UUID validation
-  userId: z.string().uuid('Invalid user ID'),
+  userId: z.uuid('Invalid user ID'),
 
   // Custom transformations
   slug: z
@@ -234,19 +234,19 @@ const eventSchema = z.object({
 // Enum validation
 const roleSchema = z.enum(['admin', 'user', 'moderator']);
 
-// Native enum
+// TypeScript enum
 enum Status {
   Active = 'active',
   Inactive = 'inactive',
   Pending = 'pending',
 }
-const statusSchema = z.nativeEnum(Status);
+const statusSchema = z.enum(Status);
 
 // Discriminated unions
 const notificationSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('email'),
-    emailAddress: z.string().email(),
+    emailAddress: z.email(),
     subject: z.string(),
   }),
   z.object({
@@ -270,7 +270,7 @@ const orderSchema = z.object({
   items: z
     .array(
       z.object({
-        productId: z.string().uuid(),
+        productId: z.uuid(),
         quantity: z.number().int().positive(),
         price: z.number().positive(),
       })
@@ -393,7 +393,7 @@ function ShippingForm() {
 ```typescript
 const registrationSchema = z
   .object({
-    email: z.string().email('Invalid email'),
+    email: z.email('Invalid email'),
     password: z
       .string()
       .min(8, 'Password must be at least 8 characters')
@@ -424,7 +424,7 @@ const teamSchema = z.object({
     .array(
       z.object({
         name: z.string().min(1, 'Name is required'),
-        email: z.string().email('Invalid email'),
+        email: z.email('Invalid email'),
         role: z.enum(['leader', 'member', 'observer']),
       })
     )
@@ -466,8 +466,8 @@ function TeamForm() {
       </div>
 
       <h3>Team Members</h3>
-      {errors.members?.root && (
-        <span>{errors.members.root.message}</span>
+      {errors.members?.message && (
+        <span>{errors.members.message}</span>
       )}
 
       {fields.map((field, index) => (
@@ -536,7 +536,7 @@ const asyncUsernameSchema = z.object({
       },
       { message: 'Username is already taken' }
     ),
-  email: z.string().email(),
+  email: z.email(),
 });
 ```
 
@@ -595,36 +595,36 @@ function RegistrationForm() {
 import { z } from 'zod';
 
 // Custom error map for internationalization
-const customErrorMap: z.ZodErrorMap = (issue, ctx) => {
-  const t = getTranslation(); // Your i18n function
+z.config({
+  customError: (issue) => {
+    const t = getTranslation(); // Your i18n function
 
-  switch (issue.code) {
-    case z.ZodIssueCode.invalid_type:
-      if (issue.expected === 'string') {
-        return { message: t('validation.string_required') };
-      }
-      break;
-    case z.ZodIssueCode.too_small:
-      if (issue.type === 'string') {
-        return { message: t('validation.min_length', { min: issue.minimum }) };
-      }
-      break;
-    case z.ZodIssueCode.too_big:
-      if (issue.type === 'string') {
-        return { message: t('validation.max_length', { max: issue.maximum }) };
-      }
-      break;
-    case z.ZodIssueCode.invalid_string:
-      if (issue.validation === 'email') {
-        return { message: t('validation.invalid_email') };
-      }
-      break;
-  }
+    switch (issue.code) {
+      case 'invalid_type':
+        if (issue.expected === 'string') {
+          return t('validation.string_required');
+        }
+        break;
+      case 'too_small':
+        if ('origin' in issue && issue.origin === 'string') {
+          return t('validation.min_length', { min: issue.minimum });
+        }
+        break;
+      case 'too_big':
+        if ('origin' in issue && issue.origin === 'string') {
+          return t('validation.max_length', { max: issue.maximum });
+        }
+        break;
+      case 'invalid_format':
+        if ('format' in issue && issue.format === 'email') {
+          return t('validation.invalid_email');
+        }
+        break;
+    }
 
-  return { message: ctx.defaultError };
-};
-
-z.setErrorMap(customErrorMap);
+    return undefined;
+  },
+});
 ```
 
 ## Reusable Form Components
@@ -747,7 +747,7 @@ function FormSelect<T extends FieldValues>({
 const profileSchema = z.object({
   firstName: z.string().min(1, 'First name is required'),
   lastName: z.string().min(1, 'Last name is required'),
-  email: z.string().email('Invalid email'),
+  email: z.email('Invalid email'),
   country: z.string().min(1, 'Country is required'),
 });
 
@@ -812,7 +812,7 @@ function ProfileForm() {
 ### Handling Server Errors
 
 ```tsx
-import { useForm } from 'react-hook-form';
+import { Path, useForm } from 'react-hook-form';
 import { useState } from 'react';
 
 interface ServerError {
@@ -848,7 +848,7 @@ function SubmissionForm() {
         if (errorData.errors) {
           errorData.errors.forEach((error: ServerError) => {
             if (error.field) {
-              setError(error.field as keyof FormData, {
+              setError(error.field as Path<FormData>, {
                 type: 'server',
                 message: error.message,
               });
@@ -1027,7 +1027,7 @@ function ControlledForm() {
             isMulti
             options={skillOptions}
             value={skillOptions.filter((opt) => field.value?.includes(opt.value))}
-            onChange={(selected) => field.onChange(selected.map((s) => s.value))}
+            onChange={(selected) => field.onChange(selected?.map((s) => s.value) ?? [])}
             onBlur={field.onBlur}
           />
         )}
@@ -1089,7 +1089,7 @@ describe('loginSchema', () => {
 ### Integration Testing Forms
 
 ```tsx
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi } from 'vitest';
 
