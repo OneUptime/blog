@@ -26,7 +26,7 @@ Mailcow Dockerized is an open-source mail server suite that packages everything 
 - **MariaDB**: Database for storing configurations
 - **Unbound**: DNS resolver for DNSSEC validation
 - **ACME**: Automatic SSL/TLS certificate management via Let's Encrypt
-- **Netfilter**: Fail2ban integration for brute-force protection
+- **Netfilter**: Built-in fail2ban-like brute-force protection
 
 ### Why Choose Mailcow?
 
@@ -46,7 +46,7 @@ Before installing Mailcow, ensure your system meets the following requirements.
 # Minimum recommended specifications
 
 # - CPU: 2 cores (4+ recommended for production)
-# - RAM: 4 GB minimum (6+ GB recommended)
+# - RAM: 6 GB minimum + 1 GB swap (8+ GB recommended for production)
 # - Storage: 20 GB minimum (SSD recommended for better performance)
 # - Network: Static public IP address with proper reverse DNS
 ```
@@ -157,7 +157,7 @@ sudo ufw allow 993/tcp      # IMAPS (IMAP over TLS)
 sudo ufw allow 110/tcp      # POP3 (STARTTLS)
 sudo ufw allow 995/tcp      # POP3S (POP3 over TLS)
 
-# SOGo/CalDAV/CardDAV (optional, for calendar and contacts)
+# ManageSieve (optional, for managing server-side mail filters)
 sudo ufw allow 4190/tcp     # ManageSieve
 
 # Verify firewall rules
@@ -259,8 +259,9 @@ SKIP_CLAMD=n
 # Enable SOGo groupware (webmail, calendar, contacts)
 SKIP_SOGO=n
 
-# Enable Solr full-text search (requires additional RAM)
-SKIP_SOLR=y
+# Full-text search via Flatcurve (Solr was removed in the 2025-01 release)
+# Set to 'n' to enable full-text search
+SKIP_FTS=y
 
 # Compose project name (don't change unless you know what you're doing)
 COMPOSE_PROJECT_NAME=mailcowdockerized
@@ -289,8 +290,8 @@ If you're running on a server with limited RAM, consider these optimizations:
 # Disable ClamAV (saves ~1GB RAM, but no antivirus scanning)
 SKIP_CLAMD=y
 
-# Disable Solr (saves ~512MB RAM, but no full-text search)
-SKIP_SOLR=y
+# Disable full-text search (Flatcurve; saves resources, but no full-text search)
+SKIP_FTS=y
 
 # Optionally disable SOGo if you don't need webmail
 # SKIP_SOGO=y
@@ -444,14 +445,15 @@ Mailcow uses Let's Encrypt for automatic certificate management by default.
 
 # Force certificate renewal
 cd /opt/mailcow-dockerized
-docker compose exec acme-mailcow /etc/cron.daily/acme
+touch data/assets/ssl/force_renew
+docker compose restart acme-mailcow
 ```
 
 ### Check Certificate Status
 
 ```bash
-# View current certificates
-docker compose exec acme-mailcow /etc/cron.daily/acme --status
+# Watch the ACME client logs for certificate status and renewal progress
+docker compose logs --tail=200 -f acme-mailcow
 
 # View certificate expiration dates
 docker compose exec nginx-mailcow openssl x509 -in /etc/ssl/mail/cert.pem -noout -dates
@@ -805,7 +807,7 @@ docker compose exec mysql-mailcow mysql -u mailcow -p mailcow -e "SELECT usernam
 
 # Reset admin password
 cd /opt/mailcow-dockerized
-./helper-scripts/admin_reset_password.sh
+./helper-scripts/mailcow-reset-admin.sh
 ```
 
 ### DNS Issues
@@ -827,11 +829,12 @@ docker compose exec postfix-mailcow postconf -n | grep smtpd_sender_restrictions
 ### SSL Certificate Issues
 
 ```bash
-# Check certificate status
-docker compose exec acme-mailcow /etc/cron.daily/acme --status
+# Check certificate status via the ACME client logs
+docker compose logs --tail=200 acme-mailcow
 
 # Force certificate renewal
-docker compose exec acme-mailcow /etc/cron.daily/acme --force
+touch data/assets/ssl/force_renew
+docker compose restart acme-mailcow
 
 # View certificate details
 docker compose exec nginx-mailcow openssl x509 -in /etc/ssl/mail/cert.pem -text -noout
