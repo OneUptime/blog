@@ -429,7 +429,7 @@ metadata:
   namespace: default
   annotations:
     # Explicitly select the IPv6 pool
-    metallb.universe.tf/address-pool: ipv6-pool
+    metallb.io/address-pool: ipv6-pool
 spec:
   type: LoadBalancer
 
@@ -464,7 +464,7 @@ metadata:
   namespace: default
   annotations:
     # Use the dual-stack pool
-    metallb.universe.tf/address-pool: dual-stack-pool
+    metallb.io/address-pool: dual-stack-pool
 spec:
   type: LoadBalancer
 
@@ -498,12 +498,15 @@ kind: Service
 metadata:
   name: my-app-specific-ip
   namespace: default
+  annotations:
+    # Request a specific IP from the pool.
+    # spec.loadBalancerIP is deprecated in the Kubernetes API, so use
+    # this annotation instead. It also accepts a comma-separated list
+    # of IPs for dual-stack services.
+    # The address must be within your configured address pools.
+    metallb.io/loadBalancerIPs: "2001:db8:1234:5678::150"
 spec:
   type: LoadBalancer
-
-  # Request specific IPs
-  # These must be within your configured address pools
-  loadBalancerIP: "2001:db8:1234:5678::150"
 
   ipFamilyPolicy: SingleStack
   ipFamilies:
@@ -557,7 +560,7 @@ metadata:
   namespace: metallb-system
 spec:
   addresses:
-    - 2001:db8:prod::100-2001:db8:prod::1ff
+    - 2001:db8:1234:1000::100-2001:db8:1234:1000::1ff
   autoAssign: false
 
 ---
@@ -568,7 +571,7 @@ metadata:
   namespace: metallb-system
 spec:
   addresses:
-    - 2001:db8:stage::100-2001:db8:stage::1ff
+    - 2001:db8:1234:2000::100-2001:db8:1234:2000::1ff
   autoAssign: false
 
 ---
@@ -579,7 +582,7 @@ metadata:
   namespace: metallb-system
 spec:
   addresses:
-    - 2001:db8:dev::100-2001:db8:dev::1ff
+    - 2001:db8:1234:3000::100-2001:db8:1234:3000::1ff
   autoAssign: true  # Default for dev services
 
 ---
@@ -664,7 +667,7 @@ metadata:
   name: rack1-router-ipv6
   namespace: metallb-system
 spec:
-  peerAddress: 2001:db8:rack1::1
+  peerAddress: 2001:db8:1234:a001::1
   peerASN: 64512
   myASN: 64513
   # Only nodes in rack1 peer with this router
@@ -679,7 +682,7 @@ metadata:
   name: rack2-router-ipv6
   namespace: metallb-system
 spec:
-  peerAddress: 2001:db8:rack2::1
+  peerAddress: 2001:db8:1234:a002::1
   peerASN: 64512
   myASN: 64513
   nodeSelectors:
@@ -815,9 +818,9 @@ spec:
     # Allow traffic from specific IPv6 ranges
     - from:
         - ipBlock:
-            cidr: 2001:db8:allowed::/48
+            cidr: 2001:db8:1::/48
         - ipBlock:
-            cidr: 2001:db8:office::/64
+            cidr: 2001:db8:2:1::/64
       ports:
         - protocol: TCP
           port: 8080
@@ -910,8 +913,8 @@ metallb_bgp_session_up{peer="2001:db8:1234:5678::1"}
 # Number of announced routes
 metallb_bgp_announced_prefixes_total
 
-# L2 leader status for services
-metallb_layer2_leader{service="default/my-app-ipv6"}
+# Which node is announcing each service IP (Layer 2 mode)
+metallb_speaker_announced{protocol="layer2",service="default/my-app-ipv6"}
 
 # Address pool utilization
 metallb_allocator_addresses_total{pool="ipv6-pool"}
@@ -931,8 +934,8 @@ metallb_bgp_session_up{peer=~"2001:.*"}
 # Services per IPv6 Pool
 count by (pool) (metallb_allocator_addresses_in_use_total{pool=~".*ipv6.*"})
 
-# L2 Failover Events (leader changes)
-changes(metallb_layer2_leader[5m])
+# L2 Failover Events (announcing-node changes)
+changes(metallb_speaker_announced{protocol="layer2"}[5m])
 ```
 
 ## Best Practices
