@@ -214,15 +214,15 @@ network:
         - 172.16.0.100/24  # VIP for web service
         - 172.16.0.101/24  # VIP for database
         - 172.16.0.102/24  # VIP for API service
-      # Enable ARP filtering for VIP interfaces
+      # Mark as optional so boot is not delayed if the link is absent
       optional: true
 ```
 
 ### Applying Netplan Configuration
 
 ```bash
-# Test the configuration (dry run)
-# This checks syntax without applying changes
+# Try the configuration with automatic rollback if not confirmed
+# This applies changes temporarily, so use it from a console when possible
 sudo netplan try
 
 # Generate backend configuration files
@@ -281,9 +281,9 @@ sudo ip addr add 192.168.1.100/24 dev eth0 label eth0:vip1
 # Add a VIP with broadcast address specified
 sudo ip addr add 192.168.1.100/24 broadcast 192.168.1.255 dev eth0
 
-# Add a secondary IP without creating a new broadcast domain
-# The 'secondary' keyword marks this as a secondary address
-sudo ip addr add 192.168.1.101/24 dev eth0 secondary
+# Add another address on the same interface
+# Linux will show additional IPv4 addresses in the same prefix as secondary
+sudo ip addr add 192.168.1.101/24 dev eth0
 ```
 
 ### Viewing IP Configuration
@@ -473,7 +473,7 @@ vrrp_instance VI_WEB {
     # Authentication between VRRP peers
     authentication {
         auth_type PASS
-        auth_pass secretpass123
+        auth_pass secret1
     }
 
     # Virtual IP address(es) to manage
@@ -542,7 +542,7 @@ vrrp_instance VI_WEB {
 
     authentication {
         auth_type PASS
-        auth_pass WebVIP2024!
+        auth_pass WebVIP24
     }
 
     virtual_ipaddress {
@@ -571,7 +571,7 @@ vrrp_instance VI_DB {
 
     authentication {
         auth_type PASS
-        auth_pass DBVIP2024!
+        auth_pass DBVIP24
     }
 
     virtual_ipaddress {
@@ -628,7 +628,7 @@ vrrp_instance VI_WEB {
 
     authentication {
         auth_type PASS
-        auth_pass WebVIP2024!
+        auth_pass WebVIP24
     }
 
     virtual_ipaddress {
@@ -653,7 +653,7 @@ vrrp_instance VI_DB {
 
     authentication {
         auth_type PASS
-        auth_pass DBVIP2024!
+        auth_pass DBVIP24
     }
 
     virtual_ipaddress {
@@ -1052,10 +1052,11 @@ vrrp_instance VI_CLOUD {
 
     authentication {
         auth_type PASS
-        auth_pass CloudVIP2024!
+        auth_pass Cloud24
     }
 
     # No virtual_ipaddress needed - cloud API manages the IP
+    no_virtual_ipaddress
 
     # Call cloud API on state change
     notify_master "/usr/local/bin/cloud_failover.sh master"
@@ -1227,7 +1228,7 @@ sudo ip neigh add 192.168.1.100 lladdr aa:bb:cc:dd:ee:ff dev eth0
 # Delete ARP entry
 sudo ip neigh del 192.168.1.100 dev eth0
 
-# Force ARP refresh for a specific IP
+# Mark an existing ARP entry as reachable
 sudo ip neigh change 192.168.1.100 dev eth0 nud reachable
 ```
 
@@ -1829,7 +1830,7 @@ http {
 
     # HTTPS server - VIP binding
     server {
-        listen 192.168.1.100:443 ssl http2;
+        listen 192.168.1.100:443 ssl;
         server_name example.com www.example.com;
 
         ssl_certificate /etc/ssl/certs/example.com.crt;
@@ -1909,7 +1910,7 @@ vrrp_instance VI_LB {
 
     authentication {
         auth_type PASS
-        auth_pass LBVIP2024!
+        auth_pass LBVIP24
     }
 
     virtual_ipaddress {
@@ -2041,7 +2042,7 @@ vrrp_instance VI_PUBLIC {
 
     authentication {
         auth_type PASS
-        auth_pass PublicVIP!
+        auth_pass PubVIP24
     }
 
     # VIP on public network
@@ -2070,7 +2071,7 @@ vrrp_instance VI_PRIVATE {
 
     authentication {
         auth_type PASS
-        auth_pass PrivateVIP!
+        auth_pass PriVIP24
     }
 
     # VIP on private network
@@ -2331,7 +2332,7 @@ ping -c 5 192.168.1.11  # From node 1 to node 2
 # Edit /etc/netplan/01-netcfg.yaml to include VIP
 
 # Solution 2: Create systemd service for VIP
-cat > /etc/systemd/system/vip.service << 'EOF'
+sudo tee /etc/systemd/system/vip.service > /dev/null << 'EOF'
 [Unit]
 Description=Configure Virtual IP
 After=network-online.target
@@ -2346,6 +2347,7 @@ ExecStop=/sbin/ip addr del 192.168.1.100/24 dev eth0
 WantedBy=multi-user.target
 EOF
 
+sudo systemctl daemon-reload
 sudo systemctl enable vip.service
 ```
 
@@ -2370,8 +2372,8 @@ sudo ss -tlnp | grep ":80"
 
 # Cause 3: net.ipv4.ip_nonlocal_bind not enabled
 # Solution: Enable nonlocal bind
-echo "net.ipv4.ip_nonlocal_bind = 1" >> /etc/sysctl.conf
-sysctl -p
+echo "net.ipv4.ip_nonlocal_bind = 1" | sudo tee -a /etc/sysctl.conf
+sudo sysctl -p
 ```
 
 ### Monitoring and Alerting Script
