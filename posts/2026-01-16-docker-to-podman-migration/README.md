@@ -62,7 +62,7 @@ podman version
 ### Linux (RHEL/Fedora)
 
 ```bash
-# Podman is pre-installed on RHEL/Fedora
+# Podman is available from the default repositories
 sudo dnf install -y podman
 
 # Verify
@@ -105,9 +105,6 @@ podman machine start
 alias docker=podman
 
 # Or install podman-docker
-# macOS
-brew install podman-docker
-
 # Linux
 sudo apt-get install podman-docker
 ```
@@ -131,7 +128,7 @@ podman-compose logs
 ```bash
 # Set Docker host to Podman socket
 # macOS
-export DOCKER_HOST="unix://$HOME/.local/share/containers/podman/machine/podman.sock"
+export DOCKER_HOST="unix://$(podman machine inspect --format '{{.ConnectionInfo.PodmanSocket.Path}}')"
 
 # Linux
 export DOCKER_HOST="unix:///run/user/$(id -u)/podman/podman.sock"
@@ -237,10 +234,8 @@ podman volume inspect myvolume
 ### Compatibility Adjustments
 
 ```yaml
-# docker-compose.yml
+# compose.yml
 # Most configurations work unchanged
-
-version: '3.8'
 
 services:
   web:
@@ -282,7 +277,7 @@ services:
 # Podman provides different socket locations
 
 # macOS (Podman machine)
-export DOCKER_HOST="unix://$HOME/.local/share/containers/podman/machine/podman.sock"
+export DOCKER_HOST="unix://$(podman machine inspect --format '{{.ConnectionInfo.PodmanSocket.Path}}')"
 
 # Linux (rootless)
 export DOCKER_HOST="unix:///run/user/$(id -u)/podman/podman.sock"
@@ -295,14 +290,14 @@ export DOCKER_HOST="unix:///run/podman/podman.sock"
 
 ```bash
 # Podman has native multi-arch support
-podman build --platform linux/amd64,linux/arm64 -t myimage .
+podman build --platform linux/amd64,linux/arm64 --manifest myimage:latest .
 
 # For buildx compatibility, use podman-buildx
 # Or build with manifest
 podman manifest create myimage:latest
 podman build --platform linux/amd64 --manifest myimage:latest .
 podman build --platform linux/arm64 --manifest myimage:latest .
-podman manifest push myimage:latest
+podman manifest push myimage:latest docker://registry.example.com/myimage:latest
 ```
 
 ### Networking Differences
@@ -313,19 +308,25 @@ services:
   app:
     networks:
       - default
+```
 
+```yaml
 # Podman may need explicit network
 services:
   app:
     networks:
       - podman  # or create custom network
+
+networks:
+  podman:
+    driver: bridge
 ```
 
 ### Root vs Rootless
 
 ```bash
 # Rootless Podman (default, more secure)
-podman run nginx  # Runs as current user
+podman run nginx  # Runs without a root daemon
 
 # Rootful Podman (when needed)
 sudo podman run nginx
@@ -408,6 +409,7 @@ podman run --security-opt label=disable -v ./data:/data myapp
 ```bash
 # Podman searches multiple registries
 # Configure default registry
+mkdir -p ~/.config/containers
 cat >> ~/.config/containers/registries.conf << EOF
 unqualified-search-registries = ["docker.io", "quay.io"]
 EOF
@@ -493,4 +495,3 @@ echo "=== Migration Complete ==="
 | License | Proprietary (Desktop) | Apache 2.0 |
 
 Podman provides Docker-compatible commands with a daemonless architecture. Most Docker workflows work unchanged with Podman after setting up proper aliases and environment variables. The main adjustments are for socket paths and rootless permissions on Linux. For other Docker Desktop alternatives, see our post on [Docker Desktop Alternatives](https://oneuptime.com/blog/post/2026-01-16-docker-desktop-alternatives/view).
-
