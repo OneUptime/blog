@@ -84,26 +84,28 @@ Building from source gives you the newest features and allows custom compilation
 
 ```bash
 # Install build dependencies
-# libncursesw5-dev: Terminal UI support with wide character handling
+# libncursesw6-dev: Terminal UI support with wide character handling
 # libgeoip-dev: Legacy GeoIP support
 # libmaxminddb-dev: Modern GeoIP2 database support
 # libssl-dev: SSL/TLS support for WebSocket connections
-sudo apt install build-essential libncursesw5-dev libgeoip-dev libmaxminddb-dev libssl-dev -y
+# zlib1g-dev: Support for reading compressed .gz log files directly
+sudo apt install build-essential libncursesw6-dev libgeoip-dev libmaxminddb-dev libssl-dev zlib1g-dev -y
 
 # Download the latest GoAccess source code
-wget https://tar.goaccess.io/goaccess-1.9.3.tar.gz
+wget https://tar.goaccess.io/goaccess-1.10.2.tar.gz
 
 # Extract the archive
-tar -xzvf goaccess-1.9.3.tar.gz
+tar -xzvf goaccess-1.10.2.tar.gz
 
 # Enter the source directory
-cd goaccess-1.9.3
+cd goaccess-1.10.2
 
 # Configure with all optional features enabled
 # --enable-utf8: Support for Unicode characters in reports
 # --enable-geoip=mmdb: Use modern MaxMind DB format for GeoIP
 # --with-openssl: Enable SSL for secure WebSocket connections
-./configure --enable-utf8 --enable-geoip=mmdb --with-openssl
+# --with-zlib: Enable direct parsing of compressed .gz log files
+./configure --enable-utf8 --enable-geoip=mmdb --with-openssl --with-zlib
 
 # Compile GoAccess (use -j$(nproc) to parallelize across all CPU cores)
 make -j$(nproc)
@@ -121,7 +123,7 @@ goaccess --version
 
 ## Basic Usage with Different Log Formats
 
-GoAccess automatically detects common log formats, but specifying the format explicitly ensures accurate parsing.
+GoAccess can prompt you to select a common log format, but specifying the format explicitly ensures accurate parsing.
 
 ### Analyzing Nginx Logs
 
@@ -274,7 +276,7 @@ goaccess /var/log/nginx/access.log \
     --log-format=COMBINED \
     -o /var/www/html/report.html \
     --real-time-html \
-    --ws-url=wss://yourserver.com:7890 \
+    --ws-url=ws://yourserver.com:7890 \
     --port=7890 \
     --daemonize
 ```
@@ -403,8 +405,7 @@ Parse JSON-formatted logs common in modern deployments.
 # %x matches the ISO8601 timestamp
 goaccess /var/log/nginx/access.json \
     --log-format='{"time":"%x","remote_addr":"%h","request":"%r","status":%s,"body_bytes_sent":%b,"http_referer":"%R","http_user_agent":"%u","request_time":%T}' \
-    --date-format='%Y-%m-%dT%H:%M:%S' \
-    --time-format='%H:%M:%S'
+    --datetime-format='%Y-%m-%dT%H:%M:%S%z'
 ```
 
 ## Filtering and Excluding Data
@@ -419,16 +420,10 @@ Exclude requests for static files to focus on dynamic content.
 # Exclude common static file extensions from analysis
 # --exclude-ip: Exclude specific IP addresses (useful for health checks)
 # --ignore-panel: Hide specific panels from the dashboard
-# Use multiple --ignore-referer to exclude various patterns
+# --ignore-statics=panel excludes static file requests from panels
 goaccess /var/log/nginx/access.log \
     --log-format=COMBINED \
-    --ignore-referer="*.css" \
-    --ignore-referer="*.js" \
-    --ignore-referer="*.png" \
-    --ignore-referer="*.jpg" \
-    --ignore-referer="*.gif" \
-    --ignore-referer="*.ico" \
-    --ignore-referer="*.woff*"
+    --ignore-statics=panel
 ```
 
 ### Filter by Status Code
@@ -461,7 +456,7 @@ Filter out requests from internal IP addresses and health check bots.
 
 ```bash
 # Exclude localhost and internal network traffic
-# --exclude-ip supports CIDR notation for subnets
+# --exclude-ip supports single IPs and dash-separated IP ranges
 goaccess /var/log/nginx/access.log \
     --log-format=COMBINED \
     --exclude-ip=127.0.0.1 \
@@ -475,25 +470,11 @@ goaccess /var/log/nginx/access.log \
 Filter out known web crawlers for cleaner traffic analysis.
 
 ```bash
-# Create a file containing crawler patterns to exclude
-cat > /etc/goaccess/crawlers.list << 'EOF'
-Googlebot
-Bingbot
-baiduspider
-YandexBot
-DuckDuckBot
-Slurp
-facebookexternalhit
-LinkedInBot
-Twitterbot
-EOF
-
-# Use the crawler list with GoAccess
-# --ignore-crawlers excludes requests matching patterns in the list
+# Use GoAccess's built-in crawler detection
+# --ignore-crawlers excludes detected crawler requests from panels
 goaccess /var/log/nginx/access.log \
     --log-format=COMBINED \
-    --ignore-crawlers \
-    --crawlers-only
+    --ignore-crawlers
 ```
 
 ## GeoIP Integration
@@ -788,9 +769,11 @@ Wants=nginx.service
 # Simple service type - process starts and stays in foreground
 Type=simple
 
-# User and group for the service (www-data has log read access)
+# User and group for the service
 User=www-data
 Group=www-data
+# adm allows reading Ubuntu web server logs such as /var/log/nginx/access.log
+SupplementaryGroups=adm
 
 # Command to run GoAccess with real-time HTML output
 # Using tail -F to follow log rotation
@@ -799,10 +782,9 @@ ExecStart=/bin/bash -c 'tail -F /var/log/nginx/access.log | \
     --log-format=COMBINED \
     --geoip-database=/var/lib/GeoIP/GeoLite2-City.mmdb \
     --real-time-html \
-    --ws-url=wss://stats.yourdomain.com:7890 \
+    --ws-url=wss://stats.yourdomain.com/ws \
+    --addr=127.0.0.1 \
     --port=7890 \
-    --ssl-cert=/etc/letsencrypt/live/yourdomain.com/fullchain.pem \
-    --ssl-key=/etc/letsencrypt/live/yourdomain.com/privkey.pem \
     -o /var/www/html/report.html'
 
 # Restart automatically if the service crashes
@@ -963,11 +945,11 @@ Common issues and their solutions.
 The most common error is mismatched log formats.
 
 ```bash
-# Debug log format issues with verbose output
-# --debug-file saves parsing errors to a file for review
+# Capture invalid requests for review
+# --invalid-requests saves lines that could not be parsed
 goaccess /var/log/nginx/access.log \
     --log-format=COMBINED \
-    --debug-file=/tmp/goaccess-debug.log
+    --invalid-requests=/tmp/goaccess-invalid.log
 
 # View the first few lines of your log to understand the format
 head -5 /var/log/nginx/access.log
@@ -1001,7 +983,7 @@ Diagnose real-time dashboard connection problems.
 
 ```bash
 # Check if GoAccess WebSocket server is running
-sudo netstat -tlnp | grep 7890
+sudo ss -tlnp | grep 7890
 
 # Test WebSocket connectivity locally
 curl -i -N \
