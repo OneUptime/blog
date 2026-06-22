@@ -90,13 +90,13 @@ react-ssr-express/
 npm init -y
 
 # Core dependencies
-npm install react react-dom express
+npm install react react-dom express react-router-dom
 
 # TypeScript and types
 npm install -D typescript @types/react @types/react-dom @types/express @types/node
 
 # Build tools
-npm install -D webpack webpack-cli webpack-node-externals ts-loader css-loader style-loader
+npm install -D webpack webpack-cli webpack-node-externals webpack-manifest-plugin ts-loader css-loader style-loader null-loader
 
 # Additional utilities
 npm install -D nodemon concurrently cross-env
@@ -162,6 +162,7 @@ SSR requires two separate Webpack configurations: one for the client bundle and 
 // webpack/webpack.client.ts
 import path from 'path';
 import webpack from 'webpack';
+import { WebpackManifestPlugin } from 'webpack-manifest-plugin';
 
 const clientConfig: webpack.Configuration = {
   mode: process.env.NODE_ENV === 'production' ? 'production' : 'development',
@@ -171,7 +172,7 @@ const clientConfig: webpack.Configuration = {
   },
   output: {
     path: path.resolve(__dirname, '../dist/public'),
-    filename: '[name].[contenthash].js',
+    filename: process.env.NODE_ENV === 'production' ? '[name].[contenthash].js' : '[name].js',
     publicPath: '/static/',
     clean: true,
   },
@@ -200,6 +201,10 @@ const clientConfig: webpack.Configuration = {
       'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV),
       __CLIENT__: true,
       __SERVER__: false,
+    }),
+    new WebpackManifestPlugin({
+      publicPath: '/static/',
+      fileName: 'manifest.json',
     }),
   ],
   optimization: {
@@ -283,7 +288,6 @@ Now let us create the Express server that will handle SSR.
 // src/server/index.ts
 import express, { Request, Response, NextFunction } from 'express';
 import path from 'path';
-import fs from 'fs';
 import { renderApp } from './render';
 import { errorHandler } from './middleware/errorHandler';
 
@@ -311,7 +315,7 @@ app.use('/api', (req: Request, res: Response) => {
 });
 
 // SSR handler for all other routes
-app.get('*', async (req: Request, res: Response, next: NextFunction) => {
+app.get('/{*splat}', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const html = await renderApp(req);
     res.setHeader('Content-Type', 'text/html');
@@ -338,9 +342,9 @@ This is where the magic happens. We will create a render function that converts 
 ```typescript
 // src/server/render.tsx
 import React from 'react';
-import { renderToString, renderToPipeableStream } from 'react-dom/server';
+import { renderToString } from 'react-dom/server';
 import { StaticRouter } from 'react-router-dom/server';
-import { Request, Response } from 'express';
+import { Request } from 'express';
 import fs from 'fs';
 import path from 'path';
 import App from '../client/App';
@@ -351,10 +355,11 @@ const getClientAssets = (): { js: string[]; css: string[] } => {
   const manifestPath = path.join(__dirname, 'public', 'manifest.json');
 
   if (fs.existsSync(manifestPath)) {
-    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as Record<string, string>;
+    const files = Object.values(manifest);
     return {
-      js: Object.values(manifest).filter((f: string) => f.endsWith('.js')),
-      css: Object.values(manifest).filter((f: string) => f.endsWith('.css')),
+      js: files.filter(f => f.endsWith('.js')),
+      css: files.filter(f => f.endsWith('.css')),
     };
   }
 
@@ -472,7 +477,7 @@ export function renderWithString(url: string, data: unknown): string {
 **Cons:**
 - Blocks the server until rendering is complete
 - No streaming support
-- Suspense boundaries are not supported
+- Suspense support is limited: if a component suspends, React emits the nearest fallback HTML immediately
 
 ### Using renderToPipeableStream
 
@@ -486,6 +491,42 @@ import { StaticRouter } from 'react-router-dom/server';
 import { Request, Response } from 'express';
 import App from '../client/App';
 import { DataProvider } from '../shared/context/DataContext';
+
+function safeSerialize(data: unknown): string {
+  return JSON.stringify(data).replace(/</g, '\\u003c');
+}
+
+function HtmlDocument({
+  initialData,
+  location,
+}: {
+  initialData: Record<string, unknown>;
+  location: string;
+}) {
+  return (
+    <html lang="en">
+      <head>
+        <meta charSet="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>React SSR with Express</title>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `window.__INITIAL_DATA__ = ${safeSerialize(initialData)};`,
+          }}
+        />
+      </head>
+      <body>
+        <div id="root">
+          <DataProvider initialData={initialData}>
+            <StaticRouter location={location}>
+              <App />
+            </StaticRouter>
+          </DataProvider>
+        </div>
+      </body>
+    </html>
+  );
+}
 
 interface StreamRenderOptions {
   onShellReady?: () => void;
@@ -504,25 +545,14 @@ export function renderWithStream(
   let didError = false;
 
   const { pipe, abort } = renderToPipeableStream(
-    <DataProvider initialData={initialData}>
-      <StaticRouter location={req.url}>
-        <App />
-      </StaticRouter>
-    </DataProvider>,
+    <HtmlDocument initialData={initialData} location={req.url} />,
     {
       bootstrapScripts: ['/static/client.js'],
       onShellReady() {
         // The shell is ready, start streaming
         res.statusCode = didError ? 500 : 200;
         res.setHeader('Content-Type', 'text/html');
-
-        // Write the HTML document start
-        res.write('<!DOCTYPE html><html lang="en"><head>');
-        res.write('<meta charset="UTF-8">');
-        res.write('<meta name="viewport" content="width=device-width, initial-scale=1.0">');
-        res.write('<title>React SSR with Express</title>');
-        res.write(`<script>window.__INITIAL_DATA__ = ${JSON.stringify(initialData).replace(/</g, '\\u003c')};</script>`);
-        res.write('</head><body><div id="root">');
+        res.write('<!DOCTYPE html>');
 
         // Pipe the React content
         pipe(res);
@@ -683,18 +713,18 @@ Effective data fetching is crucial for SSR performance. Here are several strateg
 
 ```typescript
 // src/shared/routes/routes.ts
-import { ComponentType } from 'react';
+import { ComponentType, LazyExoticComponent, lazy } from 'react';
 
 interface RouteConfig {
   path: string;
-  component: ComponentType;
+  component: ComponentType | LazyExoticComponent<ComponentType>;
   fetchData?: (params: Record<string, string>) => Promise<unknown>;
 }
 
 export const routes: RouteConfig[] = [
   {
     path: '/',
-    component: () => import('../components/Home').then(m => m.default),
+    component: lazy(() => import('../components/Home')),
     fetchData: async () => {
       const response = await fetch('https://api.example.com/home');
       return response.json();
@@ -702,7 +732,7 @@ export const routes: RouteConfig[] = [
   },
   {
     path: '/products/:id',
-    component: () => import('../components/ProductDetail').then(m => m.default),
+    component: lazy(() => import('../components/ProductDetail')),
     fetchData: async (params) => {
       const response = await fetch(`https://api.example.com/products/${params.id}`);
       return response.json();
@@ -803,11 +833,13 @@ export function useRouteData<T>(): T | undefined {
 
 ### Async Data Fetching with Suspense
 
+Suspense-enabled data fetching without a framework or library-provided data source is still an advanced pattern. For production applications, prefer React Router data routers, Relay, Next.js, or another data layer that explicitly supports Suspense.
+
 ```typescript
 // src/shared/utils/createResource.ts
 type Status = 'pending' | 'success' | 'error';
 
-interface Resource<T> {
+export interface Resource<T> {
   read(): T;
 }
 
@@ -843,8 +875,8 @@ export function createResource<T>(promise: Promise<T>): Resource<T> {
 
 // Usage in a component
 // src/shared/components/ProductList.tsx
-import React, { Suspense } from 'react';
-import { createResource } from '../utils/createResource';
+import React, { Suspense, useMemo } from 'react';
+import { createResource, Resource } from '../utils/createResource';
 
 interface Product {
   id: string;
@@ -852,12 +884,14 @@ interface Product {
   price: number;
 }
 
-const productsResource = createResource<Product[]>(
-  fetch('/api/products').then(res => res.json())
-);
+function createProductsResource(baseUrl = '') {
+  return createResource<Product[]>(
+    fetch(`${baseUrl}/api/products`).then(res => res.json())
+  );
+}
 
-const ProductListContent: React.FC = () => {
-  const products = productsResource.read();
+const ProductListContent: React.FC<{ resource: Resource<Product[]> }> = ({ resource }) => {
+  const products = resource.read();
 
   return (
     <ul>
@@ -870,10 +904,19 @@ const ProductListContent: React.FC = () => {
   );
 };
 
-export const ProductList: React.FC = () => {
+interface ProductListProps {
+  apiBaseUrl?: string;
+}
+
+export const ProductList: React.FC<ProductListProps> = ({ apiBaseUrl = '' }) => {
+  const productsResource = useMemo(
+    () => createProductsResource(apiBaseUrl),
+    [apiBaseUrl]
+  );
+
   return (
     <Suspense fallback={<div>Loading products...</div>}>
-      <ProductListContent />
+      <ProductListContent resource={productsResource} />
     </Suspense>
   );
 };
@@ -1025,6 +1068,8 @@ export function getInitialState<T>(): T {
 Robust error handling is essential for a production-ready SSR application.
 
 ### Error Boundary Component
+
+Error boundaries are useful after hydration and during client-side navigation, but they do not catch errors during server-side rendering. Keep the server middleware and render fallback paths below for SSR failures.
 
 ```typescript
 // src/shared/components/ErrorBoundary.tsx
