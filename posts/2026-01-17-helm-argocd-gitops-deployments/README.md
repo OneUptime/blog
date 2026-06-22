@@ -239,15 +239,18 @@ spec:
       name: 'myapp-{{path.basename}}'
     spec:
       project: default
-      source:
-        repoURL: https://github.com/myorg/helm-charts.git
-        path: charts/myapp
-        targetRevision: main
-        helm:
-          releaseName: myapp
-          valueFiles:
-            - values.yaml
-            - '../../gitops-config/environments/{{path.basename}}/values.yaml'
+      sources:
+        - repoURL: https://github.com/myorg/helm-charts.git
+          path: charts/myapp
+          targetRevision: main
+          helm:
+            releaseName: myapp
+            valueFiles:
+              - values.yaml
+              - '$values/environments/{{path.basename}}/values.yaml'
+        - repoURL: https://github.com/myorg/gitops-config.git
+          targetRevision: main
+          ref: values
       destination:
         server: https://kubernetes.default.svc
         namespace: 'myapp-{{path.basename}}'
@@ -274,19 +277,16 @@ spec:
         elements:
           - cluster: production
             url: https://prod-cluster.example.com
-            values:
-              replicaCount: "5"
-              environment: production
+            replicaCount: "5"
+            environment: production
           - cluster: staging
             url: https://staging-cluster.example.com
-            values:
-              replicaCount: "2"
-              environment: staging
+            replicaCount: "2"
+            environment: staging
           - cluster: development
             url: https://dev-cluster.example.com
-            values:
-              replicaCount: "1"
-              environment: development
+            replicaCount: "1"
+            environment: development
               
   template:
     metadata:
@@ -301,9 +301,9 @@ spec:
           releaseName: myapp
           parameters:
             - name: replicaCount
-              value: '{{values.replicaCount}}'
+              value: '{{replicaCount}}'
             - name: environment
-              value: '{{values.environment}}'
+              value: '{{environment}}'
       destination:
         server: '{{url}}'
         namespace: myapp
@@ -596,9 +596,10 @@ config:
       api_url: https://ghcr.io
       credentials: pullsecret:argocd/ghcr-credentials
       
-  argocd:
-    grpcWeb: true
-    serverAddress: argocd-server.argocd
+extraArgs:
+  - --argocd-grpc-web
+  - --argocd-server-addr
+  - argocd-server.argocd:443
 ```
 
 ### Application with Image Updates
@@ -614,6 +615,8 @@ metadata:
     argocd-image-updater.argoproj.io/image-list: myimage=myorg/myapp
     argocd-image-updater.argoproj.io/myimage.update-strategy: semver
     argocd-image-updater.argoproj.io/myimage.allow-tags: regexp:^v[0-9]+\.[0-9]+\.[0-9]+$
+    argocd-image-updater.argoproj.io/myimage.helm.image-name: image.repository
+    argocd-image-updater.argoproj.io/myimage.helm.image-tag: image.tag
     argocd-image-updater.argoproj.io/write-back-method: git
 spec:
   project: default
