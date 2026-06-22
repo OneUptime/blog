@@ -30,13 +30,16 @@ choco install pulumi
 
 ```bash
 # TypeScript
-pulumi new docker-typescript
+pulumi new typescript
+npm install @pulumi/docker
 
 # Python
-pulumi new docker-python
+pulumi new python
+pip install pulumi-docker
 
 # Go
-pulumi new docker-go
+pulumi new go
+go get github.com/pulumi/pulumi-docker/sdk/v4
 ```
 
 ## TypeScript Examples
@@ -63,6 +66,7 @@ const nginxContainer = new docker.Container("nginx", {
 
 export const containerId = nginxContainer.id;
 export const containerName = nginxContainer.name;
+export const container = nginxContainer;
 ```
 
 ### Container with Configuration
@@ -98,7 +102,7 @@ const appContainer = new docker.Container("app", {
     }],
     envs: [
         `NODE_ENV=${environment}`,
-        `DATABASE_URL=${config.requireSecret("databaseUrl")}`,
+        pulumi.interpolate`DATABASE_URL=${config.requireSecret("databaseUrl")}`,
     ],
     restart: "unless-stopped",
     healthcheck: {
@@ -113,7 +117,10 @@ const appContainer = new docker.Container("app", {
 ### Building Images
 
 ```typescript
+import * as pulumi from "@pulumi/pulumi";
 import * as docker from "@pulumi/docker";
+
+const config = new pulumi.Config();
 
 // Build and push image
 const appImage = new docker.Image("app-image", {
@@ -195,7 +202,7 @@ postgres = docker.Container("postgres",
     name=f"postgres-{environment}",
     image="postgres:15",
     envs=[
-        f"POSTGRES_PASSWORD={db_password}",
+        db_password.apply(lambda pwd: f"POSTGRES_PASSWORD={pwd}"),
         "POSTGRES_DB=myapp",
     ],
     volumes=[docker.ContainerVolumeArgs(
@@ -341,7 +348,7 @@ export class WebService extends pulumi.ComponentResource {
             this.containers.push(container);
         }
 
-        // Load balancer
+        // Public nginx container
         const nginx = new docker.Container(`${name}-lb`, {
             name: `${name}-lb`,
             image: "nginx:alpine",
@@ -483,7 +490,7 @@ jobs:
         run: npm ci
 
       - name: Pulumi Preview
-        uses: pulumi/actions@v4
+        uses: pulumi/actions@v7
         with:
           command: preview
           stack-name: prod
@@ -492,7 +499,7 @@ jobs:
 
       - name: Pulumi Deploy
         if: github.ref == 'refs/heads/main'
-        uses: pulumi/actions@v4
+        uses: pulumi/actions@v7
         with:
           command: up
           stack-name: prod
@@ -510,4 +517,3 @@ jobs:
 | C# | .NET teams |
 
 Pulumi brings software engineering practices to infrastructure management with real programming languages. Use familiar tools like IDEs, testing frameworks, and package managers while managing Docker infrastructure. For alternative IaC approaches, see our posts on [Docker with Terraform](https://oneuptime.com/blog/post/2026-01-16-docker-terraform/view) and [Docker with Ansible](https://oneuptime.com/blog/post/2026-01-16-docker-ansible/view).
-
