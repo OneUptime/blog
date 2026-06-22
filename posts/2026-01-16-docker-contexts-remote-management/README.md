@@ -80,10 +80,9 @@ docker context create production \
 docker context create secure-host \
   --docker "host=ssh://user@host.example.com:2222"
 
-# With specific SSH key
+# With specific SSH key configured in ~/.ssh/config
 docker context create custom-key \
-  --docker "host=ssh://user@host.example.com" \
-  --default-stack-orchestrator swarm
+  --docker "host=ssh://staging-docker"
 ```
 
 ### SSH Configuration
@@ -181,15 +180,17 @@ openssl req -new -x509 -days 365 -key ca-key.pem -sha256 -out ca.pem \
 openssl genrsa -out server-key.pem 4096
 openssl req -new -key server-key.pem -out server.csr \
   -subj "/CN=docker.example.com"
+printf "subjectAltName = DNS:docker.example.com\nextendedKeyUsage = serverAuth\n" > server-ext.cnf
 openssl x509 -req -days 365 -in server.csr -CA ca.pem -CAkey ca-key.pem \
-  -CAcreateserial -out server-cert.pem
+  -CAcreateserial -out server-cert.pem -sha256 -extfile server-ext.cnf
 
 # Generate client key and certificate
 openssl genrsa -out client-key.pem 4096
 openssl req -new -key client-key.pem -out client.csr \
   -subj "/CN=client"
+printf "extendedKeyUsage = clientAuth\n" > client-ext.cnf
 openssl x509 -req -days 365 -in client.csr -CA ca.pem -CAkey ca-key.pem \
-  -CAcreateserial -out client-cert.pem
+  -CAcreateserial -out client-cert.pem -sha256 -extfile client-ext.cnf
 ```
 
 ## Docker Compose with Contexts
@@ -317,7 +318,7 @@ Share context configurations between machines.
 
 ```bash
 # Export context
-docker context export staging > staging-context.tar
+docker context export staging - > staging-context.tar
 
 # Import on another machine
 docker context import staging staging-context.tar
@@ -459,4 +460,3 @@ done
 | `docker context export/import` | Share contexts |
 
 Docker contexts simplify managing multiple Docker hosts from a single machine. SSH-based contexts are secure and easy to set up-just ensure SSH access is properly configured, and you can deploy to staging and production environments with the same commands you use locally.
-
