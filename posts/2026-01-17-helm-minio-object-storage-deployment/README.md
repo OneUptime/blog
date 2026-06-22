@@ -87,7 +87,7 @@ helm install minio bitnami/minio \
 # minio-distributed.yaml
 mode: distributed
 
-# Replicas (must be multiple of 4 for erasure coding)
+# Replicas (must be even and >= 4 for distributed mode)
 statefulset:
   replicaCount: 4
 
@@ -119,19 +119,9 @@ service:
   type: ClusterIP
   ports:
     api: 9000
-    console: 9001
-
-# Ingress for Console
-ingress:
-  enabled: true
-  ingressClassName: nginx
-  hostname: minio-console.example.com
-  annotations:
-    cert-manager.io/cluster-issuer: letsencrypt-prod
-  tls: true
 
 # API Ingress
-apiIngress:
+ingress:
   enabled: true
   ingressClassName: nginx
   hostname: minio.example.com
@@ -142,6 +132,19 @@ apiIngress:
     nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
   tls: true
 
+# Ingress for Console
+console:
+  service:
+    ports:
+      http: 9090
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    hostname: minio-console.example.com
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt-prod
+    tls: true
+
 # Metrics
 metrics:
   enabled: true
@@ -149,6 +152,11 @@ metrics:
     enabled: true
     namespace: monitoring
     interval: 30s
+    paths:
+      - /minio/v2/metrics/cluster
+      - /minio/v2/metrics/node
+      - /minio/v2/metrics/bucket
+      - /minio/v2/metrics/resource
 
 # Pod Disruption Budget
 pdb:
@@ -216,12 +224,13 @@ metadata:
   name: minio-tenant
   namespace: minio
 spec:
-  image: minio/minio:RELEASE.2024-01-01T00-00-00Z
+  image: minio/minio:RELEASE.2024-01-31T20-20-33Z
   imagePullPolicy: IfNotPresent
   
   # Pools configuration
   pools:
-    - servers: 4
+    - name: pool-0
+      servers: 4
       volumesPerServer: 4
       volumeClaimTemplate:
         metadata:
@@ -254,10 +263,10 @@ spec:
   # Request automatic certificate
   requestAutoCert: true
   
-  # Console configuration
-  console:
-    image: minio/console:v0.30.0
-    replicas: 2
+  # Expose services
+  exposeServices:
+    minio: true
+    console: true
     
   # Prometheus integration
   prometheusOperator: true
@@ -265,11 +274,11 @@ spec:
   # Features
   features:
     bucketDNS: true
+    domains:
+      minio:
+        - https://minio.example.com
+      console: https://minio-console.example.com
     
-  # Environment variables
-  env:
-    - name: MINIO_BROWSER_REDIRECT_URL
-      value: https://minio-console.example.com
 ```
 
 ### Apply Tenant
@@ -320,9 +329,10 @@ spec:
 
 ```yaml
 # minio-values.yaml
+# Standalone mode only
 defaultBuckets: "data,backups,logs"
 
-# Or with provisioning
+# Or use provisioning, including distributed mode
 provisioning:
   enabled: true
   buckets:
@@ -366,20 +376,29 @@ provisioning:
 ```yaml
 # provisioning users
 provisioning:
-  users:
-    - username: app-user
-      password: ""
-      existingSecret: app-user-credentials
-      existingSecretPasswordKey: password
-      policies:
-        - readwrite-backups
-        - read-only-data
-    - username: backup-service
-      password: ""
-      existingSecret: backup-credentials
-      existingSecretPasswordKey: password
-      policies:
-        - readwrite-backups
+  usersExistingSecrets:
+    - minio-provisioning-users
+```
+
+```yaml
+# minio-provisioning-users.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: minio-provisioning-users
+  namespace: minio
+type: Opaque
+stringData:
+  app-user: |
+    username=app-user
+    password=REPLACE_WITH_SECURE_PASSWORD
+    policies=readwrite-backups,read-only-data
+    setPolicies=false
+  backup-service: |
+    username=backup-service
+    password=REPLACE_WITH_SECURE_PASSWORD
+    policies=readwrite-backups
+    setPolicies=false
 ```
 
 ## Client Configuration
@@ -446,7 +465,13 @@ kind: Deployment
 metadata:
   name: myapp
 spec:
+  selector:
+    matchLabels:
+      app: myapp
   template:
+    metadata:
+      labels:
+        app: myapp
     spec:
       containers:
         - name: myapp
@@ -540,6 +565,11 @@ metrics:
     enabled: true
     namespace: monitoring
     interval: 30s
+    paths:
+      - /minio/v2/metrics/cluster
+      - /minio/v2/metrics/node
+      - /minio/v2/metrics/bucket
+      - /minio/v2/metrics/resource
     labels:
       release: prometheus
 ```
@@ -554,16 +584,16 @@ minio_bucket_usage_total_bytes
 minio_bucket_usage_object_total
 
 # Request rate
-rate(minio_s3_requests_total[5m])
+rate(minio_bucket_requests_total[5m])
 
-# Error rate
-rate(minio_s3_requests_errors_total[5m])
+# 4xx and 5xx error rate
+rate(minio_bucket_requests_4xx_errors_total[5m]) + rate(minio_bucket_requests_5xx_errors_total[5m])
 
 # Latency
-histogram_quantile(0.95, rate(minio_s3_requests_ttfb_seconds_bucket[5m]))
+histogram_quantile(0.95, rate(minio_bucket_requests_ttfb_seconds_distribution[5m]))
 
 # Disk usage
-minio_node_disk_used_bytes / minio_node_disk_total_bytes
+minio_node_drive_used_bytes / minio_node_drive_total_bytes
 ```
 
 ### Grafana Dashboard
@@ -586,8 +616,8 @@ minio_node_disk_used_bytes / minio_node_disk_total_bytes
       "type": "timeseries",
       "targets": [
         {
-          "expr": "sum(rate(minio_s3_requests_total[5m])) by (api)",
-          "legendFormat": "{{api}}"
+          "expr": "sum(rate(minio_bucket_requests_total[5m])) by (bucket)",
+          "legendFormat": "{{bucket}}"
         }
       ]
     }
@@ -609,7 +639,7 @@ kubectl get pvc -n minio
 
 # Test connectivity
 kubectl run -it --rm test --image=minio/mc --restart=Never -- \
-  mc alias set test http://minio.minio.svc.cluster.local:9000 admin minio123
+  --command -- /bin/sh -c 'mc alias set test http://minio.minio.svc.cluster.local:9000 admin minio123'
 
 # Check cluster health
 mc admin info myminio
