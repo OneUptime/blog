@@ -18,11 +18,12 @@ Steam is available through multiple installation methods. The recommended approa
 
 ```bash
 # Update package index to ensure you get the latest version information
-
+sudo add-apt-repository multiverse
+sudo dpkg --add-architecture i386
 sudo apt update
 
 # Install Steam from Ubuntu's multiverse repository
-# This pulls in 32-bit libraries automatically (i386 architecture)
+# This pulls in the required 32-bit libraries after i386 is enabled
 sudo apt install steam
 ```
 
@@ -31,11 +32,11 @@ sudo apt install steam
 ```bash
 # Download the official Steam installer from Valve
 # This is the most up-to-date version directly from Valve
-wget https://cdn.cloudflare.steamstatic.com/client/installer/steam.deb
+wget https://repo.steampowered.com/steam/steam_latest.deb
 
 # Install the package with automatic dependency resolution
 # dpkg -i installs the package; apt --fix-broken install resolves missing deps
-sudo dpkg -i steam.deb
+sudo dpkg -i steam_latest.deb
 sudo apt --fix-broken install
 ```
 
@@ -65,7 +66,7 @@ Proper GPU drivers are critical for gaming performance. The setup differs betwee
 # Check your current GPU model
 lspci | grep -i nvidia
 
-# Add the official NVIDIA PPA for the latest drivers
+# Add the Ubuntu Graphics Drivers PPA for newer packaged NVIDIA drivers
 # ubuntu-drivers provides a convenient way to manage driver versions
 sudo add-apt-repository ppa:graphics-drivers/ppa
 sudo apt update
@@ -112,10 +113,10 @@ sudo apt upgrade
 
 # Install Vulkan support for AMD (required for DXVK/Proton)
 # vulkan-tools provides vulkaninfo for verification
-sudo apt install mesa-vulkan-drivers vulkan-tools
+sudo apt install mesa-vulkan-drivers vulkan-tools mesa-utils
 
-# For older GCN 1.0-3.0 GPUs, also install AMDVLK
-sudo apt install amdvlk
+# AMDVLK is an optional alternative Vulkan driver; use Mesa RADV unless
+# you have a specific game or driver issue that requires AMDVLK.
 ```
 
 Verify AMD driver installation:
@@ -166,7 +167,7 @@ Proton comes in several versions, each with different characteristics:
 
 | Version | Description | Best For |
 |---------|-------------|----------|
-| **Proton Stable** (e.g., 9.0) | Tested, stable releases | Most games |
+| **Proton Stable** (e.g., 10.0) | Tested, stable releases | Most games |
 | **Proton Experimental** | Latest features, frequent updates | New games, testing |
 | **Proton Hotfix** | Urgent fixes between releases | Specific game fixes |
 | **Proton-GE** | Community build with extra patches | Games with issues |
@@ -234,17 +235,19 @@ flatpak run net.davidotek.pupgui2
 mkdir -p ~/.steam/steam/compatibilitytools.d
 
 # Download the latest Proton-GE release
-# Check https://github.com/GloriousEggroll/proton-ge-custom/releases for latest version
+sudo apt install curl
 cd /tmp
-wget https://github.com/GloriousEggroll/proton-ge-custom/releases/download/GE-Proton9-20/GE-Proton9-20.tar.gz
+tarball_url=$(curl -s https://api.github.com/repos/GloriousEggroll/proton-ge-custom/releases/latest | grep browser_download_url | cut -d\" -f4 | grep .tar.gz)
+tarball_name=$(basename "$tarball_url")
+curl -L "$tarball_url" -o "$tarball_name"
 
 # Extract to Steam's compatibility tools directory
 # This makes it available in Steam's Proton dropdown menu
-tar -xf GE-Proton9-20.tar.gz -C ~/.steam/steam/compatibilitytools.d/
+tar -xf "$tarball_name" -C ~/.steam/steam/compatibilitytools.d/
 
 # Verify installation
 ls ~/.steam/steam/compatibilitytools.d/
-# Output: GE-Proton9-20
+# Output includes the extracted GE-Proton version
 
 # Restart Steam to detect the new Proton version
 ```
@@ -258,32 +261,25 @@ Steam launch options allow you to pass environment variables and parameters to g
 ### Common Launch Options
 
 ```bash
-# Force a specific Proton version (useful for testing)
-PROTON_VERSION=GE-Proton9-20 %command%
+# Select a specific Proton version from the game's Compatibility tab
+# Steam does not provide a supported PROTON_VERSION launch option.
 
-# Enable DXVK async shader compilation (reduces stuttering)
-# Compiles shaders in the background instead of blocking gameplay
-DXVK_ASYNC=1 %command%
-
-# Use NVIDIA's DLSS Frame Generation (RTX 40+ series)
+# Expose NVIDIA NVAPI features such as DLSS in supported games
 PROTON_ENABLE_NVAPI=1 DXVK_ENABLE_NVAPI=1 %command%
 
-# Force Vulkan renderer in games that support multiple APIs
-# Vulkan often performs better than OpenGL on Linux
-PROTON_USE_WINED3D=0 %command%
+# Proton uses DXVK/VKD3D by default for Direct3D translation to Vulkan
 
-# Enable Esync (improved multithreading, enabled by default)
-PROTON_NO_ESYNC=0 %command%
+# Disable Esync for troubleshooting if a game has threading issues
+PROTON_NO_ESYNC=1 %command%
 
-# Enable Fsync (better than Esync, requires kernel 5.16+)
-PROTON_NO_FSYNC=0 %command%
+# Disable Fsync for troubleshooting if a game has threading issues
+PROTON_NO_FSYNC=1 %command%
 
-# Disable fullscreen optimizations for borderless windowed
+# Disable DXVK and use WineD3D/OpenGL instead for compatibility testing
 PROTON_USE_WINED3D=1 %command%
 
-# Set custom resolution (useful for ultrawide or HiDPI)
-# Forces the game to use specific resolution
-gamemoderun %command% -w 2560 -h 1440
+# Set custom resolution with Gamescope when Gamescope is installed
+gamescope -w 1920 -h 1080 -W 2560 -H 1440 -- %command%
 
 # Enable mangohud overlay (shows FPS, GPU/CPU usage)
 mangohud %command%
@@ -292,14 +288,14 @@ mangohud %command%
 gamemoderun %command%
 
 # Combine multiple options
-DXVK_ASYNC=1 mangohud gamemoderun %command%
+mangohud gamemoderun %command%
 ```
 
 ### Debugging Launch Options
 
 ```bash
 # Enable Proton logging for troubleshooting
-# Logs are written to /tmp/proton_<user>/
+# Logs are written to ~/steam-APPID.log
 PROTON_LOG=1 %command%
 
 # Enable Wine debugging output
@@ -316,7 +312,7 @@ PROTON_USE_WINED3D=1 %command%
 GameMode optimizes system performance while gaming by adjusting CPU governor, I/O priority, and GPU settings.
 
 ```bash
-# Install GameMode and the GNOME Shell extension
+# Install GameMode
 sudo apt install gamemode
 
 # Verify GameMode is working
@@ -347,7 +343,7 @@ sudo cpupower frequency-set -g powersave
 ### NVIDIA-Specific Optimizations
 
 ```bash
-# Enable ForceCompositionPipeline for tear-free gaming
+# Enable ForceCompositionPipeline for tear-free gaming on X11
 # Add to /etc/X11/xorg.conf.d/20-nvidia.conf
 sudo mkdir -p /etc/X11/xorg.conf.d
 
@@ -380,8 +376,7 @@ WINE_FULLSCREEN_FSR=1 %command%
 # Set FSR sharpness (0-5, default is 2)
 WINE_FULLSCREEN_FSR_STRENGTH=2 WINE_FULLSCREEN_FSR=1 %command%
 
-# Enable ACO shader compiler (usually default, but ensure it's active)
-RADV_PERFTEST=aco %command%
+# ACO is the default RADV shader compiler on current Mesa releases
 ```
 
 ### System-Wide Optimizations
@@ -408,7 +403,7 @@ Steam has excellent built-in controller support, but some controllers need extra
 ### Steam Input Configuration
 
 1. Open Steam and go to **Steam > Settings > Controller**
-2. Click **General Controller Settings**
+2. Open the controller settings for your device
 3. Enable the appropriate driver for your controller:
    - **PlayStation Configuration Support** for DualShock/DualSense
    - **Xbox Configuration Support** for Xbox controllers
@@ -420,7 +415,7 @@ Steam has excellent built-in controller support, but some controllers need extra
 ```bash
 # Xbox controllers work out of the box with xpad driver
 # For Xbox One/Series controllers via Bluetooth, install xpadneo
-sudo apt install dkms git
+sudo apt install dkms git linux-headers-$(uname -r) bluez
 
 # Clone and install xpadneo driver
 git clone https://github.com/atar-axis/xpadneo.git
@@ -435,8 +430,7 @@ sudo ./install.sh
 
 ```bash
 # DualShock 4 and DualSense work via Bluetooth or USB
-# Install ds4drv for additional features (optional, Steam handles most cases)
-pip install ds4drv
+# Steam's built-in support is generally sufficient; no extra driver is needed
 
 # For DualSense haptics and adaptive triggers, ensure Steam is updated
 # Steam's built-in support is generally sufficient
@@ -474,9 +468,7 @@ jstest-gtk
 MangoHud displays real-time performance metrics like FPS, frame time, CPU/GPU usage, and temperatures.
 
 ```bash
-# Install MangoHud from the official PPA
-sudo add-apt-repository ppa:flexiondotorg/mangohud
-sudo apt update
+# Install MangoHud from Ubuntu's repositories
 sudo apt install mangohud
 
 # Or install via Flatpak
@@ -490,7 +482,7 @@ flatpak install flathub org.freedesktop.Platform.VulkanLayer.MangoHud
 mkdir -p ~/.config/MangoHud
 
 # Create configuration file with common settings
-cat > ~/.config/MangoHud/MangoHud.conf << 'EOF'
+cat > ~/.config/MangoHud/MangoHud.conf << EOF
 # MangoHud Configuration
 # Full documentation: https://github.com/flightlessmango/MangoHud
 
@@ -526,7 +518,7 @@ EOF
 # Add to launch options:
 mangohud %command%
 
-# Or set environment variable for all Vulkan games
+# Or set the environment variable for Vulkan games
 MANGOHUD=1 %command%
 ```
 
@@ -535,7 +527,8 @@ MANGOHUD=1 %command%
 Gamescope is a micro-compositor that provides features like resolution scaling, frame limiting, and improved fullscreen behavior.
 
 ```bash
-# Install Gamescope
+# Install Gamescope if your Ubuntu release provides it
+apt-cache policy gamescope
 sudo apt install gamescope
 
 # Basic usage - run a game at 1080p upscaled to native resolution
@@ -556,17 +549,17 @@ gamescope -w 1920 -h 1080 -W 2560 -H 1440 -- %command%
 # 1080p internal, upscaled to 1440p with FSR, 60 FPS cap
 gamescope -w 1920 -h 1080 -W 2560 -H 1440 -r 60 -F fsr -- %command%
 
-# Integer scaling for pixel-art games (nearest neighbor)
-gamescope -w 1280 -h 720 -W 2560 -H 1440 -F nearest -- %command%
+# Integer scaling for pixel-art games
+gamescope -w 1280 -h 720 -W 2560 -H 1440 -S integer -- %command%
 
 # HDR support (requires compatible display and driver)
 gamescope --hdr-enabled -w 1920 -h 1080 -f -- %command%
 
-# Combine with MangoHud
-gamescope -w 1920 -h 1080 -r 60 -- mangohud %command%
+# Combine with MangoHud using Gamescope's MangoApp integration
+gamescope --mangoapp -w 1920 -h 1080 -r 60 -- %command%
 
 # Combine everything: MangoHud, GameMode, Gamescope with FSR
-gamescope -w 1920 -h 1080 -W 2560 -H 1440 -F fsr -r 60 -- mangohud gamemoderun %command%
+gamescope --mangoapp -w 1920 -h 1080 -W 2560 -H 1440 -F fsr -r 60 -- gamemoderun %command%
 ```
 
 ## 11. Troubleshooting Common Game Issues
@@ -576,7 +569,7 @@ gamescope -w 1920 -h 1080 -W 2560 -H 1440 -F fsr -r 60 -- mangohud gamemoderun %
 ```bash
 # Check Proton logs for errors
 # Replace APPID with the game's Steam App ID
-cat /tmp/proton_$USER/steam-APPID.log
+cat ~/steam-APPID.log
 
 # View DXVK shader cache issues
 ls ~/.local/share/Steam/steamapps/shadercache/
@@ -645,7 +638,7 @@ sudo apt install libsdl2-2.0-0 libsdl2-mixer-2.0-0
 cat /proc/bus/input/devices | grep -A 5 -i gamepad
 
 # Verify Steam can see the controller
-# Steam > Settings > Controller > General Controller Settings
+# Steam > Settings > Controller
 
 # For permission issues, add user to input group
 sudo usermod -aG input $USER
@@ -660,10 +653,6 @@ ls /etc/udev/rules.d/ | grep -i controller
 ```bash
 # Try different Proton versions
 # Start with Proton Experimental, then try Proton-GE
-
-# Force older DirectX version
-# Add to launch options:
-PROTON_USE_WINED3D=1 %command%
 
 # Disable DXVK (use OpenGL instead)
 PROTON_USE_WINED3D=1 %command%
@@ -680,8 +669,8 @@ protontricks APPID winecfg
 # Install Protontricks (Wine tricks for Proton)
 flatpak install flathub com.github.Matoking.protontricks
 
-# Or via pip
-pip install protontricks
+# Or from Ubuntu's repositories
+sudo apt install protontricks
 
 # List installed games
 protontricks -l
@@ -705,7 +694,7 @@ protontricks APPID winecfg
 PROTON_LOG=1 WINEDEBUG=+all DXVK_LOG_LEVEL=debug %command%
 
 # Logs are written to:
-# - /tmp/proton_$USER/ (Proton logs)
+# - ~/steam-APPID.log (Proton logs)
 # - Steam game directory (DXVK logs)
 
 # Share logs when reporting issues on ProtonDB or GitHub
@@ -718,13 +707,13 @@ Here is a quick reference for optimal Steam gaming on Ubuntu:
 ```bash
 # Complete optimized launch options template
 # Combines GameMode, MangoHud, and common optimizations
-DXVK_ASYNC=1 mangohud gamemoderun %command%
+mangohud gamemoderun %command%
 
 # For FSR upscaling (AMD and NVIDIA)
 WINE_FULLSCREEN_FSR=1 WINE_FULLSCREEN_FSR_STRENGTH=2 mangohud gamemoderun %command%
 
 # For Gamescope with FSR (better isolation and control)
-gamescope -w 1920 -h 1080 -W 2560 -H 1440 -F fsr -r 60 -- mangohud gamemoderun %command%
+gamescope --mangoapp -w 1920 -h 1080 -W 2560 -H 1440 -F fsr -r 60 -- gamemoderun %command%
 
 # NVIDIA with DLSS support (RTX cards)
 PROTON_ENABLE_NVAPI=1 DXVK_ENABLE_NVAPI=1 mangohud gamemoderun %command%
