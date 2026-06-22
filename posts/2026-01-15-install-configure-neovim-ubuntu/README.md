@@ -64,24 +64,24 @@ sudo apt install neovim
 AppImage is perfect for users who want the latest version without system-wide installation:
 
 ```bash
-# Download the latest Neovim AppImage
-curl -LO https://github.com/neovim/neovim/releases/latest/download/nvim.appimage
+# Download the latest Neovim AppImage (x86_64; use nvim-linux-arm64.appimage on ARM)
+curl -LO https://github.com/neovim/neovim/releases/latest/download/nvim-linux-x86_64.appimage
 
 # Make it executable
-chmod u+x nvim.appimage
+chmod u+x nvim-linux-x86_64.appimage
 
 # Move to a directory in your PATH (optional)
-sudo mv nvim.appimage /usr/local/bin/nvim
+sudo mv nvim-linux-x86_64.appimage /usr/local/bin/nvim
 
 # Or run directly
-./nvim.appimage
+./nvim-linux-x86_64.appimage
 ```
 
 If you encounter FUSE issues, extract and run directly:
 
 ```bash
 # Extract the AppImage
-./nvim.appimage --appimage-extract
+./nvim-linux-x86_64.appimage --appimage-extract
 
 # Run from extracted directory
 ./squashfs-root/usr/bin/nvim
