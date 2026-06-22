@@ -370,7 +370,8 @@ def get_rrsig_expiration(domain: str) -> dict:
     try:
         # Create a resolver that requests DNSSEC records
         resolver = dns.resolver.Resolver()
-        resolver.use_dnssec = True
+        # Set the EDNS DO (DNSSEC OK) bit so RRSIG records are returned
+        resolver.use_edns(0, dns.flags.DO, 4096)
         resolver.nameservers = ['8.8.8.8', '1.1.1.1']
 
         # Query for A records with DNSSEC
@@ -382,9 +383,8 @@ def get_rrsig_expiration(domain: str) -> dict:
                 result['rrsig_found'] = True
 
                 for rrsig in rrset:
-                    # RRSIG expiration is in the format YYYYMMDDHHMMSS
-                    expiration_str = str(rrsig.expiration)
-                    expiration_date = datetime.strptime(expiration_str, '%Y%m%d%H%M%S')
+                    # dnspython stores rrsig.expiration as a POSIX timestamp (seconds since epoch)
+                    expiration_date = datetime.utcfromtimestamp(rrsig.expiration)
 
                     result['expiration'] = expiration_date.isoformat()
 
@@ -621,13 +621,15 @@ data:
         loop
         reload
         loadbalance
-
-        # Enable DNSSEC validation
-        dnssec {
-            # Validate DNSSEC for upstream queries
-        }
     }
 ```
+
+> Note: CoreDNS does not validate upstream DNSSEC itself. With the `forward`
+> plugin, validation is performed by the upstream resolver CoreDNS forwards to
+> (configured in `/etc/resolv.conf` or an explicit forward target), so point it
+> at a DNSSEC-validating resolver. CoreDNS's own `dnssec` plugin is for
+> *on-the-fly signing* of zones CoreDNS is authoritative for and requires a
+> `key file` directive — it is not an upstream-validation switch.
 
 ### CoreDNS Metrics Monitor
 
