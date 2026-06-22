@@ -56,8 +56,8 @@ There are several virtualization libraries available for React, including `react
 1. **Lightweight**: At ~6KB gzipped, it's significantly smaller than react-virtualized (~35KB)
 2. **Simple API**: Easy to learn and implement
 3. **Excellent performance**: Highly optimized for modern React
-4. **TypeScript support**: Full type definitions included
-5. **Active maintenance**: Regular updates and bug fixes
+4. **TypeScript support**: Type definitions are available for 1.x via DefinitelyTyped
+5. **Stable API**: Well-documented patterns and examples
 6. **Flexible**: Supports both fixed and variable size items
 
 ### When to Use react-window
@@ -73,24 +73,24 @@ There are several virtualization libraries available for React, including `react
 
 ### Installation
 
-First, install `react-window` using npm or yarn:
+First, install `react-window` 1.x, which provides the `FixedSizeList`, `VariableSizeList`, `FixedSizeGrid`, and `VariableSizeGrid` APIs used in this guide:
 
 ```bash
 # Using npm
 
-npm install react-window
+npm install react-window@1
 
 # Using yarn
-yarn add react-window
+yarn add react-window@1
 
 # Using pnpm
-pnpm add react-window
+pnpm add react-window@1
 ```
 
-If you're using TypeScript, you'll also want the type definitions:
+If you're using TypeScript with `react-window` 1.x, you'll also want the matching type definitions:
 
 ```bash
-npm install --save-dev @types/react-window
+npm install --save-dev @types/react-window@1.8.8
 ```
 
 ### Basic Concepts
@@ -133,6 +133,7 @@ const Row = ({ index, style }: { index: number; style: React.CSSProperties }) =>
         ...style,
         display: 'flex',
         alignItems: 'center',
+        boxSizing: 'border-box',
         padding: '0 16px',
         borderBottom: '1px solid #eee',
         backgroundColor: index % 2 === 0 ? '#fff' : '#f9f9f9'
@@ -222,6 +223,7 @@ const Row = ({ index, style, data }: ListChildComponentProps<RowData>) => {
         ...style,
         display: 'flex',
         alignItems: 'center',
+        boxSizing: 'border-box',
         padding: '12px 16px',
         cursor: 'pointer',
         borderBottom: '1px solid #e0e0e0'
@@ -364,6 +366,7 @@ const MessageRow = ({ index, style }: ListChildComponentProps) => {
     <div
       style={{
         ...style,
+        boxSizing: 'border-box',
         padding: '12px 16px',
         borderBottom: '1px solid #eee'
       }}
@@ -404,7 +407,7 @@ export default ChatMessages;
 Sometimes you can't predict item heights in advance. In these cases, you need to measure items after they render:
 
 ```tsx
-import React, { useRef, useEffect, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useCallback, useMemo } from 'react';
 import { VariableSizeList as List, ListChildComponentProps } from 'react-window';
 
 interface Post {
@@ -417,6 +420,52 @@ interface Post {
 interface PostListProps {
   posts: Post[];
 }
+
+interface RowData {
+  posts: Post[];
+  setRowHeight: (index: number, height: number) => void;
+}
+
+const PostRow = ({ index, style, data }: ListChildComponentProps<RowData>) => {
+  const rowRef = useRef<HTMLDivElement>(null);
+  const { posts, setRowHeight } = data;
+  const post = posts[index];
+
+  useEffect(() => {
+    if (rowRef.current) {
+      const height = rowRef.current.getBoundingClientRect().height;
+      setRowHeight(index, height);
+    }
+  }, [index, post, setRowHeight]);
+
+  return (
+    <div style={style}>
+      <div
+        ref={rowRef}
+        style={{
+          padding: '16px',
+          borderBottom: '1px solid #e0e0e0'
+        }}
+      >
+        <h3 style={{ margin: '0 0 8px 0' }}>{post.title}</h3>
+        <p style={{ margin: '0 0 12px 0', color: '#555' }}>{post.content}</p>
+        {post.imageUrl && (
+          <img
+            src={post.imageUrl}
+            alt={post.title}
+            style={{ maxWidth: '100%', borderRadius: 8 }}
+            onLoad={() => {
+              if (rowRef.current) {
+                const height = rowRef.current.getBoundingClientRect().height;
+                setRowHeight(index, height);
+              }
+            }}
+          />
+        )}
+      </div>
+    </div>
+  );
+};
 
 const PostList: React.FC<PostListProps> = ({ posts }) => {
   const listRef = useRef<List>(null);
@@ -433,45 +482,7 @@ const PostList: React.FC<PostListProps> = ({ posts }) => {
     }
   }, []);
 
-  const Row = useCallback(({ index, style }: ListChildComponentProps) => {
-    const rowRef = useRef<HTMLDivElement>(null);
-    const post = posts[index];
-
-    useEffect(() => {
-      if (rowRef.current) {
-        const height = rowRef.current.getBoundingClientRect().height;
-        setRowHeight(index, height);
-      }
-    }, [index]);
-
-    return (
-      <div style={style}>
-        <div
-          ref={rowRef}
-          style={{
-            padding: '16px',
-            borderBottom: '1px solid #e0e0e0'
-          }}
-        >
-          <h3 style={{ margin: '0 0 8px 0' }}>{post.title}</h3>
-          <p style={{ margin: '0 0 12px 0', color: '#555' }}>{post.content}</p>
-          {post.imageUrl && (
-            <img
-              src={post.imageUrl}
-              alt={post.title}
-              style={{ maxWidth: '100%', borderRadius: 8 }}
-              onLoad={() => {
-                if (rowRef.current) {
-                  const height = rowRef.current.getBoundingClientRect().height;
-                  setRowHeight(index, height);
-                }
-              }}
-            />
-          )}
-        </div>
-      </div>
-    );
-  }, [posts, setRowHeight]);
+  const itemData = useMemo(() => ({ posts, setRowHeight }), [posts, setRowHeight]);
 
   return (
     <List
@@ -481,8 +492,9 @@ const PostList: React.FC<PostListProps> = ({ posts }) => {
       itemSize={getItemSize}
       width="100%"
       estimatedItemSize={150}
+      itemData={itemData}
     >
-      {Row}
+      {PostRow}
     </List>
   );
 };
@@ -494,13 +506,15 @@ export default PostList;
 
 ```tsx
 // Reset cached sizes after a specific index
-listRef.current?.resetAfterIndex(index: number, shouldForceUpdate?: boolean);
+listRef.current?.resetAfterIndex(index, true);
 
 // Scroll to a specific item
-listRef.current?.scrollToItem(index: number, align?: 'auto' | 'smart' | 'center' | 'end' | 'start');
+listRef.current?.scrollToItem(index, 'smart');
 
-// Get the scroll offset
-const offset = listRef.current?.state.scrollOffset;
+// Track the scroll offset
+const handleScroll = ({ scrollOffset }: { scrollOffset: number }) => {
+  console.log('Current scroll offset:', scrollOffset);
+};
 ```
 
 ## Building a Complete Example: Virtualized Data Table
@@ -601,6 +615,7 @@ const styles = {
     display: 'grid',
     gridTemplateColumns: '50px 1fr 1.5fr 120px 100px 100px',
     gap: '8px',
+    boxSizing: 'border-box',
     padding: '12px 16px',
     alignItems: 'center',
     borderBottom: '1px solid #eee',
@@ -880,6 +895,7 @@ const ImageCard = ({ index, style }: ListChildComponentProps) => {
     <div
       style={{
         ...style,
+        boxSizing: 'border-box',
         padding: '8px'
       }}
     >
@@ -957,6 +973,7 @@ const ProductCell = ({ columnIndex, rowIndex, style }: GridChildComponentProps) 
     <div
       style={{
         ...style,
+        boxSizing: 'border-box',
         padding: '8px'
       }}
     >
@@ -1082,6 +1099,7 @@ const InfiniteList: React.FC = () => {
           ...style,
           display: 'flex',
           alignItems: 'center',
+          boxSizing: 'border-box',
           padding: '0 16px',
           borderBottom: '1px solid #eee'
         }}
@@ -1123,7 +1141,7 @@ import AutoSizer from 'react-virtualized-auto-sizer';
 const items = Array.from({ length: 1000 }, (_, i) => `Item ${i + 1}`);
 
 const Row = ({ index, style }: ListChildComponentProps) => (
-  <div style={{ ...style, padding: '0 16px', display: 'flex', alignItems: 'center' }}>
+  <div style={{ ...style, boxSizing: 'border-box', padding: '0 16px', display: 'flex', alignItems: 'center' }}>
     {items[index]}
   </div>
 );
@@ -1197,6 +1215,7 @@ const Row = ({ index, style }: ListChildComponentProps) => {
           ...style,
           backgroundColor: '#f0f0f0',
           fontWeight: 'bold',
+          boxSizing: 'border-box',
           padding: '12px 16px',
           borderBottom: '2px solid #ddd',
           position: 'sticky',
@@ -1213,6 +1232,7 @@ const Row = ({ index, style }: ListChildComponentProps) => {
     <div
       style={{
         ...style,
+        boxSizing: 'border-box',
         padding: '12px 16px',
         borderBottom: '1px solid #eee'
       }}
@@ -1400,6 +1420,6 @@ The techniques covered in this article will help you build production-ready virt
 ## Further Resources
 
 - [react-window GitHub Repository](https://github.com/bvaughn/react-window)
-- [react-window Examples and Sandbox](https://react-window.vercel.app/)
+- [react-window 1.x Documentation](https://react-window-v1.vercel.app/)
 - [react-virtualized-auto-sizer](https://github.com/bvaughn/react-virtualized-auto-sizer)
 - [React Performance Optimization Guide](https://react.dev/learn/render-and-commit)
