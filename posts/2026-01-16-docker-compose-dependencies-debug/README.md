@@ -21,6 +21,8 @@ services:
       - database
   database:
     image: postgres:15
+    environment:
+      POSTGRES_PASSWORD: example
 ```
 
 **Important**: Basic `depends_on` only ensures the container starts, not that the service inside is ready. Your database container might be running but PostgreSQL might still be initializing.
@@ -35,6 +37,8 @@ services:
         condition: service_healthy
   database:
     image: postgres:15
+    environment:
+      POSTGRES_PASSWORD: example
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -270,6 +274,8 @@ services:
 
   database:
     image: postgres:15
+    environment:
+      POSTGRES_PASSWORD: pass
     healthcheck:
       test: ["CMD-SHELL", "pg_isready"]
       interval: 5s
@@ -341,7 +347,7 @@ docker compose exec app sh
 
 ```yaml
 healthcheck:
-  test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-postgres}"]
+  test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-postgres} -d $${POSTGRES_DB:-postgres}"]
   interval: 5s
   timeout: 5s
   retries: 10
@@ -352,7 +358,7 @@ healthcheck:
 
 ```yaml
 healthcheck:
-  test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+  test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -p$${MYSQL_ROOT_PASSWORD}"]
   interval: 5s
   timeout: 5s
   retries: 10
@@ -394,8 +400,6 @@ healthcheck:
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   database:
     image: postgres:15
@@ -495,4 +499,3 @@ docker inspect myproject-app-1 --format='{{json .State.Health.Log}}' | jq
 | Override file with sleep | Debug container environment |
 
 Docker Compose dependencies work best when combined with proper health checks. Always use `condition: service_healthy` for services that need time to initialize, and implement retry logic in your applications as a safety net. When debugging, start services individually and test connectivity manually to isolate the issue.
-
