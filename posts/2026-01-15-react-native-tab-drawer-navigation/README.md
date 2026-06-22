@@ -12,7 +12,7 @@ Navigation is the backbone of any mobile application. Users expect intuitive way
 
 ## Prerequisites
 
-Before diving in, ensure you have a React Native project set up. We will be using React Navigation 6.x, which is the latest stable version at the time of writing.
+Before diving in, ensure you have a React Native project set up. We will be using React Navigation 7.x, which is the latest stable version at the time of writing.
 
 ## Installing Dependencies
 
@@ -31,13 +31,22 @@ npm install @react-navigation/bottom-tabs
 
 # Drawer navigator
 npm install @react-navigation/drawer
-npm install react-native-gesture-handler react-native-reanimated
+npm install react-native-gesture-handler react-native-reanimated react-native-worklets
 ```
 
 For iOS, install the CocoaPods:
 
 ```bash
-cd ios && pod install && cd ..
+npx pod-install ios
+```
+
+If you are using a bare React Native project, also add the Worklets Babel plugin as the last plugin in your `babel.config.js`:
+
+```js
+module.exports = {
+  presets: ['module:@react-native/babel-preset'],
+  plugins: ['react-native-worklets/plugin'],
+};
 ```
 
 ## Setting Up the Navigation Container
@@ -218,8 +227,7 @@ export default TabNavigator;
 Icons are essential for a polished tab bar. We will use a popular icon library.
 
 ```bash
-npm install react-native-vector-icons
-npm install @types/react-native-vector-icons --save-dev
+npm install @react-native-vector-icons/ionicons
 ```
 
 Now let us add custom icons to each tab:
@@ -229,7 +237,7 @@ Now let us add custom icons to each tab:
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Platform } from 'react-native';
-import Icon from 'react-native-vector-icons/Ionicons';
+import Icon from '@react-native-vector-icons/ionicons';
 import HomeScreen from '../screens/HomeScreen';
 import SearchScreen from '../screens/SearchScreen';
 import ProfileScreen from '../screens/ProfileScreen';
@@ -293,7 +301,7 @@ For more control, you can create a custom icon component:
 // components/TabBarIcon.tsx
 import React from 'react';
 import { View, StyleSheet, Animated } from 'react-native';
-import Icon from 'react-native-vector-icons/Ionicons';
+import Icon from '@react-native-vector-icons/ionicons';
 
 interface TabBarIconProps {
   name: string;
@@ -346,7 +354,7 @@ Badges are useful for showing notification counts or alerts. Here is how to impl
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { View, Text, StyleSheet, Platform } from 'react-native';
-import Icon from 'react-native-vector-icons/Ionicons';
+import Icon from '@react-native-vector-icons/ionicons';
 import HomeScreen from '../screens/HomeScreen';
 import SearchScreen from '../screens/SearchScreen';
 import ProfileScreen from '../screens/ProfileScreen';
@@ -522,7 +530,7 @@ Let us customize the drawer appearance:
 import React from 'react';
 import { createDrawerNavigator } from '@react-navigation/drawer';
 import { Dimensions } from 'react-native';
-import Icon from 'react-native-vector-icons/Ionicons';
+import Icon from '@react-native-vector-icons/ionicons';
 import HomeScreen from '../screens/HomeScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import AboutScreen from '../screens/AboutScreen';
@@ -623,7 +631,7 @@ import {
   DrawerItemList,
   DrawerContentComponentProps,
 } from '@react-navigation/drawer';
-import Icon from 'react-native-vector-icons/Ionicons';
+import Icon from '@react-native-vector-icons/ionicons';
 
 interface UserProfile {
   name: string;
@@ -923,12 +931,8 @@ export type RootStackParamList = {
   Modal: { title: string; content: string };
 };
 
-// Declare global types for useNavigation hook
-declare global {
-  namespace ReactNavigation {
-    interface RootParamList extends RootStackParamList {}
-  }
-}
+// Use these param lists with createXNavigator and typed screen props/hooks.
+// React Navigation 7's static API uses RootNavigator module augmentation instead.
 ```
 
 ```tsx
@@ -938,7 +942,7 @@ import { createDrawerNavigator } from '@react-navigation/drawer';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useNavigation, DrawerActions } from '@react-navigation/native';
 import { TouchableOpacity } from 'react-native';
-import Icon from 'react-native-vector-icons/Ionicons';
+import Icon from '@react-native-vector-icons/ionicons';
 
 import { TabParamList, DrawerParamList } from '../types/navigation';
 import CustomDrawerContent from '../components/CustomDrawerContent';
@@ -1062,10 +1066,15 @@ export default MainNavigator;
 
 You can access the current navigation state for analytics or persistence:
 
+```bash
+npm install @react-native-async-storage/async-storage
+```
+
 ```tsx
 // App.tsx
 import React, { useRef, useCallback } from 'react';
-import { NavigationContainer, NavigationState } from '@react-navigation/native';
+import { NavigationContainer } from '@react-navigation/native';
+import type { InitialState, NavigationState, PartialState } from '@react-navigation/native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import MainNavigator from './navigation/MainNavigator';
@@ -1074,7 +1083,7 @@ const PERSISTENCE_KEY = 'NAVIGATION_STATE';
 
 const App: React.FC = () => {
   const [isReady, setIsReady] = React.useState(false);
-  const [initialState, setInitialState] = React.useState<NavigationState | undefined>();
+  const [initialState, setInitialState] = React.useState<InitialState | undefined>();
   const routeNameRef = useRef<string | undefined>();
 
   // Restore navigation state on app start
@@ -1130,10 +1139,10 @@ const App: React.FC = () => {
 };
 
 // Helper function to get the active route name
-function getActiveRouteName(state: NavigationState): string {
-  const route = state.routes[state.index];
+function getActiveRouteName(state: NavigationState | PartialState<NavigationState>): string {
+  const route = state.routes[state.index ?? 0];
   if (route.state) {
-    return getActiveRouteName(route.state as NavigationState);
+    return getActiveRouteName(route.state);
   }
   return route.name;
 }
@@ -1143,7 +1152,7 @@ export default App;
 
 ### Using Navigation Hooks with TypeScript
 
-Properly typed navigation hooks make your code safer:
+Typed navigation hooks are convenient for shared code, though React Navigation recommends using screen props or root navigator typing where possible:
 
 ```tsx
 // hooks/useTypedNavigation.ts
@@ -1229,7 +1238,7 @@ export default HomeScreen;
 
 ### Lazy Loading Screens
 
-By default, React Navigation lazily loads screens. You can control this behavior:
+By default, React Navigation lazily loads screens. You can control this behavior and freeze inactive screens when supported:
 
 ```tsx
 // navigation/TabNavigator.tsx
@@ -1239,8 +1248,8 @@ const TabNavigator: React.FC = () => {
       screenOptions={{
         // Lazy load screens (default is true)
         lazy: true,
-        // Keep screens mounted after first render
-        unmountOnBlur: false,
+        // Prevent inactive screens from re-rendering when supported
+        freezeOnBlur: true,
       }}
     >
       <Tab.Screen name="Home" component={HomeScreen} />
@@ -1249,7 +1258,7 @@ const TabNavigator: React.FC = () => {
         component={HeavyScreen}
         options={{
           // Override for specific screen
-          unmountOnBlur: true,
+          freezeOnBlur: false,
         }}
       />
     </Tab.Navigator>
@@ -1393,7 +1402,7 @@ import Animated, {
   withSpring,
   useSharedValue,
 } from 'react-native-reanimated';
-import Icon from 'react-native-vector-icons/Ionicons';
+import Icon from '@react-native-vector-icons/ionicons';
 
 const TAB_ICONS: Record<string, { focused: string; unfocused: string }> = {
   Home: { focused: 'home', unfocused: 'home-outline' },
@@ -1463,7 +1472,10 @@ const CustomTabBar: React.FC<BottomTabBarProps> = ({
     <View style={styles.container}>
       {state.routes.map((route, index) => {
         const { options } = descriptors[route.key];
-        const label = (options.tabBarLabel ?? options.title ?? route.name) as string;
+        const label =
+          typeof options.tabBarLabel === 'string'
+            ? options.tabBarLabel
+            : options.title ?? route.name;
         const isFocused = state.index === index;
 
         const onPress = (): void => {
@@ -1474,7 +1486,7 @@ const CustomTabBar: React.FC<BottomTabBarProps> = ({
           });
 
           if (!isFocused && !event.defaultPrevented) {
-            navigation.navigate(route.name);
+            navigation.navigate(route.name, route.params);
           }
         };
 
