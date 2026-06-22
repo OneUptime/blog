@@ -137,7 +137,7 @@ This method installs Keycloak directly on your Ubuntu server, providing full con
 
 ```bash
 # Define the Keycloak version to install (check https://www.keycloak.org for latest)
-KEYCLOAK_VERSION="24.0.1"
+KEYCLOAK_VERSION="26.6.3"
 
 # Create a dedicated directory for Keycloak installation
 sudo mkdir -p /opt/keycloak
@@ -186,15 +186,16 @@ Group=keycloak
 WorkingDirectory=/opt/keycloak
 
 # Environment variables for Keycloak configuration
-# KEYCLOAK_ADMIN: Initial admin username (only used on first start)
-Environment=KEYCLOAK_ADMIN=admin
-# KEYCLOAK_ADMIN_PASSWORD: Initial admin password (change immediately after setup)
-Environment=KEYCLOAK_ADMIN_PASSWORD=changeme
+# KC_BOOTSTRAP_ADMIN_USERNAME: Temporary initial admin username (only used when creating the master realm)
+Environment=KC_BOOTSTRAP_ADMIN_USERNAME=admin
+# KC_BOOTSTRAP_ADMIN_PASSWORD: Temporary initial admin password (change immediately after setup)
+Environment=KC_BOOTSTRAP_ADMIN_PASSWORD=changeme
 
 # Start Keycloak in production mode
 # --optimized: Use pre-built optimized configuration
+# --http-enabled=true: Enable HTTP listener for local testing or TLS-terminating proxies
 # --hostname-strict=false: Allow access from any hostname (configure properly for production)
-ExecStart=/opt/keycloak/bin/kc.sh start --optimized --hostname-strict=false
+ExecStart=/opt/keycloak/bin/kc.sh start --optimized --http-enabled=true --hostname-strict=false
 
 # Restart policy: always restart unless explicitly stopped
 Restart=always
@@ -302,14 +303,14 @@ services:
   # Keycloak identity provider service
   keycloak:
     # Use official Keycloak image
-    image: quay.io/keycloak/keycloak:24.0.1
+    image: quay.io/keycloak/keycloak:26.6.3
     container_name: keycloak
 
     # Environment variables for Keycloak configuration
     environment:
       # Initial admin credentials (change after first login)
-      KEYCLOAK_ADMIN: admin
-      KEYCLOAK_ADMIN_PASSWORD: changeme
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: changeme
 
       # Database connection settings
       KC_DB: postgres
@@ -319,18 +320,20 @@ services:
 
       # Hostname configuration for proper URL generation
       KC_HOSTNAME_STRICT: "false"
-      KC_PROXY: edge
+      KC_HTTP_ENABLED: "true"
+      KC_PROXY_HEADERS: xforwarded
 
       # Enable health and metrics endpoints
       KC_HEALTH_ENABLED: "true"
       KC_METRICS_ENABLED: "true"
 
     # Start Keycloak in production mode
-    command: start --optimized
+    command: start
 
     # Expose Keycloak on port 8080
     ports:
       - "8080:8080"
+      - "9000:9000"
 
     # Wait for PostgreSQL to be healthy before starting
     depends_on:
@@ -353,12 +356,11 @@ networks:
 EOF
 ```
 
-Build and start the Docker containers:
+Pull and start the Docker containers:
 
 ```bash
-# Build the Keycloak image with optimizations
-# This creates a custom image with pre-built configuration
-docker compose build
+# Pull the container images defined in the Compose file
+docker compose pull
 
 # Start all services in detached mode
 docker compose up -d
@@ -383,7 +385,8 @@ After installation, access the Keycloak admin console to complete initial setup.
 # Open in browser: http://your-server-ip:8080
 
 # Verify Keycloak is responding
-curl -s http://localhost:8080/health/ready | jq .
+# Health endpoints are exposed on the management port by default
+curl -s http://localhost:9000/health/ready | jq .
 # Expected output: {"status": "UP", "checks": [...]}
 
 # For Docker installation, same URL applies
@@ -400,13 +403,14 @@ cd /opt/keycloak
 
 # Create initial admin user using the CLI
 # This command is only available on first startup before any admin exists
-sudo -u keycloak ./bin/kc.sh bootstrap-admin user \
+export KC_BOOTSTRAP_ADMIN_PASSWORD='YourSecurePassword123!'
+sudo -E -u keycloak ./bin/kc.sh bootstrap-admin user \
     --username admin \
-    --password 'YourSecurePassword123!'
+    --password:env KC_BOOTSTRAP_ADMIN_PASSWORD
 
 # Alternative: Use environment variables and restart
 sudo systemctl stop keycloak
-sudo sed -i 's/KEYCLOAK_ADMIN_PASSWORD=changeme/KEYCLOAK_ADMIN_PASSWORD=YourSecurePassword123!/' \
+sudo sed -i 's/KC_BOOTSTRAP_ADMIN_PASSWORD=changeme/KC_BOOTSTRAP_ADMIN_PASSWORD=YourSecurePassword123!/' \
     /etc/systemd/system/keycloak.service
 sudo systemctl daemon-reload
 sudo systemctl start keycloak
@@ -429,19 +433,20 @@ db-password=your_secure_db_password
 # Disable HTTP in production, use only HTTPS
 http-enabled=false
 https-port=8443
+https-certificate-file=/etc/letsencrypt/live/auth.yourdomain.com/fullchain.pem
+https-certificate-key-file=/etc/letsencrypt/live/auth.yourdomain.com/privkey.pem
 
 # Hostname configuration
-# Set to your actual domain in production
-hostname=auth.yourdomain.com
+# Set to your actual public URL in production
+hostname=https://auth.yourdomain.com
 hostname-strict=true
-hostname-strict-https=true
 
 # Proxy configuration (when behind reverse proxy)
-proxy=edge
+proxy-headers=xforwarded
 
 # Admin console restrictions
 # Only allow admin access from specific IP ranges
-# http-management-relative-path=/admin
+# Expose the admin console only through trusted networks or a separate admin hostname.
 
 # Metrics and health endpoints
 metrics-enabled=true
@@ -922,6 +927,8 @@ echo "LDAP mappers configured"
 ### OpenID Connect (OIDC) Configuration
 
 OIDC is the recommended protocol for modern applications. Here is a complete example of integrating a Node.js application:
+
+> Note: The `keycloak-connect` adapter is maintained for compatibility with existing Express applications, but Keycloak has announced that bespoke adapters are deprecated. For new Node.js applications, prefer a maintained generic OpenID Connect library or framework integration.
 
 ```javascript
 // Example: Node.js Express application with Keycloak OIDC
@@ -1554,7 +1561,7 @@ server {
     # Health check endpoint
     # Useful for load balancers and monitoring
     location /health {
-        proxy_pass http://keycloak_backend/health;
+        proxy_pass http://127.0.0.1:9000/health;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
 
@@ -1569,7 +1576,7 @@ server {
 
     # Metrics endpoint (if enabled in Keycloak)
     location /metrics {
-        proxy_pass http://keycloak_backend/metrics;
+        proxy_pass http://127.0.0.1:9000/metrics;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
 
@@ -1623,11 +1630,11 @@ Update Keycloak configuration to work behind the proxy:
 sudo tee -a /opt/keycloak/conf/keycloak.conf << 'EOF'
 
 # Proxy configuration
-# 'edge' mode: TLS terminated at proxy, HTTP to Keycloak
-proxy=edge
+# TLS is terminated at the proxy, and Keycloak accepts X-Forwarded-* headers from it
+proxy-headers=xforwarded
 
 # Hostname settings for proper URL generation
-hostname=auth.yourdomain.com
+hostname=https://auth.yourdomain.com
 hostname-strict=true
 
 # HTTP settings when behind proxy
@@ -1635,8 +1642,6 @@ http-enabled=true
 http-host=127.0.0.1
 http-port=8080
 
-# Disable HTTPS on Keycloak since proxy handles TLS
-https-port=-1
 EOF
 
 # Rebuild Keycloak with new configuration
@@ -1655,8 +1660,8 @@ For production deployments, use PostgreSQL instead of the default H2 database.
 ### Installing PostgreSQL
 
 ```bash
-# Install PostgreSQL 15
-sudo apt install -y postgresql-15 postgresql-contrib-15
+# Install PostgreSQL from the Ubuntu repositories
+sudo apt install -y postgresql postgresql-contrib
 
 # Start and enable PostgreSQL
 sudo systemctl start postgresql
@@ -1706,7 +1711,9 @@ echo "PostgreSQL database and user created successfully"
 ```bash
 # Optimize PostgreSQL for Keycloak workload
 # Edit PostgreSQL configuration
-sudo tee -a /etc/postgresql/15/main/conf.d/keycloak.conf << 'EOF'
+PG_VERSION=$(pg_lsclusters --no-header | awk 'NR==1 {print $1}')
+sudo mkdir -p "/etc/postgresql/${PG_VERSION}/main/conf.d"
+sudo tee -a "/etc/postgresql/${PG_VERSION}/main/conf.d/keycloak.conf" << 'EOF'
 # Connection settings
 # Adjust based on expected concurrent users
 max_connections = 200
@@ -1742,7 +1749,7 @@ EOF
 
 # Allow connections from Keycloak server
 # Edit pg_hba.conf to add authentication rules
-sudo tee -a /etc/postgresql/15/main/pg_hba.conf << 'EOF'
+sudo tee -a "/etc/postgresql/${PG_VERSION}/main/pg_hba.conf" << 'EOF'
 
 # Allow Keycloak connection from localhost
 # TYPE  DATABASE    USER        ADDRESS         METHOD
@@ -1784,27 +1791,20 @@ db-pool-max-size=50
 # Initial pool size
 db-pool-initial-size=10
 
-# Schema migration settings
-# 'update' automatically applies schema changes
-db-schema=update
-
 # Transaction settings
 transaction-xa-enabled=false
 
 # Hostname configuration
-hostname=auth.yourdomain.com
+hostname=https://auth.yourdomain.com
 hostname-strict=true
 
 # Proxy configuration
-proxy=edge
+proxy-headers=xforwarded
 
 # HTTP settings
 http-enabled=true
 http-host=127.0.0.1
 http-port=8080
-
-# Disable HTTPS (handled by reverse proxy)
-https-port=-1
 
 # Metrics and health endpoints
 metrics-enabled=true
@@ -1870,11 +1870,11 @@ db-pool-min-size=10
 db-pool-max-size=100
 
 # Hostname configuration
-hostname=auth.yourdomain.com
+hostname=https://auth.yourdomain.com
 hostname-strict=true
 
 # Proxy settings (all nodes behind load balancer)
-proxy=edge
+proxy-headers=xforwarded
 
 # HTTP configuration
 http-enabled=true
@@ -1886,8 +1886,7 @@ http-port=8080
 cache=ispn
 
 # Cache stack for network discovery
-# Options: tcp, udp, kubernetes, ec2, azure, google
-cache-stack=tcp
+# Leave unset to use the default jdbc-ping stack with a shared database.
 
 # Enable cluster health checks
 health-enabled=true
@@ -1898,93 +1897,8 @@ log=console
 log-level=INFO
 EOF
 
-# Create Infinispan cluster configuration
-sudo tee /opt/keycloak/conf/cache-ispn.xml << 'EOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<!-- Infinispan distributed cache configuration for Keycloak cluster -->
-<infinispan
-        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-        xsi:schemaLocation="urn:infinispan:config:14.0 https://infinispan.org/schemas/infinispan-config-14.0.xsd"
-        xmlns="urn:infinispan:config:14.0">
-
-    <!-- JGroups configuration for cluster communication -->
-    <jgroups>
-        <!-- TCP stack for cloud/container deployments -->
-        <stack name="tcp-custom" extends="tcp">
-            <!-- TCPPING for static cluster membership -->
-            <!-- List all node IPs for cluster discovery -->
-            <TCPPING
-                initial_hosts="keycloak1.internal:7800,keycloak2.internal:7800,keycloak3.internal:7800"
-                port_range="0"
-                stack.combine="REPLACE"
-                stack.position="MPING"/>
-        </stack>
-    </jgroups>
-
-    <!-- Cache container configuration -->
-    <cache-container name="keycloak">
-        <!-- Use custom TCP stack for transport -->
-        <transport lock-timeout="60000" stack="tcp-custom"/>
-
-        <!-- Local caches (not replicated) -->
-        <local-cache name="realms">
-            <encoding>
-                <key media-type="application/x-java-object"/>
-                <value media-type="application/x-java-object"/>
-            </encoding>
-            <memory max-count="10000"/>
-        </local-cache>
-
-        <local-cache name="users">
-            <encoding>
-                <key media-type="application/x-java-object"/>
-                <value media-type="application/x-java-object"/>
-            </encoding>
-            <memory max-count="10000"/>
-        </local-cache>
-
-        <!-- Distributed caches (replicated across nodes) -->
-        <!-- Sessions must be distributed for HA -->
-        <distributed-cache name="sessions" owners="2">
-            <expiration lifespan="-1"/>
-        </distributed-cache>
-
-        <distributed-cache name="authenticationSessions" owners="2">
-            <expiration lifespan="-1"/>
-        </distributed-cache>
-
-        <distributed-cache name="offlineSessions" owners="2">
-            <expiration lifespan="-1"/>
-        </distributed-cache>
-
-        <distributed-cache name="clientSessions" owners="2">
-            <expiration lifespan="-1"/>
-        </distributed-cache>
-
-        <distributed-cache name="offlineClientSessions" owners="2">
-            <expiration lifespan="-1"/>
-        </distributed-cache>
-
-        <distributed-cache name="loginFailures" owners="2">
-            <expiration lifespan="-1"/>
-        </distributed-cache>
-
-        <distributed-cache name="actionTokens" owners="2">
-            <encoding>
-                <key media-type="application/x-java-object"/>
-                <value media-type="application/x-java-object"/>
-            </encoding>
-            <expiration max-idle="-1" lifespan="-1" interval="300000"/>
-            <memory max-count="-1"/>
-        </distributed-cache>
-
-        <!-- Replicated cache for work distribution -->
-        <replicated-cache name="work">
-            <expiration lifespan="-1"/>
-        </replicated-cache>
-    </cache-container>
-</infinispan>
-EOF
+# No custom cache XML is required for this setup. With a shared database,
+# Keycloak uses the default jdbc-ping stack for cluster discovery.
 ```
 
 ### Load Balancer Configuration (HAProxy)
@@ -2079,9 +1993,10 @@ backend keycloak_servers
     # 'leastconn' routes to server with least connections
     balance leastconn
 
-    # Sticky sessions based on AUTH_SESSION_ID cookie
-    # This ensures session consistency during authentication flows
-    cookie AUTH_SESSION_ID insert indirect nocache
+    # Sticky sessions based on Keycloak's AUTH_SESSION_ID cookie
+    # This improves cache locality during authentication flows
+    stick-table type string len 128 size 100k expire 30m
+    stick on req.cook(AUTH_SESSION_ID)
 
     # Health check configuration
     option httpchk GET /health/ready
@@ -2090,13 +2005,13 @@ backend keycloak_servers
     # Backend servers
     # Each server has:
     # - check: enable health checks
-    # - cookie: sticky session cookie value
+    # - port 9000: use Keycloak's management port for health checks
     # - inter: health check interval (5s)
     # - fall: failures before marking down (3)
     # - rise: successes before marking up (2)
-    server keycloak1 10.0.1.10:8080 check cookie kc1 inter 5s fall 3 rise 2
-    server keycloak2 10.0.1.11:8080 check cookie kc2 inter 5s fall 3 rise 2
-    server keycloak3 10.0.1.12:8080 check cookie kc3 inter 5s fall 3 rise 2
+    server keycloak1 10.0.1.10:8080 check port 9000 inter 5s fall 3 rise 2
+    server keycloak2 10.0.1.11:8080 check port 9000 inter 5s fall 3 rise 2
+    server keycloak3 10.0.1.12:8080 check port 9000 inter 5s fall 3 rise 2
 
 # Stats page for monitoring
 listen stats
@@ -2389,7 +2304,7 @@ sudo systemctl start keycloak
 # Wait for Keycloak to start
 echo "Waiting for Keycloak to become ready..."
 for i in {1..60}; do
-    if curl -s http://localhost:8080/health/ready | grep -q '"status":"UP"'; then
+    if curl -s http://localhost:9000/health/ready | grep -q '"status":"UP"'; then
         echo "Keycloak is ready!"
         break
     fi
@@ -2419,12 +2334,9 @@ sudo chown keycloak:keycloak /opt/keycloak/scripts/restore.sh
 sudo tee -a /opt/keycloak/conf/keycloak.conf << 'EOF'
 
 # Security settings
-# Force HTTPS for external requests
-hostname-strict-https=true
-
 # Limit admin console access
 # Only allow from specific IP ranges
-# http-management-interface=127.0.0.1
+# Expose admin endpoints only through trusted networks or a separate admin hostname.
 
 # Content Security Policy
 # http-headers-content-security-policy="frame-src 'self'; frame-ancestors 'self'; object-src 'none';"
@@ -2434,7 +2346,7 @@ hostname-strict-https=true
 
 # Session settings
 # Reduce session timeout for sensitive operations
-spi-sticky-session-encoder-infinispan-should-attach-route=false
+spi-sticky-session-encoder--infinispan--should-attach-route=false
 EOF
 
 # Create security-focused realm settings script
@@ -2496,7 +2408,7 @@ After setting up Keycloak, it is crucial to implement comprehensive monitoring t
 
 3. **SSL Certificate Monitoring**: Get notified before your SSL certificates expire to prevent service disruptions.
 
-4. **Custom Health Checks**: Create custom monitors for Keycloak's health endpoints (`/health/ready`, `/health/live`).
+4. **Custom Health Checks**: Create internal monitors for Keycloak's management health endpoints (`/health/ready`, `/health/live`) or external monitors for public OIDC endpoints.
 
 5. **Incident Management**: Automatically create and manage incidents when Keycloak experiences issues.
 
@@ -2510,8 +2422,8 @@ cat > /opt/keycloak/scripts/oneuptime-health.sh << 'EOF'
 
 KEYCLOAK_URL="https://auth.yourdomain.com"
 
-# Check Keycloak readiness
-HEALTH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${KEYCLOAK_URL}/health/ready")
+# Check the public OIDC discovery endpoint
+HEALTH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${KEYCLOAK_URL}/realms/master/.well-known/openid-configuration")
 
 if [ "$HEALTH_STATUS" -eq 200 ]; then
     echo "Keycloak is healthy"
