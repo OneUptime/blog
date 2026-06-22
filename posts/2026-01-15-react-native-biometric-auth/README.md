@@ -235,8 +235,8 @@ export function useBiometricAuth(
           return { success: false, error: 'No biometrics enrolled on device' };
         case 'lockout':
           return { success: false, error: 'Too many failed attempts. Try again later.' };
-        case 'lockout_permanent':
-          return { success: false, error: 'Biometrics permanently locked. Use device passcode.' };
+        case 'passcode_not_set':
+          return { success: false, error: 'No device passcode set. Set one to use biometrics.' };
         default:
           return { success: false, error: 'Authentication failed' };
       }
@@ -1220,26 +1220,27 @@ describe('Biometric Authentication Flow', () => {
 
 ### Simulator/Emulator Testing
 
-For iOS Simulator:
+For iOS Simulator, the simulator does not expose biometric controls through `simctl`. Use the Simulator's **Features** menu instead:
+
+- Enroll a biometric: **Features → Face ID → Enrolled** (or **Features → Touch ID → Enrolled**)
+- Trigger a successful scan: **Features → Face ID → Matching Face** (or **Touch ID → Matching Touch**)
+- Trigger a failed scan: **Features → Face ID → Non-matching Face** (or **Touch ID → Non-matching Touch**)
+
+To script enrollment from the command line, use the third-party [AppleSimulatorUtils](https://github.com/wix/AppleSimulatorUtils) tool:
 
 ```bash
-# Enable Face ID enrollment
-xcrun simctl privacy booted grant face-id com.yourapp.bundleid
+# Install via Homebrew
+brew tap wix/brew
+brew install applesimutils
 
-# Trigger successful Face ID
-xcrun simctl ui booted biometrics match
-
-# Trigger failed Face ID
-xcrun simctl ui booted biometrics non-match
+# Enroll biometrics on the booted simulator
+applesimutils --booted --biometricEnrollment YES
 ```
 
-For Android Emulator:
+For Android Emulator, use the `emu finger touch` command to send a fingerprint touch event (enroll a fingerprint first through the emulator's Settings):
 
 ```bash
-# Open fingerprint settings
-adb -e emu finger touch 1
-
-# Simulate fingerprint authentication
+# Send a fingerprint touch event with finger id 1 to simulate authentication
 adb -e emu finger touch 1
 ```
 
