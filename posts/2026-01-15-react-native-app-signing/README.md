@@ -882,13 +882,19 @@ security find-certificate -c "Apple Distribution" -p | \
 Android supports key rotation through APK Signature Scheme v3:
 
 ```bash
-# Using apksigner with lineage for key rotation
+# First, create the lineage that records the old -> new rotation
+apksigner rotate \
+  --out lineage.bin \
+  --old-signer --ks old-keystore.jks --ks-key-alias old-alias \
+  --new-signer --ks new-keystore.jks --ks-key-alias new-alias
+
+# Then sign with both keys, listed in lineage order (old signer first)
 apksigner sign \
-  --ks new-keystore.jks \
+  --ks old-keystore.jks \
+  --ks-key-alias old-alias \
+  --next-signer --ks new-keystore.jks \
   --ks-key-alias new-alias \
   --lineage lineage.bin \
-  --next-signer --ks old-keystore.jks \
-  --ks-key-alias old-alias \
   app.apk
 ```
 
