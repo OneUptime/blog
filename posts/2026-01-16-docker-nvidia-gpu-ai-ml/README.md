@@ -61,7 +61,7 @@ curl -s -L https://nvidia.github.io/libnvidia-container/stable/rpm/nvidia-contai
   sudo tee /etc/yum.repos.d/nvidia-container-toolkit.repo
 
 # Install
-sudo yum install -y nvidia-container-toolkit
+sudo dnf install -y nvidia-container-toolkit
 
 # Configure and restart
 sudo nvidia-ctk runtime configure --runtime=docker
@@ -116,8 +116,6 @@ docker run --gpus '"device=GPU-12345678-1234-1234-1234-123456789abc"' myimage
 ### Basic GPU Configuration
 
 ```yaml
-version: '3.8'
-
 services:
   ml-training:
     image: tensorflow/tensorflow:latest-gpu
@@ -136,8 +134,6 @@ services:
 ### Specific GPU Allocation
 
 ```yaml
-version: '3.8'
-
 services:
   # Training job uses 2 GPUs
   trainer:
@@ -173,16 +169,18 @@ services:
         reservations:
           devices:
             - driver: nvidia
-              capabilities: [gpu, compute, utility]
+              capabilities: [gpu]
+    environment:
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
 ```
 
-Available capabilities:
-- `gpu`: Basic GPU access
-- `compute`: CUDA compute
-- `utility`: nvidia-smi access
+Available NVIDIA driver capabilities:
+- `compute`: CUDA and OpenCL compute
+- `utility`: nvidia-smi and NVML
 - `graphics`: OpenGL/Vulkan
 - `video`: Video encode/decode
-- `display`: Display output
+- `display`: X11 display output
+- `compat32`: 32-bit application support
 
 ## Running TensorFlow with GPU
 
@@ -200,8 +198,6 @@ print('GPUs:', tf.config.list_physical_devices('GPU'))
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   tensorflow:
     image: tensorflow/tensorflow:latest-gpu-jupyter
@@ -258,8 +254,6 @@ print('GPU name:', torch.cuda.get_device_name(0) if torch.cuda.is_available() el
 ### PyTorch Development Environment
 
 ```yaml
-version: '3.8'
-
 services:
   pytorch:
     image: pytorch/pytorch:2.1.0-cuda12.1-cudnn8-devel
@@ -314,12 +308,17 @@ import tensorflow as tf
 gpus = tf.config.list_physical_devices('GPU')
 for gpu in gpus:
     tf.config.experimental.set_memory_growth(gpu, True)
+```
 
-# Or set specific memory limit
-tf.config.set_logical_device_configuration(
-    gpus[0],
-    [tf.config.LogicalDeviceConfiguration(memory_limit=4096)]
-)
+Or set a specific memory limit before TensorFlow initializes the GPU:
+```python
+import tensorflow as tf
+gpus = tf.config.list_physical_devices('GPU')
+if gpus:
+    tf.config.set_logical_device_configuration(
+        gpus[0],
+        [tf.config.LogicalDeviceConfiguration(memory_limit=4096)]
+    )
 ```
 
 PyTorch:
@@ -355,8 +354,6 @@ docker run --gpus all --shm-size=16g pytorch/pytorch:latest
 ### Docker Compose for Distributed Training
 
 ```yaml
-version: '3.8'
-
 services:
   trainer:
     image: pytorch/pytorch:2.1.0-cuda12.1-cudnn8-devel
@@ -400,8 +397,6 @@ services:
 ## Complete ML Pipeline Example
 
 ```yaml
-version: '3.8'
-
 services:
   # Data preprocessing (CPU)
   preprocessor:
@@ -450,7 +445,7 @@ services:
     working_dir: /app
     command: python serve.py
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -509,7 +504,7 @@ Should show:
 nvidia-smi
 
 # Inside container
-docker run --gpus all nvidia/cuda:12.2.0-base-ubuntu22.04 nvcc --version
+docker run --gpus all nvidia/cuda:12.2.0-devel-ubuntu22.04 nvcc --version
 ```
 
 ## Summary
@@ -524,4 +519,3 @@ docker run --gpus all nvidia/cuda:12.2.0-base-ubuntu22.04 nvcc --version
 | Multi-GPU IPC | `ipc: host` |
 
 With NVIDIA Container Toolkit properly configured, Docker becomes a powerful platform for reproducible AI/ML workloads, allowing you to package models, dependencies, and training scripts into portable containers that run consistently across development and production environments.
-
