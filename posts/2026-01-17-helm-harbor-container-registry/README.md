@@ -220,6 +220,9 @@ trivy:
 # Metrics
 metrics:
   enabled: true
+  serviceMonitor:
+    enabled: true
+    interval: 30s
   core:
     path: /metrics
     port: 8001
@@ -254,15 +257,16 @@ kubectl create secret generic harbor-admin-credentials \
   --namespace harbor \
   --from-literal=password=$(openssl rand -base64 24)
 
-# Secret key (32 characters)
+# Secret key (16 characters)
 kubectl create secret generic harbor-secret-key \
   --namespace harbor \
-  --from-literal=secretKey=$(openssl rand -hex 16)
+  --from-literal=secretKey=$(openssl rand -hex 8)
 
 # Database credentials
 kubectl create secret generic harbor-db-credentials \
   --namespace harbor \
-  --from-literal=password=$(openssl rand -base64 24)
+  --from-literal=password=$(openssl rand -base64 24) \
+  --from-literal=postgres-password=$(openssl rand -base64 24)
 
 # Redis credentials
 kubectl create secret generic harbor-redis-credentials \
@@ -521,23 +525,12 @@ trivy:
 ### Prometheus ServiceMonitor
 
 ```yaml
-# harbor-servicemonitor.yaml
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: harbor
-  namespace: monitoring
-spec:
-  selector:
-    matchLabels:
-      app: harbor
-  namespaceSelector:
-    matchNames:
-      - harbor
-  endpoints:
-    - port: metrics
-      interval: 30s
-      path: /metrics
+# In harbor-values.yaml
+metrics:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+    interval: 30s
 ```
 
 ### Key Metrics
@@ -547,19 +540,19 @@ spec:
 harbor_project_total
 
 # Repository count
-harbor_repo_total
+harbor_project_repo_total
 
 # Artifact count
-harbor_artifact_total
+harbor_project_artifact_total
 
 # Pull/Push requests
-rate(harbor_registry_http_request_duration_seconds_count[5m])
+rate(registry_http_request_duration_seconds_count[5m])
 
 # Storage usage
 harbor_project_quota_usage_byte
 
 # Scan statistics
-harbor_scanner_total
+harbor_jobservice_task_total{job="IMAGE_SCAN"}
 ```
 
 ## Garbage Collection
