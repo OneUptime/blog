@@ -102,8 +102,9 @@ logging {
     };
 
     // Route categories to channels
-    category dnssec { dnssec_log; };
-    category dnssec-validation { validation_log; };
+    // BIND logs all DNSSEC processing (including validation) under the
+    // single "dnssec" category; route it to multiple channels as needed.
+    category dnssec { dnssec_log; validation_log; };
     category queries { query_log; };
     category security { security_log; };
     category resolver { dnssec_log; };
@@ -146,7 +147,6 @@ logging {
     };
 
     category dnssec { dnssec_json; };
-    category dnssec-validation { dnssec_json; };
 };
 ```
 
@@ -879,6 +879,7 @@ import dns.resolver
 import dns.dnssec
 import dns.name
 import dns.rdatatype
+import dns.flags
 import json
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -887,7 +888,8 @@ class DNSSECTester:
     def __init__(self, resolver_ip='8.8.8.8'):
         self.resolver = dns.resolver.Resolver()
         self.resolver.nameservers = [resolver_ip]
-        self.resolver.use_dnssec = True
+        # Request DNSSEC records by setting the DO (DNSSEC OK) flag via EDNS.
+        self.resolver.use_edns(0, dns.flags.DO, 4096)
         self.results = []
 
     def test_domain(self, domain):
