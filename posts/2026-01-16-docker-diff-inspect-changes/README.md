@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Docker, Container, Debugging, DevOps, Filesystem
 
-Description: Learn how to use docker diff to inspect filesystem changes in running containers, track modifications, and debug container behavior by comparing against the original image.
+Description: Learn how to use docker diff to inspect filesystem changes in containers, track modifications, and debug container behavior by inspecting changes since container creation.
 
 ---
 
-The `docker diff` command shows what files have been added, changed, or deleted in a container compared to its base image. This is invaluable for debugging, auditing container behavior, and understanding what an application modifies at runtime.
+The `docker diff` command shows what files have been added, changed, or deleted in a container since it was created. This is invaluable for debugging, auditing container behavior, and understanding what an application modifies at runtime.
 
 ## Basic Usage
 
@@ -57,10 +57,10 @@ flowchart TB
 
 ```bash
 # Start a fresh nginx container
-docker run -d --name nginx-test nginx:alpine
+docker run -d --name nginx-test -p 8080:80 nginx:alpine
 
 # Make some requests (generates logs)
-curl http://localhost:80 2>/dev/null || true
+curl http://localhost:8080 2>/dev/null || true
 
 # See what changed
 docker diff nginx-test
@@ -87,7 +87,7 @@ A /run/nginx.pid
 docker run -d --name debug-container python:3.11-slim sleep infinity
 
 # Enter container and modify files
-docker exec -it debug-container bash -c "
+docker exec -it debug-container sh -c "
   echo 'DEBUG=true' >> /etc/environment
   pip install requests
   mkdir -p /app/data
@@ -101,9 +101,10 @@ docker diff debug-container
 ### Audit Database Containers
 
 ```bash
-# Start PostgreSQL
+# Start PostgreSQL with PGDATA outside the image's default volume
 docker run -d --name postgres-audit \
   -e POSTGRES_PASSWORD=secret \
+  -e PGDATA=/tmp/pgdata \
   postgres:15
 
 # Wait for startup
@@ -249,19 +250,20 @@ CONTAINER=$1
 
 echo "=== Size Analysis for $CONTAINER ==="
 
-# Get list of added files
-ADDED_FILES=$(docker diff "$CONTAINER" | grep "^A " | awk '{print $2}')
+tmpfile=$(mktemp)
+trap 'rm -f "$tmpfile"' EXIT
 
 total=0
-for file in $ADDED_FILES; do
+while IFS= read -r file; do
   # Get file size
-  size=$(docker exec "$CONTAINER" stat -f%z "$file" 2>/dev/null || \
-         docker exec "$CONTAINER" stat -c%s "$file" 2>/dev/null || echo "0")
-  if [ "$size" != "0" ] && [ -n "$size" ]; then
+  size=$(docker exec "$CONTAINER" stat -c%s "$file" 2>/dev/null || echo "0")
+  if [ "$size" -gt 0 ] 2>/dev/null; then
     echo "$size $file"
     total=$((total + size))
   fi
-done | sort -rn | head -20
+done < <(docker diff "$CONTAINER" | sed -n 's/^A //p') > "$tmpfile"
+
+sort -rn "$tmpfile" | head -20
 
 echo -e "\nTop 20 largest added files shown"
 echo "Total added data: $((total / 1024 / 1024)) MB"
@@ -453,4 +455,3 @@ test-container-changes:
 | `docker diff container \| wc -l` | Count total changes |
 
 docker diff is a simple but powerful tool for understanding container behavior. Use it to debug applications, audit security, analyze container size, and verify that containers behave as expected. Combined with other Docker commands, it provides deep visibility into container filesystem activity.
-
