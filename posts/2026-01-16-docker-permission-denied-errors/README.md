@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Docker, Linux, Permission, Troubleshooting, DevOps
 
-Description: Solve 'permission denied while trying to connect to the Docker daemon socket' and other Docker permission errors. Covers rootless mode, group fixes, and socket permissions.
+Description: Solve 'permission denied while trying to connect to the Docker daemon socket' and other Docker permission errors. Covers group fixes, socket permissions, and bind-mount ownership.
 
 ---
 
@@ -99,7 +99,7 @@ sudo chown -R 1000:1000 ./data
 #### Use Named Volumes Instead
 
 ```bash
-# Named volumes handle permissions automatically
+# Named volumes avoid host directory ownership mismatches
 docker volume create mydata
 docker run -v mydata:/app/data myimage
 ```
@@ -200,27 +200,25 @@ CMD ["myapp"]
 ### Common Pattern
 
 ```yaml
-version: '3.8'
-
 services:
   app:
     image: myapp
-    user: "${UID}:${GID}"  # Use host user
+    user: "${HOST_UID}:${HOST_GID}"  # Use host user
     volumes:
       - ./data:/app/data
 ```
 
 Run with:
 ```bash
-UID=$(id -u) GID=$(id -g) docker-compose up
+HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose up
 ```
 
 ### Using .env File
 
 ```bash
 # .env
-UID=1000
-GID=1000
+HOST_UID=1000
+HOST_GID=1000
 ```
 
 ```yaml
@@ -228,7 +226,7 @@ GID=1000
 services:
   app:
     image: myapp
-    user: "${UID}:${GID}"
+    user: "${HOST_UID}:${HOST_GID}"
     volumes:
       - ./data:/app/data
 ```
@@ -291,14 +289,15 @@ COPY --chown=nginx:nginx ./html /usr/share/nginx/html
 ### Elasticsearch
 
 ```bash
-# Elasticsearch needs specific permissions
-sudo chown -R 1000:1000 ./esdata
-sudo chmod -R 775 ./esdata
+# Elasticsearch runs as uid 1000 with gid 0
+mkdir -p ./esdata
+sudo chgrp -R 0 ./esdata
+sudo chmod -R g+rwx ./esdata
 
 docker run -d \
   -v $(pwd)/esdata:/usr/share/elasticsearch/data \
   -e "discovery.type=single-node" \
-  elasticsearch:8.11.0
+  docker.elastic.co/elasticsearch/elasticsearch:8.11.0
 ```
 
 ## Debug Permission Issues
@@ -361,7 +360,7 @@ services:
       - pgdata:/var/lib/postgresql/data  # Named volume
 
 volumes:
-  pgdata:  # Docker manages permissions
+  pgdata:  # Docker manages the volume location
 ```
 
 ### 3. Match UIDs When Using Bind Mounts
@@ -372,8 +371,8 @@ services:
     build:
       context: .
       args:
-        UID: ${UID:-1000}
-        GID: ${GID:-1000}
+        UID: ${HOST_UID:-1000}
+        GID: ${HOST_GID:-1000}
     volumes:
       - ./data:/app/data
 ```
@@ -423,4 +422,3 @@ volumes:
 | Init container | Complex permission setup |
 
 Permission issues in Docker usually stem from UID/GID mismatches between host and container. Named volumes avoid most problems. For bind mounts, either match the container user to host user or run the container as root initially to fix permissions before switching to a non-root user.
-
