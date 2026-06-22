@@ -273,11 +273,11 @@ docker save myapp:latest | wc -c | numfmt --to=iec
 
 | Method | Speed | Compression | Command |
 |--------|-------|-------------|---------|
-| None | Fastest | 1x | `docker save > file.tar` |
-| gzip | Fast | ~2-3x | `docker save \| gzip > file.tar.gz` |
-| pigz (parallel gzip) | Faster | ~2-3x | `docker save \| pigz > file.tar.gz` |
-| xz | Slow | ~4-5x | `docker save \| xz > file.tar.xz` |
-| zstd | Fast | ~3-4x | `docker save \| zstd > file.tar.zst` |
+| None | Fastest | 1x | `docker save image:tag > file.tar` |
+| gzip | Fast | ~2-3x | `docker save image:tag \| gzip > file.tar.gz` |
+| pigz (parallel gzip) | Faster | ~2-3x | `docker save image:tag \| pigz > file.tar.gz` |
+| xz | Slow | ~4-5x | `docker save image:tag \| xz > file.tar.xz` |
+| zstd | Fast | ~3-4x | `docker save image:tag \| zstd > file.tar.zst` |
 
 ```bash
 # Using zstd (if installed) - good balance of speed and compression
