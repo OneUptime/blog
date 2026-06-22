@@ -128,7 +128,7 @@ Advertising an extremely low MTU causes performance degradation or DoS.
 
 ```bash
 # Attacker advertises:
-#   MTU Option: 68 (minimum valid)
+#   MTU Option: 1280 (IPv6 minimum) or an invalid lower value
 
 # Effect: Severe fragmentation
 # Result: Connection failures, DoS
@@ -219,6 +219,7 @@ Monitors for unauthorized Router Advertisements
 
 from scapy.all import *
 from scapy.layers.inet6 import *
+import os
 import logging
 import json
 from datetime import datetime
@@ -313,7 +314,9 @@ class RAMonitor:
                     severity = 'HIGH'
 
         # Check 6: Router preference analysis
-        prf = (ra.prf >> 3) & 0x03
+        # Scapy decodes the 2-bit Default Router Preference (RFC 4191)
+        # into ra.prf directly, so no bit-shifting is needed.
+        prf = ra.prf
         prf_map = {0: 'Medium', 1: 'High', 2: 'Reserved', 3: 'Low'}
         if prf == 1 and src_ip not in AUTHORIZED_ROUTERS:
             alert_reasons.append(f"High router preference from unknown router")
