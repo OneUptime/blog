@@ -22,7 +22,7 @@ Jenkins is the leading open-source automation server for continuous integration 
 
 - Ubuntu 20.04 or later
 - At least 2GB RAM (4GB recommended)
-- Java 11 or 17
+- Java 17 or 21
 - Root or sudo access
 
 ## Install Java
@@ -45,7 +45,7 @@ java -version
 
 ```bash
 # Add Jenkins GPG key
-curl -fsSL https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key | sudo tee /usr/share/keyrings/jenkins-keyring.asc > /dev/null
+curl -fsSL https://pkg.jenkins.io/debian-stable/jenkins.io-2026.key | sudo tee /usr/share/keyrings/jenkins-keyring.asc > /dev/null
 
 # Add repository
 echo deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] https://pkg.jenkins.io/debian-stable binary/ | sudo tee /etc/apt/sources.list.d/jenkins.list > /dev/null
@@ -485,9 +485,20 @@ sudo systemctl start jenkins
 # Generate keystore
 keytool -genkey -keyalg RSA -alias jenkins -keystore /var/lib/jenkins/jenkins.jks
 
-# Configure Jenkins startup
-# /etc/default/jenkins
-JENKINS_ARGS="--httpPort=-1 --httpsPort=8443 --httpsKeyStore=/var/lib/jenkins/jenkins.jks --httpsKeyStorePassword=yourpassword"
+# Configure Jenkins startup via a systemd override
+# (modern packages use systemd, not /etc/default/jenkins)
+sudo systemctl edit jenkins
+```
+
+Add the following to the override, then restart with `sudo systemctl restart jenkins`:
+
+```ini
+# /etc/systemd/system/jenkins.service.d/override.conf
+[Service]
+Environment="JENKINS_PORT=-1"
+Environment="JENKINS_HTTPS_PORT=8443"
+Environment="JENKINS_HTTPS_KEYSTORE=/var/lib/jenkins/jenkins.jks"
+Environment="JENKINS_HTTPS_KEYSTORE_PASSWORD=yourpassword"
 ```
 
 ### Reverse Proxy (Nginx)
@@ -532,9 +543,10 @@ sudo journalctl -u jenkins -f
 ### Common Issues
 
 ```bash
-# Out of memory
-# Edit /etc/default/jenkins
-JAVA_ARGS="-Xmx2048m"
+# Out of memory: increase the JVM heap via a systemd override
+# Run: sudo systemctl edit jenkins, then add under [Service]:
+# Environment="JAVA_OPTS=-Xmx2048m"
+# Apply with: sudo systemctl restart jenkins
 
 # Plugin issues
 # Access safe mode
