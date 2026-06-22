@@ -64,12 +64,15 @@ By instrumenting user interactions as spans, you connect frontend events to back
 ```bash
 npm install @opentelemetry/api \
   @opentelemetry/sdk-trace-web \
+  @opentelemetry/sdk-trace-base \
   @opentelemetry/context-zone \
+  @opentelemetry/instrumentation \
   @opentelemetry/instrumentation-fetch \
   @opentelemetry/instrumentation-xml-http-request \
   @opentelemetry/exporter-trace-otlp-http \
   @opentelemetry/resources \
-  @opentelemetry/semantic-conventions
+  @opentelemetry/semantic-conventions \
+  web-vitals
 ```
 
 ### Basic Telemetry Configuration
@@ -85,14 +88,18 @@ import { ZoneContextManager } from '@opentelemetry/context-zone';
 import { registerInstrumentations } from '@opentelemetry/instrumentation';
 import { FetchInstrumentation } from '@opentelemetry/instrumentation-fetch';
 import { XMLHttpRequestInstrumentation } from '@opentelemetry/instrumentation-xml-http-request';
-import { Resource } from '@opentelemetry/resources';
-import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import {
+  ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+} from '@opentelemetry/semantic-conventions';
 
 // Define your application identity
-const resource = new Resource({
-  [SemanticResourceAttributes.SERVICE_NAME]: 'react-frontend',
-  [SemanticResourceAttributes.SERVICE_VERSION]: process.env.REACT_APP_VERSION || '1.0.0',
-  [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV || 'development',
+const resource = resourceFromAttributes({
+  [ATTR_SERVICE_NAME]: 'react-frontend',
+  [ATTR_SERVICE_VERSION]: process.env.REACT_APP_VERSION || '1.0.0',
+  [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: process.env.NODE_ENV || 'development',
 });
 
 // Configure the OTLP exporter to send traces to your backend
@@ -106,14 +113,14 @@ const exporter = new OTLPTraceExporter({
 // Create the tracer provider
 const provider = new WebTracerProvider({
   resource,
+  spanProcessors: [
+    new BatchSpanProcessor(exporter, {
+      maxQueueSize: 100,
+      maxExportBatchSize: 10,
+      scheduledDelayMillis: 500,
+    }),
+  ],
 });
-
-// Use batch processing for efficiency
-provider.addSpanProcessor(new BatchSpanProcessor(exporter, {
-  maxQueueSize: 100,
-  maxExportBatchSize: 10,
-  scheduledDelayMillis: 500,
-}));
 
 // Register the provider globally
 provider.register({
@@ -397,7 +404,6 @@ export function TrackedButton({
 // src/components/ProductCard.tsx
 import React, { useState } from 'react';
 import { TrackedButton } from './TrackedButton';
-import { useTrackedClick } from '../hooks/useTrackedClick';
 
 interface ProductCardProps {
   product: {
@@ -455,7 +461,7 @@ Create a comprehensive hook for tracing form submissions:
 // src/hooks/useTrackedForm.ts
 import { useCallback, useRef } from 'react';
 import { useTracing } from '../contexts/TracingContext';
-import { Span, SpanStatusCode } from '@opentelemetry/api';
+import { Span, SpanStatusCode, context as otelContext, trace } from '@opentelemetry/api';
 
 interface FormTrackingOptions {
   formName: string;
@@ -527,50 +533,61 @@ export function useTrackedForm<T extends Record<string, any>>(
   const handleSubmit = useCallback(async (data: T) => {
     const parentSpan = currentSpan.current;
 
-    await withSpan(`form.submit.${options.formName}`, async (span) => {
-      const timeToSubmit = Date.now() - formState.current.startTime;
+    try {
+      const submit = () => withSpan(`form.submit.${options.formName}`, async (span) => {
+        const timeToSubmit = Date.now() - formState.current.startTime;
 
-      span.setAttributes({
-        'form.name': options.formName,
-        'form.category': options.formCategory || 'general',
-        'form.time_to_submit_ms': timeToSubmit,
-        'form.field_count': Object.keys(data).length,
-        'form.total_field_interactions': Array.from(formState.current.fieldInteractions.values())
-          .reduce((a, b) => a + b, 0),
-        'form.had_validation_errors': formState.current.validationErrors.length > 0,
-      });
-
-      span.addEvent('form.submit.start', {
-        'form.fields_changed': formState.current.fieldInteractions.size,
-      });
-
-      try {
-        await onSubmit(data);
-        span.addEvent('form.submit.success');
-        span.setStatus({ code: SpanStatusCode.OK });
-      } catch (error: any) {
-        span.addEvent('form.submit.error', {
-          'error.message': error.message,
+        span.setAttributes({
+          'form.name': options.formName,
+          'form.category': options.formCategory || 'general',
+          'form.time_to_submit_ms': timeToSubmit,
+          'form.field_count': Object.keys(data).length,
+          'form.total_field_interactions': Array.from(formState.current.fieldInteractions.values())
+            .reduce((a, b) => a + b, 0),
+          'form.had_validation_errors': formState.current.validationErrors.length > 0,
         });
-        span.recordException(error);
-        span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
-        throw error;
+
+        span.addEvent('form.submit.start', {
+          'form.fields_changed': formState.current.fieldInteractions.size,
+        });
+
+        try {
+          await onSubmit(data);
+          span.addEvent('form.submit.success');
+          span.setStatus({ code: SpanStatusCode.OK });
+        } catch (error: any) {
+          span.addEvent('form.submit.error', {
+            'error.message': error.message,
+          });
+          span.recordException(error);
+          span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
+          throw error;
+        }
+      });
+
+      if (parentSpan) {
+        await otelContext.with(
+          trace.setSpan(otelContext.active(), parentSpan),
+          submit
+        );
+      } else {
+        await submit();
       }
-    });
+    } finally {
+      // End the interaction span
+      if (parentSpan) {
+        parentSpan.addEvent('form.completed');
+        parentSpan.end();
+        currentSpan.current = null;
+      }
 
-    // End the interaction span
-    if (parentSpan) {
-      parentSpan.addEvent('form.completed');
-      parentSpan.end();
-      currentSpan.current = null;
+      // Reset form state
+      formState.current = {
+        startTime: Date.now(),
+        fieldInteractions: new Map(),
+        validationErrors: [],
+      };
     }
-
-    // Reset form state
-    formState.current = {
-      startTime: Date.now(),
-      fieldInteractions: new Map(),
-      validationErrors: [],
-    };
   }, [options.formName, options.formCategory, onSubmit, withSpan]);
 
   // Track form abandonment
@@ -747,7 +764,7 @@ export function LoginForm({ onLogin }: LoginFormProps) {
       validate={validate}
       sanitizeFields={['password']}
     >
-      {({ register, handleSubmit, errors, isSubmitting }) => (
+      {({ register, errors, isSubmitting }) => (
         <>
           <div className="form-group">
             <label htmlFor="email">Email</label>
@@ -895,6 +912,22 @@ export function TrackedLink({
   const navigate = useNavigate();
 
   const handleClick = useCallback(async (e: React.MouseEvent<HTMLAnchorElement>) => {
+    if (
+      e.defaultPrevented ||
+      e.button !== 0 ||
+      e.metaKey ||
+      e.altKey ||
+      e.ctrlKey ||
+      e.shiftKey ||
+      props.target
+    ) {
+      onClick?.(e);
+      return;
+    }
+
+    const handlerResult = onClick?.(e);
+    if (e.defaultPrevented) return;
+
     e.preventDefault();
 
     await withSpan(`navigation.${trackingName}`, async (span) => {
@@ -908,15 +941,13 @@ export function TrackedLink({
 
       span.addEvent('navigation.click');
 
-      if (onClick) {
-        await onClick(e);
-      }
+      await handlerResult;
 
       span.addEvent('navigation.start');
       navigate(to);
       span.addEvent('navigation.complete');
     });
-  }, [trackingName, trackingCategory, trackingAttributes, to, onClick, navigate, withSpan]);
+  }, [trackingName, trackingCategory, trackingAttributes, to, onClick, props.target, navigate, withSpan]);
 
   return (
     <Link {...props} to={to} onClick={handleClick}>
@@ -931,7 +962,7 @@ export function TrackedLink({
 ```typescript
 // src/components/TracedRouter.tsx
 import React from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter } from 'react-router-dom';
 import { useRouteTracing } from '../hooks/useRouteTracing';
 
 function RouteTracer({ children }: { children: React.ReactNode }) {
@@ -1055,6 +1086,8 @@ export function useModalTracking(modalName: string): ModalTrackingResult {
   const openTime = useRef<number>(0);
 
   const onOpen = useCallback(() => {
+    if (modalSpan.current) return;
+
     openTime.current = Date.now();
     modalSpan.current = startSpan(`modal.${modalName}`, {
       'modal.name': modalName,
@@ -1116,7 +1149,13 @@ export function ConfirmationModal({
     if (isOpen) {
       onOpen();
     }
-  }, [isOpen, onOpen]);
+
+    return () => {
+      if (isOpen) {
+        onClose('cancel');
+      }
+    };
+  }, [isOpen, onOpen, onClose]);
 
   const handleConfirm = async () => {
     trackInteraction('confirm-click');
@@ -1315,9 +1354,8 @@ export function useWebVitals() {
     };
 
     // Dynamic import to keep bundle size down
-    import('web-vitals').then(({ onCLS, onFID, onFCP, onLCP, onTTFB, onINP }) => {
+    import('web-vitals').then(({ onCLS, onFCP, onLCP, onTTFB, onINP }) => {
       onCLS(reportMetric);
-      onFID(reportMetric);
       onFCP(reportMetric);
       onLCP(reportMetric);
       onTTFB(reportMetric);
@@ -1350,10 +1388,10 @@ export function useRenderPerformance(componentName: string) {
       'render.time_since_last_ms': timeSinceLastRender,
     });
 
-    // Measure actual DOM update time
+    // Measure delay until the next animation frame
     requestAnimationFrame(() => {
-      const paintTime = performance.now() - currentRenderTime;
-      span.setAttribute('render.paint_time_ms', paintTime);
+      const frameDelay = performance.now() - currentRenderTime;
+      span.setAttribute('render.next_frame_delay_ms', frameDelay);
       span.end();
     });
 
@@ -1371,7 +1409,12 @@ import { trace } from '@opentelemetry/api';
 
 export function useLongTaskDetection(threshold: number = 50) {
   useEffect(() => {
-    if (!('PerformanceObserver' in window)) return;
+    if (
+      !('PerformanceObserver' in window) ||
+      !PerformanceObserver.supportedEntryTypes?.includes('longtask')
+    ) {
+      return;
+    }
 
     const tracer = trace.getTracer('long-tasks');
 
@@ -1433,11 +1476,11 @@ export async function tracedFetch(
     {
       kind: SpanKind.CLIENT,
       attributes: {
-        'http.method': method,
-        'http.url': url,
-        'http.host': parsedUrl.host,
-        'http.path': parsedUrl.pathname,
-        'http.scheme': parsedUrl.protocol.replace(':', ''),
+        'http.request.method': method,
+        'url.full': parsedUrl.href,
+        'server.address': parsedUrl.hostname,
+        'url.path': parsedUrl.pathname,
+        'url.scheme': parsedUrl.protocol.replace(':', ''),
         ...spanAttributes,
       },
     },
@@ -1457,8 +1500,8 @@ export async function tracedFetch(
         });
 
         span.setAttributes({
-          'http.status_code': response.status,
-          'http.response_content_length': response.headers.get('content-length') || 0,
+          'http.response.status_code': response.status,
+          'http.response.body.size': Number(response.headers.get('content-length') || 0),
         });
 
         if (response.ok) {
@@ -1470,7 +1513,7 @@ export async function tracedFetch(
             message: `HTTP ${response.status}`,
           });
           span.addEvent('http.request.error', {
-            'http.status_code': response.status,
+            'http.response.status_code': response.status,
           });
         }
 
@@ -1587,7 +1630,8 @@ export const api = {
 
 ```typescript
 // src/telemetry/sampler.ts
-import { Sampler, SamplingResult, SamplingDecision, Context, SpanKind, Attributes, Link } from '@opentelemetry/api';
+import { Context, SpanKind, Attributes, Link } from '@opentelemetry/api';
+import { Sampler, SamplingResult, SamplingDecision } from '@opentelemetry/sdk-trace-base';
 
 interface SamplerConfig {
   defaultSampleRate: number;
@@ -1656,6 +1700,7 @@ export class FrontendSampler implements Sampler {
 ```typescript
 // src/telemetry.ts (updated)
 import { WebTracerProvider } from '@opentelemetry/sdk-trace-web';
+import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
 import { FrontendSampler } from './telemetry/sampler';
 
 const sampler = new FrontendSampler({
@@ -1672,6 +1717,13 @@ const sampler = new FrontendSampler({
 const provider = new WebTracerProvider({
   resource,
   sampler,
+  spanProcessors: [
+    new BatchSpanProcessor(exporter, {
+      maxQueueSize: 100,
+      maxExportBatchSize: 10,
+      scheduledDelayMillis: 500,
+    }),
+  ],
 });
 ```
 
@@ -1937,7 +1989,7 @@ export default function CheckoutPage() {
         validate={validate}
         sanitizeFields={['cardNumber', 'cvv']}
       >
-        {({ register, handleSubmit, errors, isSubmitting }) => (
+        {({ register, errors, isSubmitting }) => (
           <>
             <div className="form-section">
               <h2>Contact Information</h2>
@@ -2017,10 +2069,10 @@ export default function CheckoutPage() {
 | **Modal** | `modal.{name}` | `modal.name`, `modal.time_open_ms`, `modal.close_reason` | `modal.open`, `modal.close`, `modal.interaction.{type}` |
 | **Scroll** | `scroll.{component}` | `scroll.component`, `scroll.max_depth` | `scroll.reached.{threshold}` |
 | **Error Boundary** | `error.boundary.{component}` | `error.type`, `error.message`, `error.component_stack` | `error.caught` |
-| **HTTP Request** | `HTTP {method} {path}` | `http.method`, `http.url`, `http.status_code` | `http.request.start`, `http.request.success`, `http.request.error` |
+| **HTTP Request** | `HTTP {method} {path}` | `http.request.method`, `url.full`, `http.response.status_code` | `http.request.start`, `http.request.success`, `http.request.error` |
 | **Web Vital** | `web-vital.{metric}` | `web_vital.name`, `web_vital.value`, `web_vital.rating` | `metric.recorded` |
 | **Long Task** | `long-task.detected` | `long_task.duration_ms`, `long_task.start_time` | `long_task.recorded` |
-| **Render** | `render.{component}` | `render.component`, `render.count`, `render.paint_time_ms` | - |
+| **Render** | `render.{component}` | `render.component`, `render.count`, `render.next_frame_delay_ms` | - |
 
 ---
 
