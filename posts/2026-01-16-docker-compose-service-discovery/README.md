@@ -36,8 +36,6 @@ flowchart TB
 ```yaml
 # docker-compose.yml
 
-version: '3.8'
-
 services:
   api:
     image: myapi:latest
@@ -83,12 +81,9 @@ services:
   api:
     image: myapi:latest
     environment:
-      # Can use any alias
+      # Can use any alias, for example:
       - DATABASE_HOST=db
-      # Or
-      - DATABASE_HOST=postgres
-      # Or
-      - DATABASE_HOST=primary-db
+      # Other valid values: postgres, primary-db
 ```
 
 ### Environment-Specific Aliases
@@ -112,8 +107,6 @@ networks:
 ### Isolated Service Groups
 
 ```yaml
-version: '3.8'
-
 services:
   # Public-facing services
   nginx:
@@ -176,13 +169,13 @@ services:
 ```
 
 ```bash
-# Scale with docker-compose
-docker-compose up -d --scale api=3
+# Scale with Docker Compose
+docker compose up -d --scale api=3
 ```
 
 ### DNS Round-Robin
 
-When a service has multiple replicas, Docker's DNS returns all IPs in round-robin fashion:
+When a service has multiple replicas, Docker's DNS can return multiple IPs and rotate their order. The actual request distribution depends on how the client resolves and reuses connections:
 
 ```yaml
 services:
@@ -195,7 +188,7 @@ services:
       replicas: 3
 
 # web connects to api:3000
-# DNS returns different IP each time (round-robin)
+# DNS can return multiple replica IPs
 ```
 
 ## Health-Based Discovery
@@ -307,7 +300,7 @@ services:
       - mesh
 
   consul:
-    image: consul:latest
+    image: hashicorp/consul:latest
     ports:
       - "8500:8500"
     networks:
@@ -394,8 +387,6 @@ CMD ["dockerize", "-wait", "tcp://db:5432", "-timeout", "60s", "node", "server.j
 ## Complete Example
 
 ```yaml
-version: '3.8'
-
 services:
   # Reverse proxy
   nginx:
@@ -496,4 +487,3 @@ volumes:
 | Wait for Ready | wait-for-it.sh or dockerize |
 
 Docker Compose provides automatic service discovery through DNS. Use network aliases for flexibility, health checks for reliability, and multiple networks for security isolation. For external service discovery, consider using tools like Consul or integrating with Traefik as described in our post on [Docker with Traefik](https://oneuptime.com/blog/post/2026-01-16-docker-traefik-reverse-proxy/view).
-
