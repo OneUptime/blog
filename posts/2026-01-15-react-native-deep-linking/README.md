@@ -377,7 +377,11 @@ Beyond the basic React Navigation setup, you may need to handle deep links manua
 
 ### Using the Linking API
 
+React Native's built-in `URL` implementation is not spec-compliant — accessing `searchParams` throws "not implemented" at runtime. Install and import [`react-native-url-polyfill`](https://github.com/charpeni/react-native-url-polyfill) so that `URL` and `URLSearchParams` work as shown below:
+
 ```typescript
+// Import once at your app's entry point to enable a spec-compliant URL
+import 'react-native-url-polyfill/auto';
 import { Linking } from 'react-native';
 import { useEffect } from 'react';
 
@@ -602,7 +606,7 @@ function App() {
 Popular services for deferred deep linking include:
 
 - **Branch.io**: Comprehensive deep linking platform
-- **Firebase Dynamic Links**: Google's solution (being deprecated)
+- **Firebase Dynamic Links**: Google's solution (deprecated and fully shut down as of August 25, 2025 — migrate off it)
 - **Adjust**: Mobile attribution and deep linking
 - **AppsFlyer**: Marketing analytics with deep linking
 
