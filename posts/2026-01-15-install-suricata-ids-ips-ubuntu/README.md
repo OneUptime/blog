@@ -140,7 +140,7 @@ sudo apt install -y \
     libcap-ng-dev \
     libcap-ng0 \
     libevent-dev \
-    libgeoip-dev \
+    libmaxminddb-dev \
     libhiredis-dev \
     libhtp-dev \
     libjansson-dev \
@@ -524,7 +524,7 @@ pcap:
     # snaplen: 1518
 
 # NFQueue configuration for IPS mode
-nfqueue:
+nfq:
   mode: accept
   repeat-mark: 1
   repeat-mask: 1
@@ -1176,7 +1176,7 @@ alert http $HOME_NET any -> $EXTERNAL_NET any (
     http.method;
     content:"POST";
     http.content_len;
-    content:>"1000000";
+    byte_test:0,>,1000000,0,string,dec;
     classtype:policy-violation;
     sid:1000009;
     rev:1;
@@ -1324,16 +1324,12 @@ sudo tee /etc/suricata/suricata-ips.yaml << 'EOF'
 include: /etc/suricata/suricata.yaml
 
 # Override for IPS mode
-nfqueue:
+# Note: The queue number(s) are NOT set here. They are passed to
+# Suricata on the command line with -q (e.g. -q 0:3 for queues 0-3),
+# which must match the --queue-balance range in your iptables rules.
+nfq:
   # Accept mode - default accept, drop on match
   mode: accept
-
-  # Queue number (must match iptables rule)
-  # Multiple queues for multi-threading
-  queue-num: 0
-
-  # Number of queues (for multi-threading)
-  queue-count: 4
 
   # Mark to set for repeat processing
   repeat-mark: 1
@@ -1483,19 +1479,21 @@ To actively block threats in IPS mode, convert alert rules to drop rules:
 # Create a modification file for suricata-update
 sudo tee /etc/suricata/modify.conf << 'EOF'
 # Convert specific alert rules to drop for IPS mode
+# Format: <matcher> "<from-regex>" "<to>"
+#   <matcher> can be a signature id, a group (group:<file>.rules), or re:<regex>
 
-# Drop all emerging-trojan alerts
-modifysid emerging-trojan.rules * "alert" | "drop"
+# Drop all rules in the emerging-trojan group
+group:emerging-trojan.rules "^alert" "drop"
 
-# Drop all emerging-malware alerts
-modifysid emerging-malware.rules * "alert" | "drop"
+# Drop all rules in the emerging-malware group
+group:emerging-malware.rules "^alert" "drop"
 
-# Drop specific high-severity rules
-modifysid * 2024792 "alert" | "drop"
-modifysid * 2024793 "alert" | "drop"
+# Drop specific high-severity rules by SID
+2024792 "^alert" "drop"
+2024793 "^alert" "drop"
 
 # Keep some rules as alert only (for logging without blocking)
-# modifysid emerging-policy.rules * "drop" | "alert"
+# group:emerging-policy.rules "^drop" "alert"
 EOF
 
 # Update rules with modifications
