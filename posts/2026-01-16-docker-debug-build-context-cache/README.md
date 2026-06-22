@@ -153,7 +153,7 @@ BUILDKIT_PROGRESS=plain docker build -t myapp .
 
 ```bash
 # Build and watch for "CACHED" vs rebuilding
-docker build --no-cache -t myapp . 2>&1 | grep -E "(CACHED|RUN|COPY|ADD)"
+docker build -t myapp . 2>&1 | grep -E "(CACHED|RUN|COPY|ADD)"
 
 # Example output:
 # => CACHED [2/5] WORKDIR /app
@@ -201,7 +201,7 @@ RUN apt-get update && apt-get install -y \
 # 2. Application dependencies (occasionally change)
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 # 3. Source code (frequently changes)
 COPY . .
@@ -268,15 +268,17 @@ COPY . .
 
 ## Build Arguments and Cache
 
-Build arguments (`ARG`) affect caching. Changing an ARG invalidates all subsequent layers.
+Build arguments (`ARG`) affect caching when they're used by a build instruction.
 
 ### Problematic Pattern
 
 ```dockerfile
 FROM node:18
+WORKDIR /app
+COPY package*.json ./
 ARG BUILD_DATE       # Changes every build!
 ARG GIT_SHA          # Changes every commit!
-RUN npm ci           # Always invalidated
+RUN echo "$BUILD_DATE $GIT_SHA" && npm ci  # Always invalidated
 ```
 
 ### Better Pattern
@@ -391,7 +393,7 @@ rsync -av --dry-run --exclude-from=.dockerignore . /dev/null
 | Cache never hits | .git in context | Add .git to .dockerignore |
 | Dependencies always reinstall | COPY . before npm install | Copy package.json separately first |
 | Build is slow but cached | Large layers | Use multi-stage builds |
-| Random cache misses | File timestamps | Check for generated files |
+| Random cache misses | Generated files changing content | Check for generated files |
 | CI builds always cold | No cache persistence | Use registry or action cache |
 
 Understanding Docker's build context and caching behavior is essential for fast, efficient builds. Start with a good `.dockerignore`, order your Dockerfile from stable to volatile, and use BuildKit features for advanced caching in CI/CD.
