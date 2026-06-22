@@ -21,7 +21,7 @@ TestDisk is primarily designed for:
 - **Partition Recovery**: Recovering lost partitions due to accidental deletion, virus attacks, or software failures
 - **Partition Table Repair**: Fixing corrupted partition tables (MBR, GPT)
 - **Boot Sector Recovery**: Rebuilding FAT12/FAT16/FAT32/NTFS boot sectors
-- **File System Repair**: Recovering deleted files from FAT, exFAT, NTFS, and ext2/ext3/ext4 file systems
+- **File System Repair**: Recovering deleted files from FAT, exFAT, NTFS, and ext2 file systems, and copying files from supported damaged file systems
 - **MBR Reconstruction**: Rebuilding the Master Boot Record
 
 ### PhotoRec
@@ -51,25 +51,29 @@ sudo apt install testdisk
 testdisk --version
 ```
 
-### Method 2: Using Snap
+### Method 2: Using Official Portable Binaries
 
 ```bash
-# Install TestDisk via Snap for the latest version
-sudo snap install testdisk
+# Download the official Linux x86_64 binary archive
+wget https://www.cgsecurity.org/testdisk-7.2.linux26-x86_64.tar.bz2
 
-# Note: Snap packages may have different file access permissions
-# You might need to connect additional interfaces for full functionality
+# Extract the archive
+tar -xjf testdisk-7.2.linux26-x86_64.tar.bz2
+
+# Run TestDisk or PhotoRec from the extracted directory
+cd testdisk-7.2
+sudo ./testdisk_static
+sudo ./photorec_static
 ```
 
 ### Method 3: Building from Source
 
-For the absolute latest version with all features:
+For the current stable source release:
 
 ```bash
 # Install build dependencies
-sudo apt install build-essential e2fslibs-dev libncurses5-dev \
-    libncursesw5-dev libjpeg-dev zlib1g-dev libewf-dev \
-    libuuid1 uuid-dev
+sudo apt install build-essential libext2fs-dev libncurses-dev \
+    libjpeg-dev zlib1g-dev libewf-dev uuid-dev
 
 # Download the latest source code
 wget https://www.cgsecurity.org/testdisk-7.2.tar.bz2
@@ -180,7 +184,7 @@ Corrupted partition tables can make entire disks appear empty or unreadable.
 # Launch TestDisk
 sudo testdisk /dev/sda
 
-# Navigate to: Advanced -> MBR Code -> Write
+# Navigate to: MBR Code -> Write
 # This writes a new Master Boot Record while preserving partition data
 ```
 
@@ -198,7 +202,7 @@ sudo testdisk /dev/sda
 
 ```bash
 # Navigate within TestDisk:
-# Analyse -> Quick Search -> [Select Partition] -> Advanced -> Boot
+# Advanced -> [Select FAT/exFAT/NTFS Partition] -> Boot
 
 # Options available:
 # - Rebuild BS: Rebuild the boot sector from scratch
@@ -335,22 +339,21 @@ sudo photorec /dev/sda1
 PhotoRec supports custom file signatures for proprietary formats:
 
 ```bash
-# Create a custom signature file
-sudo nano /usr/local/share/photorec/custom.sig
+# Create a custom signature file in the current directory
+nano photorec.sig
 
 # Example: Define a custom file signature
-# Format: extension header_hex footer_hex
-# The header identifies the start of the file
-# The footer (optional) identifies the end
+# Format: extension offset signature
+# The signature identifies bytes at the specified offset from the start of the file
 
 # Example signature for a hypothetical .xyz format:
-# xyz 0 58595A48 58595A45
+# xyz 0 0x58595A48
 # - xyz: file extension
-# - 0: no specific file size category
+# - 0: signature offset
 # - 58595A48: hex for "XYZH" (header)
-# - 58595A45: hex for "XYZE" (footer)
 
 # After adding custom signatures, PhotoRec will recognize them
+# If running PhotoRec with sudo, keep photorec.sig in the directory where you launch it
 ```
 
 ## Working with Different Filesystems
@@ -360,14 +363,14 @@ TestDisk and PhotoRec support a wide variety of file systems.
 ### ext2/ext3/ext4 (Linux Native)
 
 ```bash
-# For ext4 partitions, TestDisk can undelete files directly
+# For ext2 partitions, TestDisk can undelete files directly
 sudo testdisk /dev/sda1
 
 # Navigate: Advanced -> Undelete
 # Browse the file system and select files to recover
 # Press 'c' to copy selected files to a recovery location
 
-# Alternative: Use extundelete for ext3/ext4
+# For ext3/ext4, use extundelete on an unmounted filesystem
 sudo apt install extundelete
 
 # Recover all deleted files
@@ -403,7 +406,7 @@ sudo ntfsundelete /dev/sda2 --undelete --match "*.docx" --destination /recovery/
 ### FAT/FAT32/exFAT
 
 ```bash
-# TestDisk handles FAT file systems well
+# TestDisk handles FAT and exFAT file systems well
 sudo testdisk /dev/sdb1
 
 # For FAT, TestDisk can repair:
@@ -411,7 +414,7 @@ sudo testdisk /dev/sdb1
 # - FAT tables
 # - Root directory
 
-# Navigate: Advanced -> FAT -> Repair FAT
+# Navigate: Advanced -> Boot -> Repair FAT
 ```
 
 ### HFS+ (macOS)
@@ -486,9 +489,7 @@ sudo testdisk /dev/sda
 # Navigate: Advanced -> [Select Partition] -> Image Creation
 # Choose destination and format
 
-# Supported formats:
-# - Raw (.dd)
-# - EWF/EnCase (.E01) - compressed, with metadata
+# TestDisk writes a raw partition image named image.dd
 ```
 
 ### Working with Disk Images
@@ -608,14 +609,14 @@ sudo photorec /dev/sda1
 # Enable expert mode in PhotoRec for forensic analysis
 sudo photorec /dev/sda
 
-# Press Enter on "[File Opt]"
+# Press Enter on "[Options]"
 # Enable "Expert mode" for additional options:
 # - Keep corrupted files
 # - Low memory mode for large recovery operations
 # - Custom block size for better performance
 
 # Use options to generate detailed logs
-sudo photorec /log /debug_mode /dev/sda
+sudo photorec /log /debug /dev/sda
 ```
 
 ### Recovering from Virtual Disks
@@ -682,7 +683,7 @@ sudo photorec raw_image.dd
 2. **Use Appropriate Tools for the Situation**
    ```bash
    # Partition issues → TestDisk
-   # Deleted files with intact filesystem → TestDisk undelete
+   # Deleted files on FAT, exFAT, NTFS, or ext2 → TestDisk undelete
    # Deleted files or damaged filesystem → PhotoRec
    # Failing hardware → ddrescue first, then recovery tools
    ```
@@ -912,7 +913,7 @@ TestDisk and PhotoRec are invaluable tools for recovering lost data on Ubuntu sy
 Key takeaways:
 - **Always create a disk image before attempting recovery**
 - **Never save recovered files to the source drive**
-- **Use TestDisk for partition and file system issues**
+- **Use TestDisk for partition, boot sector, and supported undelete workflows**
 - **Use PhotoRec for deleted file recovery**
 - **Prevention through regular backups is the best strategy**
 
