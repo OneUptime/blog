@@ -35,6 +35,9 @@ flowchart TB
 
 ```bash
 # Run Docker Bench Security
+git clone https://github.com/docker/docker-bench-security.git
+cd docker-bench-security
+docker build --no-cache -t docker-bench-security .
 
 docker run --rm --net host --pid host --userns host --cap-add audit_control \
   -e DOCKER_CONTENT_TRUST=$DOCKER_CONTENT_TRUST \
@@ -45,18 +48,17 @@ docker run --rm --net host --pid host --userns host --cap-add audit_control \
   -v /var/lib:/var/lib:ro \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
   --label docker_bench_security \
-  docker/docker-bench-security
+  docker-bench-security
 ```
 
 ### Docker Compose for Bench
 
 ```yaml
 # docker-compose.bench.yml
-version: '3.8'
-
 services:
   docker-bench:
-    image: docker/docker-bench-security
+    build: ./docker-bench-security
+    image: docker-bench-security
     cap_add:
       - audit_control
     network_mode: host
@@ -76,12 +78,12 @@ services:
 ### Output Formats
 
 ```bash
-# JSON output
-docker run --rm ... docker/docker-bench-security -l /output/bench.log
+# Text log plus JSON output at /output/bench.log.json
+docker run --rm ... docker-bench-security -l /output/bench.log
 
 # Check specific sections
-docker run --rm ... docker/docker-bench-security -c container_images
-docker run --rm ... docker/docker-bench-security -c container_runtime
+docker run --rm ... docker-bench-security -c container_images
+docker run --rm ... docker-bench-security -c container_runtime
 
 # Available sections:
 # host_configuration
@@ -142,7 +144,6 @@ sudo auditctl -R /etc/audit/rules.d/docker.rules
 #### 2.1 - Enable TLS Authentication
 
 ```json
-// /etc/docker/daemon.json
 {
   "tls": true,
   "tlscacert": "/etc/docker/certs/ca.pem",
@@ -156,7 +157,6 @@ sudo auditctl -R /etc/audit/rules.d/docker.rules
 #### 2.2 - Configure Logging
 
 ```json
-// /etc/docker/daemon.json
 {
   "log-driver": "json-file",
   "log-opts": {
@@ -169,7 +169,6 @@ sudo auditctl -R /etc/audit/rules.d/docker.rules
 #### 2.3 - Enable User Namespace Remapping
 
 ```json
-// /etc/docker/daemon.json
 {
   "userns-remap": "default"
 }
@@ -181,19 +180,17 @@ cat /etc/subuid
 cat /etc/subgid
 ```
 
-#### 2.4 - Disable Legacy Registry
+#### 2.4 - Restrict Inter-Container Communication
 
 ```json
-// /etc/docker/daemon.json
 {
-  "disable-legacy-registry": true
+  "icc": false
 }
 ```
 
 #### 2.5 - Enable Live Restore
 
 ```json
-// /etc/docker/daemon.json
 {
   "live-restore": true
 }
@@ -322,7 +319,6 @@ docker run \
 ### Daemon Configuration
 
 ```json
-// /etc/docker/daemon.json
 {
   "icc": false,
   "log-driver": "json-file",
@@ -352,8 +348,6 @@ docker run \
 ### Secure Container Launch
 
 ```yaml
-version: '3.8'
-
 services:
   app:
     image: myapp:latest
@@ -404,6 +398,11 @@ jobs:
   bench:
     runs-on: ubuntu-latest
     steps:
+      - name: Build Docker Bench image
+        run: |
+          git clone https://github.com/docker/docker-bench-security.git
+          docker build --no-cache -t docker-bench-security docker-bench-security
+
       - name: Run Docker Bench
         run: |
           docker run --rm \
@@ -412,7 +411,7 @@ jobs:
             -v /etc:/etc:ro \
             -v /var/lib:/var/lib:ro \
             -v /var/run/docker.sock:/var/run/docker.sock:ro \
-            docker/docker-bench-security \
+            docker-bench-security \
             -l /dev/stdout 2>&1 | tee bench-results.txt
 
       - name: Check for Failures
@@ -493,7 +492,7 @@ jobs:
 
 OUTPUT_DIR="/var/log/docker-compliance"
 DATE=$(date +%Y%m%d)
-REPORT="${OUTPUT_DIR}/docker-bench-${DATE}.json"
+REPORT="${OUTPUT_DIR}/docker-bench-${DATE}.log.json"
 
 mkdir -p "$OUTPUT_DIR"
 
@@ -504,17 +503,17 @@ docker run --rm \
   -v /var/lib:/var/lib:ro \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
   -v "${OUTPUT_DIR}:/output" \
-  docker/docker-bench-security \
-  --json-output-file "/output/docker-bench-${DATE}.json"
+  docker-bench-security \
+  -l "/output/docker-bench-${DATE}.log"
 
 # Generate summary
 jq '{
   date: now | strftime("%Y-%m-%d"),
-  total_checks: .checks | length,
-  passed: [.checks[] | select(.result == "PASS")] | length,
-  warnings: [.checks[] | select(.result == "WARN")] | length,
-  info: [.checks[] | select(.result == "INFO")] | length,
-  failures: [.checks[] | select(.result == "WARN")] | .[].desc
+  total_checks: .checks,
+  passed: [.tests[].results[] | select(.result == "PASS")] | length,
+  warnings: [.tests[].results[] | select(.result == "WARN")] | length,
+  info: [.tests[].results[] | select(.result == "INFO")] | length,
+  failures: [.tests[].results[] | select(.result == "WARN")] | map(.desc)
 }' "$REPORT" > "${OUTPUT_DIR}/summary-${DATE}.json"
 ```
 
@@ -523,8 +522,6 @@ jq '{
 ```yaml
 # prometheus-docker-bench.yml
 # Use docker-bench-security exporter
-version: '3.8'
-
 services:
   bench-exporter:
     image: alexeiled/docker-bench-metrics
@@ -548,4 +545,3 @@ services:
 | Operations | Monitoring, incident response |
 
 Regular CIS benchmark audits ensure your Docker environment maintains security best practices. Automate compliance checks in CI/CD pipelines, remediate findings promptly, and maintain documentation for audit purposes. For additional security hardening, see our posts on [Dropping Capabilities](https://oneuptime.com/blog/post/2026-01-16-docker-drop-capabilities/view) and [Read-Only Containers](https://oneuptime.com/blog/post/2026-01-16-docker-read-only-containers/view).
-
