@@ -65,13 +65,10 @@ flowchart TB
 helm repo add crossplane-stable https://charts.crossplane.io/stable
 helm repo update
 
-# Create namespace
-kubectl create namespace crossplane-system
-
 # Install Crossplane
 helm install crossplane crossplane-stable/crossplane \
   --namespace crossplane-system \
-  --set args='{"--enable-external-secret-stores"}' \
+  --create-namespace \
   --wait
 
 # Verify installation
@@ -86,11 +83,10 @@ kubectl api-resources | grep crossplane
 replicas: 3
 
 args:
-  - "--enable-external-secret-stores"
-  - "--enable-composition-revisions"
   - "--enable-composition-functions"
+  - "--enable-composition-webhook-schema-validation"
 
-resources:
+resourcesCrossplane:
   limits:
     cpu: 500m
     memory: 1Gi
@@ -98,16 +94,12 @@ resources:
     cpu: 100m
     memory: 256Mi
 
-# Pod disruption budget
-podDisruptionBudget:
-  enabled: true
-  minAvailable: 1
-
 # Security context
-securityContext:
-  runAsNonRoot: true
+securityContextCrossplane:
   runAsUser: 65532
   runAsGroup: 65532
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
 
 # Affinity for high availability
 affinity:
@@ -149,24 +141,31 @@ metadata:
   name: provider-aws
 spec:
   package: xpkg.upbound.io/upbound/provider-aws:v0.47.0
-  controllerConfigRef:
+  runtimeConfigRef:
     name: aws-config
 
 ---
-apiVersion: pkg.crossplane.io/v1alpha1
-kind: ControllerConfig
+apiVersion: pkg.crossplane.io/v1beta1
+kind: DeploymentRuntimeConfig
 metadata:
   name: aws-config
 spec:
-  args:
-    - --debug
-  resources:
-    limits:
-      cpu: 500m
-      memory: 1Gi
-    requests:
-      cpu: 100m
-      memory: 256Mi
+  deploymentTemplate:
+    spec:
+      selector: {}
+      template:
+        spec:
+          containers:
+            - name: package-runtime
+              args:
+                - --debug
+              resources:
+                limits:
+                  cpu: 500m
+                  memory: 1Gi
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
 ```
 
 ### Configure AWS Credentials
@@ -422,6 +421,14 @@ spec:
 
 ```yaml
 # database-composition.yaml
+apiVersion: pkg.crossplane.io/v1
+kind: Function
+metadata:
+  name: function-patch-and-transform
+spec:
+  package: xpkg.crossplane.io/crossplane-contrib/function-patch-and-transform:v0.10.6
+
+---
 apiVersion: apiextensions.crossplane.io/v1
 kind: Composition
 metadata:
@@ -432,109 +439,119 @@ spec:
   compositeTypeRef:
     apiVersion: example.org/v1alpha1
     kind: XDatabase
-    
-  patchSets:
-    - name: common-parameters
-      patches:
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.region
-          toFieldPath: spec.forProvider.region
-          
-  resources:
-    - name: securitygroup
-      base:
-        apiVersion: ec2.aws.upbound.io/v1beta1
-        kind: SecurityGroup
-        spec:
-          forProvider:
-            name: db-security-group
-            description: Security group for database
-            vpcId: vpc-xxxxx
-          providerConfigRef:
-            name: default
-      patches:
-        - type: PatchSet
-          patchSetName: common-parameters
-          
-    - name: securitygrouprule
-      base:
-        apiVersion: ec2.aws.upbound.io/v1beta1
-        kind: SecurityGroupRule
-        spec:
-          forProvider:
-            type: ingress
-            fromPort: 5432
-            toPort: 5432
-            protocol: tcp
-            cidrBlocks:
-              - "10.0.0.0/8"
-            securityGroupIdSelector:
-              matchControllerRef: true
-          providerConfigRef:
-            name: default
-            
-    - name: subnetgroup
-      base:
-        apiVersion: rds.aws.upbound.io/v1beta1
-        kind: SubnetGroup
-        spec:
-          forProvider:
-            description: Database subnet group
-            subnetIds:
-              - subnet-xxxxx
-              - subnet-yyyyy
-          providerConfigRef:
-            name: default
-      patches:
-        - type: PatchSet
-          patchSetName: common-parameters
-          
-    - name: database
-      base:
-        apiVersion: rds.aws.upbound.io/v1beta1
-        kind: Instance
-        spec:
-          forProvider:
-            instanceClass: db.t3.micro
-            allocatedStorage: 20
-            engine: postgres
-            engineVersion: "15"
-            username: admin
-            publiclyAccessible: false
-            skipFinalSnapshot: true
-            dbSubnetGroupNameSelector:
-              matchControllerRef: true
-            vpcSecurityGroupIdSelector:
-              matchControllerRef: true
-            passwordSecretRef:
-              name: db-password
-              namespace: crossplane-system
-              key: password
-          providerConfigRef:
-            name: default
-          writeConnectionSecretToRef:
-            namespace: crossplane-system
-      patches:
-        - type: PatchSet
-          patchSetName: common-parameters
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.engine
-          toFieldPath: spec.forProvider.engine
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.parameters.size
-          toFieldPath: spec.forProvider.instanceClass
-          transforms:
-            - type: map
-              map:
-                small: db.t3.micro
-                medium: db.t3.medium
-                large: db.t3.large
-        - type: ToCompositeFieldPath
-          fromFieldPath: status.atProvider.endpoint
-          toFieldPath: status.endpoint
-        - type: ToCompositeFieldPath
-          fromFieldPath: status.conditions[0].status
-          toFieldPath: status.status
+  mode: Pipeline
+  pipeline:
+    - step: patch-and-transform
+      functionRef:
+        name: function-patch-and-transform
+      input:
+        apiVersion: pt.fn.crossplane.io/v1beta1
+        kind: Resources
+        patchSets:
+          - name: common-parameters
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.region
+                toFieldPath: spec.forProvider.region
+        resources:
+          - name: securitygroup
+            base:
+              apiVersion: ec2.aws.upbound.io/v1beta1
+              kind: SecurityGroup
+              spec:
+                forProvider:
+                  name: db-security-group
+                  description: Security group for database
+                  vpcId: vpc-xxxxx
+                providerConfigRef:
+                  name: default
+            patches:
+              - type: PatchSet
+                patchSetName: common-parameters
+
+          - name: securitygrouprule
+            base:
+              apiVersion: ec2.aws.upbound.io/v1beta1
+              kind: SecurityGroupRule
+              spec:
+                forProvider:
+                  type: ingress
+                  fromPort: 5432
+                  toPort: 5432
+                  protocol: tcp
+                  cidrBlocks:
+                    - "10.0.0.0/8"
+                  securityGroupIdSelector:
+                    matchControllerRef: true
+                providerConfigRef:
+                  name: default
+            patches:
+              - type: PatchSet
+                patchSetName: common-parameters
+
+          - name: subnetgroup
+            base:
+              apiVersion: rds.aws.upbound.io/v1beta1
+              kind: SubnetGroup
+              spec:
+                forProvider:
+                  description: Database subnet group
+                  subnetIds:
+                    - subnet-xxxxx
+                    - subnet-yyyyy
+                providerConfigRef:
+                  name: default
+            patches:
+              - type: PatchSet
+                patchSetName: common-parameters
+
+          - name: database
+            base:
+              apiVersion: rds.aws.upbound.io/v1beta1
+              kind: Instance
+              spec:
+                forProvider:
+                  instanceClass: db.t3.micro
+                  allocatedStorage: 20
+                  engine: postgres
+                  engineVersion: "15"
+                  username: admin
+                  publiclyAccessible: false
+                  skipFinalSnapshot: true
+                  dbSubnetGroupNameSelector:
+                    matchControllerRef: true
+                  vpcSecurityGroupIdSelector:
+                    matchControllerRef: true
+                  passwordSecretRef:
+                    name: db-password
+                    namespace: crossplane-system
+                    key: password
+                providerConfigRef:
+                  name: default
+                writeConnectionSecretToRef:
+                  name: database-connection
+                  namespace: crossplane-system
+            patches:
+              - type: PatchSet
+                patchSetName: common-parameters
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.engine
+                toFieldPath: spec.forProvider.engine
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.size
+                toFieldPath: spec.forProvider.instanceClass
+                transforms:
+                  - type: map
+                    map:
+                      small: db.t3.micro
+                      medium: db.t3.medium
+                      large: db.t3.large
+              - type: ToCompositeFieldPath
+                fromFieldPath: status.atProvider.endpoint
+                toFieldPath: status.endpoint
+              - type: ToCompositeFieldPath
+                fromFieldPath: status.conditions[0].status
+                toFieldPath: status.status
 ```
 
 ### Use Claims
@@ -710,23 +727,28 @@ spec:
 
 ## Monitoring
 
-### ServiceMonitor
+### PodMonitor
 
 ```yaml
-# crossplane-servicemonitor.yaml
+# crossplane-provider-podmonitor.yaml
 apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
+kind: PodMonitor
 metadata:
-  name: crossplane
+  name: crossplane-providers
   namespace: monitoring
 spec:
   selector:
-    matchLabels:
-      app: crossplane
+    matchExpressions:
+      - key: pkg.crossplane.io/provider
+        operator: In
+        values:
+          - provider-aws
+          - provider-gcp
+          - provider-azure
   namespaceSelector:
     matchNames:
       - crossplane-system
-  endpoints:
+  podMetricsEndpoints:
     - port: metrics
       interval: 30s
 ```
@@ -758,8 +780,8 @@ spec:
 ## Troubleshooting
 
 ```bash
-# Check Crossplane status
-kubectl get crossplane
+# Check Crossplane deployments
+kubectl get deployments -n crossplane-system
 
 # List providers
 kubectl get providers
@@ -777,7 +799,7 @@ kubectl get composite
 kubectl get claim -A
 
 # Describe a resource for events
-kubectl describe database my-app-database
+kubectl describe database my-app-database -n default
 
 # Check Crossplane logs
 kubectl logs -n crossplane-system -l app=crossplane
