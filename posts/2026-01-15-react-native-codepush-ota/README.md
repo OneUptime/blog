@@ -14,6 +14,8 @@ One of the most significant advantages of React Native development is the abilit
 
 In this comprehensive guide, we will explore everything you need to know about implementing CodePush in your React Native applications, from initial setup to advanced deployment strategies.
 
+> **Important (2025 update):** Microsoft retired Visual Studio App Center — including its hosted CodePush service — on **March 31, 2025**, and the `react-native-code-push` and `code-push-server` repositories were archived (made read-only) on **May 20, 2025**. The client SDK and the integration steps below still work, but the hosted `appcenter.ms` portal and the `appcenter codepush` CLI commands shown in this guide **no longer function against Microsoft's servers**. To keep using CodePush today you must either self-host Microsoft's open-source [standalone CodePush server](https://github.com/microsoft/code-push-server) (now community-maintained, with its own bundled CLI) or adopt a successor OTA service such as [Expo EAS Update](https://docs.expo.dev/eas-update/introduction/). Treat the App Center account setup and `appcenter` CLI examples below as illustrative of the original workflow, and substitute your self-hosted server's CLI equivalents.
+
 ## What is CodePush?
 
 CodePush is a cloud service that enables React Native developers to deploy mobile app updates directly to users' devices. Unlike traditional app updates that require downloading a new version from the App Store or Google Play Store, CodePush allows you to push JavaScript bundle and asset updates instantly.
@@ -419,9 +421,11 @@ codePush.getUpdateMetadata(codePush.UpdateState.RUNNING).then((update) => {
     // This is the first run after a CodePush update
     // You can implement custom validation logic here
 
-    // If something is wrong, trigger a rollback
+    // If something is wrong, do NOT call notifyAppReady() and restart the app.
+    // Because the update was never confirmed, the CodePush runtime treats it as
+    // failed and rolls back to the previous version on the next launch.
     if (somethingIsWrong) {
-      codePush.restartApp(true); // true triggers rollback
+      codePush.restartApp(); // restarts; the unconfirmed update is rolled back
     }
   }
 });
@@ -453,11 +457,12 @@ const App: React.FC = () => {
             console.log('Health check failed, rolling back...');
             setIsHealthy(false);
 
-            // Notify CodePush that this update should be rolled back
-            codePush.notifyAppReady(); // Mark as successful first
-            codePush.restartApp(true); // Then rollback
+            // Do NOT call notifyAppReady(). Restarting an update that was never
+            // confirmed causes the CodePush runtime to roll back to the previous
+            // version on the next launch.
+            codePush.restartApp();
           } else {
-            // Update is healthy, mark it as successful
+            // Update is healthy, mark it as successful so it is not rolled back
             codePush.notifyAppReady();
           }
         }
@@ -1197,8 +1202,9 @@ With CodePush properly integrated, you can confidently ship updates knowing you 
 
 ## Additional Resources
 
-- [App Center CodePush Documentation](https://docs.microsoft.com/en-us/appcenter/distribution/codepush/)
-- [react-native-code-push GitHub Repository](https://github.com/microsoft/react-native-code-push)
+- [Standalone CodePush Server (open source, self-hosted)](https://github.com/microsoft/code-push-server)
+- [react-native-code-push GitHub Repository (archived)](https://github.com/microsoft/react-native-code-push)
+- [Expo EAS Update (successor OTA service)](https://docs.expo.dev/eas-update/introduction/)
 - [React Native Official Documentation](https://reactnative.dev/)
 - [Semantic Versioning Specification](https://semver.org/)
 
