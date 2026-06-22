@@ -302,9 +302,8 @@ docker run --add-host host.docker.internal:host-gateway myimage
 # Inside container:
 curl http://host.docker.internal:3000
 
-# Or use host's IP
-HOST_IP=$(ip route | grep default | awk '{print $3}')
-docker run -e HOST_IP=$HOST_IP myimage
+# Or use the default bridge gateway from inside the container
+docker exec mycontainer sh -c "ip route | awk '/default/ {print \$3}'"
 ```
 
 ### Docker Compose Host Access
@@ -348,7 +347,7 @@ docker network create --opt com.docker.network.driver.mtu=9000 high-perf
 docker exec mycontainer apk add --no-cache curl bind-tools iputils
 
 # Debian/Ubuntu
-docker exec mycontainer apt-get update && apt-get install -y curl dnsutils iputils-ping net-tools
+docker exec mycontainer sh -c "apt-get update && apt-get install -y curl dnsutils iputils-ping net-tools"
 ```
 
 ### Use nicolaka/netshoot for Debugging
@@ -395,4 +394,3 @@ docker run --rm -it --network myproject_default nicolaka/netshoot
 | General debugging | - | Use nicolaka/netshoot container |
 
 Docker networking issues usually fall into a few categories: DNS configuration, port binding, network isolation, and firewall rules. Custom networks solve most container-to-container communication problems, and explicitly setting DNS servers fixes most resolution issues.
-
