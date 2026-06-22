@@ -126,18 +126,23 @@ sudo apt install -y gnome-session gnome-shell
 sudo apt install -y gdm3
 
 # Install essential applications individually
+# (nautilus: file manager, gnome-terminal: terminal emulator,
+#  gnome-text-editor: text editor, gnome-system-monitor: system monitor,
+#  gnome-control-center: settings application)
 sudo apt install -y \
-    nautilus \              # File manager
-    gnome-terminal \        # Terminal emulator
-    gnome-text-editor \     # Text editor
-    gnome-system-monitor \  # System monitor
-    gnome-control-center    # Settings application
+    nautilus \
+    gnome-terminal \
+    gnome-text-editor \
+    gnome-system-monitor \
+    gnome-control-center
 
 # Install additional utilities as needed
+# (gnome-tweaks: advanced settings, gnome-shell-extensions: extension support,
+#  dconf-editor: configuration editor)
 sudo apt install -y \
-    gnome-tweaks \          # Advanced settings
-    gnome-shell-extensions \ # Extension support
-    dconf-editor            # Configuration editor
+    gnome-tweaks \
+    gnome-shell-extensions \
+    dconf-editor
 ```
 
 ## Display Manager Setup (GDM)
@@ -290,7 +295,9 @@ Extensions enhance GNOME functionality and customize the desktop experience.
 sudo apt install -y gnome-shell-extensions
 
 # Install browser integration for extensions.gnome.org
-sudo apt install -y chrome-gnome-shell
+# Note: on Ubuntu 23.04+ the package was renamed to gnome-browser-connector
+# (chrome-gnome-shell remains as a transitional package that pulls it in)
+sudo apt install -y gnome-browser-connector
 
 # Install Extension Manager for easy management
 sudo apt install -y gnome-shell-extension-manager
@@ -300,10 +307,13 @@ sudo apt install -y gnome-shell-extension-manager
 
 ```bash
 # Install useful extensions via apt
+# (gnome-shell-extension-system-monitor: system resource monitor,
+#  gnome-shell-extension-dash-to-panel: taskbar-style panel,
+#  gnome-shell-extension-appindicator: tray icon support)
 sudo apt install -y \
-    gnome-shell-extension-system-monitor \  # System resource monitor
-    gnome-shell-extension-dash-to-panel \   # Taskbar-style panel
-    gnome-shell-extension-appindicator      # Tray icon support
+    gnome-shell-extension-system-monitor \
+    gnome-shell-extension-dash-to-panel \
+    gnome-shell-extension-appindicator
 ```
 
 ### Managing Extensions via CLI
@@ -348,7 +358,7 @@ gsettings set org.gnome.desktop.interface enable-animations false
 # Reduce font rendering overhead
 gsettings set org.gnome.desktop.interface font-antialiasing 'grayscale'
 
-# Disable desktop icons (GNOME 40+)
+# Hide mounted volumes from the dock (requires Dash to Dock / Ubuntu Dock)
 gsettings set org.gnome.shell.extensions.dash-to-dock show-mounts false
 ```
 
