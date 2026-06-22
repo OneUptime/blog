@@ -20,7 +20,7 @@ Broken packages occur when dependencies are missing, conflicts exist between pac
 sudo apt update
 
 # Check for broken packages
-sudo apt check
+sudo apt-get check
 
 # List packages with issues
 sudo dpkg --audit
