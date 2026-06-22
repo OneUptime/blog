@@ -505,7 +505,7 @@ sudo chmod -R 750 /var/lib/gitea/
 
 ```bash
 # Check database connection
-sudo -u git gitea doctor --config /etc/gitea/app.ini
+sudo -u git gitea doctor check --config /etc/gitea/app.ini
 ```
 
 ---
