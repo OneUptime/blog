@@ -32,8 +32,6 @@ flowchart TB
 ### Development Configuration
 
 ```yaml
-version: '3.8'
-
 services:
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
@@ -53,14 +51,13 @@ volumes:
 ### Production Single Node
 
 ```yaml
-version: '3.8'
-
 services:
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
     environment:
       - discovery.type=single-node
       - xpack.security.enabled=true
+      - xpack.security.http.ssl.enabled=false
       - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
       - bootstrap.memory_lock=true
       - "ES_JAVA_OPTS=-Xms4g -Xmx4g"
@@ -93,15 +90,13 @@ volumes:
 | 8GB | 4GB | 8GB |
 | 16GB | 8GB | 16GB |
 | 32GB | 16GB | 32GB |
-| 64GB | 31GB (max) | 64GB |
+| 64GB | 26GB safe, up to 30GB on some systems | 64GB |
 
-**Rule**: Heap should be 50% of available memory, never exceed 31GB.
+**Rule**: Heap should be no more than 50% of available memory. Keep it below the compressed ordinary object pointers threshold: 26GB is safe on most systems, and the threshold can be as high as 30GB on some systems.
 
 ## Multi-Node Cluster
 
 ```yaml
-version: '3.8'
-
 services:
   es01:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
@@ -111,8 +106,7 @@ services:
       - discovery.seed_hosts=es02,es03
       - cluster.initial_master_nodes=es01,es02,es03
       - bootstrap.memory_lock=true
-      - xpack.security.enabled=true
-      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+      - xpack.security.enabled=false
       - "ES_JAVA_OPTS=-Xms4g -Xmx4g"
     ulimits:
       memlock:
@@ -133,7 +127,7 @@ services:
       - discovery.seed_hosts=es01,es03
       - cluster.initial_master_nodes=es01,es02,es03
       - bootstrap.memory_lock=true
-      - xpack.security.enabled=true
+      - xpack.security.enabled=false
       - "ES_JAVA_OPTS=-Xms4g -Xmx4g"
     ulimits:
       memlock:
@@ -152,7 +146,7 @@ services:
       - discovery.seed_hosts=es01,es02
       - cluster.initial_master_nodes=es01,es02,es03
       - bootstrap.memory_lock=true
-      - xpack.security.enabled=true
+      - xpack.security.enabled=false
       - "ES_JAVA_OPTS=-Xms4g -Xmx4g"
     ulimits:
       memlock:
@@ -169,8 +163,6 @@ services:
       - "5601:5601"
     environment:
       - ELASTICSEARCH_HOSTS=http://es01:9200
-      - ELASTICSEARCH_USERNAME=kibana_system
-      - ELASTICSEARCH_PASSWORD=${KIBANA_PASSWORD}
     depends_on:
       - es01
     networks:
@@ -192,7 +184,7 @@ services:
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
     healthcheck:
-      test: curl -s http://localhost:9200/_cluster/health | grep -vq '"status":"red"'
+      test: curl -fsS http://localhost:9200/_cluster/health | grep -vq '"status":"red"'
       interval: 30s
       timeout: 10s
       retries: 5
@@ -204,17 +196,15 @@ services:
 ```bash
 # Increase vm.max_map_count for Elasticsearch
 
-sudo sysctl -w vm.max_map_count=262144
+sudo sysctl -w vm.max_map_count=1048576
 
 # Persist the setting
-echo "vm.max_map_count=262144" | sudo tee -a /etc/sysctl.conf
+echo "vm.max_map_count=1048576" | sudo tee -a /etc/sysctl.conf
 ```
 
 ## Complete Production Example
 
 ```yaml
-version: '3.8'
-
 services:
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
@@ -222,7 +212,8 @@ services:
     environment:
       - discovery.type=single-node
       - xpack.security.enabled=true
-      - xpack.security.enrollment.enabled=true
+      - xpack.security.http.ssl.enabled=false
+      - xpack.security.enrollment.enabled=false
       - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
       - bootstrap.memory_lock=true
       - "ES_JAVA_OPTS=-Xms4g -Xmx4g"
@@ -241,7 +232,7 @@ services:
     ports:
       - "9200:9200"
     healthcheck:
-      test: curl -s http://localhost:9200/_cluster/health | grep -vq '"status":"red"'
+      test: curl -fsS -u elastic:$${ELASTIC_PASSWORD} http://localhost:9200/_cluster/health | grep -vq '"status":"red"'
       interval: 30s
       timeout: 10s
       retries: 5
@@ -251,6 +242,19 @@ services:
           memory: 8G
         reservations:
           memory: 8G
+    networks:
+      - backend
+
+  setup-kibana-password:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    environment:
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+      - KIBANA_PASSWORD=${KIBANA_PASSWORD}
+    command: >
+      bash -c 'until curl -fsS -u "elastic:$${ELASTIC_PASSWORD}" -H "Content-Type: application/json" -X POST http://elasticsearch:9200/_security/user/kibana_system/_password -d "{\"password\":\"$${KIBANA_PASSWORD}\"}"; do sleep 5; done'
     networks:
       - backend
 
@@ -264,8 +268,8 @@ services:
       - ELASTICSEARCH_USERNAME=kibana_system
       - ELASTICSEARCH_PASSWORD=${KIBANA_PASSWORD}
     depends_on:
-      elasticsearch:
-        condition: service_healthy
+      setup-kibana-password:
+        condition: service_completed_successfully
     networks:
       - backend
 
@@ -280,10 +284,9 @@ volumes:
 
 | Setting | Value | Purpose |
 |---------|-------|---------|
-| ES_JAVA_OPTS | -Xms4g -Xmx4g | JVM heap (50% of RAM) |
+| ES_JAVA_OPTS | -Xms4g -Xmx4g | JVM heap (up to 50% of RAM; use JVM options files for production overrides) |
 | bootstrap.memory_lock | true | Prevent swapping |
 | memlock ulimit | -1 | Allow memory locking |
-| vm.max_map_count | 262144 | Required for mmap |
+| vm.max_map_count | 1048576 | Required for mmap |
 
-Elasticsearch requires careful memory tuning in Docker. Always set equal Xms and Xmx values, enable memory locking, and configure host system limits. For logging integration, see our post on [Docker Logging Drivers](https://oneuptime.com/blog/post/2026-01-16-docker-logging-drivers/view).
-
+Elasticsearch requires careful memory tuning in Docker. Always set equal Xms and Xmx values when overriding heap size, enable memory locking, and configure host system limits. For logging integration, see our post on [Docker Logging Drivers](https://oneuptime.com/blog/post/2026-01-16-docker-logging-drivers/view).
