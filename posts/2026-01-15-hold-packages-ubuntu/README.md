@@ -337,7 +337,8 @@ done
 
 ```bash
 # Run weekly check
-echo "0 9 * * 1 /home/user/check-held-packages.sh | mail -s 'Held Packages Report' admin@example.com" | sudo tee -a /etc/crontab
+# Note: /etc/crontab entries require a user field after the schedule
+echo "0 9 * * 1 root /home/user/check-held-packages.sh | mail -s 'Held Packages Report' admin@example.com" | sudo tee -a /etc/crontab
 ```
 
 ## Troubleshooting
