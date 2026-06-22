@@ -27,15 +27,14 @@ sudo apt update
 sudo apt install curl gnupg apt-transport-https -y
 
 # Add RabbitMQ signing key
-curl -1sLf "https://keys.openpgp.org/vks/v1/by-fingerprint/0A9AF2115F4687BD29803A206B73A36E6026DFCA" | sudo gpg --dearmor -o /usr/share/keyrings/com.rabbitmq.team.gpg
-
-# Add Erlang repository key
-curl -1sLf "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0xf77f1eda57ebb1cc" | sudo gpg --dearmor -o /usr/share/keyrings/net.launchpad.ppa.rabbitmq.erlang.gpg
+curl -1sLf "https://keys.openpgp.org/vks/v1/by-fingerprint/0A9AF2115F4687BD29803A206B73A36E6026DFCA" | sudo gpg --dearmor | sudo tee /usr/share/keyrings/com.rabbitmq.team.gpg > /dev/null
 
 # Add RabbitMQ repository
 sudo tee /etc/apt/sources.list.d/rabbitmq.list <<EOF
-deb [signed-by=/usr/share/keyrings/net.launchpad.ppa.rabbitmq.erlang.gpg] http://ppa.launchpad.net/rabbitmq/rabbitmq-erlang/ubuntu $(lsb_release -cs) main
-deb [signed-by=/usr/share/keyrings/com.rabbitmq.team.gpg] https://packagecloud.io/rabbitmq/rabbitmq-server/ubuntu/ $(lsb_release -cs) main
+deb [arch=amd64 signed-by=/usr/share/keyrings/com.rabbitmq.team.gpg] https://deb1.rabbitmq.com/rabbitmq-erlang/ubuntu/$(lsb_release -cs) $(lsb_release -cs) main
+deb [arch=amd64 signed-by=/usr/share/keyrings/com.rabbitmq.team.gpg] https://deb2.rabbitmq.com/rabbitmq-erlang/ubuntu/$(lsb_release -cs) $(lsb_release -cs) main
+deb [arch=amd64 signed-by=/usr/share/keyrings/com.rabbitmq.team.gpg] https://deb1.rabbitmq.com/rabbitmq-server/ubuntu/$(lsb_release -cs) $(lsb_release -cs) main
+deb [arch=amd64 signed-by=/usr/share/keyrings/com.rabbitmq.team.gpg] https://deb2.rabbitmq.com/rabbitmq-server/ubuntu/$(lsb_release -cs) $(lsb_release -cs) main
 EOF
 
 # Update package lists
@@ -179,7 +178,7 @@ sudo nano /etc/rabbitmq/advanced.config
 [
   {rabbit, [
     {tcp_listeners, [5672]},
-    {loopback_users, []},
+    {loopback_users, [<<"guest">>]},
     {vm_memory_high_watermark, 0.4},
     {vm_memory_high_watermark_paging_ratio, 0.5},
     {disk_free_limit, "2GB"},
@@ -203,10 +202,10 @@ sudo nano /etc/rabbitmq/rabbitmq-env.conf
 NODENAME=rabbit@hostname
 
 # Config file location
-RABBITMQ_CONFIG_FILE=/etc/rabbitmq/rabbitmq
+CONFIG_FILE=/etc/rabbitmq/rabbitmq.conf
 
 # Log directory
-RABBITMQ_LOGS=/var/log/rabbitmq
+LOG_BASE=/var/log/rabbitmq
 ```
 
 ## Restart After Configuration
@@ -216,7 +215,7 @@ RABBITMQ_LOGS=/var/log/rabbitmq
 sudo systemctl restart rabbitmq-server
 
 # Verify configuration loaded
-sudo rabbitmqctl environment
+sudo rabbitmq-diagnostics environment
 ```
 
 ## Queue Management
@@ -241,10 +240,10 @@ sudo rabbitmqctl delete_queue queue_name
 
 ```bash
 # List queues via API
-curl -u admin:password http://localhost:15672/api/queues
+curl -u admin:SecurePassword123 http://localhost:15672/api/queues
 
 # Create queue via API
-curl -u admin:password -X PUT \
+curl -u admin:SecurePassword123 -X PUT \
   -H "Content-Type: application/json" \
   -d '{"durable":true}' \
   http://localhost:15672/api/queues/%2F/my-queue
@@ -270,13 +269,13 @@ sudo mkdir -p /etc/rabbitmq/ssl
 cd /etc/rabbitmq/ssl
 
 # Generate CA
-openssl genrsa -out ca-key.pem 2048
-openssl req -new -x509 -days 365 -key ca-key.pem -out ca-cert.pem -subj "/CN=RabbitMQ-CA"
+sudo openssl genrsa -out ca-key.pem 2048
+sudo openssl req -new -x509 -days 365 -key ca-key.pem -out ca-cert.pem -subj "/CN=RabbitMQ-CA"
 
 # Generate server certificate
-openssl genrsa -out server-key.pem 2048
-openssl req -new -key server-key.pem -out server-req.pem -subj "/CN=$(hostname)"
-openssl x509 -req -days 365 -in server-req.pem -CA ca-cert.pem -CAkey ca-key.pem -CAcreateserial -out server-cert.pem
+sudo openssl genrsa -out server-key.pem 2048
+sudo openssl req -new -key server-key.pem -out server-req.pem -subj "/CN=$(hostname)"
+sudo openssl x509 -req -days 365 -in server-req.pem -CA ca-cert.pem -CAkey ca-key.pem -CAcreateserial -out server-cert.pem
 
 # Set permissions
 sudo chown -R rabbitmq:rabbitmq /etc/rabbitmq/ssl
@@ -371,7 +370,7 @@ For RabbitMQ 4.0+ and modern deployments, use quorum queues for high availabilit
 
 ```bash
 # Create a quorum queue with replication (recommended for HA)
-rabbitmqadmin declare queue name=my-queue durable=true arguments='{"x-queue-type":"quorum"}'
+rabbitmqadmin --vhost "/" queues declare --name "my-queue" --type "quorum" --durable true
 ```
 
 ## Monitoring
@@ -475,7 +474,7 @@ sudo rabbitmqctl list_user_permissions admin
 sudo rabbitmqctl export_definitions /tmp/rabbitmq-backup.json
 
 # Or via API
-curl -u admin:password http://localhost:15672/api/definitions > backup.json
+curl -u admin:SecurePassword123 http://localhost:15672/api/definitions > backup.json
 ```
 
 ### Import Definitions
@@ -485,7 +484,7 @@ curl -u admin:password http://localhost:15672/api/definitions > backup.json
 sudo rabbitmqctl import_definitions /tmp/rabbitmq-backup.json
 
 # Or via API
-curl -u admin:password -X POST -H "Content-Type: application/json" \
+curl -u admin:SecurePassword123 -X POST -H "Content-Type: application/json" \
   -d @backup.json http://localhost:15672/api/definitions
 ```
 
