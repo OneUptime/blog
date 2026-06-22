@@ -8,7 +8,7 @@ Description: Learn how to securely manage sensitive data like passwords, API key
 
 ---
 
-Hardcoding passwords in environment variables or Docker Compose files is a security risk. Docker Secrets provides a secure way to manage sensitive data, keeping credentials encrypted at rest and only exposing them to containers that need them.
+Hardcoding passwords in environment variables or Docker Compose files is a security risk. Docker Secrets provides a secure way to manage sensitive data, keeping credentials encrypted at rest in Swarm mode and only exposing them to containers that need them.
 
 ## Docker Secrets Overview
 
@@ -19,7 +19,7 @@ Docker Secrets are designed for sensitive data:
 - Database connection strings
 - Any data you wouldn't want in a Dockerfile or version control
 
-Secrets are:
+In Swarm mode, secrets are:
 - Encrypted at rest and in transit
 - Only mounted into containers that explicitly request them
 - Stored in memory (tmpfs), never written to disk in containers
@@ -84,8 +84,6 @@ docker service create \
 
 ```yaml
 # docker-stack.yml
-version: '3.8'
-
 services:
   api:
     image: my-api
@@ -130,8 +128,6 @@ Docker Compose supports secrets for development, though they're less secure than
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   api:
     image: my-api
@@ -166,13 +162,11 @@ echo "dev-api-key-456" > secrets/api_key.txt
 echo "secrets/" >> .gitignore
 ```
 
-### Environment Variable Secrets (Compose v2.23+)
+### Environment Variable Secrets (Compose v2.6.0+)
 
 Newer Compose versions support secrets from environment variables.
 
 ```yaml
-version: '3.8'
-
 services:
   api:
     image: my-api
@@ -186,7 +180,7 @@ secrets:
 
 Run with:
 ```bash
-DB_PASSWORD_VAR="my-password" docker-compose up
+DB_PASSWORD_VAR="my-password" docker compose up
 ```
 
 ## Reading Secrets in Applications
@@ -308,9 +302,9 @@ For images that don't support the pattern natively, use an entrypoint script.
 # Convert _FILE variables to regular variables
 for var in $(env | grep '_FILE=' | cut -d= -f1); do
     base_var=${var%_FILE}
-    file_path=$(eval echo \$$var)
+    eval "file_path=\${$var}"
     if [ -f "$file_path" ]; then
-        export "$base_var"=$(cat "$file_path")
+        export "$base_var=$(cat "$file_path")"
     fi
 done
 
@@ -336,7 +330,7 @@ echo "new-password" | docker secret create db_password_v2 -
 # Update service to use new secret
 docker service update \
   --secret-rm db_password \
-  --secret-add db_password_v2 \
+  --secret-add source=db_password_v2,target=db_password \
   myservice
 
 # Remove old secret
