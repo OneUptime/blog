@@ -65,12 +65,12 @@ flowchart TB
 
 kubectl version
 
-# Add Knative Helm repository
-helm repo add knative https://knative.dev/charts
+# Add Knative Operator Helm repository
+helm repo add knative-operator https://knative.github.io/operator
 helm repo update
 
 # Check available charts
-helm search repo knative
+helm search repo knative-operator
 ```
 
 ## Install Knative Serving
@@ -79,23 +79,35 @@ helm search repo knative
 
 ```yaml
 # knative-operator-values.yaml
-operator:
-  replicas: 1
-  resources:
-    limits:
-      cpu: 500m
-      memory: 512Mi
-    requests:
-      cpu: 100m
-      memory: 128Mi
+knative_operator:
+  knative_operator:
+    resources:
+      limits:
+        cpu: 1000m
+        memory: 1000Mi
+      requests:
+        cpu: 100m
+        memory: 100Mi
+  operator_webhook:
+    resources:
+      limits:
+        cpu: 500m
+        memory: 500Mi
+      requests:
+        cpu: 100m
+        memory: 100Mi
 ```
 
 ```bash
 # Install operator
-kubectl apply -f https://github.com/knative/operator/releases/download/knative-v1.12.0/operator.yaml
+helm install knative-operator \
+  --create-namespace \
+  --namespace knative-operator \
+  -f knative-operator-values.yaml \
+  knative-operator/knative-operator
 
 # Verify operator
-kubectl get deployment knative-operator -n default
+kubectl get deployment knative-operator -n knative-operator
 ```
 
 ### Configure Knative Serving
@@ -108,7 +120,7 @@ metadata:
   name: knative-serving
   namespace: knative-serving
 spec:
-  version: "1.12.0"
+  version: "1.22.0"
   
   # Use Kourier as networking layer
   ingress:
@@ -172,7 +184,7 @@ metadata:
   name: knative-serving
   namespace: knative-serving
 spec:
-  version: "1.12.0"
+  version: "1.22.0"
   
   ingress:
     istio:
@@ -198,7 +210,11 @@ metadata:
   name: knative-eventing
   namespace: knative-eventing
 spec:
-  version: "1.12.0"
+  version: "1.22.0"
+
+  source:
+    kafka:
+      enabled: true
   
   config:
     default-ch-webhook:
@@ -294,8 +310,8 @@ kind: Service
 metadata:
   name: api-service
   annotations:
-    # Custom domain mapping
-    serving.knative.dev/disableAutoTLS: "true"
+    # Disable automatic external-domain TLS for this Service if it is enabled cluster-wide
+    networking.knative.dev/disable-external-domain-tls: "true"
 spec:
   template:
     spec:
@@ -303,10 +319,19 @@ spec:
         - image: api-service:latest
 
 ---
+apiVersion: networking.internal.knative.dev/v1alpha1
+kind: ClusterDomainClaim
+metadata:
+  name: api.example.com
+spec:
+  namespace: default
+
+---
 apiVersion: serving.knative.dev/v1beta1
 kind: DomainMapping
 metadata:
   name: api.example.com
+  namespace: default
 spec:
   ref:
     name: api-service
@@ -320,7 +345,7 @@ spec:
 
 ```yaml
 # kafka-source.yaml
-apiVersion: sources.knative.dev/v1beta1
+apiVersion: sources.knative.dev/v1
 kind: KafkaSource
 metadata:
   name: kafka-source
@@ -465,6 +490,7 @@ data:
     spec:
       numPartitions: 3
       replicationFactor: 3
+      retentionDuration: "P7D"
 ```
 
 ## Autoscaling Configuration
@@ -601,7 +627,7 @@ resources:
     memory: 256Mi
 
 traffic:
-  - revisionName: latest
+  - latestRevision: true
     percent: 100
 
 env:
@@ -658,8 +684,8 @@ spec:
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: knative-serving
-  namespace: monitoring
+  name: activator
+  namespace: knative-serving
 spec:
   selector:
     matchLabels:
@@ -668,7 +694,9 @@ spec:
     matchNames:
       - knative-serving
   endpoints:
-    - port: http-metrics
+    - honorLabels: true
+      path: /metrics
+      port: http-metrics
       interval: 30s
 ```
 
@@ -686,7 +714,7 @@ spec:
       rules:
         - alert: KnativeServiceScaleToZero
           expr: |
-            sum(knative_serving_service_replicas) by (service_name, namespace) == 0
+            sum(kn_revision_pods_count) by (kn_service_name, k8s_namespace_name) == 0
           for: 5m
           labels:
             severity: info
@@ -696,7 +724,7 @@ spec:
         - alert: KnativeServiceHighLatency
           expr: |
             histogram_quantile(0.99, 
-              sum(rate(revision_request_latencies_bucket[5m])) by (le, service_name)
+              sum(rate(kn_serving_invocation_duration_bucket[5m])) by (le, kn_service_name, k8s_namespace_name)
             ) > 5
           for: 10m
           labels:
