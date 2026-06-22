@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Docker, Nginx, Reverse Proxy, DevOps, Container
 
-Description: Learn how to configure Nginx as a reverse proxy for Docker containers, including load balancing, SSL termination, and automatic container discovery with docker-compose.
+Description: Learn how to configure Nginx as a reverse proxy for Docker containers, including load balancing, SSL termination, and Docker Compose integration.
 
 ---
 
@@ -37,8 +37,6 @@ project/
 ### Docker Compose Configuration
 
 ```yaml
-version: '3.8'
-
 services:
   nginx:
     image: nginx:alpine
@@ -128,8 +126,6 @@ Scale your services and let Nginx distribute traffic.
 ### Docker Compose with Replicas
 
 ```yaml
-version: '3.8'
-
 services:
   nginx:
     image: nginx:alpine
@@ -144,8 +140,7 @@ services:
 
   api:
     image: my-api
-    deploy:
-      replicas: 3
+    scale: 3
     networks:
       - app-network
 
@@ -161,7 +156,7 @@ http {
         # Default is round-robin
         server api:8080;
 
-        # With health checks (nginx plus only)
+        # Passive failure handling
         # server api:8080 max_fails=3 fail_timeout=30s;
     }
 
@@ -215,8 +210,6 @@ openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
 ### Docker Compose with SSL
 
 ```yaml
-version: '3.8'
-
 services:
   nginx:
     image: nginx:alpine
@@ -293,8 +286,6 @@ Automate free SSL certificates with Let's Encrypt.
 ### Docker Compose Configuration
 
 ```yaml
-version: '3.8'
-
 services:
   nginx:
     image: nginx:alpine
@@ -362,7 +353,7 @@ server {
 
 ```bash
 # First run - get initial certificate
-docker-compose run --rm certbot certonly \
+docker compose run --rm certbot certonly \
   --webroot \
   --webroot-path=/var/www/certbot \
   -d example.com \
@@ -475,13 +466,10 @@ http {
 
 ```bash
 # Test configuration
-docker exec nginx nginx -t
+docker compose exec nginx nginx -t
 
 # Reload configuration
-docker exec nginx nginx -s reload
-
-# Or with docker-compose
-docker-compose exec nginx nginx -s reload
+docker compose exec nginx nginx -s reload
 ```
 
 ## Summary
