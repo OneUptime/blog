@@ -100,14 +100,17 @@ sudo apt install -y python3-boto3
 # For SFTP/SSH backups
 sudo apt install -y python3-paramiko
 
-# For Google Cloud Storage
-sudo apt install -y python3-google-cloud-storage
+# For Google Cloud Storage via S3 interoperability
+sudo apt install -y python3-boto3
 
 # For Azure Blob Storage
 pip3 install azure-storage-blob
 
 # For Dropbox
 pip3 install dropbox
+
+# For Backblaze B2
+pip3 install b2sdk
 
 # For WebDAV
 sudo apt install -y python3-webdav
@@ -203,6 +206,9 @@ duplicity /home/user/documents file:///backup/documents
 duplicity --encrypt-key ABCD1234 /home/user/documents file:///backup/documents
 
 # Backup with symmetric encryption (passphrase only)
+duplicity /home/user/documents file:///backup/documents
+
+# Backup without encryption
 duplicity --no-encryption /home/user/documents file:///backup/documents
 
 # Clear the passphrase from environment when done
@@ -223,8 +229,8 @@ sftp://user@hostname/path/to/backup
 # Amazon S3
 s3://bucket-name/path/to/backup
 
-# Google Cloud Storage
-gs://bucket-name/path/to/backup
+# Google Cloud Storage via S3 interoperability
+s3://bucket-name/path/to/backup
 
 # Azure Blob Storage
 azure://container-name
@@ -328,20 +334,17 @@ export PASSPHRASE="your-gpg-passphrase"
 # Backup to S3
 # The s3 URL format is: s3://bucket-name/path/to/backup
 duplicity --encrypt-key ABCD1234 \
-          --s3-use-new-style \
           /home/user/documents \
           s3://my-backup-bucket/documents
 
 # Using a specific S3 region
 duplicity --encrypt-key ABCD1234 \
-          --s3-use-new-style \
           --s3-region-name us-west-2 \
           /home/user/documents \
           s3://my-backup-bucket/documents
 
 # Using S3-compatible storage (MinIO, Wasabi, etc.)
 duplicity --encrypt-key ABCD1234 \
-          --s3-use-new-style \
           --s3-endpoint-url https://s3.wasabisys.com \
           /home/user/documents \
           s3://my-wasabi-bucket/documents
@@ -384,30 +387,28 @@ unset PASSPHRASE
 ### Google Cloud Storage
 
 ```bash
-# First, authenticate with Google Cloud
-# Install gcloud CLI if needed: https://cloud.google.com/sdk/docs/install
-gcloud auth application-default login
+# First, enable Cloud Storage interoperability and create an HMAC key:
+# https://cloud.google.com/storage/docs/interoperability
 
-# Set passphrase
+# Set credentials and passphrase
+export AWS_ACCESS_KEY_ID="your-gcs-hmac-access-key"
+export AWS_SECRET_ACCESS_KEY="your-gcs-hmac-secret"
 export PASSPHRASE="your-gpg-passphrase"
-
-# Alternatively, use a service account key file
-export GOOGLE_APPLICATION_CREDENTIALS="/path/to/service-account-key.json"
 
 # Backup to Google Cloud Storage
 duplicity --encrypt-key ABCD1234 \
+          --s3-endpoint-url https://storage.googleapis.com \
           /home/user/documents \
-          gs://my-backup-bucket/documents
+          s3://my-backup-bucket/documents
 
-unset PASSPHRASE GOOGLE_APPLICATION_CREDENTIALS
+unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY PASSPHRASE
 ```
 
 ### Azure Blob Storage
 
 ```bash
 # Set Azure credentials
-export AZURE_ACCOUNT_NAME="your-storage-account-name"
-export AZURE_ACCOUNT_KEY="your-storage-account-key"
+export AZURE_CONNECTION_STRING="DefaultEndpointsProtocol=https;AccountName=your-storage-account-name;AccountKey=your-storage-account-key;EndpointSuffix=core.windows.net"
 export PASSPHRASE="your-gpg-passphrase"
 
 # Backup to Azure Blob Storage
@@ -415,7 +416,7 @@ duplicity --encrypt-key ABCD1234 \
           /home/user/documents \
           azure://my-backup-container
 
-unset AZURE_ACCOUNT_NAME AZURE_ACCOUNT_KEY PASSPHRASE
+unset AZURE_CONNECTION_STRING PASSPHRASE
 ```
 
 ### Dropbox
@@ -441,17 +442,15 @@ unset DPBX_ACCESS_TOKEN PASSPHRASE
 ### Backblaze B2
 
 ```bash
-# Set B2 credentials
-export B2_ACCOUNT_ID="your-account-id"
-export B2_APPLICATION_KEY="your-application-key"
+# Set GPG passphrase
 export PASSPHRASE="your-gpg-passphrase"
 
 # Backup to Backblaze B2
 duplicity --encrypt-key ABCD1234 \
           /home/user/documents \
-          b2://my-backup-bucket/documents
+          b2://your-key-id:your-application-key@my-backup-bucket/documents
 
-unset B2_ACCOUNT_ID B2_APPLICATION_KEY PASSPHRASE
+unset PASSPHRASE
 ```
 
 ## Restoring Files
@@ -486,19 +485,19 @@ unset PASSPHRASE
 export PASSPHRASE="your-gpg-passphrase"
 
 # Restore a single file
-# Use --file-to-restore with the relative path from backup root
-duplicity restore --file-to-restore important-document.txt \
+# Use --path-to-restore with the relative path from backup root
+duplicity restore --path-to-restore important-document.txt \
                   file:///backup/documents \
                   /home/user/important-document-restored.txt
 
 # Restore a specific directory
-duplicity restore --file-to-restore projects/webapp \
+duplicity restore --path-to-restore projects/webapp \
                   file:///backup/documents \
                   /home/user/webapp-restored
 
 # Restore a file from a specific point in time
 duplicity restore --time 2026-01-10 \
-                  --file-to-restore config/settings.conf \
+                  --path-to-restore config/settings.conf \
                   file:///backup/documents \
                   /home/user/settings-restored.conf
 
@@ -536,7 +535,7 @@ export PASSPHRASE="your-gpg-passphrase"
 duplicity verify file:///backup/documents /home/user/documents
 
 # Verify specific files only
-duplicity verify --file-to-restore important.txt \
+duplicity verify --path-to-restore important.txt \
                  file:///backup/documents \
                  /home/user/documents
 
@@ -630,7 +629,6 @@ GPG_KEY="ABCD1234EFGH5678IJKL9012MNOP3456QRST7890"
 # Backup retention settings
 FULL_BACKUP_INTERVAL="30D"    # Create new full backup if older than 30 days
 KEEP_FULL_BACKUPS="3"         # Keep 3 full backups
-KEEP_INCREMENTAL_CHAINS="3"   # Keep incrementals for 3 full backup chains
 
 # Logging
 LOG_FILE="/var/log/duplicity-backup.log"
@@ -681,9 +679,8 @@ perform_backup() {
 
     # Add common options
     cmd="$cmd --encrypt-key $GPG_KEY"
-    cmd="$cmd --s3-use-new-style"
     cmd="$cmd --volsize 250"  # 250MB volumes for better parallelism
-    cmd="$cmd --asynchronous-upload"  # Upload while creating next volume
+    cmd="$cmd --s3-multipart-max-procs 4"  # Parallel S3 multipart uploads
 
     # Add exclude file if it exists
     if [[ -f "$EXCLUDE_FILE" ]]; then
@@ -953,11 +950,8 @@ Edit the configuration file `~/.duply/documents/conf`:
 # GPG key ID for encryption (use 'gpg --list-keys' to find yours)
 GPG_KEY='ABCD1234EFGH5678IJKL9012MNOP3456QRST7890'
 
-# GPG passphrase (alternatively, use GPG_PW_FILE for file-based storage)
+# GPG passphrase
 GPG_PW='your-secure-passphrase'
-
-# For even better security, use a password file:
-# GPG_PW_FILE='/root/.duply-password'
 
 #-------------------------------------------------------------------------------
 # Backup Source and Target
@@ -967,12 +961,11 @@ GPG_PW='your-secure-passphrase'
 SOURCE='/home/user/documents'
 
 # Where to store backups (the target URL)
-# Supports: file://, s3://, sftp://, gs://, azure://, etc.
+# Supports: file://, s3://, sftp://, azure://, etc.
 TARGET='s3://my-backup-bucket/documents'
 
-# For S3, set credentials
-TARGET_USER='AKIAIOSFODNN7EXAMPLE'
-TARGET_PASS='wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY'
+# For S3, pass AWS credentials as environment variables
+DUPL_PRECMD="AWS_ACCESS_KEY_ID='AKIAIOSFODNN7EXAMPLE' AWS_SECRET_ACCESS_KEY='wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY'"
 
 #-------------------------------------------------------------------------------
 # Backup Settings
@@ -995,8 +988,7 @@ VOLSIZE=250
 #-------------------------------------------------------------------------------
 
 # Additional duplicity options
-DUPL_PARAMS="$DUPL_PARAMS --s3-use-new-style "
-DUPL_PARAMS="$DUPL_PARAMS --asynchronous-upload "
+DUPL_PARAMS="$DUPL_PARAMS --s3-multipart-max-procs 4 "
 
 # Verbosity level (0-9, default 4)
 VERBOSITY=4
@@ -1063,9 +1055,6 @@ duply documents status
 
 # Verify backup integrity
 duply documents verify
-
-# Restore entire backup to original location
-duply documents restore
 
 # Restore to a specific directory
 duply documents restore /home/user/restored-docs
@@ -1148,18 +1137,17 @@ duplicity --volsize 250 \
 VOLSIZE=250
 ```
 
-### Asynchronous Upload
+### S3 Multipart Concurrency
 
 ```bash
-# Enable asynchronous upload to speed up backups
-# This uploads completed volumes while creating the next one
+# Tune S3 multipart upload concurrency to speed up cloud backups
 
-duplicity --asynchronous-upload \
+duplicity --s3-multipart-max-procs 4 \
           --encrypt-key ABCD1234 \
           /home/user/documents s3://bucket/documents
 
 # In duply configuration
-DUPL_PARAMS="$DUPL_PARAMS --asynchronous-upload "
+DUPL_PARAMS="$DUPL_PARAMS --s3-multipart-max-procs 4 "
 ```
 
 ### Local Signature Cache
@@ -1188,12 +1176,12 @@ ARCH_DIR='/var/cache/duplicity/documents'
 # For already compressed files, disable compression to save CPU
 
 # No compression (faster for compressed files like images, videos)
-duplicity --gpg-options '--compress-algo=none' \
+duplicity --no-compression \
           --encrypt-key ABCD1234 \
           /home/user/media s3://bucket/media
 
-# Use faster compression algorithm
-duplicity --gpg-options '--compress-algo=zlib --compress-level=1' \
+# Pass GPG compression options if your policy requires them
+duplicity --gpg-options='--compress-algo=zlib --compress-level=1' \
           --encrypt-key ABCD1234 \
           /home/user/documents s3://bucket/documents
 ```
@@ -1234,11 +1222,11 @@ echo "All parallel backups completed"
 ### Network Optimization
 
 ```bash
-# Limit bandwidth usage (useful for not saturating network)
-duplicity --max-upload-rate 5000000 \
+# Limit bandwidth usage for the rsync backend
+duplicity --rsync-options='--bwlimit=5000' \
           --encrypt-key ABCD1234 \
-          /home/user/documents s3://bucket/documents
-# 5000000 = 5 MB/s
+          /home/user/documents rsync://user@server/backups/documents
+# 5000 = 5000 KiB/s
 
 # Set timeout for slow connections
 duplicity --timeout 300 \
@@ -1367,7 +1355,7 @@ perform_backup() {
 
     cmd="$cmd --encrypt-key $GPG_KEY"
     cmd="$cmd --volsize 250"
-    cmd="$cmd --asynchronous-upload"
+    cmd="$cmd --s3-multipart-max-procs 4"
     cmd="$cmd --archive-dir /var/cache/duplicity"
 
     if [[ -f /etc/duplicity/excludes.txt ]]; then
@@ -1444,7 +1432,7 @@ main() {
 
     # Backup to primary target
     if ! perform_backup "$PRIMARY_TARGET" "$backup_type"; then
-        ((errors++))
+        ((errors += 1))
         send_alert "Backup Failed" "Primary backup to $PRIMARY_TARGET failed"
     else
         cleanup_backups "$PRIMARY_TARGET"
@@ -1452,7 +1440,7 @@ main() {
 
     # Backup to secondary target
     if ! perform_backup "$SECONDARY_TARGET" "$backup_type"; then
-        ((errors++))
+        ((errors += 1))
         send_alert "Backup Failed" "Secondary backup to $SECONDARY_TARGET failed"
     else
         cleanup_backups "$SECONDARY_TARGET"
@@ -1462,7 +1450,7 @@ main() {
     if [[ $(date +%u) -eq 7 ]]; then
         log "INFO" "Performing weekly verification"
         if ! verify_backup "$PRIMARY_TARGET"; then
-            ((errors++))
+            ((errors += 1))
             send_alert "Verification Failed" "Backup verification failed for $PRIMARY_TARGET"
         fi
     fi
