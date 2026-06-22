@@ -19,8 +19,8 @@ By default, Docker containers use UTC timezone. While UTC is often preferred for
 
 docker run -e TZ=America/New_York myimage
 
-# Verify
-docker run -e TZ=America/New_York alpine date
+# Verify in an image with timezone data installed
+docker run --rm -e TZ=America/New_York alpine sh -c "apk add --no-cache tzdata >/dev/null && date"
 ```
 
 ### Docker Compose
@@ -53,15 +53,15 @@ flowchart TB
 
 ## Method 1: TZ Environment Variable
 
-The simplest and most portable method.
+The simplest and most portable method when timezone data is installed in the image.
 
 ```bash
 # Docker run
 docker run -e TZ=Europe/London myimage
 
-# Works with most base images
-docker run -e TZ=Asia/Tokyo ubuntu date
-docker run -e TZ=America/Los_Angeles alpine date
+# Works with images that include timezone data
+docker run --rm -e TZ=Asia/Tokyo ubuntu sh -c "apt-get update >/dev/null && DEBIAN_FRONTEND=noninteractive apt-get install -y tzdata >/dev/null && date"
+docker run --rm alpine sh -c "apk add --no-cache tzdata >/dev/null && TZ=America/Los_Angeles date"
 ```
 
 ### Valid Timezone Names
@@ -69,6 +69,9 @@ docker run -e TZ=America/Los_Angeles alpine date
 ```bash
 # List all available timezones (on host or in container)
 timedatectl list-timezones
+
+# Or from installed timezone data
+find /usr/share/zoneinfo -type f | sed 's#^/usr/share/zoneinfo/##'
 
 # Common examples:
 # UTC
@@ -121,10 +124,8 @@ FROM ubuntu:22.04
 
 # Set timezone non-interactively
 ENV TZ=America/New_York
-RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
-
-# Install tzdata if needed
-RUN apt-get update && apt-get install -y tzdata && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y tzdata && rm -rf /var/lib/apt/lists/* \
+    && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 ```
 
 ### Alpine
@@ -151,7 +152,8 @@ FROM ubuntu:22.04
 ARG TIMEZONE=UTC
 ENV TZ=$TIMEZONE
 
-RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y tzdata && rm -rf /var/lib/apt/lists/* \
+    && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 # Build with custom timezone
 # docker build --build-arg TIMEZONE=Asia/Tokyo -t myapp .
@@ -267,7 +269,7 @@ date
 docker run alpine date
 
 # Same moment, different display (with TZ)
-docker run -e TZ=America/New_York alpine date
+docker run --rm -e TZ=America/New_York alpine sh -c "apk add --no-cache tzdata >/dev/null && date"
 ```
 
 ### NTP and Time Sync
@@ -285,8 +287,6 @@ sudo timedatectl set-ntp on
 ## Complete Example: Multi-Service Application
 
 ```yaml
-version: '3.8'
-
 x-timezone: &timezone
   TZ: America/New_York
 
@@ -350,8 +350,8 @@ docker exec mycontainer printenv TZ
 ```bash
 # Run date in different timezones
 docker run --rm -e TZ=UTC alpine date
-docker run --rm -e TZ=America/New_York alpine date
-docker run --rm -e TZ=Asia/Tokyo alpine date
+docker run --rm alpine sh -c "apk add --no-cache tzdata >/dev/null && TZ=America/New_York date"
+docker run --rm alpine sh -c "apk add --no-cache tzdata >/dev/null && TZ=Asia/Tokyo date"
 
 # Should show same moment, different local times
 ```
@@ -448,10 +448,9 @@ TZ=Europe/London docker compose up
 
 | Method | Use Case |
 |--------|----------|
-| `TZ=timezone` env var | Most portable, recommended |
+| `TZ=timezone` env var | Most portable, recommended when timezone data is installed |
 | Mount `/etc/localtime` | Match host timezone |
 | Dockerfile configuration | Bake into image |
 | Application config | Language-specific needs |
 
-Setting the `TZ` environment variable is the simplest and most portable solution. For databases and other services that need timezone-aware queries, also configure the service's native timezone settings. Always ensure the host's system clock is synchronized via NTP for accurate time.
-
+Setting the `TZ` environment variable is the simplest and most portable solution when timezone data is installed. For databases and other services that need timezone-aware queries, also configure the service's native timezone settings. Always ensure the host's system clock is synchronized via NTP for accurate time.
