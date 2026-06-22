@@ -144,7 +144,7 @@ Now let's explore more advanced patterns for real-world applications.
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 
-interface User {
+export interface User {
   id: string;
   email: string;
   name: string;
@@ -235,7 +235,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { devtools } from 'zustand/middleware';
 
-interface CartItem {
+export interface CartItem {
   id: string;
   name: string;
   price: number;
@@ -1132,10 +1132,15 @@ export const createMockUserStore = (initialState = {}) => {
 // Usage in tests
 jest.mock('../stores/useUserStore', () => ({
   __esModule: true,
-  default: createMockUserStore({
+  default: create(() => ({
     user: { id: '1', name: 'Test User', email: 'test@example.com' },
     isAuthenticated: true,
-  }),
+    isLoading: false,
+    error: null,
+    setUser: jest.fn(),
+    login: jest.fn(),
+    logout: jest.fn(),
+  })),
 }));
 ```
 
@@ -1154,7 +1159,7 @@ export { default as useNotificationStore } from './useNotificationStore';
 
 // Re-export selector hooks
 export { useUser, useIsAuthenticated } from './useUserStore';
-export { useCartSummary } from './useCartStore';
+export { useCartSummary } from './selectors';
 
 // Re-export types
 export type { User } from './useUserStore';
