@@ -427,7 +427,7 @@ ssh -T git@github.com
 # Copy public key
 cat ~/.ssh/gitlab_key.pub
 
-# Add at: https://gitlab.com/-/profile/keys
+# Add at: https://gitlab.com/-/user_settings/ssh_keys
 
 # Test connection
 ssh -T git@gitlab.com
