@@ -778,11 +778,6 @@ function createTestQueryClient() {
         retry: false,
       },
     },
-    logger: {
-      log: console.log,
-      warn: console.warn,
-      error: () => {}, // Silence error logs in tests
-    },
   });
 }
 
@@ -1104,7 +1099,7 @@ MSW provides the best balance of realism, maintainability, and developer experie
 For more complex scenarios, consider these patterns:
 
 - **GraphQL mocking**: MSW supports GraphQL with `graphql.query()` and `graphql.mutation()`
-- **WebSocket mocking**: Use the `ws` package alongside MSW for real-time features
+- **WebSocket mocking**: MSW has first-class WebSocket support via its built-in `ws` namespace (`import { ws } from 'msw'`) for real-time features
 - **Integration testing**: Use MSW with Cypress or Playwright for end-to-end tests
 - **Visual regression**: Combine MSW with Storybook for component documentation
 
