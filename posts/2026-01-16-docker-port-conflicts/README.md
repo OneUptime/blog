@@ -33,7 +33,7 @@ docker ps --format "table {{.Names}}\t{{.Ports}}"
 docker ps --format "{{.Names}}: {{.Ports}}" | grep 8080
 
 # More detailed port info
-docker port $(docker ps -q) 2>/dev/null | grep 8080
+for id in $(docker ps -q); do docker port "$id"; done 2>/dev/null | grep 8080
 ```
 
 ### Check Host Processes (Linux)
@@ -126,8 +126,6 @@ docker run --network host nginx
 ### Change Port in Compose File
 
 ```yaml
-version: '3.8'
-
 services:
   web:
     image: nginx
@@ -178,7 +176,7 @@ services:
 services:
   web:
     ports:
-      - "${COMPOSE_PROJECT_NAME:-default}_8080:80"
+      - "${WEB_PORT:-8080}:80"
 
 # Or use project-specific port ranges
 # Project A: 8000-8099
@@ -214,11 +212,15 @@ networks:
 services:
   traefik:
     image: traefik:v3.0
+    command:
+      - "--providers.docker=true"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
     ports:
       - "80:80"
       - "443:443"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/run/docker.sock:/var/run/docker.sock:ro
 
   web:
     image: nginx
@@ -377,4 +379,3 @@ sudo sysctl -w net.ipv4.ip_local_port_range="1024 65535"
 | Environment variables | Configurable deployments |
 
 Port conflicts are easily resolved once you know what's using the port. Use `lsof` or `ss` to identify the process, then either stop it or choose a different port. For development environments, use environment variables for port configuration and document your port conventions to prevent collisions.
-
