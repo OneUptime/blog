@@ -353,7 +353,7 @@ element(by.id('button-submit'));
 // Match by text content
 element(by.text('Submit'));
 
-// Match by partial text (label)
+// Match by accessibility label (iOS) / content description (Android)
 element(by.label('Submit'));
 
 // Match by type (native view type)
@@ -385,7 +385,7 @@ await element(by.id('button')).tap();
 await element(by.id('button')).longPress();
 await element(by.id('button')).longPress(2000); // Long press for 2 seconds
 await element(by.id('button')).multiTap(3); // Triple tap
-await element(by.id('button')).tapAtPoint({ x: 10, y: 10 });
+await element(by.id('button')).tap({ x: 10, y: 10 }); // Tap at a specific point
 
 // Text input actions
 await element(by.id('input')).typeText('Hello World');
@@ -999,8 +999,8 @@ describe('Debug Suite', () => {
     await device.launchApp();
     console.log('App launched');
 
-    const isVisible = await element(by.id('home-screen')).isVisible();
-    console.log(`Home screen visible: ${isVisible}`);
+    const attributes = await element(by.id('home-screen')).getAttributes();
+    console.log(`Home screen attributes: ${JSON.stringify(attributes)}`);
 
     await element(by.id('button')).tap();
     console.log('Button tapped');
