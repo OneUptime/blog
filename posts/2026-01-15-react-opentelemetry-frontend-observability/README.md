@@ -104,8 +104,12 @@ Create a dedicated telemetry configuration file that initializes OpenTelemetry b
 import { WebTracerProvider } from '@opentelemetry/sdk-trace-web';
 import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { Resource } from '@opentelemetry/resources';
-import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import {
+  ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+} from '@opentelemetry/semantic-conventions';
 import { ZoneContextManager } from '@opentelemetry/context-zone';
 import { registerInstrumentations } from '@opentelemetry/instrumentation';
 import { FetchInstrumentation } from '@opentelemetry/instrumentation-fetch';
@@ -115,10 +119,10 @@ import { UserInteractionInstrumentation } from '@opentelemetry/instrumentation-u
 import { trace, context } from '@opentelemetry/api';
 
 // Define your service identity
-const resource = new Resource({
-  [SemanticResourceAttributes.SERVICE_NAME]: 'react-frontend',
-  [SemanticResourceAttributes.SERVICE_VERSION]: process.env.REACT_APP_VERSION || '1.0.0',
-  [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV || 'development',
+const resource = resourceFromAttributes({
+  [ATTR_SERVICE_NAME]: 'react-frontend',
+  [ATTR_SERVICE_VERSION]: process.env.REACT_APP_VERSION || '1.0.0',
+  [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: process.env.NODE_ENV || 'development',
   // Custom attributes for your app
   'app.name': 'MyReactApp',
   'browser.platform': navigator.platform,
@@ -136,15 +140,16 @@ const exporter = new OTLPTraceExporter({
 // Create the trace provider
 const provider = new WebTracerProvider({
   resource,
+  // Use batch processing for efficiency
+  spanProcessors: [
+    new BatchSpanProcessor(exporter, {
+      maxQueueSize: 100,
+      maxExportBatchSize: 10,
+      scheduledDelayMillis: 500,
+      exportTimeoutMillis: 30000,
+    }),
+  ],
 });
-
-// Use batch processing for efficiency
-provider.addSpanProcessor(new BatchSpanProcessor(exporter, {
-  maxQueueSize: 100,
-  maxExportBatchSize: 10,
-  scheduledDelayMillis: 500,
-  exportTimeoutMillis: 30000,
-}));
 
 // Register the provider globally
 provider.register({
@@ -446,7 +451,9 @@ new FetchInstrumentation({
   clearTimingResources: true,
   // Add custom attributes to fetch spans
   applyCustomAttributesOnSpan: (span, request, response) => {
-    span.setAttribute('http.request_id', response.headers.get('x-request-id') || '');
+    if (response instanceof Response) {
+      span.setAttribute('http.request_id', response.headers.get('x-request-id') || '');
+    }
   },
 }),
 ```
@@ -463,7 +470,8 @@ function sendWebSocketMessage(socket: WebSocket, message: any) {
 
   // Inject trace context into message headers
   const carrier: Record<string, string> = {};
-  propagation.inject(context.active(), carrier);
+  const spanContext = trace.setSpan(context.active(), span);
+  propagation.inject(spanContext, carrier);
 
   const messageWithContext = {
     ...message,
@@ -567,7 +575,7 @@ window.addEventListener('unhandledrejection', (event) => {
 ```typescript
 // src/components/TracedErrorBoundary.tsx
 import React, { Component, ErrorInfo, ReactNode } from 'react';
-import { trace, SpanStatusCode } from '@opentelemetry/api';
+import { SpanStatusCode } from '@opentelemetry/api';
 import { tracer } from '../telemetry';
 
 interface Props {
@@ -668,7 +676,7 @@ Capture Core Web Vitals and correlate them with traces.
 
 ```typescript
 // src/webVitals.ts
-import { onCLS, onINP, onLCP, onFCP, onTTFB, Metric } from 'web-vitals';
+import { onCLS, onINP, onLCP, onFCP, onTTFB, type Metric } from 'web-vitals';
 import { SpanStatusCode } from '@opentelemetry/api';
 import { tracer } from './telemetry';
 
@@ -730,8 +738,9 @@ export function initLongTaskMonitoring(): void {
   const observer = new PerformanceObserver((list) => {
     for (const entry of list.getEntries()) {
       if (entry.entryType === 'longtask') {
+        const startTime = performance.timeOrigin + entry.startTime;
         const span = tracer.startSpan('browser.long_task', {
-          startTime: entry.startTime,
+          startTime,
           attributes: {
             'long_task.duration_ms': entry.duration,
             'long_task.name': entry.name,
@@ -747,7 +756,7 @@ export function initLongTaskMonitoring(): void {
           });
         }
 
-        span.end();
+        span.end(startTime + entry.duration);
       }
     }
   });
@@ -756,7 +765,7 @@ export function initLongTaskMonitoring(): void {
 }
 ```
 
-Resource Loading Performance
+### Resource Loading Performance
 
 Monitor individual resource loading times.
 
@@ -776,7 +785,9 @@ export function initResourceMonitoring(): void {
         continue;
       }
 
+      const startTime = performance.timeOrigin + entry.startTime;
       const span = tracer.startSpan('resource.load', {
+        startTime,
         attributes: {
           'resource.name': entry.name,
           'resource.type': entry.initiatorType,
@@ -791,7 +802,7 @@ export function initResourceMonitoring(): void {
         },
       });
 
-      span.end();
+      span.end(performance.timeOrigin + entry.responseEnd);
     }
   });
 
@@ -838,7 +849,7 @@ export function useTracedClick<T extends (...args: any[]) => any>(
                 return res;
               })
               .catch((error) => {
-                span.recordException(error);
+                span.recordException(error as Error);
                 span.setStatus({ code: SpanStatusCode.ERROR });
                 throw error;
               })
@@ -897,6 +908,7 @@ function ProductCard({ product }: { product: Product }) {
 ```typescript
 // src/hooks/useTracedForm.ts
 import { useCallback } from 'react';
+import type { FormEvent } from 'react';
 import { tracer } from '../telemetry';
 import { SpanStatusCode, Span } from '@opentelemetry/api';
 
@@ -911,18 +923,18 @@ export function useTracedForm<T>(
   options: TracedFormOptions
 ) {
   const handleSubmit = useCallback(
-    async (event: React.FormEvent<HTMLFormElement>) => {
+    async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
 
       const formData = new FormData(event.currentTarget);
-      const data = Object.fromEntries(formData) as T;
+      const data = Object.fromEntries(formData);
 
       return tracer.startActiveSpan(`form.submit.${options.formName}`, async (span: Span) => {
         span.setAttribute('form.name', options.formName);
         span.setAttribute('form.fields_count', Object.keys(data).length);
 
         try {
-          await submitHandler(data);
+          await submitHandler(data as unknown as T);
           span.setStatus({ code: SpanStatusCode.OK });
           span.addEvent('form.submission_success');
           options.onSuccess?.();
@@ -954,7 +966,7 @@ export function useTracedForm<T>(
 
 ```typescript
 // src/utils/tracing.ts
-import { trace, Span } from '@opentelemetry/api';
+import { Span } from '@opentelemetry/api';
 
 export function addUserContext(span: Span, user: User | null): void {
   if (user) {
@@ -1048,7 +1060,7 @@ async function processCheckout(span: Span, checkoutData: CheckoutData) {
 // src/hoc/withTracing.tsx
 import React, { ComponentType, useEffect, useRef } from 'react';
 import { tracer } from '../telemetry';
-import { Span, SpanStatusCode } from '@opentelemetry/api';
+import { Span } from '@opentelemetry/api';
 
 interface WithTracingOptions {
   spanName?: string;
@@ -1198,6 +1210,12 @@ const TracedDashboard = withTracing(Dashboard, {
 
 ```typescript
 // src/telemetry.ts
+import {
+  AlwaysOnSampler,
+  BatchSpanProcessor,
+  TraceIdRatioBasedSampler,
+} from '@opentelemetry/sdk-trace-base';
+
 const isProduction = process.env.NODE_ENV === 'production';
 
 // Sampling in production
@@ -1220,7 +1238,11 @@ const batchConfig = isProduction
       exportTimeoutMillis: 30000,
     };
 
-provider.addSpanProcessor(new BatchSpanProcessor(exporter, batchConfig));
+const provider = new WebTracerProvider({
+  resource,
+  sampler,
+  spanProcessors: [new BatchSpanProcessor(exporter, batchConfig)],
+});
 ```
 
 ### Sensitive Data Filtering
@@ -1231,7 +1253,17 @@ new FetchInstrumentation({
   propagateTraceHeaderCorsUrls: [/https:\/\/api\.yourdomain\.com\/.*/],
   applyCustomAttributesOnSpan: (span, request, response) => {
     // Sanitize URL parameters
-    const url = new URL(request.url);
+    const requestUrl = request instanceof Request
+      ? request.url
+      : response instanceof Response
+        ? response.url
+        : undefined;
+
+    if (!requestUrl) {
+      return;
+    }
+
+    const url = new URL(requestUrl);
     const sanitizedParams = new URLSearchParams();
 
     for (const [key, value] of url.searchParams) {
@@ -1267,15 +1299,8 @@ export async function shutdownTelemetry(): Promise<void> {
 }
 
 // Handle page unload
-window.addEventListener('beforeunload', () => {
-  // Use sendBeacon for reliable delivery on page close
-  const pendingSpans = (provider as any)._activeSpanProcessor?._finishedSpans || [];
-  if (pendingSpans.length > 0) {
-    navigator.sendBeacon(
-      process.env.REACT_APP_OTLP_ENDPOINT || '',
-      JSON.stringify(pendingSpans)
-    );
-  }
+window.addEventListener('pagehide', () => {
+  provider.forceFlush();
 });
 
 // Handle visibility change (mobile tab backgrounding)
@@ -1317,10 +1342,8 @@ tracer.startActiveSpan('parent', (parentSpan) => {
 
 // Bad: Manual context management everywhere
 const parentSpan = tracer.startSpan('parent');
-const childSpan = tracer.startSpan('child', {
-  // Have to manually set parent
-  links: [{ context: parentSpan.spanContext() }],
-});
+const parentContext = trace.setSpan(context.active(), parentSpan);
+const childSpan = tracer.startSpan('child', {}, parentContext);
 ```
 
 **3. End Spans in Finally Blocks**
@@ -1329,7 +1352,7 @@ const childSpan = tracer.startSpan('child', {
 try {
   await doWork();
 } catch (error) {
-  span.recordException(error);
+  span.recordException(error as Error);
 } finally {
   span.end();
 }
@@ -1402,8 +1425,8 @@ try {
   await riskyOperation();
   span.setStatus({ code: SpanStatusCode.OK });
 } catch (error) {
-  span.recordException(error);
-  span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
+  span.recordException(error as Error);
+  span.setStatus({ code: SpanStatusCode.ERROR, message: (error as Error).message });
   throw error;
 }
 ```
