@@ -15,7 +15,7 @@ A network bridge connects two or more network segments at Layer 2, allowing them
 - Connecting VMs to physical network
 - Container networking
 - Connecting multiple network interfaces
-- Network aggregation
+- Connecting multiple network segments
 
 ## Prerequisites
 
@@ -185,11 +185,7 @@ sudo nano /etc/network/interfaces
 auto lo
 iface lo inet loopback
 
-# Physical interface (no IP)
-auto enp0s3
-iface enp0s3 inet manual
-
-# Bridge interface
+# DHCP bridge interface
 auto br0
 iface br0 inet dhcp
     bridge_ports enp0s3
@@ -197,7 +193,7 @@ iface br0 inet dhcp
     bridge_fd 4
     bridge_maxwait 0
 
-# Or static IP
+# Or use this static bridge interface instead of the DHCP stanza above
 auto br0
 iface br0 inet static
     address 192.168.1.100
@@ -359,7 +355,7 @@ sudo virsh net-autostart host-bridge
 lxc network create br0 ipv4.address=192.168.1.1/24 ipv4.nat=false
 
 # Or attach to existing bridge
-lxc network attach-profile br0 default eth0
+lxc profile device add default eth0 nic nictype=bridged parent=br0
 ```
 
 ## Monitoring Bridge
@@ -374,7 +370,7 @@ bridge link show
 ip -d link show br0
 
 # Show MAC address table
-bridge fdb show br0
+bridge fdb show br br0
 
 # Show VLAN info
 bridge vlan show
@@ -395,7 +391,7 @@ bridge -s link show
 ### Common Issues
 
 ```bash
-# Bridge not forwarding traffic
+# Routed/NAT traffic not forwarding
 # Enable IP forwarding
 echo 1 | sudo tee /proc/sys/net/ipv4/ip_forward
 
