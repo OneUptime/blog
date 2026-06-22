@@ -32,16 +32,13 @@ sudo apt install podman -y
 podman --version
 ```
 
-### Ubuntu 20.04 (via Kubic Repository)
+### Ubuntu 20.04
+
+Podman was not added to Ubuntu's official repositories until Ubuntu 20.10, so it is not available via `apt` on 20.04. Older guides recommended the openSUSE Kubic (`devel:kubic:libcontainers:stable`) repository to fill that gap, but that repository has been **discontinued** and no longer ships Podman packages. (The Kubic setup also relied on `apt-key add`, which is itself deprecated and removed in recent Ubuntu releases.)
+
+Ubuntu 20.04 LTS reached the end of its standard support in April 2025. The recommended path is to upgrade to a currently supported Ubuntu LTS (22.04 or 24.04), where Podman installs directly from the official repositories:
 
 ```bash
-# Add Kubic repository
-echo "deb https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_20.04/ /" | sudo tee /etc/apt/sources.list.d/devel:kubic:libcontainers:stable.list
-
-# Add GPG key
-curl -L "https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_20.04/Release.key" | sudo apt-key add -
-
-# Install
 sudo apt update
 sudo apt install podman -y
 ```
@@ -61,9 +58,10 @@ sudo nano /etc/containers/registries.conf
 Add unqualified search registries:
 
 ```toml
-[registries.search]
-registries = ['docker.io', 'quay.io', 'ghcr.io']
+unqualified-search-registries = ['docker.io', 'quay.io', 'ghcr.io']
 ```
+
+> The current `registries.conf` uses the v2 format. The older `[registries.search]` table is deprecated and cannot be mixed with v2 settings, so use the top-level `unqualified-search-registries` key shown above.
 
 ### Configure Storage
 
