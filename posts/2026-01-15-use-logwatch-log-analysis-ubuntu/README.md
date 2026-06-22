@@ -60,7 +60,8 @@ If you plan to receive email reports, install and configure an MTA. Postfix is a
 ```bash
 # Install Postfix for sending email reports
 # During installation, select "Internet Site" or "Local only" depending on your needs
-sudo apt install postfix -y
+# mailutils provides the mail command used in the test examples below
+sudo apt install postfix mailutils -y
 ```
 
 Verify the installation by checking the Logwatch version:
@@ -168,7 +169,7 @@ MailFrom = logwatch@yourserver.example.com
 # Higher values include more information but create longer reports
 Detail = Med
 
-# Default services to include: All, or a comma-separated list
+# Default services to include: All, or repeated Service lines
 # Use "All" to analyze all available services
 Service = All
 
@@ -200,9 +201,9 @@ The detail level controls how much information appears in reports. Logwatch supp
 
 | Level | Numeric | Description |
 |-------|---------|-------------|
-| Low   | 0-3     | Critical errors and security events only |
-| Med   | 4-7     | Important events plus warnings |
-| High  | 8-10    | Everything including informational messages |
+| Low   | 0       | Critical errors and security events only |
+| Med   | 5       | Important events plus warnings |
+| High  | 10      | Everything including informational messages |
 
 Compare the output at different detail levels to find the right balance for your needs:
 
@@ -275,6 +276,7 @@ Log file group definitions live in `/usr/share/logwatch/default.conf/logfiles/`.
 ```bash
 # Create a custom log file group for a Node.js application
 # This tells Logwatch where to find the logs
+sudo mkdir -p /etc/logwatch/conf/logfiles
 sudo nano /etc/logwatch/conf/logfiles/myapp.conf
 ```
 
@@ -301,6 +303,10 @@ Archive = /var/log/myapp/*.log.[0-9]
 # Expand date codes in log file names
 # Useful for logs named with dates like myapp-2026-01-15.log
 # *ExpandRepeats
+
+# Filter lines by the requested --range for logs like:
+# [2026-01-15 10:30:00] ERROR: Database connection failed
+*ApplyStdDate = "\[%Y-%m-%d %H:%M:%S\] "
 ```
 
 You can also define multiple log files in a single group:
@@ -350,8 +356,8 @@ Output = mail
 # Primary recipient - can be a distribution list
 MailTo = sysadmin@example.com
 
-# Carbon copy additional recipients (comma-separated)
-# MailTo = sysadmin@example.com, security@example.com
+# Additional recipients (space-separated)
+# MailTo = sysadmin@example.com security@example.com
 
 # Sender address - should be a valid address for reply-to
 MailFrom = Logwatch@yourserver.example.com
@@ -374,11 +380,11 @@ sudo logwatch --output mail --mailto admin@example.com --detail Med --range Yest
 sudo logwatch --output mail --mailto admin@example.com --format html --detail High
 ```
 
-For multi-server environments, include the hostname in the subject line by editing the report header. Create a custom header file:
+For multi-server environments, include the hostname in the subject line with the `--subject` option:
 
 ```bash
-# Create a custom header template
-sudo nano /etc/logwatch/conf/header.txt
+# Send a report with a hostname-specific subject
+sudo logwatch --output mail --mailto admin@example.com --subject "Logwatch for $(hostname -f)" --range Yesterday
 ```
 
 ## Scheduling Daily Reports with Cron
@@ -469,6 +475,7 @@ HOSTNAME=$(hostname -f)
     --detail "$DETAIL" \
     --format "$FORMAT" \
     --range "$RANGE" \
+    --subject "Logwatch for $HOSTNAME" \
     --archives
 
 # Log execution for troubleshooting
@@ -509,11 +516,6 @@ Title = "My Application"
 
 # Log file group to analyze (defined in logfiles/myapp.conf)
 LogFile = myapp
-
-# Detail levels supported by this service filter
-# Lower numbers = less detail, higher = more detail
-*OnlyService = myapp
-*OnlyContains = error,warning,critical
 ```
 
 Now create the service script that parses the logs:
@@ -628,11 +630,11 @@ Text format is the default and works well for terminal viewing and archiving:
 # Generate a text report to stdout
 sudo logwatch --format text --detail Med --range Yesterday
 
-# Save a text report to a file for archiving
-sudo logwatch --format text --output file --filename /var/log/logwatch/report-$(date +%Y-%m-%d).txt
-
 # Create a directory for archived reports
 sudo mkdir -p /var/log/logwatch
+
+# Save a text report to a file for archiving
+sudo logwatch --format text --output file --filename /var/log/logwatch/report-$(date +%Y-%m-%d).txt
 ```
 
 ### HTML Output
