@@ -102,11 +102,11 @@ sudo systemctl status redis-server
 ### Step 5: Verify Installation
 
 ```bash
-# Test Redis connection using the CLI
+# Test Redis connection using the CLI if you did not configure a password
 redis-cli ping
 # Output: PONG
 
-# If you set a password, authenticate first
+# If you set requirepass, authenticate first
 redis-cli
 127.0.0.1:6379> AUTH your_secure_password_here
 # Output: OK
@@ -183,19 +183,21 @@ This shows:
 # 2) "alerts"
 # 3) (integer) 2
 # 1) "subscribe"
-# 4) "updates"
+# 2) "updates"
 # 3) (integer) 3
 ```
 
 ### Unsubscribing from Channels
 
 ```bash
-# Unsubscribe from specific channels
+# Unsubscribe from specific channels (client libraries can send this while subscribed)
 127.0.0.1:6379> UNSUBSCRIBE news alerts
 
 # Unsubscribe from all channels
 127.0.0.1:6379> UNSUBSCRIBE
 ```
+
+When using `redis-cli` interactively in subscribed mode, press `Ctrl-C` to quit; `redis-cli` does not accept typed commands until it leaves subscribed mode.
 
 ## Pattern Subscriptions (PSUBSCRIBE)
 
@@ -254,12 +256,14 @@ When receiving messages from pattern subscriptions, you get additional informati
 ### Unsubscribing from Patterns
 
 ```bash
-# Unsubscribe from specific patterns
+# Unsubscribe from specific patterns (client libraries can send this while subscribed)
 127.0.0.1:6379> PUNSUBSCRIBE user:*
 
 # Unsubscribe from all patterns
 127.0.0.1:6379> PUNSUBSCRIBE
 ```
+
+When using `redis-cli` interactively in subscribed mode, press `Ctrl-C` to quit; `redis-cli` does not accept typed commands until it leaves subscribed mode.
 
 ## Client Examples
 
@@ -882,13 +886,13 @@ async function main() {
 
         // Pattern subscriptions for dynamic channels
         // pSubscribe matches channels using glob patterns
-        await subscriber.pSubscribe('alerts:*', (message, channel, pattern) => {
-            handlePatternMessage(message, channel, pattern);
+        await subscriber.pSubscribe('alerts:*', (message, channel) => {
+            handlePatternMessage(message, channel, 'alerts:*');
         });
         console.log('Subscribed to pattern: alerts:*');
 
-        await subscriber.pSubscribe('metrics:*', (message, channel, pattern) => {
-            handlePatternMessage(message, channel, pattern);
+        await subscriber.pSubscribe('metrics:*', (message, channel) => {
+            handlePatternMessage(message, channel, 'metrics:*');
         });
         console.log('Subscribed to pattern: metrics:*');
 
@@ -1193,7 +1197,7 @@ class PersistentPublisher:
 #!/usr/bin/env python3
 """
 Pub/Sub with List backup pattern
-Uses Redis Lists to ensure message delivery
+Uses Redis Lists to add a durable queue alongside real-time Pub/Sub
 """
 
 import redis
@@ -1204,7 +1208,7 @@ import time
 
 class ReliablePublisher:
     """
-    Publisher that uses both Pub/Sub and Lists for reliability.
+    Publisher that uses both Pub/Sub and Lists for a backup queue.
     """
 
     def __init__(self, redis_client):
@@ -1235,7 +1239,7 @@ class ReliablePublisher:
 
 class ReliableSubscriber:
     """
-    Subscriber that falls back to queue if Pub/Sub message missed.
+    Subscriber that processes both Pub/Sub messages and a backup queue.
     """
 
     def __init__(self, redis_client, channel):
@@ -1247,6 +1251,7 @@ class ReliableSubscriber:
     def start(self, message_handler):
         """
         Start hybrid subscriber that listens to both Pub/Sub and queue.
+        This sample may process duplicates unless you add message IDs and deduplication.
         """
         self.running = True
 
@@ -1309,12 +1314,13 @@ In Redis Cluster, Pub/Sub behavior differs from single-node Redis:
 ### Setting Up Redis Cluster
 
 ```bash
-# Create directories for cluster nodes
-mkdir -p /etc/redis/cluster/{7000,7001,7002,7003,7004,7005}
+# Create directories for cluster configuration and data
+sudo mkdir -p /etc/redis/cluster/{7000,7001,7002,7003,7004,7005}
+sudo mkdir -p /var/lib/redis/cluster/{7000,7001,7002,7003,7004,7005}
 
 # Create configuration for each node
 for port in 7000 7001 7002 7003 7004 7005; do
-cat > /etc/redis/cluster/${port}/redis.conf << EOF
+sudo tee /etc/redis/cluster/${port}/redis.conf > /dev/null << EOF
 port ${port}
 cluster-enabled yes
 cluster-config-file nodes-${port}.conf
@@ -1333,7 +1339,7 @@ done
 
 # Start all nodes
 for port in 7000 7001 7002 7003 7004 7005; do
-    redis-server /etc/redis/cluster/${port}/redis.conf
+    sudo redis-server /etc/redis/cluster/${port}/redis.conf
 done
 
 # Create the cluster (3 masters, 3 replicas)
@@ -1352,7 +1358,7 @@ Redis Cluster Pub/Sub Example
 Demonstrates Pub/Sub with Redis Cluster
 """
 
-from redis.cluster import RedisCluster
+from redis.cluster import ClusterNode, RedisCluster
 import json
 
 
@@ -1363,9 +1369,9 @@ def create_cluster_client():
     """
     # Define startup nodes (client will discover the rest)
     startup_nodes = [
-        {"host": "127.0.0.1", "port": 7000},
-        {"host": "127.0.0.1", "port": 7001},
-        {"host": "127.0.0.1", "port": 7002}
+        ClusterNode("127.0.0.1", 7000),
+        ClusterNode("127.0.0.1", 7001),
+        ClusterNode("127.0.0.1", 7002)
     ]
 
     client = RedisCluster(
@@ -1726,7 +1732,7 @@ USER:NOTIFICATIONS    # Mixed case
 ```python
 # Always use structured messages with metadata
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 
 def create_message(event_type, payload):
@@ -1741,7 +1747,7 @@ def create_message(event_type, payload):
         'type': event_type,
 
         # ISO 8601 timestamp
-        'timestamp': datetime.utcnow().isoformat() + 'Z',
+        'timestamp': datetime.now(timezone.utc).isoformat(),
 
         # Schema version for backwards compatibility
         'version': '1.0',
