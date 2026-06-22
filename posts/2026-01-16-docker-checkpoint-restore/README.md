@@ -105,8 +105,6 @@ EOF
 ## Docker Compose Integration
 
 ```yaml
-version: '3.8'
-
 services:
   app:
     image: myapp:latest
@@ -124,7 +122,7 @@ services:
 | Stateless containers | Full |
 | Network connections | Partial (TCP may fail) |
 | Open files | Supported |
-| Volumes | Supported |
+| Volumes | Mounted files are supported, but volume data is not included in the checkpoint |
 | Privileged containers | Limited |
 
 ## Best Practices
@@ -141,12 +139,11 @@ services:
 # Check CRIU compatibility
 criu check --all
 
-# Debug checkpoint
-docker checkpoint create --debug mycontainer checkpoint1
-
 # View CRIU logs
 journalctl -u docker | grep criu
+
+# Inspect checkpoint dump logs
+sudo find /var/lib/docker/containers -path '*/checkpoints/checkpoint1/criu.work/dump.log' -print
 ```
 
 Docker checkpoint/restore provides powerful state preservation for specific use cases. It's most reliable for stateless containers with minimal network state. For general migration, consider volume backup and container recreation as described in our post on [Docker Volume Backups](https://oneuptime.com/blog/post/2026-01-16-docker-volume-backups/view).
-
