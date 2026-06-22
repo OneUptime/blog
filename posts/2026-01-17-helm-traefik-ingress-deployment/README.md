@@ -95,7 +95,8 @@ resources:
 # Service configuration
 service:
   enabled: true
-  type: LoadBalancer
+  spec:
+    type: LoadBalancer
   annotations:
     # AWS NLB
     service.beta.kubernetes.io/aws-load-balancer-type: nlb
@@ -603,7 +604,7 @@ ports:
 kubectl logs -n traefik -l app.kubernetes.io/name=traefik -f
 
 # View configuration
-kubectl port-forward -n traefik svc/traefik 9000:9000
+kubectl port-forward -n traefik deployment/traefik 9000:9000
 # Visit http://localhost:9000/dashboard/
 
 # Check IngressRoutes
