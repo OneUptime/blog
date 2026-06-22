@@ -66,7 +66,7 @@ sudo systemctl status nginx
 
 ### Step 2: Install PHP and Required Extensions
 
-LibreSpeed requires PHP 7.0 or higher with specific extensions for handling uploads and JSON responses.
+LibreSpeed requires PHP 5.4 or newer, with PHP 8.0 or newer required for ISP and distance detection. Install the PHP extensions needed for the web UI, result images, and telemetry storage.
 
 ```bash
 # Install PHP-FPM (FastCGI Process Manager) for better performance with Nginx
@@ -75,7 +75,8 @@ LibreSpeed requires PHP 7.0 or higher with specific extensions for handling uplo
 # php-curl: HTTP client for backend communications
 # php-json: JSON encoding/decoding for API responses
 # php-mbstring: Multibyte string handling
-sudo apt install -y php-fpm php-gd php-curl php-json php-mbstring
+# php-sqlite3/php-mysql: PDO drivers for telemetry storage
+sudo apt install -y php-fpm php-gd php-curl php-json php-mbstring php-sqlite3 php-mysql
 
 # Check which PHP version was installed
 php -v
@@ -171,6 +172,8 @@ server {
 
         # Forward PHP requests to PHP-FPM socket
         # Adjust the socket path to match your PHP version
+        # Ubuntu 22.04 typically uses php8.1-fpm.sock
+        # Ubuntu 24.04 typically uses php8.3-fpm.sock
         fastcgi_pass unix:/var/run/php/php8.1-fpm.sock;
 
         # Set the script filename parameter
@@ -208,8 +211,9 @@ Optimize PHP-FPM settings for handling speed test traffic.
 
 ```bash
 # Edit PHP-FPM pool configuration
-# Path varies by PHP version (php8.1, php8.2, etc.)
-sudo nano /etc/php/8.1/fpm/pool.d/www.conf
+# Path varies by PHP version (php8.1 on Ubuntu 22.04, php8.3 on Ubuntu 24.04, etc.)
+PHP_VERSION=$(php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;')
+sudo nano "/etc/php/${PHP_VERSION}/fpm/pool.d/www.conf"
 ```
 
 Adjust the following settings for better performance under load.
@@ -250,7 +254,8 @@ Apply the PHP-FPM changes.
 
 ```bash
 # Restart PHP-FPM to apply new configuration
-sudo systemctl restart php8.1-fpm
+PHP_VERSION=$(php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;')
+sudo systemctl restart "php${PHP_VERSION}-fpm"
 ```
 
 ## Customization Options
@@ -263,7 +268,7 @@ Edit the example HTML file to customize the user interface.
 
 ```bash
 # Copy the example file to create your custom page
-sudo cp /var/www/speedtest/example-singleServer-pretty.html /var/www/speedtest/index.html
+sudo cp /var/www/speedtest/examples/example-singleServer-pretty.html /var/www/speedtest/index.html
 
 # Edit the file to customize settings
 sudo nano /var/www/speedtest/index.html
@@ -293,6 +298,10 @@ speedtest.setParameter("time_ul_max", 15);
 // Number of parallel streams for download/upload tests
 // Higher values saturate the connection better but use more resources
 // 3-6 streams work well for most connections
+speedtest.setParameter("xhr_dlMultistream", 6);
+speedtest.setParameter("xhr_ulMultistream", 3);
+
+// Number of ping samples
 speedtest.setParameter("count_ping", 10);
 
 // Garbage data size for download test
@@ -463,51 +472,26 @@ var serverList = [
 
 // Initialize speedtest with server list
 var speedtest = new Speedtest();
+speedtest.addTestPoints(serverList);
 
-// Let LibreSpeed auto-select the best server based on ping
+// Include ISP information in the IP lookup
 speedtest.setParameter("getIp_ispInfo", true);
 
 // Or allow manual server selection
 function selectServer(index) {
-    var server = serverList[index];
-    speedtest.setParameter("url_dl", server.server + server.dlURL);
-    speedtest.setParameter("url_ul", server.server + server.ulURL);
-    speedtest.setParameter("url_ping", server.server + server.pingURL);
-    speedtest.setParameter("url_getIp", server.server + server.getIpURL);
+    speedtest.setSelectedServer(serverList[index]);
 }
 
-// Function to ping all servers and find the fastest
-async function findBestServer() {
-    var bestServer = null;
-    var bestPing = Infinity;
-
-    for (var i = 0; i < serverList.length; i++) {
-        var server = serverList[i];
-        var startTime = performance.now();
-
-        try {
-            // Send a small request to measure latency
-            await fetch(server.server + server.pingURL, {
-                method: 'GET',
-                cache: 'no-store'
-            });
-
-            var ping = performance.now() - startTime;
-            console.log(server.name + ": " + ping.toFixed(0) + "ms");
-
-            if (ping < bestPing) {
-                bestPing = ping;
-                bestServer = i;
-            }
-        } catch (e) {
-            console.log(server.name + ": unreachable");
+// Let LibreSpeed auto-select the best server based on ping
+function findBestServer() {
+    speedtest.selectServer(function(server) {
+        if (server === null) {
+            console.log("No servers available");
+            return;
         }
-    }
 
-    if (bestServer !== null) {
-        selectServer(bestServer);
-        console.log("Selected: " + serverList[bestServer].name);
-    }
+        console.log("Selected: " + server.name);
+    });
 }
 ```
 
@@ -535,17 +519,8 @@ add_header Access-Control-Allow-Methods "GET, POST, OPTIONS" always;
 # Allow required headers for the test
 add_header Access-Control-Allow-Headers "Content-Type, Accept, X-Requested-With" always;
 
-# Handle preflight OPTIONS requests
-location = /backend/ {
-    if ($request_method = OPTIONS) {
-        add_header Access-Control-Allow-Origin "*";
-        add_header Access-Control-Allow-Methods "GET, POST, OPTIONS";
-        add_header Access-Control-Allow-Headers "Content-Type, Accept, X-Requested-With";
-        add_header Content-Length 0;
-        add_header Content-Type text/plain;
-        return 204;
-    }
-}
+# LibreSpeed also appends CORS headers automatically when multiple
+# points of test are configured and the frontend sends cors=true.
 ```
 
 ## Result Storage and Logging
@@ -557,11 +532,7 @@ Configure LibreSpeed to store test results in a database for historical analysis
 For smaller deployments, use the built-in SQLite telemetry backend.
 
 ```bash
-# Copy the telemetry configuration template
-sudo cp /var/www/speedtest/results/telemetry_settings.php.template \
-       /var/www/speedtest/results/telemetry_settings.php
-
-# Edit the configuration
+# Edit the telemetry configuration
 sudo nano /var/www/speedtest/results/telemetry_settings.php
 ```
 
@@ -572,28 +543,23 @@ Configure the telemetry settings:
 // LibreSpeed Telemetry Configuration
 // This file configures how test results are stored
 
-// Enable or disable telemetry (result storage)
-// Set to false to disable all result logging
-$Rone_settings["enable"] = true;
-
 // Database type: "sqlite", "mysql", "postgresql"
 // SQLite is simplest - stores data in a file
-$Rone_settings["db_type"] = "sqlite";
+$db_type = "sqlite";
 
 // SQLite database file path
 // Must be writable by the web server (www-data)
-$Rone_settings["sqlite_database"] = "/var/www/speedtest/results/telemetry.sql";
+$Sqlite_db_file = "/var/www/speedtest/results/telemetry.sql";
 
 // Privacy settings
-// Redact last two octets of IP addresses for privacy
-$Rone_settings["redact_ip_addresses"] = true;
+// Redact IP addresses for privacy
+$redact_ip_addresses = true;
 
-// Enable distance calculation if you have multiple servers
-$Rone_settings["enable_id_obfuscation"] = true;
+// Obfuscate sequential test IDs in shared result URLs
+$enable_id_obfuscation = true;
 
-// Result data retention (days)
-// Set to 0 to keep forever
-$Rone_settings["stats_password"] = "your-secure-password-here";
+// Password for results/stats.php
+$stats_password = "your-secure-password-here";
 
 ?>
 ```
@@ -643,23 +609,8 @@ FLUSH PRIVILEGES;
 -- Switch to the new database
 USE speedtest_results;
 
--- Create the results table
-CREATE TABLE speedtest_users (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    timestamp DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    ip VARCHAR(45) NOT NULL,
-    ispinfo TEXT,
-    extra TEXT,
-    ua TEXT,
-    lang VARCHAR(10),
-    dl FLOAT,
-    ul FLOAT,
-    ping FLOAT,
-    jitter FLOAT,
-    log TEXT,
-    INDEX idx_timestamp (timestamp),
-    INDEX idx_ip (ip)
-) ENGINE=InnoDB;
+-- Import the official LibreSpeed MySQL schema
+SOURCE /var/www/speedtest/results/telemetry_mysql.sql;
 
 EXIT;
 ```
@@ -671,22 +622,19 @@ Update the PHP configuration to use MySQL:
 // MySQL Telemetry Configuration
 // Provides better performance and query capabilities than SQLite
 
-$Rone_settings["enable"] = true;
-$Rone_settings["db_type"] = "mysql";
+$db_type = "mysql";
 
 // MySQL connection settings
-$Rone_settings["mysql_server"] = "localhost";
-$Rone_settings["mysql_database"] = "speedtest_results";
-$Rone_settings["mysql_user"] = "speedtest";
-$Rone_settings["mysql_password"] = "strong_password";
-
-// Optional: Connection charset
-$Rone_settings["mysql_charset"] = "utf8mb4";
+$MySql_hostname = "localhost";
+$MySql_databasename = "speedtest_results";
+$MySql_username = "speedtest";
+$MySql_password = "strong_password";
+$MySql_port = "3306";
 
 // Privacy and security settings
-$Rone_settings["redact_ip_addresses"] = true;
-$Rone_settings["enable_id_obfuscation"] = true;
-$Rone_settings["stats_password"] = "admin-dashboard-password";
+$redact_ip_addresses = true;
+$enable_id_obfuscation = true;
+$stats_password = "admin-dashboard-password";
 
 ?>
 ```
@@ -772,6 +720,11 @@ cd ~/speedtest-docker
 
 # Create Docker Compose file
 nano docker-compose.yml
+
+# Download the official MySQL telemetry schema for database initialization
+mkdir -p db-init
+curl -fsSL https://raw.githubusercontent.com/librespeed/speedtest/master/results/telemetry_mysql.sql \
+    -o db-init/telemetry_mysql.sql
 ```
 
 Add the following Docker Compose configuration:
@@ -785,7 +738,7 @@ version: '3.8'
 services:
   # LibreSpeed web application
   speedtest:
-    image: adolfintel/speedtest:latest
+    image: ghcr.io/librespeed/speedtest:latest
     container_name: speedtest
     restart: unless-stopped
     environment:
@@ -795,6 +748,7 @@ services:
       - TELEMETRY=true
       - DB_TYPE=mysql
       - DB_HOSTNAME=db
+      - DB_PORT=3306
       - DB_NAME=speedtest
       - DB_USERNAME=speedtest
       - DB_PASSWORD=${DB_PASSWORD:-changeme}
@@ -803,15 +757,11 @@ services:
       - ENABLE_ID_OBFUSCATION=true
       # Stats page password
       - PASSWORD=${STATS_PASSWORD:-admin}
+      - GDPR_EMAIL=${GDPR_EMAIL:-privacy@example.com}
       # Server info
       - IPINFO_APIKEY=${IPINFO_KEY:-}
       # Distance calculation
       - DISTANCE=km
-    volumes:
-      # Persist database for SQLite mode
-      - speedtest-db:/database
-      # Custom configuration overrides
-      - ./custom/index.html:/speedtest/index.html:ro
     networks:
       - speedtest-net
     depends_on:
@@ -829,6 +779,7 @@ services:
       - MYSQL_PASSWORD=${DB_PASSWORD:-changeme}
     volumes:
       - mariadb-data:/var/lib/mysql
+      - ./db-init:/docker-entrypoint-initdb.d:ro
     networks:
       - speedtest-net
     # Health check for database readiness
@@ -857,8 +808,6 @@ services:
 
 # Named volumes for data persistence
 volumes:
-  speedtest-db:
-    driver: local
   mariadb-data:
     driver: local
 
@@ -885,6 +834,9 @@ DB_ROOT_PASSWORD=secure-root-password
 
 # Stats page password
 STATS_PASSWORD=secure-admin-password
+
+# Privacy contact shown in the built-in privacy policy
+GDPR_EMAIL=privacy@example.com
 
 # Optional: IPInfo API key for ISP detection
 IPINFO_KEY=your-ipinfo-api-key
@@ -976,7 +928,7 @@ server {
 
     location / {
         # Proxy to LibreSpeed container
-        proxy_pass http://speedtest:80;
+        proxy_pass http://speedtest:8080;
 
         # Preserve client information
         proxy_set_header Host $host;
@@ -996,19 +948,19 @@ Deploy the Docker stack:
 
 ```bash
 # Start all containers in the background
-docker-compose up -d
+docker compose up -d
 
 # View container logs
-docker-compose logs -f
+docker compose logs -f
 
 # Check container status
-docker-compose ps
+docker compose ps
 
 # Stop and remove containers
-docker-compose down
+docker compose down
 
 # Remove containers and volumes (deletes data)
-docker-compose down -v
+docker compose down -v
 ```
 
 ## Ookla CLI Server Alternative
@@ -1017,19 +969,21 @@ If you need compatibility with Ookla Speedtest clients, consider running the off
 
 ### Installing Ookla Speed Test Server
 
-Ookla provides a free server for non-commercial use.
+Ookla provides Speedtest Server through its host program.
 
 ```bash
 # Download the Ookla Speed Test Server
-# Visit https://www.ookla.com/host to register and get download link
+# Visit https://www.ookla.com/host to register and review the current requirements
 
 # Create installation directory
 sudo mkdir -p /opt/ookla
+sudo chown "$USER":"$USER" /opt/ookla
 
-# Download and extract (replace URL with your registration link)
+# Download and run the installer script
 cd /opt/ookla
-sudo wget -O ookla-server.tar.gz "YOUR_DOWNLOAD_LINK"
-sudo tar -xzf ookla-server.tar.gz
+wget https://install.speedtest.net/ooklaserver/ooklaserver.sh
+chmod a+x ooklaserver.sh
+./ooklaserver.sh install
 
 # View available options
 ./OoklaServer --help
@@ -1044,27 +998,11 @@ sudo nano /opt/ookla/OoklaServer.properties
 
 ```properties
 # Ookla Speed Test Server Configuration
-# Adjust these settings based on your server capacity
-
-# Network binding
-OoklaServer.serverPort = 8080
-OoklaServer.sslServerPort = 8443
-
-# Server identification (from Ookla registration)
-OoklaServer.serverId = YOUR_SERVER_ID
-OoklaServer.serverToken = YOUR_SERVER_TOKEN
-
-# Thread configuration
-OoklaServer.maxConnections = 100
-OoklaServer.threadCount = 4
-
-# Logging
-OoklaServer.logFile = /var/log/ookla/ookla-server.log
-OoklaServer.logLevel = INFO
-
-# SSL certificate paths (optional)
-OoklaServer.sslCertFile = /etc/ssl/certs/speedtest.pem
-OoklaServer.sslKeyFile = /etc/ssl/private/speedtest.key
+# Review the installed OoklaServer.properties file and uncomment or adjust
+# options required by your Ookla host account and current Ookla documentation.
+#
+# For public Speedtest.net hosting, Ookla commonly requires allowed domains:
+# OoklaServer.allowedDomains = *.ookla.com, *.speedtest.net
 ```
 
 Create a systemd service for automatic startup:
@@ -1088,7 +1026,7 @@ Type=simple
 User=www-data
 Group=www-data
 WorkingDirectory=/opt/ookla
-ExecStart=/opt/ookla/OoklaServer --daemon=false
+ExecStart=/opt/ookla/OoklaServer
 Restart=always
 RestartSec=5
 
@@ -1096,7 +1034,7 @@ RestartSec=5
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/var/log/ookla
+ReadWritePaths=/var/log/ookla /opt/ookla
 
 [Install]
 WantedBy=multi-user.target
@@ -1108,6 +1046,9 @@ Enable and start the service:
 # Create log directory
 sudo mkdir -p /var/log/ookla
 sudo chown www-data:www-data /var/log/ookla
+
+# Ensure the service user can read the installation
+sudo chown -R www-data:www-data /opt/ookla
 
 # Reload systemd and start the service
 sudo systemctl daemon-reload
@@ -1353,7 +1294,6 @@ import requests
 import time
 import statistics
 from dataclasses import dataclass
-from typing import Optional
 import json
 
 
@@ -1468,7 +1408,7 @@ class LibreSpeedClient:
         Returns:
             SpeedTestResult with all measurements
         """
-        from datetime import datetime
+        from datetime import datetime, timezone
 
         download = self.test_download()
         upload = self.test_upload()
@@ -1480,7 +1420,7 @@ class LibreSpeedClient:
             ping_ms=ping,
             jitter_ms=jitter,
             server=self.server_url,
-            timestamp=datetime.utcnow().isoformat()
+            timestamp=datetime.now(timezone.utc).isoformat()
         )
 
     def to_json(self, result: SpeedTestResult) -> str:
@@ -1757,7 +1697,8 @@ sudo tail -f /var/log/nginx/speedtest_error.log
 # fastcgi_read_timeout 300;
 
 # Verify PHP-FPM is processing requests
-sudo tail -f /var/log/php8.1-fpm.log
+PHP_VERSION=$(php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;')
+sudo journalctl -u "php${PHP_VERSION}-fpm" -f
 ```
 
 ### Speed Test Shows Lower Than Expected Results
@@ -1775,7 +1716,7 @@ ethtool eth0 | grep Speed
 iftop -i eth0
 
 # Ensure PHP is not rate-limited
-# Edit /etc/php/8.1/fpm/pool.d/www.conf
+# Edit /etc/php/<version>/fpm/pool.d/www.conf
 # Increase pm.max_children if needed
 
 # Disable TCP offloading if results are inconsistent
@@ -1817,8 +1758,9 @@ mysql -u speedtest -p -h localhost speedtest_results
 # Verify PHP has MySQL extension
 php -m | grep mysql
 
-# Check PHP error log
-sudo tail -f /var/log/php8.1-fpm.log
+# Check PHP-FPM logs
+PHP_VERSION=$(php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;')
+sudo journalctl -u "php${PHP_VERSION}-fpm" -f
 
 # Test write permissions for SQLite
 ls -la /var/www/speedtest/results/
@@ -1835,7 +1777,8 @@ Check that all services are running and firewall allows traffic.
 sudo systemctl status nginx
 
 # Check PHP-FPM status
-sudo systemctl status php8.1-fpm
+PHP_VERSION=$(php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;')
+sudo systemctl status "php${PHP_VERSION}-fpm"
 
 # Verify firewall rules
 sudo ufw status
