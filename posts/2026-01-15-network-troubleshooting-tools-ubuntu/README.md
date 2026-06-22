@@ -359,7 +359,7 @@ iperf3 -s
 # Run client test
 iperf3 -c server_ip
 
-# Test upload (reverse)
+# Test download (reverse: server sends, client receives)
 iperf3 -c server_ip -R
 
 # UDP test
