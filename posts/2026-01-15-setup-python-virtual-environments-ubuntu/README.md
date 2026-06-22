@@ -196,7 +196,7 @@ deactivate
 # user@ubuntu:~/projects/my_python_project$
 
 # Verify deactivation
-which python
+which python3
 # Output: /usr/bin/python3 (or similar system path)
 ```
 
@@ -399,8 +399,8 @@ pip freeze
 # requests==2.31.0
 # urllib3==2.2.0
 
-# Exclude specific packages from freeze output
-pip freeze | grep -v "^-e"  # Exclude editable installs
+# Exclude editable installs from freeze output
+pip freeze --exclude-editable
 ```
 
 ### Using Constraints Files
@@ -534,8 +534,8 @@ Virtualenvwrapper provides convenient commands for managing virtual environments
 ### Installation and Setup
 
 ```bash
-# Install virtualenvwrapper
-pip3 install virtualenvwrapper
+# Install virtualenvwrapper from Ubuntu packages
+sudo apt install virtualenvwrapper
 
 # Add configuration to ~/.bashrc
 cat >> ~/.bashrc << 'EOF'
@@ -544,8 +544,7 @@ cat >> ~/.bashrc << 'EOF'
 export WORKON_HOME=$HOME/.virtualenvs      # Directory for all virtual environments
 export PROJECT_HOME=$HOME/projects          # Directory for projects
 export VIRTUALENVWRAPPER_PYTHON=/usr/bin/python3
-export VIRTUALENVWRAPPER_VIRTUALENV=/usr/local/bin/virtualenv
-source /usr/local/bin/virtualenvwrapper.sh
+source /usr/share/virtualenvwrapper/virtualenvwrapper.sh
 EOF
 
 # Reload shell configuration
@@ -716,6 +715,7 @@ dependencies:
   - scikit-learn>=1.3.0
   - matplotlib>=3.7.0
   - jupyter>=1.0.0
+  - pip
   # pip dependencies (packages not in conda)
   - pip:
     - fastapi>=0.109.0
@@ -760,13 +760,11 @@ cat > .vscode/settings.json << 'EOF'
     // Use virtual environment for terminal
     "python.terminal.activateEnvironment": true,
 
-    // Linting configuration
-    "python.linting.enabled": true,
-    "python.linting.pylintEnabled": true,
-
     // Formatting configuration
-    "python.formatting.provider": "black",
-    "editor.formatOnSave": true,
+    "[python]": {
+        "editor.defaultFormatter": "ms-python.black-formatter",
+        "editor.formatOnSave": true
+    },
 
     // Testing configuration
     "python.testing.pytestEnabled": true,
