@@ -33,8 +33,11 @@ flowchart TB
   
   subgraph "Viz Extension"
     prometheus[Prometheus]
-    grafana[Grafana]
     web[Web Dashboard]
+  end
+
+  subgraph "External Grafana"
+    grafana[Grafana]
   end
   
   controller --> proxy1
@@ -53,7 +56,7 @@ flowchart TB
 ## Prerequisites
 
 ```bash
-# Check Kubernetes version (1.21+)
+# Check Kubernetes version support for your Linkerd release
 
 kubectl version --client
 
@@ -96,22 +99,11 @@ step certificate create identity.linkerd.cluster.local issuer.crt issuer.key \
   --ca-key ca.key
 ```
 
-### Store Certificates in Kubernetes
+### Prepare Namespace
 
 ```bash
 # Create namespace
 kubectl create namespace linkerd
-
-# Create trust anchor secret
-kubectl create secret generic linkerd-trust-anchor \
-  --namespace linkerd \
-  --from-file=ca-bundle.crt=ca.crt
-
-# Create issuer secret
-kubectl create secret tls linkerd-identity-issuer \
-  --namespace linkerd \
-  --cert=issuer.crt \
-  --key=issuer.key
 ```
 
 ## Installation
@@ -136,7 +128,7 @@ identityTrustAnchorsPEM: |
 
 identity:
   issuer:
-    scheme: kubernetes.io/tls
+    scheme: linkerd.io/tls
     
 controllerReplicas: 2
 
@@ -156,8 +148,7 @@ enablePodAntiAffinity: true
 # Prometheus
 prometheusUrl: ""  # Use built-in with viz
 
-# Controller resources
-resources:
+controllerResources:
   cpu:
     request: 100m
     limit: 500m
@@ -171,7 +162,9 @@ resources:
 helm install linkerd-control-plane linkerd/linkerd-control-plane \
   --namespace linkerd \
   -f linkerd-control-plane-values.yaml \
-  --set-file identityTrustAnchorsPEM=ca.crt
+  --set-file identityTrustAnchorsPEM=ca.crt \
+  --set-file identity.issuer.tls.crtPEM=issuer.crt \
+  --set-file identity.issuer.tls.keyPEM=issuer.key
 ```
 
 ### Step 3: Install Viz Extension (Dashboard)
@@ -190,6 +183,8 @@ dashboard:
 
 prometheus:
   enabled: true
+  args:
+    storage.tsdb.retention.time: 6h
   resources:
     cpu:
       request: 300m
@@ -198,17 +193,9 @@ prometheus:
       request: 300Mi
       limit: 1Gi
 
+# Optional: link to an in-cluster Grafana instance
 grafana:
-  enabled: true
-  resources:
-    cpu:
-      request: 100m
-    memory:
-      request: 50Mi
-      limit: 256Mi
-
-# Metrics retention
-prometheusRetention: 6h
+  url: grafana.grafana
 ```
 
 ```bash
@@ -346,7 +333,10 @@ spec:
 ### Install SMI Extension
 
 ```bash
-helm install linkerd-smi linkerd/linkerd-smi \
+helm repo add linkerd-smi https://linkerd.github.io/linkerd-smi
+helm repo update
+
+helm install linkerd-smi linkerd-smi/linkerd-smi \
   --namespace linkerd-smi \
   --create-namespace
 ```
@@ -355,7 +345,7 @@ helm install linkerd-smi linkerd/linkerd-smi \
 
 ```yaml
 # traffic-split.yaml
-apiVersion: split.smi-spec.io/v1alpha1
+apiVersion: split.smi-spec.io/v1alpha2
 kind: TrafficSplit
 metadata:
   name: my-app-split
@@ -473,8 +463,13 @@ linkerd viz tap deploy/my-app
 Access pre-built dashboards:
 
 ```bash
+# Install Grafana with Linkerd dashboards
+helm repo add grafana https://grafana.github.io/helm-charts
+helm install grafana -n grafana --create-namespace grafana/grafana \
+  -f https://raw.githubusercontent.com/linkerd/linkerd2/main/grafana/values.yaml
+
 # Access Grafana
-kubectl port-forward -n linkerd-viz svc/grafana 3000:3000
+kubectl port-forward -n grafana svc/grafana 3000:80
 ```
 
 Available dashboards:
@@ -533,14 +528,13 @@ identity:
     issuanceLifetime: 24h
 
 # Destination
-destination:
-  resources:
-    cpu:
-      request: 100m
-      limit: 500m
-    memory:
-      request: 50Mi
-      limit: 250Mi
+destinationResources:
+  cpu:
+    request: 100m
+    limit: 500m
+  memory:
+    request: 50Mi
+    limit: 250Mi
 
 # Policy controller
 policyController:
@@ -553,14 +547,13 @@ policyController:
       limit: 250Mi
 
 # Proxy injector
-proxyInjector:
-  resources:
-    cpu:
-      request: 100m
-      limit: 500m
-    memory:
-      request: 50Mi
-      limit: 250Mi
+proxyInjectorResources:
+  cpu:
+    request: 100m
+    limit: 500m
+  memory:
+    request: 50Mi
+    limit: 250Mi
 
 # Node selector for control plane
 nodeSelector:
@@ -579,7 +572,9 @@ tolerations:
 helm install linkerd-control-plane linkerd/linkerd-control-plane \
   --namespace linkerd \
   -f linkerd-ha-values.yaml \
-  --set-file identityTrustAnchorsPEM=ca.crt
+  --set-file identityTrustAnchorsPEM=ca.crt \
+  --set-file identity.issuer.tls.crtPEM=issuer.crt \
+  --set-file identity.issuer.tls.keyPEM=issuer.key
 ```
 
 ## Multicluster Setup
@@ -588,7 +583,7 @@ helm install linkerd-control-plane linkerd/linkerd-control-plane \
 
 ```bash
 # On both clusters
-helm install linkerd-multicluster linkerd/linkerd-multicluster \
+helm install linkerd-multicluster linkerd-edge/linkerd-multicluster \
   --namespace linkerd-multicluster \
   --create-namespace
 ```
@@ -597,11 +592,11 @@ helm install linkerd-multicluster linkerd/linkerd-multicluster \
 
 ```bash
 # Get credentials from cluster-west
-linkerd --context=cluster-west multicluster link --cluster-name west | \
+linkerd --context=cluster-west multicluster link-gen --cluster-name west | \
   kubectl --context=cluster-east apply -f -
 
 # Get credentials from cluster-east
-linkerd --context=cluster-east multicluster link --cluster-name east | \
+linkerd --context=cluster-east multicluster link-gen --cluster-name east | \
   kubectl --context=cluster-west apply -f -
 ```
 
@@ -631,7 +626,9 @@ helm upgrade linkerd-crds linkerd/linkerd-crds
 helm upgrade linkerd-control-plane linkerd/linkerd-control-plane \
   --namespace linkerd \
   -f linkerd-control-plane-values.yaml \
-  --set-file identityTrustAnchorsPEM=ca.crt
+  --set-file identityTrustAnchorsPEM=ca.crt \
+  --set-file identity.issuer.tls.crtPEM=issuer.crt \
+  --set-file identity.issuer.tls.keyPEM=issuer.key
 
 # Upgrade viz
 helm upgrade linkerd-viz linkerd/linkerd-viz \
