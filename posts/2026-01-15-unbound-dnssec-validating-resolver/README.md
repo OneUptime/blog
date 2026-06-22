@@ -29,7 +29,7 @@ Without DNSSEC, your resolver trusts whatever response arrives first on UDP port
 
 Before starting, ensure you have:
 
-- A Linux server (Ubuntu 22.04+, Debian 12+, RHEL+, or Rocky Linux 9+)
+- A Linux server (Ubuntu 22.04+, Debian 12+, RHEL 9+, or Rocky Linux 9+)
 - Root or sudo access
 - Outbound connectivity to UDP/TCP port 53
 - Basic familiarity with DNS concepts (A records, NS records, TTL)
@@ -78,7 +78,7 @@ Confirm that `validator` appears in the linked modules list. This module perform
 
 ## Understanding the Trust Chain
 
-DNSSEC validation requires a root trust anchor-the public key for the DNS root zone. Every signed zone chains its signatures back to this anchor:
+DNSSEC validation requires a root trust anchor for the DNS root zone. Every signed zone chains its signatures back to this anchor:
 
 ```text
 Root Zone (.)
@@ -100,7 +100,7 @@ When Unbound validates `www.example.com`, it:
 
 ## Configuring the Root Trust Anchor
 
-The root trust anchor changes rarely (last rotation was in 2018), but Unbound includes `unbound-anchor` to fetch and maintain it automatically.
+The root trust anchor changes rarely (KSK-2017 has signed the root since 2018, and KSK-2024 is pre-published for the next rollover), but Unbound includes `unbound-anchor` to bootstrap it and Unbound can maintain it automatically with RFC 5011.
 
 ### Initialize the Trust Anchor
 
@@ -111,7 +111,7 @@ sudo unbound-anchor -a /var/lib/unbound/root.key
 This command:
 
 1. Checks if `/var/lib/unbound/root.key` exists and is current
-2. If missing or outdated, fetches the anchor via HTTPS from IANA
+2. If missing or outdated, updates it via DNS and can fall back to fetching the anchor from IANA over HTTPS
 3. Validates the downloaded anchor using built-in backup keys
 4. Writes the verified anchor in the format Unbound expects
 
@@ -121,13 +121,13 @@ This command:
 cat /var/lib/unbound/root.key
 ```
 
-You should see something like:
+You should see one or more trust anchor records, such as:
 
 ```text
 . IN DS 20326 8 2 E06D44B80B8F1D39A95C0B0D7C65D08458E880409BBC683457104237C7F8EC8D
 ```
 
-This is the root zone's Delegation Signer (DS) record, containing a hash of the root DNSKEY.
+This is one of the root zone's Delegation Signer (DS) records, containing a hash of a root DNSKEY.
 
 ### Automate Trust Anchor Updates
 
@@ -253,7 +253,7 @@ server:
     serve-expired-ttl: 86400
     serve-expired-client-timeout: 1800
 
-    # Deny queries for private IP ranges (prevents rebinding attacks)
+    # Filter private IP answers from public names (prevents rebinding attacks)
     private-address: 10.0.0.0/8
     private-address: 172.16.0.0/12
     private-address: 192.168.0.0/16
@@ -284,7 +284,7 @@ Let's break down the critical DNSSEC-related settings:
 
 | Directive | Value | Purpose |
 | --- | --- | --- |
-| `auto-trust-anchor-file` | `/var/lib/unbound/root.key` | Path to the root trust anchor; enables automatic RFC 5011 updates |
+| `auto-trust-anchor-file` | `/var/lib/unbound/root.key` | Path to the root trust anchor; enables automatic RFC 5011 updates when Unbound can write to the file and directory |
 | `val-clean-additional` | yes | Remove unvalidated data from additional section |
 | `val-permissive-mode` | no | Reject BOGUS responses instead of serving them with warning |
 | `val-log-level` | 1 | Log validation failures (0=off, 1=failures, 2=verbose) |
@@ -319,8 +319,8 @@ ls -la /etc/unbound/unbound_*.pem /etc/unbound/unbound_*.key
 ## Ensuring Proper File Permissions
 
 ```bash
-# Set ownership for the trust anchor
-sudo chown unbound:unbound /var/lib/unbound/root.key
+# Set ownership for the trust anchor and directory so RFC 5011 updates can write temporary files
+sudo chown unbound:unbound /var/lib/unbound /var/lib/unbound/root.key
 
 # Set ownership for configuration
 sudo chown -R root:unbound /etc/unbound
@@ -394,7 +394,7 @@ Expected status output:
 ### Basic Resolution Test
 
 ```bash
-dig @127.0.0.1 example.com A
+dig @127.0.0.1 example.com A +dnssec
 ```
 
 Look for the `ad` (Authenticated Data) flag in the response:
@@ -514,10 +514,11 @@ For debugging or security auditing, enable query logging:
 # log-queries: yes
 # log-replies: yes
 
-# Or use unbound-control for runtime changes:
+# Or use unbound-control for supported runtime changes:
 sudo unbound-control set_option log-queries: yes
-sudo unbound-control set_option log-replies: yes
 ```
+
+Change `log-replies` in `unbound.conf` and reload or restart Unbound; it is not one of the options that `set_option` can change at runtime.
 
 Query logs appear in syslog or journald:
 
@@ -540,6 +541,10 @@ If you need to forward queries to upstream resolvers while preserving DNSSEC:
 
 ```bash
 # Add to unbound.conf
+server:
+    # Debian/Ubuntu path; use /etc/pki/tls/certs/ca-bundle.crt on RHEL-family systems
+    tls-cert-bundle: "/etc/ssl/certs/ca-certificates.crt"
+
 forward-zone:
     name: "."
     forward-addr: 1.1.1.1@853#cloudflare-dns.com
@@ -552,6 +557,7 @@ This configures DNS-over-TLS forwarding to Cloudflare. Critical points:
 - The upstream must support DNSSEC
 - Unbound still validates responses locally
 - Use `forward-tls-upstream: yes` for encrypted transport
+- Configure `tls-cert-bundle` for your distribution so Unbound can authenticate the upstream certificate
 
 For forwarding to local authoritative servers (internal zones):
 
@@ -612,16 +618,16 @@ sudo ufw allow from 192.168.0.0/16 to any port 53
 | Clock skew | All DNSSEC fails | Sync time with NTP |
 | Expired trust anchor | Root zone validation fails | Re-run `unbound-anchor` |
 | Upstream tampering | Some domains return SERVFAIL | Switch to direct recursion or trusted forwarders |
-| Algorithm mismatch | Specific zones fail | Check `val-override` for workarounds |
+| Algorithm mismatch | Specific zones fail | Investigate the zone's DS/DNSKEY/RRSIG chain; use `domain-insecure` only as a deliberate temporary exception |
 | Memory exhaustion | Service crashes | Reduce cache sizes |
 
 ### Debugging Commands
 
 ```bash
-# Check trust anchor status
-sudo unbound-control list_auth_zones
+# Confirm the configured trust anchor file
+sudo unbound-control get_option auto-trust-anchor-file
 
-# Dump cache for a domain
+# Show the name servers Unbound would use for a domain
 sudo unbound-control lookup example.com
 
 # Flush specific domain
@@ -754,7 +760,7 @@ Keep configurations identical across instances:
 ```bash
 # Unbound drops privileges after binding port 53
 username: "unbound"
-chroot: "/etc/unbound"  # Optional: enable chroot jail
+chroot: "/etc/unbound"  # Optional; required files must exist inside the chroot
 ```
 
 ### Disable Unnecessary Features
@@ -787,9 +793,7 @@ Monitor your Unbound resolver health with OneUptime:
 #!/bin/bash
 # OneUptime DNSSEC health check script
 
-RESULT=$(dig @127.0.0.1 example.com A +short +dnssec 2>&1)
-
-if dig @127.0.0.1 example.com A | grep -q "flags.*ad"; then
+if dig @127.0.0.1 example.com A +dnssec | grep -q "flags.*ad"; then
     echo "DNSSEC validation working"
     exit 0
 else
@@ -804,7 +808,7 @@ fi
 
 | Setting | Recommended Value | Purpose |
 | --- | --- | --- |
-| `auto-trust-anchor-file` | `/var/lib/unbound/root.key` | Root zone trust anchor for DNSSEC chain |
+| `auto-trust-anchor-file` | `/var/lib/unbound/root.key` | Root zone trust anchor for DNSSEC chain; Unbound needs write access for RFC 5011 updates |
 | `val-permissive-mode` | no | Reject (not warn) on validation failure |
 | `harden-dnssec-stripped` | yes | Require DNSSEC for signed zones |
 | `harden-below-nxdomain` | yes | Prevent NXDOMAIN bypass attacks |
@@ -834,7 +838,7 @@ sudo unbound-checkconf
 sudo systemctl start unbound
 
 # Test DNSSEC
-dig @127.0.0.1 example.com A  # Look for 'ad' flag
+dig @127.0.0.1 example.com A +dnssec  # Look for 'ad' flag
 
 # View statistics
 sudo unbound-control stats
